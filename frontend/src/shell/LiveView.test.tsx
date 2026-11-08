@@ -6,6 +6,7 @@ import type { Grant, ItemState, NetworkRow, NetworkSnapshot, NewLiveWire } from 
 import type { AddSeed } from "../live/cameras";
 import type { SettingsApi } from "../settings";
 import { FakeSocket, type Room } from "../session/fakeSession";
+import { viewing } from "../session/fakeViews";
 import { SessionProvider } from "../session/session";
 import { KeptStateProvider } from "./keptState";
 import { LiveView } from "./LiveView";
@@ -399,6 +400,14 @@ describe("workspace streams", () => {
     await waitFor(() => expect(sent()).toContainEqual({ type: "openViewer", item: "a" }));
     fireEvent.click(await screen.findByRole("button", { name: "Stop stream" }));
     await waitFor(() => expect(sent()).toContainEqual({ type: "closeViewer", item: "a" }));
+  });
+
+  it("starts a stream beside the open viewers, never in place of the one in front", async () => {
+    const room = await renderView([ready("a"), { ...ready("b"), open: true }]);
+    act(() => room.publish({ sidebar: { view: "live", open: true }, ...viewing("b") }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Start stream" }))[0]);
+    await waitFor(() => expect(Object.keys(room.presenter.viewers)).toHaveLength(2));
+    expect(Object.values(room.presenter.viewers).map((viewer) => viewer?.item)).toEqual(["b", "a"]);
   });
 });
 

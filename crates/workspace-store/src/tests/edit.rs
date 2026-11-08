@@ -16,6 +16,24 @@ fn an_edit_keeps_the_item_and_resolves_again_only_when_the_recipe_changed() {
         hidden: true,
     };
     let (state, _) = apply(&state, hide);
+    let mark = BookmarkCommand::Add {
+        id: foundation::BookmarkId::generate(),
+        item: edited_id,
+        entry: workspace::ContentId::of_item(&edited_id),
+        frame: 3,
+        time: foundation::MediaTime::from_us(120_000),
+    };
+    let review = BookmarkCommand::SetReviewed {
+        target: workspace::BookmarkTarget {
+            item: edited_id,
+            entry: None,
+        },
+        reviewed: true,
+    };
+    let (state, _) = apply(&state, DocCommand::Bookmarks(mark));
+    let (state, _) = apply(&state, DocCommand::Bookmarks(review));
+    assert_eq!(state.workspace.bookmarks.len(), 1);
+    assert_eq!(state.workspace.reviewed.len(), 1);
     let edit = |state: &WorkspaceState, changed: WorkspaceItem| {
         apply(
             state,
@@ -73,6 +91,14 @@ fn an_edit_keeps_the_item_and_resolves_again_only_when_the_recipe_changed() {
     assert_eq!(ids, [kept_id, edited_id], "the item keeps its place");
     let moved_state = finish(&moved_state, &jobs[0]);
     assert!(generation(&moved_state, edited_id) > before);
+    assert_eq!(
+        (
+            &moved_state.workspace.bookmarks,
+            &moved_state.workspace.reviewed
+        ),
+        (&state.workspace.bookmarks, &state.workspace.reviewed),
+        "a new recipe keeps the marks and the review state"
+    );
 
     let playlist = WorkspaceItem {
         recipe: workspace::Recipe::new(Source::Playlist(workspace::PlaylistRecipe {

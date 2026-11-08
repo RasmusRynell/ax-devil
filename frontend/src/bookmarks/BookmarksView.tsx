@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   BookmarkCommand,
   BookmarkGroupInfo,
@@ -9,10 +9,11 @@ import { ChoiceChips } from "../kit/Chips";
 import { SearchField } from "../kit/Fields";
 import { IconButton } from "../kit/IconButton";
 import { useCan, useCommand, useDoc } from "../session/session";
+import { useKept } from "../shell/keptState";
 import { useShow } from "../viewer/useViewers";
 import { BookmarkGroup, type RowActions } from "./BookmarkGroup";
 import { useExportBookmarks } from "./ExportBookmarks";
-import { countOf, filterGroups, KINDS, labelOf } from "./groups";
+import { countOf, filterGroups, KINDS, labelOf, marksOf } from "./groups";
 import { RenameBookmark } from "./RenameBookmark";
 import { useAskSeek } from "./viewerLink";
 
@@ -32,7 +33,8 @@ const NONE: readonly BookmarkGroupInfo[] = [];
  * search, filter or export, only "No bookmarks"; with some but none matching, "No matches".
  */
 export function BookmarksView() {
-  const groups = useDoc()?.workspace.bookmarks ?? NONE;
+  const workspace = useDoc()?.workspace;
+  const groups = workspace?.bookmarks ?? NONE;
   const command = useCommand();
   const show = useShow();
   const ask = useAskSeek();
@@ -41,6 +43,18 @@ export function BookmarksView() {
   const [filter, setFilter] = useState<Filter>("all");
   const [renaming, setRenaming] = useState<BookmarkInfo | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  // The bookmark opened last is marked, through a switch to another view, until a bookmark or review mark changes or
+  // another workspace replaces this one; a target that resolves again, in another order, leaves the mark alone.
+  const marks = useMemo(() => marksOf(groups), [groups]);
+  const epoch = workspace?.epoch;
+  const [opened, setOpened] = useKept<{ id: string; marks: string; epoch?: number } | null>(
+    "bookmarks:opened",
+    null,
+  );
+  const current = opened?.marks === marks && opened.epoch === epoch ? opened : null;
+  useEffect(() => {
+    if (opened && !current) setOpened(null);
+  }, [opened, current, setOpened]);
   const total = countOf(groups);
   // Search and kind are on screen only while a bookmark exists; without one they filter nothing, so a reviewed-only
   // group cannot be hidden by controls that are not there to reset.
@@ -59,12 +73,13 @@ export function BookmarksView() {
       fail,
     );
   const actions: RowActions = {
-    open: ({ item, target, standing }, { frame }) => {
+    open: ({ item, target, standing }, { id, frame }) => {
       if (standing.status !== "Open") return;
       // A video's viewer shows its one entry; a playlist's is told which. A viewer already showing it is brought
       // forward, the front one first; else it opens as an ordinary Open does.
       show(item, target === null ? undefined : standing.entry, { reuse: true }).then(() => {
         setProblem(null);
+        setOpened({ id, marks, epoch });
         ask({ entry: standing.entry, frame });
       }, fail);
     },
@@ -102,7 +117,13 @@ export function BookmarksView() {
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {shown.map((group) => (
-            <BookmarkGroup key={group.key} group={group} mayEdit={mayEdit} actions={actions} />
+            <BookmarkGroup
+              key={group.key}
+              group={group}
+              active={current?.id ?? null}
+              mayEdit={mayEdit}
+              actions={actions}
+            />
           ))}
         </div>
       )}

@@ -301,10 +301,13 @@ describe("viewer shortcuts", () => {
     expect(playback.togglePlay).toHaveBeenCalledTimes(1);
   });
 
-  it("leave Enter alone: it opens Open Workspace only while the welcome area shows", async () => {
+  it("leave Enter alone: it opens Open Workspace only while the welcome area shows, which returns with the last viewer's close", async () => {
     await openViewer();
     fireEvent.keyDown(document.body, { key: "Enter" });
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText("Configure")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close this pane" }));
+    expect(screen.getByText("Configure")).toBeTruthy();
   });
 
   it("do nothing, and leave the key alone, while no viewer is open", async () => {

@@ -4,6 +4,7 @@ import {
   configuredOverlay,
   formFrom,
   formValues,
+  headOf,
   hiddenSecrets,
   newLive,
   problemOf,
@@ -55,6 +56,13 @@ describe("the Add Live Stream form's defaults", () => {
       values: { ...DEFAULT_SETTINGS.values, "camera.head": "$HEAD", "broker.port": "$PORT" },
     });
     expect(startForm(values)).toMatchObject({ head: "1", broker_port: "1883" });
+  });
+
+  it("list the sizes of the head the stream will use: the typed one, else the configured one, else 1", () => {
+    const form = startForm(formValues(DEFAULT_SETTINGS));
+    expect(headOf({ ...form, head: "3" }, "2")).toBe(3);
+    expect(headOf({ ...form, head: "" }, "2")).toBe(2);
+    expect(headOf({ ...form, head: "" }, "")).toBe(1);
   });
 });
 
