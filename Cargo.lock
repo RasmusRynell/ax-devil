@@ -1390,6 +1390,7 @@ version = "0.1.0"
 dependencies = [
  "tempfile",
  "tracing",
+ "tracing-core",
  "tracing-subscriber",
 ]
 

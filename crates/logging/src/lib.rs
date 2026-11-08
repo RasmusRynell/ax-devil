@@ -214,13 +214,32 @@ mod tests {
         assert!(!out.contains("dependency-info"), "{out}");
     }
 
-    /// The caller's layer, which counts the warnings of one target and, being filtered, enables nothing else.
-    struct Counting(Arc<std::sync::atomic::AtomicUsize>);
-
-    impl<S: tracing::Subscriber> Layer<S> for Counting {
-        fn on_event(&self, _: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
-            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        }
+    /// Whether `$subscriber` enables an event of `$target` at `$level`, decided as the `tracing` macros do: by the
+    /// interest it takes in the callsite and, when that depends on the event, by `enabled`. It asks the composed
+    /// subscriber itself, not the process-wide callsite cache, which parallel tests (each with a subscriber of its
+    /// own) would otherwise change under this test.
+    macro_rules! enabled {
+        ($subscriber:expr, $target:expr, $level:expr) => {{
+            struct Probe;
+            impl tracing::Callsite for Probe {
+                fn set_interest(&self, _: tracing::subscriber::Interest) {}
+                fn metadata(&self) -> &tracing::Metadata<'_> {
+                    &META
+                }
+            }
+            static PROBE: Probe = Probe;
+            static META: tracing::Metadata<'static> = tracing_core::metadata! {
+                name: "probe",
+                target: $target,
+                level: $level,
+                fields: &[],
+                callsite: &PROBE,
+                kind: tracing_core::metadata::Kind::EVENT
+            };
+            let interest = tracing::Subscriber::register_callsite(&$subscriber, &META);
+            !interest.is_never()
+                && (interest.is_always() || tracing::Subscriber::enabled(&$subscriber, &META))
+        }};
     }
 
     /// With the console only, with a log file, and with a log file that cannot be opened, a caller's layer that
@@ -237,28 +256,26 @@ mod tests {
             (Some(blocker.join("log.txt")), true),
         ];
         for (file, fails) in cases {
-            let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-            let extra = Counting(Arc::clone(&seen)).with_filter(
-                tracing_subscriber::filter::filter_fn(|meta| {
-                    meta.target() == "retina::client" && *meta.level() == L::WARN
-                })
-                .with_max_level_hint(LevelFilter::WARN),
-            );
+            let extra = tracing_subscriber::fmt::layer()
+                .with_writer(std::io::sink)
+                .with_filter(
+                    tracing_subscriber::filter::filter_fn(|meta| {
+                        meta.target() == "retina::client" && *meta.level() == L::WARN
+                    })
+                    .with_max_level_hint(LevelFilter::WARN),
+                );
             let (layers, failure) = layers(Level::Error, file.as_deref(), extra);
             assert_eq!(failure.is_some(), fails, "{file:?}");
-            tracing::subscriber::with_default(tracing_subscriber::registry().with(layers), || {
-                assert!(!tracing::enabled!(L::WARN), "{file:?}");
-                assert!(!tracing::enabled!(L::DEBUG), "{file:?}");
-                assert!(!tracing::enabled!(target: "reqwest", L::WARN), "{file:?}");
-                assert!(tracing::enabled!(L::ERROR), "{file:?}");
-                tracing::warn!(target: "retina::client", "kept");
-                tracing::warn!("unrelated");
-            });
+            let subscriber = tracing_subscriber::registry().with(layers);
             assert_eq!(
-                seen.load(std::sync::atomic::Ordering::SeqCst),
-                1,
-                "{file:?}"
+                tracing::Subscriber::max_level_hint(&subscriber),
+                Some(LevelFilter::WARN)
             );
+            assert!(!enabled!(subscriber, "logging", L::WARN), "{file:?}");
+            assert!(!enabled!(subscriber, "logging", L::DEBUG), "{file:?}");
+            assert!(!enabled!(subscriber, "reqwest", L::WARN), "{file:?}");
+            assert!(enabled!(subscriber, "logging", L::ERROR), "{file:?}");
+            assert!(enabled!(subscriber, "retina::client", L::WARN), "{file:?}");
         }
     }
 }
