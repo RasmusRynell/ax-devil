@@ -75,3 +75,17 @@ fn an_item_that_stops_waiting_publishes_the_rest_and_a_replacement_publishes_not
     );
     assert!(state.open.is_empty() && state.resolutions.is_empty());
 }
+
+#[test]
+fn removing_an_item_releases_its_held_result_while_the_others_still_resolve() {
+    let folder = tempfile::tempdir().unwrap();
+    let (state, [_, second, _], jobs) = three(folder.path());
+
+    let state = finish(&state, &jobs[1]);
+    assert!(state.batches[0].held.contains_key(&second));
+    let (state, _) = apply(&state, DocCommand::Remove(second));
+    assert!(
+        state.batches[0].held.is_empty(),
+        "the removed item's Content is not kept until the others finish"
+    );
+}

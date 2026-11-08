@@ -274,6 +274,48 @@ describe("a viewer and its bookmarks", () => {
     expect(screen.getByTestId("view").textContent).toBe("workspace");
   });
 
+  it("treats a workspace of another session at the same epoch as a replacement, and the same session again after a reload as none", async () => {
+    // This window last saw epoch 1 of a session that is gone; the new session starts with a bookmarked workspace at 1.
+    window.sessionStorage.setItem(
+      "ax-devil.sidebarEpoch",
+      JSON.stringify({ session: "gone", epoch: 1 }),
+    );
+    FakeSocket.launch = { epoch: 1, bookmarks: [CLIP] };
+    function Sidebar() {
+      const [shown, setShown] = useState(true);
+      const [sidebar, setSidebar] = useView("sidebar");
+      return (
+        <>
+          <button type="button" onClick={() => setShown((now) => !now)}>
+            reload
+          </button>
+          <button type="button" onClick={() => setSidebar({ view: "workspace", open: true })}>
+            choose
+          </button>
+          {shown && <Hook />}
+          <div data-testid="view">{sidebar.view}</div>
+        </>
+      );
+    }
+    function Hook() {
+      useSidebarOnReplace();
+      return null;
+    }
+    render(
+      <SessionProvider>
+        <Sidebar />
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    expect(screen.getByTestId("view").textContent).toBe("bookmarks");
+
+    fireEvent.click(screen.getByRole("button", { name: "choose" }));
+    fireEvent.click(screen.getByRole("button", { name: "reload" }));
+    fireEvent.click(screen.getByRole("button", { name: "reload" }));
+    await act(async () => {});
+    expect(screen.getByTestId("view").textContent).toBe("workspace");
+  });
+
   it("bookmarks the frame on screen and brings the Bookmarks view up", async () => {
     const { session } = stub("ready");
     function Add() {

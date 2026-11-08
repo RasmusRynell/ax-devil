@@ -12,7 +12,7 @@ use crate::{Resolution, WorkspaceState};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Batch {
     order: Vec<(ItemId, u64)>,
-    held: HashMap<ItemId, Result<Content, UserError>>,
+    pub(super) held: HashMap<ItemId, Result<Content, UserError>>,
 }
 
 impl Batch {
@@ -44,9 +44,19 @@ impl WorkspaceState {
         }
     }
 
-    /// Commits every batch that has nothing left to wait for. Only the first item of a batch that resolved gets a
-    /// viewer; a held result whose item no longer waits on its attempt is dropped.
+    /// Drops held results whose item no longer waits on its attempt, then commits every batch that has nothing left
+    /// to wait for. Only the first item of a batch that resolved gets a viewer.
     pub(crate) fn publish_ready(&mut self) {
+        let mut batches = std::mem::take(&mut self.batches);
+        for batch in &mut batches {
+            let order = &batch.order;
+            batch.held.retain(|item, _| {
+                order
+                    .iter()
+                    .any(|(id, attempt)| id == item && self.waits_on(id, *attempt))
+            });
+        }
+        self.batches = batches;
         while let Some(at) = self.batches.iter().position(|batch| {
             batch.order.iter().all(|(item, attempt)| {
                 batch.held.contains_key(item) || !self.waits_on(item, *attempt)
