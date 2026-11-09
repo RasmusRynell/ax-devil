@@ -6,7 +6,6 @@ import { IconToggle } from "../kit/IconToggle";
 import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
 import { Popup } from "../kit/Popup";
 import { SectionCaption } from "../kit/SectionCaption";
-import { useView } from "../session/session";
 import { exportOf, useExportTargets } from "../viewer/exportTargets";
 import { HoverPicture } from "./HoverPicture";
 import { useKept } from "./keptState";
@@ -14,7 +13,6 @@ import { useFolds } from "./RevealShown";
 import { unfold } from "./reveal";
 import {
   filteredOut,
-  openRows,
   ORDERS,
   sectionsOf,
   visibleRows,
@@ -63,8 +61,19 @@ export function WorkspaceTree({
   empty: string;
 }) {
   const actions = useRowActions();
-  const { tree, statuses, powers, problem, dialogs, open, toggleHidden, editRow, removeRow } =
-    actions;
+  const {
+    tree,
+    statuses,
+    openKeys,
+    powers,
+    problem,
+    dialogs,
+    open,
+    stop,
+    toggleHidden,
+    editRow,
+    removeRow,
+  } = actions;
   // An open menu follows viewers that open or close under it.
   useExportTargets();
   // What the user set up in this view stays while the window shows another view or hides the sidebar.
@@ -87,15 +96,6 @@ export function WorkspaceTree({
   // The tree a menu came from, which takes the focus back.
   const menuFrom = useRef<HTMLElement | null>(null);
 
-  const [views] = useView("viewers");
-  const openKeys = useMemo(
-    () =>
-      openRows(
-        tree,
-        Object.values(views).flatMap((viewer) => viewer ?? []),
-      ),
-    [tree, views],
-  );
   const live = useMemo(
     () => new Set([...statuses].flatMap(([item, { anyLive }]) => (anyLive ? [item] : []))),
     [statuses],
@@ -119,8 +119,9 @@ export function WorkspaceTree({
   );
   const noMatches =
     searching && sections.length > 0 && sections.every(({ shown, out }) => !shown.length && !out);
+  // Only the rows on screen can be hovered: a folded section's rows have no picture to show.
   const thumbnail = useRowThumbnail(
-    useMemo(() => sections.flatMap(({ shown }) => shown), [sections]),
+    useMemo(() => sections.flatMap(({ shown, unfolded }) => (unfolded ? shown : [])), [sections]),
   );
 
   // The rows of the unfolded sections in the order the keyboard walks them, and where each section's begin.
@@ -276,6 +277,7 @@ export function WorkspaceTree({
                     scroller={scroller}
                     hides={powers.content}
                     onOpen={(row, side) => void open(row, side)}
+                    onStop={stop}
                     onReveal={reveal}
                     onCurrent={setCurrent}
                     onGo={go}

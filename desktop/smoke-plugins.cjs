@@ -8,13 +8,14 @@ const os = require("node:os");
 const path = require("node:path");
 const fit = require("./fit.cjs");
 const {
-  SCREENSHOTS,
-  SMOKE_ROOT,
   button,
   frames,
   page,
+  removeTemp,
+  SCREENSHOTS,
   setView,
   showChrome,
+  SMOKE_ROOT,
 } = require("./smoke-kit.cjs");
 
 const THEMES = ["light", "dark"];
@@ -138,7 +139,7 @@ module.exports.plugins = async (window) => {
     );
     await wait("!document.querySelector('nav[aria-label=Activity] [aria-label^=\"Plugins: \"]')");
   } finally {
-    await fs.rm(folder, { recursive: true, force: true });
+    await removeTemp(folder);
   }
   await js("document.querySelector('[aria-label=Workspace][aria-pressed=false]')?.click()");
 };

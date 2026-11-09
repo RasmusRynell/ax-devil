@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import { useLayoutEffect } from "react";
-import type { ItemState } from "../generated/api";
+import type { Access, ItemState } from "../generated/api";
 import { entry, failed, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
 import { SessionProvider, useView } from "../session/session";
 import { KeptStateProvider } from "./keptState";
@@ -50,7 +50,14 @@ export function OpenAll() {
   return null;
 }
 
-export async function renderTree(items: ItemState[] = ITEMS, hidden = HIDDEN) {
+/** The tree of the window's own Session, or with `access` of one someone else shares with that access. */
+export async function renderTree(items: ItemState[] = ITEMS, hidden = HIDDEN, access?: Access) {
+  const shared = access && FakeSocket.host(access);
+  if (shared)
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "join", session: shared.id, secret: shared.secret }),
+    );
   render(
     <SessionProvider>
       <KeptStateProvider>
@@ -62,7 +69,7 @@ export async function renderTree(items: ItemState[] = ITEMS, hidden = HIDDEN) {
     </SessionProvider>,
   );
   await act(async () => {});
-  const room = FakeSocket.rooms.get("room-1") as Room;
+  const room = shared ?? (FakeSocket.rooms.get("room-1") as Room);
   room.hidden = hidden;
   act(() => room.setItems(items));
   return room;

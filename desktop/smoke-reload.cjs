@@ -9,14 +9,15 @@ const os = require("node:os");
 const path = require("node:path");
 const { VIDEO, inBackendWindow } = require("./smoke-twice.cjs");
 const {
-  SCREENSHOTS,
-  SHOWN,
-  SMOKE_ROOT,
   frames,
   goToFrame,
   laneCells,
   page,
+  removeTemp,
+  SCREENSHOTS,
   setView,
+  SHOWN,
+  SMOKE_ROOT,
 } = require("./smoke-kit.cjs");
 
 const OVERLAY = path.join(SMOKE_ROOT, "fixtures/decoders/onvif_xml/frames.xml");
@@ -136,6 +137,6 @@ module.exports.reload = async () => {
       },
     );
   } finally {
-    await fs.rm(folder, { recursive: true, force: true });
+    await removeTemp(folder);
   }
 };

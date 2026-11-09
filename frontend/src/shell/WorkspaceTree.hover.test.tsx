@@ -105,6 +105,17 @@ describe("hover card", () => {
     expect(bitmaps[bitmaps.length - 1].close).toHaveBeenCalled();
   });
 
+  it("drops the card when its section folds under a still pointer", async () => {
+    await renderTree();
+    fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
+    await elapse(80);
+    expect(card()).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Videos/ }));
+    expect(screen.queryByRole("treeitem", { name: /^v\.mp4/ })).toBeNull();
+    expect(card()).toBeNull();
+    expect(requests[0].signal.aborted).toBe(true);
+  });
+
   it("refreshes a resting card without overlapping requests, keeping the picture while it is unchanged", async () => {
     await renderTree();
     fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /^v\.mp4/ }));

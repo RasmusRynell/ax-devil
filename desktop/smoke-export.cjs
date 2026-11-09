@@ -13,6 +13,9 @@ module.exports.exportDialog = async (window) => {
   const theme = nativeTheme.themeSource;
   await setView(window, [1100, 720], 1);
   await js("document.querySelector('[aria-label=Pause]')?.click()");
+  // The shell's key handler hears a real key only while the window has the keyboard.
+  await wait("document.hasFocus()");
+  await frames({ js });
   const key = (type) =>
     window.webContents.sendInputEvent({ type, keyCode: "E", modifiers: ["control"] });
   key("keyDown");

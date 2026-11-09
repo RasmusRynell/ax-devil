@@ -95,7 +95,8 @@ export function LiveRow({
         aria-expanded={expanded ?? undefined}
         aria-selected={current}
         data-cursor-id={`row:${row.id}`}
-        title={[row.label, row.title].filter(Boolean).join("\n")}
+        // A row with a picture has no text tip, which would show beside its card.
+        title={row.thumbnail ? undefined : [row.label, row.title].filter(Boolean).join("\n")}
         onClick={onClick}
         onDoubleClick={(event) => {
           if (!(event.target as Element).closest("button")) onOpen();

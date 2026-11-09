@@ -40,6 +40,35 @@ module.exports.live = async (window) => {
   await wait("document.querySelector('nav [aria-label=Live][aria-pressed=true]')");
   await wait("document.querySelector('aside input[placeholder=Search]')");
 
+  // Six logins added in the scan settings stay (with the saved one), and the list scrolls up and down, never sideways.
+  const addLogin =
+    "[...document.querySelectorAll('aside button')].find((b) => b.textContent === 'Add login')";
+  await wait(`!!${addLogin}`);
+  for (let added = 0; added < 6; added++) {
+    await js(`${addLogin}.click()`);
+    await frames({ js });
+  }
+  const rowsShown = () =>
+    js(`(() => {
+      const box = document.querySelector('aside input[aria-label=Username]').closest('.overflow-y-auto');
+      const rows = [...box.children];
+      return {
+        total: rows.length,
+        scrolls: box.scrollHeight > box.clientHeight,
+        sideways: box.scrollWidth > box.clientWidth,
+      };
+    })()`);
+  await frames({ js });
+  assert.deepEqual(await rowsShown(), { total: 7, scrolls: true, sideways: false });
+  // Back to the saved login, so the fit checks below see the footer as a person finds it.
+  for (let removed = 0; removed < 6; removed++) {
+    await js(
+      "[...document.querySelectorAll('aside button[aria-label=\"Remove login\"]')].at(-1).click()",
+    );
+    await frames({ js });
+  }
+  assert.equal((await rowsShown()).total, 1);
+
   for (const [shown, zoom] of [
     ["light", 1],
     ["dark", 1],

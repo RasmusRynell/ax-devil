@@ -140,14 +140,17 @@ describe("opening", () => {
     });
   });
 
-  it("marks the rows a viewer shows as current, and says so in their hover text", async () => {
+  it("marks the rows a viewer shows as current, and says so in the hover text of a row with no picture", async () => {
     await renderTree();
     const row = () => screen.getByRole("treeitem", { name: /^A/ });
-    expect(row().title).toBe("A\nEntry 1 of 2");
+    const playlist = () => screen.getByRole("treeitem", { name: /^mot/ });
     expect(row().getAttribute("aria-current")).toBeNull();
+    expect(playlist().title).not.toContain("Open in a viewer");
     fireEvent.doubleClick(row());
     await act(async () => {});
-    expect(row().title).toBe("A\nEntry 1 of 2\nOpen in a viewer");
+    expect(playlist().title).toContain("Open in a viewer");
+    // A picture shows in place of a text tip.
+    expect(row().title).toBe("");
     expect(row().getAttribute("aria-current")).toBe("true");
     // The lane of the entry is shown inside it, not by a viewer of its own.
     expect(screen.getByRole("treeitem", { name: /^GT/ }).getAttribute("aria-current")).toBeNull();

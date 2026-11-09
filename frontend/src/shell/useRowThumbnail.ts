@@ -37,6 +37,8 @@ export function useRowThumbnail(rows: readonly VisibleRow[]) {
   const { shown, enter, leave } = useHoverPicture(urls);
   return {
     shown,
+    /** Whether a hover on `row` can show a picture, which then leaves the row without a text tip beside it. */
+    has: (row: TreeRow) => can && session !== undefined && pictureOf(row) !== null,
     enter: (entry: string | null, x: number, y: number) =>
       enter(entry && can && session ? urlOf(session, entry) : null, x, y),
     leave,

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::{Semaphore, mpsc};
-use tokio::task::JoinSet;
+use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::timeout;
 
 use crate::target::{Login, Scheme, Web};
@@ -116,9 +116,13 @@ pub struct Found {
     pub sign_in: SignIn,
 }
 
+/// The scan itself broke before it could finish: the cameras found until then are all there will be.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScanFailed;
+
 /// Scans `targets` in the background (a tokio runtime must be running) and returns the cameras as each is found, in no
-/// particular order; the channel closes when the scan is over. Dropping the receiver stops the scan, including any
-/// sign-in not yet sent.
+/// particular order; the channel closes when the scan is over, after one `Err` if the scan broke instead of finishing.
+/// Dropping the receiver stops the scan, including any sign-in not yet sent.
 ///
 /// Once every address has been visited, hosts still being identified get 20 s (80 s for [`ScanLoad::Startup`]); then
 /// they are stopped, nothing more is sent, and the channel closes with the cameras found so far.
@@ -131,7 +135,7 @@ pub fn scan(
     logins: Vec<Login>,
     load: ScanLoad,
     ports: ScanPorts,
-) -> mpsc::Receiver<Found> {
+) -> mpsc::Receiver<Result<Found, ScanFailed>> {
     scan_with(targets, logins, load, ports, load.drain())
 }
 
@@ -142,9 +146,10 @@ fn scan_with(
     load: ScanLoad,
     ports: ScanPorts,
     drain: Duration,
-) -> mpsc::Receiver<Found> {
+) -> mpsc::Receiver<Result<Found, ScanFailed>> {
     let (tx, rx) = mpsc::channel(QUEUE);
-    tokio::spawn(async move {
+    let report = tx.clone();
+    let task = tokio::spawn(async move {
         let shared = Arc::new(host::Shared {
             logins,
             ports,
@@ -165,7 +170,16 @@ fn scan_with(
             let Ok(_probed) = probe.acquire_many(load.probes() as u32).await else {
                 return;
             };
-            let finished = timeout(drain, async { while hosts.join_next().await.is_some() {} });
+            let finished = timeout(drain, async {
+                while let Some(done) = hosts.join_next().await {
+                    // A host that panicked broke the scan: this task ends by the same panic, which is reported.
+                    if let Err(error) = done
+                        && let Ok(panic) = error.try_into_panic()
+                    {
+                        std::panic::resume_unwind(panic);
+                    }
+                }
+            });
             if finished.await.is_err() {
                 // Stopped here, before the channel closes, so no camera arrives after the deadline.
                 hosts.shutdown().await;
@@ -176,7 +190,19 @@ fn scan_with(
             () = drive => {}
         }
     });
+    report_panic(task, report);
     rx
+}
+
+/// Sends `Err` to `report` if `task` panics, so a scan that broke is not mistaken for one that found nothing more.
+fn report_panic(task: JoinHandle<()>, report: mpsc::Sender<Result<Found, ScanFailed>>) {
+    tokio::spawn(async move {
+        if task.await.is_err_and(|error| error.is_panic()) {
+            tracing::warn!("A scan task panicked");
+            // A receiver that is gone has stopped the scan and wants no report.
+            let _ = report.send(Err(ScanFailed)).await;
+        }
+    });
 }
 
 /// Signs in to the camera at `addr` on `web` with `login`, and tells what it said: the scan's way to one host, for a
@@ -189,6 +215,18 @@ pub async fn check(addr: Ipv4Addr, web: Web, login: Login) -> Option<Found> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_scan_task_that_panics_is_reported_apart_from_one_that_ends() {
+        let (tx, mut rx) = mpsc::channel(1);
+        report_panic(tokio::spawn(async { panic!("the scan breaks") }), tx);
+        assert_eq!(rx.recv().await, Some(Err(ScanFailed)));
+        assert!(rx.recv().await.is_none());
+
+        let (tx, mut rx) = mpsc::channel(1);
+        report_panic(tokio::spawn(async {}), tx);
+        assert!(rx.recv().await.is_none());
+    }
 
     // The drain test needs a second loopback address, which only Linux has without setup.
     #[cfg(target_os = "linux")]
@@ -243,7 +281,7 @@ mod tests {
         );
         let mut addrs = Vec::new();
         while let Some(camera) = found.recv().await {
-            addrs.push(camera.addr);
+            addrs.push(camera.expect("the scan finishes").addr);
         }
 
         assert_eq!(

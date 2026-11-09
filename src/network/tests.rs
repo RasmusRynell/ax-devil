@@ -92,7 +92,7 @@ fn request(users: &[&str]) -> ScanRequest {
 async fn a_login_index_means_the_login_its_scan_tried_and_nothing_once_another_scan_began() {
     let network = Network::with_scanner(|_| {
         let (found, rows) = mpsc::channel(1);
-        found.try_send(found_signed_in(1)).unwrap();
+        found.try_send(Ok(found_signed_in(1))).unwrap();
         rows
     });
     // `PATH` is set wherever the tests run: the scan sends its value, a camera made from the row keeps the text.
@@ -162,4 +162,32 @@ async fn a_scan_that_panics_ends_as_a_failure_the_next_scan_clears() {
         (now.scan, now.scanning, now.failure.as_deref()),
         (second, true, None)
     );
+}
+
+#[tokio::test]
+async fn a_scanner_that_reports_it_broke_is_a_failure_apart_from_one_that_ran_out() {
+    let network = Network::with_scanner(|request| {
+        let (tx, rx) = mpsc::channel(2);
+        if request.logins.is_empty() {
+            tx.try_send(Ok(found_signed_in(0))).unwrap();
+            tx.try_send(Err(ScanFailed)).unwrap();
+        }
+        rx
+    });
+    let mut snapshots = network.subscribe();
+    let broke = network.rescan(request(&[]));
+    let ended = snapshots
+        .wait_for(|now| now.scan == broke && !now.scanning)
+        .await
+        .unwrap()
+        .clone();
+    assert!(ended.failure.is_some());
+
+    let finished = network.rescan(request(&["a"]));
+    let ended = snapshots
+        .wait_for(|now| now.scan == finished && !now.scanning)
+        .await
+        .unwrap()
+        .clone();
+    assert_eq!(ended.failure, None);
 }

@@ -54,16 +54,16 @@ async fn adding_a_found_camera_uses_the_scan_login_and_never_shows_it() {
     let (_stop, stopping) = tokio::sync::watch::channel(false);
     let network = crate::network::Network::with_scanner(|_| {
         let (tx, rx) = mpsc::channel(4);
-        tx.try_send(found(
+        tx.try_send(Ok(found(
             2,
             SignIn::SignedIn {
                 login_index: 0,
                 architecture: String::new(),
                 soc: String::new(),
             },
-        ))
+        )))
         .unwrap();
-        tx.try_send(found(3, SignIn::Refused)).unwrap();
+        tx.try_send(Ok(found(3, SignIn::Refused))).unwrap();
         rx
     });
     let state = AppState::new(

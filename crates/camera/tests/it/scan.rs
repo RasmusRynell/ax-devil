@@ -32,7 +32,7 @@ async fn scan_loopback(logins: Vec<Login>, ports: ScanPorts) -> Vec<Found> {
     let mut found = scan(targets, logins, ScanLoad::Normal, ports);
     let mut all = Vec::new();
     while let Some(camera) = timeout(WAIT, found.recv()).await.expect("the scan ends") {
-        all.push(camera);
+        all.push(camera.expect("the scan finishes"));
     }
     all
 }
