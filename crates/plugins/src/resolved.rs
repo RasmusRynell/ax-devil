@@ -3,7 +3,10 @@
 //! What the lines add up to is used only when the plugin then exits 0, so a plugin that fails halfway leaves
 //! nothing in a playlist.
 
-use std::{collections::HashSet, path::Path};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 use foundation::{FrameRate, Warning};
 use handler_api::{
@@ -44,6 +47,7 @@ struct LineIn {
     choice: Option<ChoiceIn>,
     playlist: Option<PlaylistIn>,
     entry: Option<EntryIn>,
+    watch: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -161,6 +165,8 @@ pub(crate) struct Collected {
     /// The playlists so far, the last one still taking entries; entries before any `playlist` line fill one with no
     /// name yet.
     playlists: Vec<Printed>,
+    /// The files the plugin asked to have watched.
+    watched: Vec<PathBuf>,
     /// Entries and playlist lines so far.
     printed: usize,
     warnings: Vec<Warning>,
@@ -177,6 +183,7 @@ impl Collected {
             error: None,
             choices: Vec::new(),
             playlists: Vec::new(),
+            watched: Vec::new(),
             printed: 0,
             warnings: Vec::new(),
             budget: Budget::default(),
@@ -212,6 +219,7 @@ impl Collected {
                 })
                 .collect(),
             warnings: self.warnings,
+            watched: self.watched,
         }
     }
 
@@ -225,6 +233,7 @@ impl Collected {
                     choice: None,
                     playlist: None,
                     entry: None,
+                    watch: None,
                 },
                 _,
             ) => {
@@ -241,6 +250,7 @@ impl Collected {
                     choice: None,
                     playlist: None,
                     entry: None,
+                    watch: None,
                 },
                 _,
             ) => {
@@ -257,6 +267,7 @@ impl Collected {
                     choice: Some(choice),
                     playlist: None,
                     entry: None,
+                    watch: None,
                 },
                 Op::Scan,
             ) => {
@@ -274,6 +285,7 @@ impl Collected {
                     choice: None,
                     playlist: Some(playlist),
                     entry: None,
+                    watch: None,
                 },
                 Op::Resolve,
             ) => {
@@ -305,9 +317,24 @@ impl Collected {
                     choice: None,
                     playlist: None,
                     entry: Some(entry),
+                    watch: None,
                 },
                 Op::Resolve,
             ) => self.add_entry(entry)?,
+            (
+                LineIn {
+                    warning: None,
+                    error: None,
+                    choice: None,
+                    playlist: None,
+                    entry: None,
+                    watch: Some(path),
+                },
+                Op::Resolve,
+            ) => {
+                check_room(self.watched.len(), MAX_ENTRIES, "watched paths")?;
+                self.watched.push(absolute("the watched path", path)?);
+            }
             (
                 LineIn {
                     choice: Some(_), ..
@@ -325,9 +352,11 @@ impl Collected {
                 return Err(wrong("playlist", "scan"));
             }
             (LineIn { entry: Some(_), .. }, Op::Scan) => return Err(wrong("entry", "scan")),
+            (LineIn { watch: Some(_), .. }, Op::Scan) => return Err(wrong("watch", "scan")),
             _ => {
                 return Err(
-                    "needs exactly one of warning, error, choice, playlist or entry".to_owned(),
+                    "needs exactly one of warning, error, choice, playlist, entry or watch"
+                        .to_owned(),
                 );
             }
         }
@@ -409,7 +438,7 @@ fn check_room(kept: usize, limit: usize, what: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn absolute(what: &str, path: String) -> Result<std::path::PathBuf, String> {
+fn absolute(what: &str, path: String) -> Result<PathBuf, String> {
     if Path::new(&path).is_absolute() {
         Ok(path.into())
     } else {

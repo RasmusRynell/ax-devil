@@ -1,5 +1,7 @@
 //! A playlist resolver: settings in, a list of videos with their overlay files out.
 
+use std::path::PathBuf;
+
 use foundation::{CancelToken, Interrupt, UserError, Warning};
 
 use crate::{Form, OverlayRef, Settings, Values, VideoRef, invalid_field};
@@ -69,6 +71,9 @@ pub struct ResolvedPlaylists {
     pub playlists: Vec<ResolvedPlaylist>,
     /// Problems that left something out without stopping the run, such as a skipped sequence.
     pub warnings: Vec<Warning>,
+    /// Files outside the settings and the overlays whose change makes the playlists stale, such as the descriptor a
+    /// sequence is read from; absolute paths, which need not exist yet.
+    pub watched: Vec<PathBuf>,
 }
 
 /// A resolved playlist: one video per entry.

@@ -1,5 +1,7 @@
 use super::*;
+use crate::content::{ContentId, PlaylistContent};
 use crate::intake::{NewOverlay, playlist, video};
+use foundation::ItemId;
 use handler_api::Settings;
 use std::time::{Duration, SystemTime};
 
@@ -96,6 +98,36 @@ fn a_file_that_appears_while_the_item_is_read_is_a_change_and_a_recipe_with_no_p
     let bare = video(&video_file, &[], &handlers).unwrap();
     let (_, nothing) = Watch::read(&bare.recipe, &handlers, &token, || Err::<Content, ()>(()));
     assert!(nothing.is_none());
+}
+
+#[test]
+fn a_file_the_resolver_asked_to_watch_is_a_change_when_it_is_written_in_place() {
+    let (root, folder) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let descriptor = folder.path().join("seqinfo.ini");
+    write_at(&descriptor, "one", 1_000);
+    let handlers = Handlers::built_in();
+    let settings = Settings::from_iter([("root".into(), root.path().to_str().unwrap().into())]);
+    let item = playlist("mot_challenge", settings, &handlers).unwrap();
+    let id = ItemId::generate();
+    let content = Content::Playlist(PlaylistContent {
+        id: ContentId::of_item(&id),
+        item_id: id,
+        display_name: "MOT Challenge".into(),
+        entries: Vec::new(),
+        playlists: Vec::new(),
+        warnings: Vec::new(),
+        watched: vec![descriptor.clone()],
+    });
+    let token = CancelToken::new();
+
+    let (_, watch) = Watch::read(&item.recipe, &handlers, &token, || Ok::<_, ()>(content));
+    let watch = watch.unwrap();
+    assert!(watch.changes(&watch.look(&token).unwrap()).is_empty());
+    write_at(&descriptor, "two!", 2_000);
+    assert_eq!(
+        watch.changes(&watch.look(&token).unwrap()),
+        BTreeSet::from([descriptor])
+    );
 }
 
 /// Sets the modification time of `folder` far in the past, so a later entry added to it shows as a change however

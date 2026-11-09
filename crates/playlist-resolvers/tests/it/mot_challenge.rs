@@ -114,6 +114,14 @@ fn a_sequence_with_a_bad_seqinfo_is_a_warning_and_the_rest_resolve() {
 
     assert_eq!(names(&resolved.playlists[0].entries), ["SEQ-01"]);
     assert_eq!(resolved.playlists[0].sequence_groups, Some(1));
+    assert_eq!(
+        resolved.watched,
+        [
+            root.join("SEQ-01/seqinfo.ini"),
+            root.join("SEQ-02/seqinfo.ini")
+        ],
+        "an edit in place of any seqinfo.ini, the bad one too, resolves again"
+    );
     let [warning] = resolved.warnings.as_slice() else {
         panic!("expected one warning, got {:?}", resolved.warnings);
     };

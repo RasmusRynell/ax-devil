@@ -400,6 +400,7 @@ mod tests {
                 metadata: Default::default(),
             }],
             warnings: Vec::new(),
+            watched: Vec::new(),
         });
         let resolved = workspace_store::complete(&state, item, jobs[0].attempt, Ok(content));
         assert_eq!(shown(&resolved, Some(b.clone())), Some(b.clone()));

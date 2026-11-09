@@ -95,6 +95,7 @@ impl PlaylistResolver for MotChallengeResolver {
             mut sequences,
             skipped,
             total,
+            watched,
         } = load_sequences(root, HostPath::new(root).into(), cancel)?;
         let mut warnings: Vec<Warning> = skipped.warning(total).into_iter().collect();
         if let Selection::Only(names) = settings.selection("sequences") {
@@ -130,6 +131,7 @@ impl PlaylistResolver for MotChallengeResolver {
                 entries,
             }],
             warnings,
+            watched,
         })
     }
 }
@@ -164,6 +166,8 @@ struct Discovered {
     skipped: SkippedRecords,
     /// How many folders have a `seqinfo.ini`.
     total: usize,
+    /// Every `seqinfo.ini` found, usable or not: editing one in place changes the playlist.
+    watched: Vec<PathBuf>,
 }
 
 /// The sequences under `root`. A problem with the folder is attached to `location`: the setting key for a scan, the
@@ -234,15 +238,18 @@ fn discover(root: &Path, cancel: &CancelToken) -> Result<Discovered, Interrupt<i
     let mut sequences = Vec::new();
     let mut skipped = SkippedRecords::new("sequences", NOT_LISTED);
     let mut total = 0;
+    let mut watched = Vec::new();
     for path in candidate_dirs(root, cancel)? {
         cancel.check()?;
-        let text = match fs::read_to_string(path.join("seqinfo.ini")) {
+        let seqinfo = path.join("seqinfo.ini");
+        let text = match fs::read_to_string(&seqinfo) {
             Ok(text) => text,
             Err(error) if matches!(error.kind(), ErrorKind::NotFound | ErrorKind::IsADirectory) => {
                 continue;
             }
             Err(error) => {
                 total += 1;
+                watched.push(seqinfo);
                 skipped.add(format!(
                     "{}: cannot read seqinfo.ini ({error})",
                     path.display()
@@ -251,6 +258,7 @@ fn discover(root: &Path, cancel: &CancelToken) -> Result<Discovered, Interrupt<i
             }
         };
         total += 1;
+        watched.push(seqinfo);
         let mut info = match parse_seqinfo(&text) {
             Ok(info) => info,
             Err(reason) => {
@@ -270,6 +278,7 @@ fn discover(root: &Path, cancel: &CancelToken) -> Result<Discovered, Interrupt<i
         sequences,
         skipped,
         total,
+        watched,
     })
 }
 

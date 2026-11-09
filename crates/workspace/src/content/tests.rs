@@ -43,6 +43,7 @@ fn build(playlists: Vec<handler_api::ResolvedPlaylist>) -> Result<PlaylistConten
     let resolved = ResolvedPlaylists {
         playlists,
         warnings: Vec::new(),
+        watched: Vec::new(),
     };
     playlist_content(&ItemId::generate(), "Runs", resolved)
 }
@@ -52,6 +53,7 @@ fn a_playlist_rebound_to_another_item_has_the_ids_it_would_have_been_resolved_wi
     let resolved = || ResolvedPlaylists {
         playlists: vec![playlist("run", &["a", "b"]), playlist("x/y", &["z"])],
         warnings: Vec::new(),
+        watched: Vec::new(),
     };
     let (first, second) = (ItemId::generate(), ItemId::generate());
     let content = playlist_content(&first, "Runs", resolved()).unwrap();

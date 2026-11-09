@@ -40,6 +40,7 @@ fn playlist_of(item: &WorkspaceItem, entries: &[(&str, bool)]) -> workspace::Con
         }],
         entries,
         warnings: Vec::new(),
+        watched: Vec::new(),
     })
 }
 

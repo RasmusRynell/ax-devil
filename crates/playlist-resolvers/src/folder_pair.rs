@@ -151,6 +151,7 @@ impl PlaylistResolver for FolderPairResolver {
                 entries,
             }],
             warnings: Vec::new(),
+            watched: Vec::new(),
         })
     }
 }

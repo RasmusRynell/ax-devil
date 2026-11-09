@@ -61,15 +61,17 @@ impl SourcePaths {
         paths
     }
 
-    /// Adds the overlay files `content` names, which are read whatever the recipe said, and returns the ones that
-    /// were not watched before.
+    /// Adds the overlay files `content` names, which are read whatever the recipe said, and the files its resolver
+    /// asked to have watched, and returns the ones that were not watched before.
     fn add_content(&mut self, content: &Content) -> Self {
         let mut added = Self::default();
-        for entry in content.entries() {
-            for overlay in &entry.overlays {
-                if self.files.insert(overlay.path.clone()) {
-                    added.files.insert(overlay.path.clone());
-                }
+        let overlays = content
+            .entries()
+            .iter()
+            .flat_map(|entry| entry.overlays.iter().map(|overlay| &overlay.path));
+        for path in overlays.chain(content.watched()) {
+            if self.files.insert(path.clone()) {
+                added.files.insert(path.clone());
             }
         }
         added
