@@ -42,6 +42,7 @@ Decoder handler (`"kind": "decoder"`):
 
 Playlist resolver handler (`"kind": "playlist_resolver"`): an `id` other than `help`, `description` (one sentence, required) and `settings`, an
 optional list of fields, below. The settings become a form in the app and arguments of `ax-devil playlist ID`.
+`watches` (optional, default `false`): the plugin answers the `watch` operation ([below](#output-of-scan-and-resolve)).
 
 A field is `{"key","label","kind","required","default","positional", ...}`. `key` is letters, digits, `_` or `-`,
 starts with a letter or digit, and in a resolver is not `help`, `config`, `cache-dir` or `log-level`. It is the flag
@@ -152,7 +153,11 @@ which a form shows at that setting.
 | `{"choice": {"value","label"?,"detail"?}}` | scan | One value of the `field`; `label` defaults to `value` |
 | `{"playlist": {"name","matches"?,"sequence_groups"?,"metadata"?}}` | resolve | Starts a playlist; the entries after it belong to it. May come any number of times, with the same names in the same order on every run. Entries before the first one form a playlist named like the resolver. A shared playlist name, and a shared entry name within a playlist, gets ` (2)`, ` (3)`. `matches` and `sequence_groups` are whole numbers up to 2^53-1 shown in Information, and so is `metadata`, a JSON object of free-form facts, read as the entry line says |
 | `{"entry": {"name","video","overlays"?,"considered"?,"metadata"?}}` | resolve | One video. `video` is `{"file": "/abs/v.mp4"}` or `{"image_sequence": {"pattern": "/abs/img1/%06d.jpg","start_number","frame_rate": {"num","den"},"width","height","frame_count"}}`. An overlay is `{"label","slot","path","handler","options"?,"considered"?,"metadata"?}`: `slot` is the lane's identity, the same in every entry that has that lane; `handler` is a decoder id. `considered` (default `true`) `false` starts the entry or overlay hidden until the user shows it. `metadata` (a playlist's, an entry's or an overlay's) is shown in Information, sorted by key: `true` and `false` as Yes and No, decimals with at most three digits, a list joined by commas (`(empty)` when empty), `{}` for an empty object. A metadata object may take 16 KiB of JSON and all of a resolve's 2 MiB, or the run fails; Information shows 32 rows of at most 200 characters, the last of them "N more" when there are more keys |
-| `{"watch": "/abs/file"}` | resolve | A file besides the settings' folders and files and the overlays, whose change in place makes the playlist stale (a descriptor the entries are read from). May come any number of times; it need not exist yet |
+| `{"watch": "/abs/file"}` | watch | A file, besides the settings' folders and files and the overlays, whose change in place makes the playlist stale, such as a descriptor the entries are read from. Need not exist yet; at most 50,000 files and 2 MiB of path text. Only `watch`, `warning` and `error` lines are allowed |
+
+The request `{"protocol":3,"op":"watch","handler":"acme_runs","settings":{...}}` is sent before every resolve, with the
+resolve's settings, and only to a handler whose manifest says `watches`. It runs while the item is opened, so keep it
+fast. A failed `watch` (an `error`, a nonzero exit, `idle_timeout_s`) is logged and the resolve goes on without it.
 
 The host fails the operation, naming the line, when a line is not valid JSON or has the wrong keys, a path is not
 absolute, a playlist name is empty, or a slot or label repeats within an entry. A playlist with no entry, or no

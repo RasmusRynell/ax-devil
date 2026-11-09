@@ -85,6 +85,31 @@ impl PlaylistResolver for MotChallengeResolver {
         Ok(sequences.into_iter().map(Sequence::into_choice).collect())
     }
 
+    /// Every folder a sequence may be in, for one that appears, and each `seqinfo.ini`, for one edited in place; none
+    /// when the root cannot be read.
+    fn watched(
+        &self,
+        settings: &Values,
+        cancel: &CancelToken,
+    ) -> Result<Vec<PathBuf>, Interrupt<UserError>> {
+        let Ok(root) = root(settings) else {
+            return Ok(Vec::new());
+        };
+        let mut watched = match candidate_dirs(root, cancel) {
+            Ok(dirs) => dirs,
+            Err(Interrupt::Cancelled) => return Err(Interrupt::Cancelled),
+            Err(Interrupt::Failed(_)) => return Ok(Vec::new()),
+        };
+        for dir in watched.clone() {
+            cancel.check()?;
+            let seqinfo = dir.join("seqinfo.ini");
+            if seqinfo.is_file() {
+                watched.push(seqinfo);
+            }
+        }
+        Ok(watched)
+    }
+
     fn resolve(
         &self,
         settings: &Values,
@@ -95,7 +120,6 @@ impl PlaylistResolver for MotChallengeResolver {
             mut sequences,
             skipped,
             total,
-            watched,
         } = load_sequences(root, HostPath::new(root).into(), cancel)?;
         let mut warnings: Vec<Warning> = skipped.warning(total).into_iter().collect();
         if let Selection::Only(names) = settings.selection("sequences") {
@@ -131,7 +155,6 @@ impl PlaylistResolver for MotChallengeResolver {
                 entries,
             }],
             warnings,
-            watched,
         })
     }
 }
@@ -166,8 +189,6 @@ struct Discovered {
     skipped: SkippedRecords,
     /// How many folders have a `seqinfo.ini`.
     total: usize,
-    /// Every `seqinfo.ini` found, usable or not: editing one in place changes the playlist.
-    watched: Vec<PathBuf>,
 }
 
 /// The sequences under `root`. A problem with the folder is attached to `location`: the setting key for a scan, the
@@ -238,18 +259,15 @@ fn discover(root: &Path, cancel: &CancelToken) -> Result<Discovered, Interrupt<i
     let mut sequences = Vec::new();
     let mut skipped = SkippedRecords::new("sequences", NOT_LISTED);
     let mut total = 0;
-    let mut watched = Vec::new();
     for path in candidate_dirs(root, cancel)? {
         cancel.check()?;
-        let seqinfo = path.join("seqinfo.ini");
-        let text = match fs::read_to_string(&seqinfo) {
+        let text = match fs::read_to_string(path.join("seqinfo.ini")) {
             Ok(text) => text,
             Err(error) if matches!(error.kind(), ErrorKind::NotFound | ErrorKind::IsADirectory) => {
                 continue;
             }
             Err(error) => {
                 total += 1;
-                watched.push(seqinfo);
                 skipped.add(format!(
                     "{}: cannot read seqinfo.ini ({error})",
                     path.display()
@@ -258,7 +276,6 @@ fn discover(root: &Path, cancel: &CancelToken) -> Result<Discovered, Interrupt<i
             }
         };
         total += 1;
-        watched.push(seqinfo);
         let mut info = match parse_seqinfo(&text) {
             Ok(info) => info,
             Err(reason) => {
@@ -278,7 +295,6 @@ fn discover(root: &Path, cancel: &CancelToken) -> Result<Discovered, Interrupt<i
         sequences,
         skipped,
         total,
-        watched,
     })
 }
 

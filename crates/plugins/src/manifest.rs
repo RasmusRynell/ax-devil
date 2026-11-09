@@ -179,6 +179,8 @@ pub struct ResolverHandler {
     pub description: String,
     /// The settings the resolver takes.
     pub settings: Form,
+    /// Whether the plugin answers the `watch` operation before every resolve; false by default.
+    pub watches: bool,
 }
 
 impl Manifest {

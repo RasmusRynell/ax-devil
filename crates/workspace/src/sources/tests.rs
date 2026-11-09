@@ -1,9 +1,11 @@
 use super::*;
-use crate::content::{ContentId, PlaylistContent};
 use crate::intake::{NewOverlay, playlist, video};
-use foundation::ItemId;
-use handler_api::Settings;
-use std::time::{Duration, SystemTime};
+use foundation::{Interrupt, UserError};
+use handler_api::{PlaylistResolver, ResolvedPlaylists, ResolverSpec, Settings, Values};
+use std::{
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 
 fn write_at(path: &Path, text: &str, seconds: u64) {
     fs::write(path, text).unwrap();
@@ -24,7 +26,7 @@ fn a_video_item_watches_its_overlay_files_and_not_the_video() {
     };
     let handlers = Handlers::built_in();
     let item = video(&video_file, &[overlay], &handlers).unwrap();
-    let paths = SourcePaths::of_recipe(&item.recipe, &handlers);
+    let paths = SourcePaths::of_recipe(&item.recipe, &handlers, &CancelToken::new()).unwrap();
     assert_eq!(paths.files, BTreeSet::from([overlay_file]));
     assert!(paths.folders.is_empty());
 }
@@ -35,7 +37,7 @@ fn a_playlist_item_watches_the_folders_its_resolver_declares() {
     let settings = Settings::from_iter([("root".into(), folder.path().to_str().unwrap().into())]);
     let handlers = Handlers::built_in();
     let item = playlist("mot_challenge", settings, &handlers).unwrap();
-    let paths = SourcePaths::of_recipe(&item.recipe, &handlers);
+    let paths = SourcePaths::of_recipe(&item.recipe, &handlers, &CancelToken::new()).unwrap();
     assert_eq!(paths.folders, BTreeSet::from([folder.path().to_owned()]));
     assert!(paths.files.is_empty());
 }
@@ -101,29 +103,52 @@ fn a_file_that_appears_while_the_item_is_read_is_a_change_and_a_recipe_with_no_p
 }
 
 #[test]
-fn a_file_the_resolver_asked_to_watch_is_a_change_when_it_is_written_in_place() {
+fn a_file_the_resolver_watches_is_a_change_when_the_read_rewrites_it_and_then_fails() {
+    struct Watching(PathBuf, ResolverSpec);
+    impl PlaylistResolver for Watching {
+        fn spec(&self) -> &ResolverSpec {
+            &self.1
+        }
+        fn watched(
+            &self,
+            _: &Values,
+            _: &CancelToken,
+        ) -> Result<Vec<PathBuf>, Interrupt<UserError>> {
+            Ok(vec![self.0.clone()])
+        }
+        fn resolve(
+            &self,
+            _: &Values,
+            _: &CancelToken,
+        ) -> Result<ResolvedPlaylists, Interrupt<UserError>> {
+            Err(Interrupt::Cancelled)
+        }
+    }
     let (root, folder) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
     let descriptor = folder.path().join("seqinfo.ini");
-    write_at(&descriptor, "one", 1_000);
-    let handlers = Handlers::built_in();
+    write_at(&descriptor, "malformed", 1_000);
+    let spec = ResolverSpec {
+        id: "watching".into(),
+        ..Handlers::built_in()
+            .resolver("mot_challenge")
+            .unwrap()
+            .spec()
+            .clone()
+    };
+    let handlers = Handlers::built_in().with_resolvers([
+        Arc::new(Watching(descriptor.clone(), spec)) as Arc<dyn PlaylistResolver>,
+    ]);
     let settings = Settings::from_iter([("root".into(), root.path().to_str().unwrap().into())]);
-    let item = playlist("mot_challenge", settings, &handlers).unwrap();
-    let id = ItemId::generate();
-    let content = Content::Playlist(PlaylistContent {
-        id: ContentId::of_item(&id),
-        item_id: id,
-        display_name: "MOT Challenge".into(),
-        entries: Vec::new(),
-        playlists: Vec::new(),
-        warnings: Vec::new(),
-        watched: vec![descriptor.clone()],
-    });
+    let item = playlist("watching", settings, &handlers).unwrap();
     let token = CancelToken::new();
 
-    let (_, watch) = Watch::read(&item.recipe, &handlers, &token, || Ok::<_, ()>(content));
+    // The file is rewritten after the resolver named it and before the read ends, and the read fails.
+    let (result, watch) = Watch::read(&item.recipe, &handlers, &token, || {
+        write_at(&descriptor, "fixed!", 2_000);
+        Err::<Content, ()>(())
+    });
+    assert!(result.is_err());
     let watch = watch.unwrap();
-    assert!(watch.changes(&watch.look(&token).unwrap()).is_empty());
-    write_at(&descriptor, "two!", 2_000);
     assert_eq!(
         watch.changes(&watch.look(&token).unwrap()),
         BTreeSet::from([descriptor])

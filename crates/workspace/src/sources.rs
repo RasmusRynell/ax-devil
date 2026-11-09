@@ -1,8 +1,8 @@
 //! The files and folders an item was read from, and what the disk looked like at each, so a later look can tell that
 //! one changed.
 
-use crate::{Content, Recipe, Source};
-use foundation::{CancelToken, Cancelled};
+use crate::{Content, Recipe, Source, item::check_settings};
+use foundation::{CancelToken, Cancelled, Interrupt};
 use handler_api::FieldKind;
 use handlers::Handlers;
 use serde_json::Value;
@@ -25,9 +25,16 @@ pub struct SourcePaths {
 
 impl SourcePaths {
     /// What `recipe` reads before it has any Content: a video's overlay files (a change to the video itself is no
-    /// reason to resolve again), and the folders and files a playlist resolver's settings name. A resolver that is
-    /// not installed names none.
-    pub fn of_recipe(recipe: &Recipe, handlers: &Handlers) -> Self {
+    /// reason to resolve again), and the folders and files a playlist resolver's settings name, with the files it
+    /// asks to have watched. A resolver that is not installed, or fails to name its files, names none of those.
+    ///
+    /// # Errors
+    /// `cancel` was cancelled.
+    pub fn of_recipe(
+        recipe: &Recipe,
+        handlers: &Handlers,
+        cancel: &CancelToken,
+    ) -> Result<Self, Cancelled> {
         let mut paths = Self::default();
         match &recipe.source {
             Source::Video(video) => {
@@ -40,7 +47,7 @@ impl SourcePaths {
             }
             Source::Playlist(playlist) => {
                 let Some(resolver) = handlers.resolver(&playlist.resolver) else {
-                    return paths;
+                    return Ok(paths);
                 };
                 for field in &resolver.spec().form.fields {
                     let Some(Value::String(path)) = playlist.settings.get(&field.key) else {
@@ -55,23 +62,34 @@ impl SourcePaths {
                         _ => false,
                     };
                 }
+                if let Ok(values) =
+                    check_settings(&resolver.spec().form, &playlist.settings, handlers)
+                {
+                    match resolver.watched(&values, cancel) {
+                        Ok(files) => paths.files.extend(files),
+                        Err(Interrupt::Cancelled) => return Err(Cancelled),
+                        Err(Interrupt::Failed(error)) => tracing::warn!(
+                            "Playlist resolver '{}' could not name its watched files: {}",
+                            playlist.resolver,
+                            error.reason
+                        ),
+                    }
+                }
             }
             Source::Live(_) | Source::Unreadable(_) => {}
         }
-        paths
+        Ok(paths)
     }
 
-    /// Adds the overlay files `content` names, which are read whatever the recipe said, and the files its resolver
-    /// asked to have watched, and returns the ones that were not watched before.
+    /// Adds the overlay files `content` names, which are read whatever the recipe said, and returns the ones that
+    /// were not watched before.
     fn add_content(&mut self, content: &Content) -> Self {
         let mut added = Self::default();
-        let overlays = content
-            .entries()
-            .iter()
-            .flat_map(|entry| entry.overlays.iter().map(|overlay| &overlay.path));
-        for path in overlays.chain(content.watched()) {
-            if self.files.insert(path.clone()) {
-                added.files.insert(path.clone());
+        for entry in content.entries() {
+            for overlay in &entry.overlays {
+                if self.files.insert(overlay.path.clone()) {
+                    added.files.insert(overlay.path.clone());
+                }
             }
         }
         added
@@ -137,7 +155,9 @@ impl Watch {
         cancel: &CancelToken,
         read: impl FnOnce() -> Result<Content, E>,
     ) -> (Result<Content, E>, Option<Self>) {
-        let mut paths = SourcePaths::of_recipe(recipe, handlers);
+        let Ok(mut paths) = SourcePaths::of_recipe(recipe, handlers, cancel) else {
+            return (read(), None);
+        };
         let before = paths.snapshot(cancel);
         let result = read();
         let (Ok(mut baseline), false) = (before, cancel.is_cancelled()) else {

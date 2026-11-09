@@ -6,7 +6,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::{
     collections::{HashMap, HashSet},
     fmt,
-    path::PathBuf,
 };
 
 pub use handler_api::{ImageSequence, OverlayRef, Settings, VideoRef};
@@ -192,8 +191,6 @@ pub struct PlaylistContent {
     pub playlists: Vec<PlaylistSpan>,
     /// What the resolver left out of the playlist.
     pub warnings: Vec<Warning>,
-    /// Files the resolver asked to have watched, besides the overlays the entries name.
-    pub watched: Vec<PathBuf>,
 }
 
 impl PlaylistContent {
@@ -249,14 +246,6 @@ impl Content {
             Content::SeekableVideo(video) => std::slice::from_ref(&video.entry),
             Content::Playlist(playlist) => &playlist.entries,
             Content::LiveVideo(_) => &[],
-        }
-    }
-
-    /// The files the resolver of a playlist asked to have watched; none for other Content.
-    pub fn watched(&self) -> &[PathBuf] {
-        match self {
-            Content::Playlist(playlist) => &playlist.watched,
-            Content::SeekableVideo(_) | Content::LiveVideo(_) => &[],
         }
     }
 
@@ -350,7 +339,6 @@ pub(crate) fn playlist_content(
         entries,
         playlists: spans,
         warnings: resolved.warnings,
-        watched: resolved.watched,
     })
 }
 

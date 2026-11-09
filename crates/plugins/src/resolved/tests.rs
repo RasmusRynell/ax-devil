@@ -116,25 +116,43 @@ fn metadata_is_kept_to_its_budget_and_a_plugin_over_it_is_stopped() {
 }
 
 #[test]
-fn watch_lines_are_absolute_paths_of_a_resolve_and_kept_with_its_result() {
-    let mut collected = Collected::new(Op::Resolve);
-    let Next::Continue = collected.line(1, br#"{"watch": "/runs/a/info.ini"}"#) else {
+fn the_watch_operation_takes_absolute_paths_within_its_byte_budget_and_no_other_lines() {
+    let line = |path: &str| format!(r#"{{"watch": "{path}"}}"#);
+    let mut collected = Collected::new(Op::Watch);
+    let Next::Continue = collected.line(1, line("/runs/a/info.ini").as_bytes()) else {
         panic!("an absolute path is taken");
     };
-    let Next::Stop(reason) = collected.line(2, br#"{"watch": "info.ini"}"#) else {
+    let Next::Stop(reason) = collected.line(2, line("info.ini").as_bytes()) else {
         panic!("a relative path is refused");
     };
     assert_eq!(
         reason,
         "line 2: the watched path 'info.ini' is not an absolute path"
     );
-    let resolved = collected.into_playlists("resolver");
-    assert_eq!(resolved.watched, [Path::new("/runs/a/info.ini")]);
+    assert_eq!(collected.into_watched(), [Path::new("/runs/a/info.ini")]);
 
-    let Next::Stop(reason) = Collected::new(Op::Scan).line(1, br#"{"watch": "/a"}"#) else {
-        panic!("a scan has nothing to watch");
+    let fill = |bytes: usize| format!("/{}", "x".repeat(bytes - 1));
+    let mut collected = Collected::new(Op::Watch);
+    let Next::Continue = collected.line(1, line(&fill(WATCH_BYTES)).as_bytes()) else {
+        panic!("the whole budget fits");
     };
-    assert_eq!(reason, "line 1: 'watch' does not belong in a scan");
+    let Next::Stop(reason) = collected.line(2, line("/y").as_bytes()) else {
+        panic!("one byte over is refused");
+    };
+    assert_eq!(
+        reason,
+        "line 2: the watched paths are more than 2097152 bytes"
+    );
+
+    for (op, name) in [(Op::Scan, "scan"), (Op::Resolve, "resolve")] {
+        let Next::Stop(reason) = Collected::new(op).line(1, line("/a").as_bytes()) else {
+            panic!("a watch line is refused in a {name}");
+        };
+        assert_eq!(
+            reason,
+            format!("line 1: 'watch' does not belong in a {name}")
+        );
+    }
 }
 
 #[test]

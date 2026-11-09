@@ -1,6 +1,6 @@
 //! A plugin's playlist resolver handler as a [`PlaylistResolver`]: the resolver `playlist <id>` and workspaces name.
 
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, Location, UserError};
 use handler_api::{
@@ -20,6 +20,7 @@ use crate::{
 pub struct PluginResolver {
     program: Arc<Program>,
     spec: ResolverSpec,
+    watches: bool,
 }
 
 impl PluginResolver {
@@ -32,7 +33,11 @@ impl PluginResolver {
             description: handler.description.clone(),
             form: handler.settings.clone(),
         };
-        Self { program, spec }
+        Self {
+            program,
+            spec,
+            watches: handler.watches,
+        }
     }
 
     /// Runs the plugin with `request` and returns what its lines added up to once it exited 0. A reported `error`
@@ -96,6 +101,24 @@ impl PlaylistResolver for PluginResolver {
         });
         self.call(Op::Scan, &request, cancel)
             .map(Collected::into_choices)
+    }
+
+    fn watched(
+        &self,
+        settings: &Values,
+        cancel: &CancelToken,
+    ) -> Result<Vec<PathBuf>, Interrupt<UserError>> {
+        if !self.watches {
+            return Ok(Vec::new());
+        }
+        let request = json!({
+            "protocol": PROTOCOL,
+            "op": "watch",
+            "handler": self.spec.id,
+            "settings": settings.declared(),
+        });
+        self.call(Op::Watch, &request, cancel)
+            .map(Collected::into_watched)
     }
 
     fn resolve(

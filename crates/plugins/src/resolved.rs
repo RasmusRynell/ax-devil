@@ -16,7 +16,7 @@ use handler_api::{
 use serde::Deserialize;
 
 use crate::{
-    budget::Budget,
+    budget::{Budget, WATCH_BYTES},
     run::{LineHandler, Next},
     wire::{ErrorIn, WarningIn, cut, json_reason, load_warning},
 };
@@ -36,6 +36,8 @@ const MAX_COUNT: u64 = (1 << 53) - 1;
 pub(crate) enum Op {
     Scan,
     Resolve,
+    /// The files to watch before a resolve.
+    Watch,
 }
 
 /// One line: exactly one of these keys.
@@ -165,8 +167,9 @@ pub(crate) struct Collected {
     /// The playlists so far, the last one still taking entries; entries before any `playlist` line fill one with no
     /// name yet.
     playlists: Vec<Printed>,
-    /// The files the plugin asked to have watched.
+    /// The files a `watch` operation named, and the bytes of their paths.
     watched: Vec<PathBuf>,
+    watched_bytes: usize,
     /// Entries and playlist lines so far.
     printed: usize,
     warnings: Vec<Warning>,
@@ -184,6 +187,7 @@ impl Collected {
             choices: Vec::new(),
             playlists: Vec::new(),
             watched: Vec::new(),
+            watched_bytes: 0,
             printed: 0,
             warnings: Vec::new(),
             budget: Budget::default(),
@@ -193,6 +197,10 @@ impl Collected {
 
     pub(crate) fn into_choices(self) -> Vec<Choice> {
         self.choices
+    }
+
+    pub(crate) fn into_watched(self) -> Vec<PathBuf> {
+        self.watched
     }
 
     /// The playlists in the order they were printed; entries printed before any playlist line form one named
@@ -219,7 +227,6 @@ impl Collected {
                 })
                 .collect(),
             warnings: self.warnings,
-            watched: self.watched,
         }
     }
 
@@ -330,11 +337,34 @@ impl Collected {
                     entry: None,
                     watch: Some(path),
                 },
-                Op::Resolve,
+                Op::Watch,
             ) => {
                 check_room(self.watched.len(), MAX_ENTRIES, "watched paths")?;
+                if self.watched_bytes + path.len() > WATCH_BYTES {
+                    return Err(format!(
+                        "the watched paths are more than {WATCH_BYTES} bytes"
+                    ));
+                }
+                self.watched_bytes += path.len();
                 self.watched.push(absolute("the watched path", path)?);
             }
+            (LineIn { watch: Some(_), .. }, Op::Scan) => return Err(wrong("watch", "scan")),
+            (LineIn { watch: Some(_), .. }, Op::Resolve) => {
+                return Err(wrong("watch", "resolve"));
+            }
+            (
+                LineIn {
+                    choice: Some(_), ..
+                },
+                Op::Watch,
+            ) => return Err(wrong("choice", "watch")),
+            (
+                LineIn {
+                    playlist: Some(_), ..
+                },
+                Op::Watch,
+            ) => return Err(wrong("playlist", "watch")),
+            (LineIn { entry: Some(_), .. }, Op::Watch) => return Err(wrong("entry", "watch")),
             (
                 LineIn {
                     choice: Some(_), ..
@@ -352,7 +382,6 @@ impl Collected {
                 return Err(wrong("playlist", "scan"));
             }
             (LineIn { entry: Some(_), .. }, Op::Scan) => return Err(wrong("entry", "scan")),
-            (LineIn { watch: Some(_), .. }, Op::Scan) => return Err(wrong("watch", "scan")),
             _ => {
                 return Err(
                     "needs exactly one of warning, error, choice, playlist, entry or watch"

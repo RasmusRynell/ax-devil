@@ -55,6 +55,18 @@ pub trait PlaylistResolver: Send + Sync {
         )))
     }
 
+    /// The files, besides the settings' own folders and files and the overlays, whose change in place makes the
+    /// playlists stale, such as the descriptor a sequence is read from. Absolute paths, which need not exist yet.
+    /// Asked before every [`resolve`](Self::resolve) with the same settings, so a file rewritten during the resolve is
+    /// a change; a `UserError` is logged and the resolve goes on without them.
+    fn watched(
+        &self,
+        _settings: &Values,
+        _cancel: &CancelToken,
+    ) -> Result<Vec<PathBuf>, Interrupt<UserError>> {
+        Ok(Vec::new())
+    }
+
     /// Reads the folders the settings name and returns the playlists. A `UserError` names the setting key or path
     /// the problem is about.
     fn resolve(
@@ -71,9 +83,6 @@ pub struct ResolvedPlaylists {
     pub playlists: Vec<ResolvedPlaylist>,
     /// Problems that left something out without stopping the run, such as a skipped sequence.
     pub warnings: Vec<Warning>,
-    /// Files outside the settings and the overlays whose change makes the playlists stale, such as the descriptor a
-    /// sequence is read from; absolute paths, which need not exist yet.
-    pub watched: Vec<PathBuf>,
 }
 
 /// A resolved playlist: one video per entry.

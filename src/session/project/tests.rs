@@ -124,7 +124,6 @@ fn doc() -> (Doc, [ItemId; 6]) {
                 consequence: "They are not in the playlist.".into(),
                 more_reasons: false,
             }],
-            watched: Vec::new(),
         })
     };
     let failure = |folder: &str| {

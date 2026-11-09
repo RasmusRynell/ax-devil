@@ -405,7 +405,6 @@ mod tests {
                 entries: entries.concat(),
                 playlists,
                 warnings: Vec::new(),
-                watched: Vec::new(),
             })
         };
         let named = |label: &str| WorkspaceItem {

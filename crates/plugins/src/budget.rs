@@ -9,6 +9,9 @@ pub(crate) const OBJECT_BYTES: usize = 16 * 1024;
 /// The most JSON bytes all metadata of one resolve may take together (2 MiB).
 pub(crate) const RUN_BYTES: usize = 2 * 1024 * 1024;
 
+/// The most bytes of path text the `watch` operation may name (2 MiB).
+pub(crate) const WATCH_BYTES: usize = 2 * 1024 * 1024;
+
 /// The metadata taken so far by one resolve.
 #[derive(Default)]
 pub(crate) struct Budget {
