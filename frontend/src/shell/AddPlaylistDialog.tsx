@@ -4,7 +4,7 @@ import type { HandlersInfo, ResolverInfo } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { Select, TextField } from "../kit/Fields";
-import { ResolverForm, blankForm, sameSettings, useResolverForm } from "../resolvers/ResolverForm";
+import { ResolverForm, draftForm, sameSettings, useResolverForm } from "../resolvers/ResolverForm";
 import { resolvePlaylists } from "../resolvers/resolve";
 import type { Settings } from "../resolvers/scan";
 import { HandlersFailure, useHandlers } from "../resolvers/useHandlers";
@@ -168,8 +168,8 @@ function PlaylistForm({
     }
   };
   const actionLabel = editing ? "Save" : "Load Playlist";
-  // The page of the source being filled in, or of the list of sources, with the sources not shown drawn blank out of
-  // sight, so the dialog is as big as the biggest page and choosing a source moves nothing.
+  // The page in view, with the other pages drawn as the person left them, out of sight, so the dialog is as big as the
+  // biggest page and choosing a source does not resize it.
   const pages: [string, ReactNode][] = [
     [
       "",
@@ -202,7 +202,7 @@ function PlaylistForm({
             }
           />
         ) : (
-          <ResolverForm form={blankForm(form, candidate)} action={<Button>{actionLabel}</Button>} />
+          <ResolverForm form={draftForm(form, candidate)} action={<Button>{actionLabel}</Button>} />
         )}
       </>,
     ]),
@@ -233,7 +233,7 @@ function PlaylistForm({
               onChange={setResolverId}
             />
             <div className="grid">
-              {/* The page in view comes first in the document, ahead of the blank ones. */}
+              {/* The page in view comes first in the document, ahead of the others. */}
               {[
                 ...pages.filter(([id]) => id === resolver.id),
                 ...pages.filter(([id]) => id !== resolver.id),

@@ -211,6 +211,8 @@ export function sameSettings(a: Settings | null, b: Settings | null): boolean {
 /** A resolver form's state and what to do with it. */
 export interface ResolverFormState extends FieldForm {
   resolver: ResolverInfo;
+  /** The form of each resolver opened so far, by resolver id, which `draftForm` shows. */
+  forms: Forms;
   /** What loading sends, or `null` while the form cannot load. */
   settings: Settings | null;
   /**
@@ -343,6 +345,7 @@ export function useResolverForm(
     pickFolder: bridge && (() => bridge.pickFolder()),
     values: state.values,
     scans: state.scans,
+    forms,
     settings,
     settingsAfterScan,
     unchosen: unchosenOf(resolver, state),
@@ -370,12 +373,15 @@ export function useResolverForm(
   };
 }
 
-/** `resolver`'s form as it starts, blank, for a dialog that draws it out of sight to leave room for it. */
-export function blankForm(form: ResolverFormState, resolver: ResolverInfo): ResolverFormState {
+/**
+ * `resolver`'s form as the person left it (blank if never opened), for a dialog that draws it out of sight to leave room
+ * for it, decoder options and scan results included.
+ */
+export function draftForm(form: ResolverFormState, resolver: ResolverInfo): ResolverFormState {
   return {
     ...form,
     resolver,
-    ...start(resolver),
+    ...(form.forms.get(resolver.id) ?? start(resolver)),
     settings: null,
     settingsAfterScan: undefined,
     unchosen: null,

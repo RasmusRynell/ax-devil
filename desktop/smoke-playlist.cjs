@@ -119,6 +119,19 @@ module.exports.playlist = async (window) => {
       `The Add Playlist dialog must keep its size on ${source || "the list of sources"}`,
     );
   }
+  // A source's page stays as filled in: with a decoder chosen, the options it brings count when another source is chosen.
+  await choose("document.querySelector('dialog[open] select')", "Folder Pair");
+  await choose(`${labelled("Decoder")}.control`, "MOT Annotations (MOT_FILE)");
+  await wait("/Image width/.test(document.querySelector('dialog[open]').innerText)");
+  const populated = await dialogSize({ js });
+  for (const source of ["MOT Challenge", "Select a source", "Folder Pair", "MOT Challenge"]) {
+    await choose("document.querySelector('dialog[open] select')", source);
+    assert.equal(
+      await dialogSize({ js }),
+      populated,
+      `The Add Playlist dialog must keep its size on ${source} with the decoder options filled in`,
+    );
+  }
   await clickButton("Cancel");
   await wait("!document.querySelector('dialog')");
 
