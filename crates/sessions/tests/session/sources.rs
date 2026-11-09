@@ -209,7 +209,7 @@ async fn a_read_replaces_the_files_an_item_was_recorded_from_even_with_none() {
     let offered = |file: &Path| {
         let before = changed(&owner, id);
         writes.set(writes.get() + 1);
-        fs::write(file, format!("{}\n", writes.get())).unwrap();
+        fs::write(file, "x".repeat(writes.get())).unwrap(); // a new length each time: no mtime tie can hide it
         rig.service.check_sources();
         rig.service.check_sources();
         changed(&owner, id) != before
