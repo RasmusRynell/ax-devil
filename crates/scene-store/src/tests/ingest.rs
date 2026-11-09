@@ -125,7 +125,7 @@ fn a_scene_before_the_video_is_not_stored_and_is_warned_about() {
     assert_eq!(skipped.problem, "Skipped 1 of 3 lines");
     assert_eq!(
         skipped.reasons,
-        ["line 2: frame number -2 is before the video"]
+        ["record 2: frame number -2 is before the video"]
     );
 
     // Read by lines: the reason names the physical line, a blank line before it included. A record that gives
@@ -168,18 +168,19 @@ fn a_scene_before_the_video_is_not_stored_and_is_warned_about() {
     );
     assert!(!skipped.more_reasons);
 
-    // More causes than a warning lists: it says so, though the record count is below the listing limit.
+    // More distinct reasons than a warning lists, whether they came with a record's later causes or with a later
+    // record: it says so, though the count of skipped records is below the listing limit.
     let (skipped, _) = lines_track(
         vec![
-            step(0, &[(1, 10)], OnEqualKey::Merge),
             negative(-1, None, false),
             negative(-2, None, true),
             negative(-3, None, true),
-            negative(-4, None, true),
+            negative(-4, None, false),
+            step(0, &[(1, 10)], OnEqualKey::Merge),
         ],
-        "one\nmany\n",
+        "many\nlater\nok\n",
     );
-    assert_eq!(skipped.problem, "Skipped 1 of 2 lines");
+    assert_eq!(skipped.problem, "Skipped 2 of 3 lines");
     assert_eq!(skipped.reasons.len(), 3);
     assert!(skipped.more_reasons);
 }

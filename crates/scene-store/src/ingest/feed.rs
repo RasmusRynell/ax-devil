@@ -63,12 +63,12 @@ impl Feed<'_> {
         }
     }
 
-    /// The line to name for the record at `ordinal`: its own in a file read by lines, else its place among the
-    /// records the decoder gave.
-    fn line(&self, ordinal: u64) -> u64 {
+    /// Where to say the record at `ordinal` is: its line in a file read by lines. A decoder that reads the file
+    /// itself gives its Scenes without a position, so only the record's place among its records is known.
+    fn place(&self, ordinal: u64) -> String {
         match self.framing {
-            Framing::Records => self.position.get(),
-            Framing::Whole => ordinal + 1,
+            Framing::Records => format!("line {}", self.position.get()),
+            Framing::Whole => format!("record {}", ordinal + 1),
         }
     }
 
@@ -113,10 +113,10 @@ impl SceneSink for Feed<'_> {
             && frame < 0
         {
             // The store keys frames from 0; a Scene before the video has no frame to be drawn on.
-            let line = self.line(ordinal);
+            let place = self.place(ordinal);
             self.skip_record(
                 ordinal,
-                format!("line {line}: frame number {frame} is before the video"),
+                format!("{place}: frame number {frame} is before the video"),
             );
             return ControlFlow::Continue(());
         }
