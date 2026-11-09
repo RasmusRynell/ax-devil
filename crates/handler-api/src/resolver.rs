@@ -1,5 +1,7 @@
 //! A playlist resolver: settings in, a list of videos with their overlay files out.
 
+use std::path::PathBuf;
+
 use foundation::{CancelToken, Interrupt, UserError, Warning};
 
 use crate::{Form, OverlayRef, Settings, Values, VideoRef, invalid_field};
@@ -51,6 +53,18 @@ pub trait PlaylistResolver: Send + Sync {
             "This setting has nothing to scan",
             field,
         )))
+    }
+
+    /// The files, besides the settings' own folders and files and the overlays, whose change in place makes the
+    /// playlists stale, such as the descriptor a sequence is read from. Absolute paths, which need not exist yet.
+    /// Asked before every [`resolve`](Self::resolve) with the same settings, so a file rewritten during the resolve is
+    /// a change; a `UserError` is logged and the resolve goes on without them.
+    fn watched(
+        &self,
+        _settings: &Values,
+        _cancel: &CancelToken,
+    ) -> Result<Vec<PathBuf>, Interrupt<UserError>> {
+        Ok(Vec::new())
     }
 
     /// Reads the folders the settings name and returns the playlists. A `UserError` names the setting key or path

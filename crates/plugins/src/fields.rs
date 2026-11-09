@@ -280,6 +280,7 @@ impl<'a> Fields<'a> {
             name: self.non_empty("name")?,
             description: self.non_empty("description")?,
             settings: self.form("settings", true)?,
+            watches: self.optional_bool("watches")?,
         })
     }
 

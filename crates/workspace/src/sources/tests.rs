@@ -1,7 +1,11 @@
 use super::*;
 use crate::intake::{NewOverlay, playlist, video};
-use handler_api::Settings;
-use std::time::{Duration, SystemTime};
+use foundation::{Interrupt, UserError};
+use handler_api::{PlaylistResolver, ResolvedPlaylists, ResolverSpec, Settings, Values};
+use std::{
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 
 fn write_at(path: &Path, text: &str, seconds: u64) {
     fs::write(path, text).unwrap();
@@ -22,7 +26,7 @@ fn a_video_item_watches_its_overlay_files_and_not_the_video() {
     };
     let handlers = Handlers::built_in();
     let item = video(&video_file, &[overlay], &handlers).unwrap();
-    let paths = SourcePaths::of_recipe(&item.recipe, &handlers);
+    let paths = SourcePaths::of_recipe(&item.recipe, &handlers, &CancelToken::new()).unwrap();
     assert_eq!(paths.files, BTreeSet::from([overlay_file]));
     assert!(paths.folders.is_empty());
 }
@@ -33,7 +37,7 @@ fn a_playlist_item_watches_the_folders_its_resolver_declares() {
     let settings = Settings::from_iter([("root".into(), folder.path().to_str().unwrap().into())]);
     let handlers = Handlers::built_in();
     let item = playlist("mot_challenge", settings, &handlers).unwrap();
-    let paths = SourcePaths::of_recipe(&item.recipe, &handlers);
+    let paths = SourcePaths::of_recipe(&item.recipe, &handlers, &CancelToken::new()).unwrap();
     assert_eq!(paths.folders, BTreeSet::from([folder.path().to_owned()]));
     assert!(paths.files.is_empty());
 }
@@ -69,7 +73,7 @@ fn a_snapshot_tells_which_watched_paths_were_written_added_or_removed() {
 }
 
 #[test]
-fn a_file_that_appears_while_the_item_is_read_is_a_change_and_a_recipe_with_no_paths_records_nothing()
+fn a_file_that_appears_while_the_item_is_read_is_a_change_and_a_recipe_with_no_paths_records_a_watch_of_none()
  {
     let folder = tempfile::tempdir().unwrap();
     let (video_file, overlay_file) = (folder.path().join("a.mp4"), folder.path().join("gt.txt"));
@@ -95,7 +99,60 @@ fn a_file_that_appears_while_the_item_is_read_is_a_change_and_a_recipe_with_no_p
 
     let bare = video(&video_file, &[], &handlers).unwrap();
     let (_, nothing) = Watch::read(&bare.recipe, &handlers, &token, || Err::<Content, ()>(()));
-    assert!(nothing.is_none());
+    assert!(nothing.is_some());
+}
+
+#[test]
+fn a_file_the_resolver_watches_is_a_change_when_the_read_rewrites_it_and_then_fails() {
+    struct Watching(PathBuf, ResolverSpec);
+    impl PlaylistResolver for Watching {
+        fn spec(&self) -> &ResolverSpec {
+            &self.1
+        }
+        fn watched(
+            &self,
+            _: &Values,
+            _: &CancelToken,
+        ) -> Result<Vec<PathBuf>, Interrupt<UserError>> {
+            Ok(vec![self.0.clone()])
+        }
+        fn resolve(
+            &self,
+            _: &Values,
+            _: &CancelToken,
+        ) -> Result<ResolvedPlaylists, Interrupt<UserError>> {
+            Err(Interrupt::Cancelled)
+        }
+    }
+    let (root, folder) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let descriptor = folder.path().join("seqinfo.ini");
+    write_at(&descriptor, "malformed", 1_000);
+    let spec = ResolverSpec {
+        id: "watching".into(),
+        ..Handlers::built_in()
+            .resolver("mot_challenge")
+            .unwrap()
+            .spec()
+            .clone()
+    };
+    let handlers = Handlers::built_in().with_resolvers([
+        Arc::new(Watching(descriptor.clone(), spec)) as Arc<dyn PlaylistResolver>,
+    ]);
+    let settings = Settings::from_iter([("root".into(), root.path().to_str().unwrap().into())]);
+    let item = playlist("watching", settings, &handlers).unwrap();
+    let token = CancelToken::new();
+
+    // The file is rewritten after the resolver named it and before the read ends, and the read fails.
+    let (result, watch) = Watch::read(&item.recipe, &handlers, &token, || {
+        write_at(&descriptor, "fixed!", 2_000);
+        Err::<Content, ()>(())
+    });
+    assert!(result.is_err());
+    let watch = watch.unwrap();
+    assert_eq!(
+        watch.changes(&watch.look(&token).unwrap()),
+        BTreeSet::from([descriptor])
+    );
 }
 
 /// Sets the modification time of `folder` far in the past, so a later entry added to it shows as a change however

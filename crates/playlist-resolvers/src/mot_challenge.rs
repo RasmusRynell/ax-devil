@@ -85,6 +85,31 @@ impl PlaylistResolver for MotChallengeResolver {
         Ok(sequences.into_iter().map(Sequence::into_choice).collect())
     }
 
+    /// Every folder a sequence may be in, for one that appears, and each `seqinfo.ini`, for one edited in place; none
+    /// when the root cannot be read.
+    fn watched(
+        &self,
+        settings: &Values,
+        cancel: &CancelToken,
+    ) -> Result<Vec<PathBuf>, Interrupt<UserError>> {
+        let Ok(root) = root(settings) else {
+            return Ok(Vec::new());
+        };
+        let mut watched = match candidate_dirs(root, cancel) {
+            Ok(dirs) => dirs,
+            Err(Interrupt::Cancelled) => return Err(Interrupt::Cancelled),
+            Err(Interrupt::Failed(_)) => return Ok(Vec::new()),
+        };
+        for dir in watched.clone() {
+            cancel.check()?;
+            let seqinfo = dir.join("seqinfo.ini");
+            if seqinfo.is_file() {
+                watched.push(seqinfo);
+            }
+        }
+        Ok(watched)
+    }
+
     fn resolve(
         &self,
         settings: &Values,

@@ -1,6 +1,6 @@
 //! A plugin's playlist resolver handler as a [`PlaylistResolver`]: the resolver `playlist <id>` and workspaces name.
 
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, Location, UserError};
 use handler_api::{
@@ -20,6 +20,7 @@ use crate::{
 pub struct PluginResolver {
     program: Arc<Program>,
     spec: ResolverSpec,
+    watches: bool,
 }
 
 impl PluginResolver {
@@ -32,22 +33,35 @@ impl PluginResolver {
             description: handler.description.clone(),
             form: handler.settings.clone(),
         };
-        Self { program, spec }
+        Self {
+            program,
+            spec,
+            watches: handler.watches,
+        }
     }
 
-    /// Runs the plugin with `request` and returns what its lines added up to once it exited 0. A reported `error`
-    /// becomes a `UserError` about its field or path; any other failure carries the plugin's stderr tail.
+    /// Runs the plugin with `request` and returns what its lines added up to once it exited 0.
     fn call(
         &self,
         op: Op,
         request: &serde_json::Value,
         cancel: &CancelToken,
     ) -> Result<Collected, Interrupt<UserError>> {
-        cancel.check()?;
         let mut collected = Collected::new(op);
-        let end = self
-            .program
-            .run(&self.spec.id, request, &mut collected, cancel);
+        self.run(&mut collected, request, cancel)?;
+        Ok(collected)
+    }
+
+    /// Runs the plugin with `request`, collecting its lines into `collected` whatever the end. A reported `error`
+    /// becomes a `UserError` about its field or path; any other failure carries the plugin's stderr tail.
+    fn run(
+        &self,
+        collected: &mut Collected,
+        request: &serde_json::Value,
+        cancel: &CancelToken,
+    ) -> Result<(), Interrupt<UserError>> {
+        cancel.check()?;
+        let end = self.program.run(&self.spec.id, request, collected, cancel);
         if let Some(reported) = collected.error.take() {
             let error = UserError::new(ErrorCode::PlaylistInvalid, reported.reason);
             return Err(Interrupt::Failed(match (reported.field, reported.path) {
@@ -57,7 +71,7 @@ impl PluginResolver {
             }));
         }
         match end {
-            End::Complete => Ok(collected),
+            End::Complete => Ok(()),
             End::Incomplete(reason) => Err(Interrupt::Failed(UserError::new(
                 ErrorCode::PlaylistInvalid,
                 reason,
@@ -96,6 +110,35 @@ impl PlaylistResolver for PluginResolver {
         });
         self.call(Op::Scan, &request, cancel)
             .map(Collected::into_choices)
+    }
+
+    fn watched(
+        &self,
+        settings: &Values,
+        cancel: &CancelToken,
+    ) -> Result<Vec<PathBuf>, Interrupt<UserError>> {
+        if !self.watches {
+            return Ok(Vec::new());
+        }
+        let request = json!({
+            "protocol": PROTOCOL,
+            "op": "watch",
+            "handler": self.spec.id,
+            "settings": settings.declared(),
+        });
+        let mut collected = Collected::new(Op::Watch);
+        let outcome = self.run(&mut collected, &request, cancel);
+        // The warnings are logged whatever the end; the paths of a failed run are dropped.
+        let (files, warnings) = collected.into_watched();
+        for warning in warnings {
+            tracing::warn!(
+                "Playlist resolver '{}' watch: {} ({})",
+                self.spec.id,
+                warning.problem,
+                warning.reasons.join("; ")
+            );
+        }
+        outcome.map(|()| files)
     }
 
     fn resolve(

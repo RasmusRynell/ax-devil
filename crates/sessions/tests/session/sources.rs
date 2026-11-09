@@ -171,6 +171,61 @@ async fn resolving_records_the_files_and_each_window_with_the_item_is_told() {
     }
 }
 
+/// A completed read replaces what the item was recorded from, by the runner's completion and by a staged edit's
+/// `record_sources` alike: the old files stop offering reloads, also when the new read names no file.
+#[tokio::test(start_paused = true)]
+async fn a_read_replaces_the_files_an_item_was_recorded_from_even_with_none() {
+    let rig = Rig::new();
+    let owner = rig
+        .service
+        .create(true, true, CursorOptions::default())
+        .unwrap();
+    let (dir_a, dir_b) = (rig.dir.path().join("a"), rig.dir.path().join("b"));
+    fs::create_dir_all(&dir_a).unwrap();
+    fs::create_dir_all(&dir_b).unwrap();
+    let ((item, file_a), (other, file_b)) = (with_overlay(&dir_a), with_overlay(&dir_b));
+    let id = item.id;
+    let handlers = Handlers::built_in();
+    let bare = video(&dir_a.join("a.mp4"), &[], &handlers).unwrap();
+    let read = |recipe: &Recipe| {
+        let read = Watch::read(recipe, &handlers, &CancelToken::new(), || {
+            Err::<Content, ()>(())
+        });
+        read.1.unwrap()
+    };
+    let by_runner = |watch: Watch| {
+        owner
+            .command(Command::Content(DocCommand::Resolve(id)))
+            .unwrap();
+        for (spawn, done) in rig.jobs.take() {
+            let Work::Resolve(job) = &spawn.work;
+            done.watcher().record(id, watch.clone());
+            done.complete(Completion::Resolved(resolve(job)));
+        }
+    };
+    let by_edit = |watch: Watch| rig.service.record_sources(owner.session(), id, watch);
+    let writes = std::cell::Cell::new(0);
+    // Writes `file`, and says whether the item was told of a change.
+    let offered = |file: &Path| {
+        let before = changed(&owner, id);
+        writes.set(writes.get() + 1);
+        fs::write(file, "x".repeat(writes.get())).unwrap(); // a new length each time: no mtime tie can hide it
+        rig.service.check_sources();
+        rig.service.check_sources();
+        changed(&owner, id) != before
+    };
+    rig.open(&owner, item.clone());
+
+    by_runner(read(&item.recipe));
+    assert!(offered(&file_a));
+    by_runner(read(&bare.recipe));
+    assert!(!offered(&file_a), "the runner's empty read dropped it");
+    by_edit(read(&other.recipe));
+    assert!(offered(&file_b));
+    by_edit(read(&bare.recipe));
+    assert!(!offered(&file_b), "the edit's empty read dropped it");
+}
+
 /// `PATH` stands for any variable: an item resolves it in the session of the person at this machine, and keeps it as
 /// typed in the session of a remote holder of the server password.
 #[tokio::test]

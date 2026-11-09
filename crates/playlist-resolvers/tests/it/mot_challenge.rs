@@ -112,6 +112,17 @@ fn a_sequence_with_a_bad_seqinfo_is_a_warning_and_the_rest_resolve() {
 
     let resolved = resolve(&root_settings(root)).unwrap();
 
+    let values = values(&root_settings(root)).unwrap();
+    assert_eq!(
+        resolver().watched(&values, &CancelToken::new()).unwrap(),
+        [
+            root.join("SEQ-01"),
+            root.join("SEQ-02"),
+            root.join("SEQ-01/seqinfo.ini"),
+            root.join("SEQ-02/seqinfo.ini"),
+        ],
+        "a sequence that appears, and an edit in place of any seqinfo.ini, the bad one too, resolve again"
+    );
     assert_eq!(names(&resolved.playlists[0].entries), ["SEQ-01"]);
     assert_eq!(resolved.playlists[0].sequence_groups, Some(1));
     let [warning] = resolved.warnings.as_slice() else {

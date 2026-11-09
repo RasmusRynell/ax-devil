@@ -116,6 +116,62 @@ fn metadata_is_kept_to_its_budget_and_a_plugin_over_it_is_stopped() {
 }
 
 #[test]
+fn the_watch_operation_takes_absolute_paths_within_its_byte_budget_and_no_other_lines() {
+    let line = |path: &str| format!(r#"{{"watch": "{path}"}}"#);
+    let mut collected = Collected::new(Op::Watch);
+    let Next::Continue = collected.line(1, line("/runs/a/info.ini").as_bytes()) else {
+        panic!("an absolute path is taken");
+    };
+    let Next::Stop(reason) = collected.line(2, line("info.ini").as_bytes()) else {
+        panic!("a relative path is refused");
+    };
+    assert_eq!(
+        reason,
+        "line 2: the watched path 'info.ini' is not an absolute path"
+    );
+    assert_eq!(collected.into_watched().0, [Path::new("/runs/a/info.ini")]);
+
+    // Two paths whose bytes add up to exactly the budget are both kept; one byte more is refused.
+    let fill = |bytes: usize| format!("/{}", "x".repeat(bytes - 1));
+    let (first, exact, over) = (
+        fill(WATCH_BYTES / 2),
+        fill(WATCH_BYTES / 2),
+        fill(WATCH_BYTES / 2 + 1),
+    );
+    let mut collected = Collected::new(Op::Watch);
+    for (number, path) in [(1, &first), (2, &exact)] {
+        let Next::Continue = collected.line(number, line(path).as_bytes()) else {
+            panic!("{WATCH_BYTES} bytes in all fit");
+        };
+    }
+    assert_eq!(
+        collected.into_watched().0,
+        [first.clone(), exact].map(PathBuf::from)
+    );
+    let mut collected = Collected::new(Op::Watch);
+    let Next::Continue = collected.line(1, line(&first).as_bytes()) else {
+        panic!("the first path fits");
+    };
+    let Next::Stop(reason) = collected.line(2, line(&over).as_bytes()) else {
+        panic!("{} bytes in all are refused", WATCH_BYTES + 1);
+    };
+    assert_eq!(
+        reason,
+        "line 2: the watched paths are more than 2097152 bytes"
+    );
+
+    for (op, name) in [(Op::Scan, "scan"), (Op::Resolve, "resolve")] {
+        let Next::Stop(reason) = Collected::new(op).line(1, line("/a").as_bytes()) else {
+            panic!("a watch line is refused in a {name}");
+        };
+        assert_eq!(
+            reason,
+            format!("line 1: 'watch' does not belong in a {name}")
+        );
+    }
+}
+
+#[test]
 fn playlist_lines_split_the_entries_and_entries_before_the_first_one_take_the_resolvers_name() {
     let entry =
         |name: &str| format!(r#"{{"entry": {{"name": "{name}", "video": {{"file": "/v.mp4"}}}}}}"#);

@@ -3,7 +3,10 @@
 //! What the lines add up to is used only when the plugin then exits 0, so a plugin that fails halfway leaves
 //! nothing in a playlist.
 
-use std::{collections::HashSet, path::Path};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 use foundation::{FrameRate, Warning};
 use handler_api::{
@@ -13,7 +16,7 @@ use handler_api::{
 use serde::Deserialize;
 
 use crate::{
-    budget::Budget,
+    budget::{Budget, WATCH_BYTES},
     run::{LineHandler, Next},
     wire::{ErrorIn, WarningIn, cut, json_reason, load_warning},
 };
@@ -33,6 +36,8 @@ const MAX_COUNT: u64 = (1 << 53) - 1;
 pub(crate) enum Op {
     Scan,
     Resolve,
+    /// The files to watch before a resolve.
+    Watch,
 }
 
 /// One line: exactly one of these keys.
@@ -44,6 +49,7 @@ struct LineIn {
     choice: Option<ChoiceIn>,
     playlist: Option<PlaylistIn>,
     entry: Option<EntryIn>,
+    watch: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -161,6 +167,9 @@ pub(crate) struct Collected {
     /// The playlists so far, the last one still taking entries; entries before any `playlist` line fill one with no
     /// name yet.
     playlists: Vec<Printed>,
+    /// The files a `watch` operation named, and the bytes of their paths.
+    watched: Vec<PathBuf>,
+    watched_bytes: usize,
     /// Entries and playlist lines so far.
     printed: usize,
     warnings: Vec<Warning>,
@@ -177,6 +186,8 @@ impl Collected {
             error: None,
             choices: Vec::new(),
             playlists: Vec::new(),
+            watched: Vec::new(),
+            watched_bytes: 0,
             printed: 0,
             warnings: Vec::new(),
             budget: Budget::default(),
@@ -188,17 +199,30 @@ impl Collected {
         self.choices
     }
 
-    /// The playlists in the order they were printed; entries printed before any playlist line form one named
-    /// `fallback`.
-    pub(crate) fn into_playlists(mut self, fallback: &str) -> ResolvedPlaylists {
+    /// The files a `watch` operation named, and its warnings, which have no channel to the user and are logged.
+    pub(crate) fn into_watched(mut self) -> (Vec<PathBuf>, Vec<Warning>) {
+        let warnings = self.take_warnings();
+        (self.watched, warnings)
+    }
+
+    /// The warnings kept, then one that counts those past [`MAX_WARNINGS`].
+    fn take_warnings(&mut self) -> Vec<Warning> {
+        let mut warnings = std::mem::take(&mut self.warnings);
         if self.suppressed > 0 {
-            self.warnings.push(Warning {
+            warnings.push(Warning {
                 problem: format!("{} more warnings suppressed", self.suppressed),
                 reasons: Vec::new(),
                 consequence: "They are not listed.".to_owned(),
                 more_reasons: false,
             });
         }
+        warnings
+    }
+
+    /// The playlists in the order they were printed; entries printed before any playlist line form one named
+    /// `fallback`.
+    pub(crate) fn into_playlists(mut self, fallback: &str) -> ResolvedPlaylists {
+        let warnings = self.take_warnings();
         ResolvedPlaylists {
             playlists: self
                 .playlists
@@ -211,7 +235,7 @@ impl Collected {
                     metadata: printed.metadata,
                 })
                 .collect(),
-            warnings: self.warnings,
+            warnings,
         }
     }
 
@@ -225,6 +249,7 @@ impl Collected {
                     choice: None,
                     playlist: None,
                     entry: None,
+                    watch: None,
                 },
                 _,
             ) => {
@@ -241,6 +266,7 @@ impl Collected {
                     choice: None,
                     playlist: None,
                     entry: None,
+                    watch: None,
                 },
                 _,
             ) => {
@@ -257,6 +283,7 @@ impl Collected {
                     choice: Some(choice),
                     playlist: None,
                     entry: None,
+                    watch: None,
                 },
                 Op::Scan,
             ) => {
@@ -274,6 +301,7 @@ impl Collected {
                     choice: None,
                     playlist: Some(playlist),
                     entry: None,
+                    watch: None,
                 },
                 Op::Resolve,
             ) => {
@@ -305,9 +333,47 @@ impl Collected {
                     choice: None,
                     playlist: None,
                     entry: Some(entry),
+                    watch: None,
                 },
                 Op::Resolve,
             ) => self.add_entry(entry)?,
+            (
+                LineIn {
+                    warning: None,
+                    error: None,
+                    choice: None,
+                    playlist: None,
+                    entry: None,
+                    watch: Some(path),
+                },
+                Op::Watch,
+            ) => {
+                check_room(self.watched.len(), MAX_ENTRIES, "watched paths")?;
+                if self.watched_bytes + path.len() > WATCH_BYTES {
+                    return Err(format!(
+                        "the watched paths are more than {WATCH_BYTES} bytes"
+                    ));
+                }
+                self.watched_bytes += path.len();
+                self.watched.push(absolute("the watched path", path)?);
+            }
+            (LineIn { watch: Some(_), .. }, Op::Scan) => return Err(wrong("watch", "scan")),
+            (LineIn { watch: Some(_), .. }, Op::Resolve) => {
+                return Err(wrong("watch", "resolve"));
+            }
+            (
+                LineIn {
+                    choice: Some(_), ..
+                },
+                Op::Watch,
+            ) => return Err(wrong("choice", "watch")),
+            (
+                LineIn {
+                    playlist: Some(_), ..
+                },
+                Op::Watch,
+            ) => return Err(wrong("playlist", "watch")),
+            (LineIn { entry: Some(_), .. }, Op::Watch) => return Err(wrong("entry", "watch")),
             (
                 LineIn {
                     choice: Some(_), ..
@@ -327,7 +393,8 @@ impl Collected {
             (LineIn { entry: Some(_), .. }, Op::Scan) => return Err(wrong("entry", "scan")),
             _ => {
                 return Err(
-                    "needs exactly one of warning, error, choice, playlist or entry".to_owned(),
+                    "needs exactly one of warning, error, choice, playlist, entry or watch"
+                        .to_owned(),
                 );
             }
         }
@@ -409,7 +476,7 @@ fn check_room(kept: usize, limit: usize, what: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn absolute(what: &str, path: String) -> Result<std::path::PathBuf, String> {
+fn absolute(what: &str, path: String) -> Result<PathBuf, String> {
     if Path::new(&path).is_absolute() {
         Ok(path.into())
     } else {
