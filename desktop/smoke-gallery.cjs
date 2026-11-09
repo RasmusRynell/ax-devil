@@ -148,6 +148,7 @@ async function gallery(window) {
     "[...document.querySelectorAll('button')].find((b) => b.textContent === 'Open choice dialog').click()",
   );
   await wait("document.querySelector('dialog[open]')");
+  await wait("document.activeElement?.textContent === 'Later'");
   await frames({ js });
   assert.deepEqual(await js(`(${fit.dialog.toString()})()`), [], "the choice dialog at 200% zoom");
   key(window, "Return");

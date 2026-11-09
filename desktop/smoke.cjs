@@ -10,6 +10,7 @@ const {
   SMOKE_ROOT,
   begin,
   button,
+  frames,
   isolatedState,
   page,
   reload,
@@ -108,6 +109,14 @@ module.exports = async (window, shell) => {
   // the native Open dialog.
   await reload(window);
   await wait("document.querySelector('h1')?.textContent === 'ax-devil'");
+  // Enter reaches the shell's default only once the start panel shows its enabled Open Workspace, nothing has the
+  // focus but the page, no dialog is open and the window has the keyboard; a frame later the shell's key handler,
+  // which follows the render, is in place.
+  await wait(
+    `document.querySelector('[data-cursor-id="sidebar:open-workspace"]:not(:disabled)') &&
+      document.activeElement === document.body && !document.querySelector('dialog[open]') && document.hasFocus()`,
+  );
+  await frames({ js });
   const showOpenDialog = dialog.showOpenDialog.bind(dialog);
   let asked = false;
   dialog.showOpenDialog = async () => {
