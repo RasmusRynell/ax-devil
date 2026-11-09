@@ -135,6 +135,7 @@ fn run(job: Job) {
         framing: spec.framing,
         records: &records,
         whole: Whole::default(),
+        before_video: None,
         skipped: SkippedRecords::new("lines", "Those lines are not drawn."),
     };
     let result = decoder.decode(&mut input, &options, &mut feed, &cancel);
@@ -162,6 +163,8 @@ struct Feed<'a> {
     records: &'a Cell<u64>,
     /// The records of a decoder that reads the file itself, which no input counts.
     whole: Whole,
+    /// The last record counted as skipped for lying before the video.
+    before_video: Option<u64>,
     /// The records the decoder gave up on; the warning names them with the count of lines read.
     skipped: SkippedRecords,
 }
@@ -260,11 +263,15 @@ impl SceneSink for Feed<'_> {
         if let SceneTime::Frame(frame) = scene.time().start()
             && frame < 0
         {
-            // The store keys frames from 0; a Scene before the video has no frame to be drawn on.
-            self.skipped.add(format!(
-                "line {}: frame number {frame} is before the video",
-                ordinal + 1
-            ));
+            // The store keys frames from 0; a Scene before the video has no frame to be drawn on. A record that
+            // gave several such Scenes is one skipped record.
+            if self.before_video != Some(ordinal) {
+                self.before_video = Some(ordinal);
+                self.skipped.add(format!(
+                    "line {}: frame number {frame} is before the video",
+                    ordinal + 1
+                ));
+            }
             return ControlFlow::Continue(());
         }
         match store.accept(&mut self.link, scene, on_equal_key, ordinal) {

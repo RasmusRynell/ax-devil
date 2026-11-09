@@ -99,10 +99,16 @@ fn a_scene_before_the_video_is_not_stored_and_is_warned_about() {
         time: SceneTime::Frame(-2),
         ..step(0, &[(1, 10)], OnEqualKey::Merge)
     };
+    // Per-object Scenes of one record at the same negative key are one skipped record.
+    let before_again = Step {
+        entities: vec![(2, 20)],
+        ..before.clone()
+    };
     let rig = Rig::new(
         Script::new(vec![
             step(0, &[(1, 10)], OnEqualKey::Merge),
             before,
+            before_again,
             step(1, &[(1, 11)], OnEqualKey::Merge),
         ]),
         Tuning::default(),
