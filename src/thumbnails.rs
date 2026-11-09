@@ -6,25 +6,30 @@
 //! modification time stay; a read renews the time. A cached file that is cut short or does not decode counts as
 //! missing and is made again.
 //!
-//! Requests for the same tag share one read of the video. The read stops when the last of them goes away, and
-//! when it fails the same tag is answered with that failure for [`FAILURE_COOLDOWN`] instead of opening the file
-//! again; a changed file has a new tag, so it is tried at once.
+//! Requests for the same tag share one read of the video (see [`flights`]). The read stops when the last of them
+//! goes away, and when it fails the same tag is answered with that failure for a while instead of opening the file
+//! again; a changed file has a new tag, so it is tried at once. At most two reads decode at a time; the others wait,
+//! and one whose requests have all gone is dropped without decoding. The newest [`REMEMBERED`] pictures are also
+//! kept in memory, so a card that is hovered again is not read from disk.
+
+mod flights;
 
 use bytes::Bytes;
+use flights::Flights;
 use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
 use media::{MAX_JPEG_BYTES, VideoInput, first_frame, first_frame_identity, whole_jpeg};
 use std::{
-    collections::HashMap,
+    collections::VecDeque,
     fs::{self, File, OpenOptions},
     io::{self, Read, Write},
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex, MutexGuard, PoisonError, Weak,
+        Mutex, MutexGuard, PoisonError,
         atomic::{AtomicU64, Ordering},
     },
-    time::{Duration, Instant, SystemTime},
+    time::SystemTime,
 };
-use tokio::{sync::watch, task::spawn_blocking};
+use tokio::task::spawn_blocking;
 
 /// The folder of the pictures inside the cache folder.
 pub(crate) const FOLDER: &str = "thumbnails";
@@ -34,9 +39,8 @@ pub(crate) const EXTENSION: &str = "jpg";
 const EDGE: u32 = 560;
 /// How many pictures the folder keeps.
 const MAX_FILES: usize = 500;
-/// How long a tag whose read failed answers with that failure, so that a broken file is not opened again by every
-/// refresh of a card.
-const FAILURE_COOLDOWN: Duration = Duration::from_secs(10);
+/// How many pictures are kept in memory; the least recently asked for goes first.
+const REMEMBERED: usize = 48;
 
 /// What a request for a thumbnail is answered with.
 pub(crate) enum Answer {
@@ -55,6 +59,8 @@ pub(crate) enum Answer {
 pub(crate) struct Thumbnails {
     dir: PathBuf,
     flights: Flights,
+    /// The newest pictures by tag, the most recently used last.
+    remembered: Mutex<VecDeque<(String, Bytes)>>,
 }
 
 impl Thumbnails {
@@ -63,6 +69,7 @@ impl Thumbnails {
         Self {
             dir,
             flights: Flights::default(),
+            remembered: Mutex::default(),
         }
     }
 
@@ -89,13 +96,43 @@ impl Thumbnails {
         if unchanged {
             return Ok(Answer::Unchanged);
         }
+        if let Some(jpeg) = self.recall(&tag) {
+            return Ok(Answer::Picture { tag, jpeg });
+        }
         let path = picture_path(&self.dir, &tag);
         let dir = self.dir.clone();
         let flight = self
             .flights
             .join(&tag, move |cancel| make(&dir, &path, &input, cancel));
         let jpeg = flight.outcome().await?;
+        self.remember(&tag, &jpeg);
         Ok(Answer::Picture { tag, jpeg })
+    }
+
+    fn remembered(&self) -> MutexGuard<'_, VecDeque<(String, Bytes)>> {
+        self.remembered
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The picture of `tag` held in memory, which becomes the most recently used.
+    fn recall(&self, tag: &str) -> Option<Bytes> {
+        let mut remembered = self.remembered();
+        let at = remembered.iter().position(|(held, _)| held == tag)?;
+        let entry = remembered.remove(at)?;
+        let jpeg = entry.1.clone();
+        remembered.push_back(entry);
+        Some(jpeg)
+    }
+
+    /// Keeps `jpeg` as the most recently used picture, forgetting the least recently used beyond [`REMEMBERED`].
+    fn remember(&self, tag: &str, jpeg: &Bytes) {
+        let mut remembered = self.remembered();
+        remembered.retain(|(held, _)| held != tag);
+        remembered.push_back((tag.to_owned(), jpeg.clone()));
+        while remembered.len() > REMEMBERED {
+            remembered.pop_front();
+        }
     }
 }
 
@@ -139,129 +176,6 @@ fn read_cached(path: &Path) -> Option<Vec<u8>> {
 fn stopped(error: impl std::fmt::Display) -> UserError {
     tracing::error!("Making a thumbnail failed: {error}");
     UserError::new(ErrorCode::Internal, "The thumbnail stopped unexpectedly")
-}
-
-/// The result of one read of a video.
-type Outcome = Result<Bytes, UserError>;
-
-/// What is known of a tag that is being read or whose read failed.
-enum Slot {
-    /// Being read; the reads that wait for it hold the [`Flight`].
-    Running(Weak<Flight>),
-    /// Failed at `at`.
-    Failed { error: UserError, at: Instant },
-}
-
-/// One read of a video, shared by the requests waiting for it. Dropping the last holder cancels the read.
-struct Flight {
-    cancel: CancelToken,
-    outcome: watch::Receiver<Option<Outcome>>,
-}
-
-impl Drop for Flight {
-    fn drop(&mut self) {
-        self.cancel.cancel();
-    }
-}
-
-impl Flight {
-    /// Waits for the read to end.
-    async fn outcome(&self) -> Outcome {
-        match self.outcome.clone().wait_for(Option::is_some).await {
-            Ok(outcome) => outcome
-                .clone()
-                .unwrap_or_else(|| Err(stopped("no outcome"))),
-            Err(_) => Err(stopped("the read ended without an outcome")),
-        }
-    }
-}
-
-/// The reads in progress by tag, and the failures that are still remembered.
-#[derive(Clone, Default)]
-struct Flights {
-    slots: Arc<Mutex<HashMap<String, Slot>>>,
-}
-
-impl Flights {
-    fn lock(&self) -> MutexGuard<'_, HashMap<String, Slot>> {
-        self.slots.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// The read of `tag`: the one in progress, a remembered failure, or `work` started on a blocking thread. The
-    /// read is cancelled when every holder of the returned flight has dropped it.
-    fn join(
-        &self,
-        tag: &str,
-        work: impl FnOnce(&CancelToken) -> Result<Bytes, Interrupt<UserError>> + Send + 'static,
-    ) -> Arc<Flight> {
-        let mut slots = self.lock();
-        slots.retain(|_, slot| match slot {
-            Slot::Running(flight) => flight.strong_count() > 0,
-            Slot::Failed { at, .. } => at.elapsed() < FAILURE_COOLDOWN,
-        });
-        match slots.get(tag) {
-            Some(Slot::Running(flight)) => {
-                if let Some(flight) = flight.upgrade() {
-                    return flight;
-                }
-            }
-            Some(Slot::Failed { error, .. }) => {
-                let (_, outcome) = watch::channel(Some(Err(error.clone())));
-                return Arc::new(Flight {
-                    cancel: CancelToken::new(),
-                    outcome,
-                });
-            }
-            None => {}
-        }
-        let cancel = CancelToken::new();
-        let (sender, outcome) = watch::channel(None);
-        let flight = Arc::new(Flight {
-            cancel: cancel.clone(),
-            outcome,
-        });
-        let weak = Arc::downgrade(&flight);
-        slots.insert(tag.to_owned(), Slot::Running(weak.clone()));
-        drop(slots);
-        let flights = self.clone();
-        let tag = tag.to_owned();
-        drop(spawn_blocking(move || {
-            let outcome = match work(&cancel) {
-                Ok(jpeg) => Some(Ok(jpeg)),
-                Err(Interrupt::Failed(error)) => Some(Err(error)),
-                Err(Interrupt::Cancelled) => None,
-            };
-            flights.finish(&tag, &weak, outcome.as_ref().and_then(|o| o.as_ref().err()));
-            if outcome.is_some() {
-                sender.send_replace(outcome);
-            }
-        }));
-        flight
-    }
-
-    /// Ends the slot of `tag` that belongs to `flight`: it remembers `failure`, or is removed. A newer flight of
-    /// the same tag is left alone.
-    fn finish(&self, tag: &str, flight: &Weak<Flight>, failure: Option<&UserError>) {
-        let mut slots = self.lock();
-        if !matches!(slots.get(tag), Some(Slot::Running(running)) if running.ptr_eq(flight)) {
-            return;
-        }
-        match failure {
-            Some(error) => {
-                let error = error.clone();
-                slots.insert(
-                    tag.to_owned(),
-                    Slot::Failed {
-                        error,
-                        at: Instant::now(),
-                    },
-                );
-            }
-            None => {
-                slots.remove(tag);
-            }
-        }
-    }
 }
 
 /// Marks the picture as just used, so pruning keeps it. Best effort: a picture that is not there has nothing to
@@ -353,7 +267,7 @@ fn private_file(path: &Path) -> io::Result<File> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{sync::mpsc, time::Duration};
+    use std::time::Duration;
 
     fn fixture(name: &str) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -415,6 +329,8 @@ mod tests {
                 broken[start..whole.len() - 4].fill(0x5A);
             }
             fs::write(&path, &broken).unwrap();
+            // A new instance has nothing in memory, so the damaged disk copy is what it finds.
+            let thumbnails = Thumbnails::new(folder.path().join(FOLDER));
 
             let Answer::Picture { jpeg, .. } =
                 thumbnails.answer(input.clone(), None).await.unwrap()
@@ -431,64 +347,31 @@ mod tests {
         }
     }
 
-    type Work = Box<dyn FnOnce(&CancelToken) -> Result<Bytes, Interrupt<UserError>> + Send>;
-
-    /// Work that waits for the sender, counts its runs and hands out its token once it has started.
-    fn held_work(
-        runs: &Arc<AtomicU64>,
-        outcome: Outcome,
-    ) -> (Work, mpsc::Receiver<CancelToken>, mpsc::Sender<()>) {
-        let (started, token) = mpsc::channel();
-        let (release, released) = mpsc::channel();
-        let runs = Arc::clone(runs);
-        let work = move |cancel: &CancelToken| {
-            runs.fetch_add(1, Ordering::SeqCst);
-            started.send(cancel.clone()).unwrap();
-            released.recv().ok();
-            outcome.map_err(Interrupt::Failed)
-        };
-        (Box::new(work), token, release)
-    }
-
-    #[tokio::test]
-    async fn requests_for_a_tag_share_one_read_which_stops_with_the_last_of_them() {
-        let flights = Flights::default();
-        let runs = Arc::new(AtomicU64::new(0));
-
-        // Two joins run the work once; one leaving does not stop it.
-        let (work, token, release) = held_work(&runs, Ok(Bytes::from_static(b"jpeg")));
-        let first = flights.join("shared", work);
-        let second = flights.join("shared", |_| panic!("the read is already running"));
-        let cancel = token.recv().unwrap();
-        drop(first);
-        assert!(!cancel.is_cancelled());
-        release.send(()).unwrap();
-        assert_eq!(second.outcome().await.unwrap(), Bytes::from_static(b"jpeg"));
-        assert_eq!(runs.load(Ordering::SeqCst), 1);
-
-        // The last one leaving stops it.
-        let (work, token, release) = held_work(&runs, Ok(Bytes::new()));
-        let only = flights.join("left", work);
-        let cancel = token.recv().unwrap();
-        drop(only);
-        assert!(cancel.is_cancelled());
-        release.send(()).unwrap();
-
-        // A failure reaches every waiter and is returned again during the cooldown without a new read.
-        let error = UserError::new(ErrorCode::UnsupportedFormat, "broken");
-        let (work, token, release) = held_work(&runs, Err(error.clone()));
-        let waiting = [
-            flights.join("broken", work),
-            flights.join("broken", |_| panic!()),
-        ];
-        token.recv().unwrap();
-        release.send(()).unwrap();
-        for flight in &waiting {
-            assert_eq!(flight.outcome().await, Err(error.clone()));
+    #[test]
+    fn memory_keeps_the_most_recently_used_pictures() {
+        let thumbnails = Thumbnails::new(PathBuf::new());
+        let jpeg = Bytes::from_static(b"jpeg");
+        // 48 pictures fit; asking for the oldest makes it the newest, so the next one in goes out of memory
+        // instead of it.
+        for n in 0..48 {
+            thumbnails.remember(&n.to_string(), &jpeg);
         }
-        let again = flights.join("broken", |_| panic!("the failure is remembered"));
-        assert_eq!(again.outcome().await, Err(error));
-        assert_eq!(runs.load(Ordering::SeqCst), 3);
+        assert!(thumbnails.recall("0").is_some(), "asked for again");
+        thumbnails.remember("new", &jpeg);
+
+        let kept: Vec<_> = ["0", "new"]
+            .into_iter()
+            .map(str::to_owned)
+            .chain((2..48).map(|n| n.to_string()))
+            .collect();
+        assert_eq!(kept.len(), 48);
+        assert!(
+            thumbnails.recall("1").is_none(),
+            "the least recently used went"
+        );
+        for tag in &kept {
+            assert!(thumbnails.recall(tag).is_some(), "{tag} stays");
+        }
     }
 
     #[test]
