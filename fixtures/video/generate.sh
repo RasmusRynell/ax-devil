@@ -47,6 +47,11 @@ ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(luma 64x48 30)" "${PLAIN[@]}" -frames:v 60 
 cut=$(( $(stat -c %s cfr_h264_gop10_bf2.mp4) - 30 ))
 head -c "$cut" cfr_h264_gop10_bf2.mp4 > truncated.mp4
 
+# An 8x8 picture of 4x4-pixel blocks, alternately luma 16 and 235 (black and white in full range): enlarged on screen
+# its block edges show whether the viewer samples the nearest source pixel or blends neighbours.
+ffmpeg "${GLOBAL[@]}" -f lavfi -i "color=c=gray:s=8x8:r=30,format=yuv420p,geq=lum='if(mod(floor(X/4)+floor(Y/4)\\,2)\\,235\\,16)':cb=128:cr=128" \
+  "${PLAIN[@]}" -frames:v 30 "${H264[@]}" -x264-params keyint=10:min-keyint=10:scenecut=0:bframes=0 -movflags +faststart checker_h264_8x8.mp4
+
 # Not a video at all.
 printf 'This file is named like a video but holds only text.\n' > not_video.mp4
 

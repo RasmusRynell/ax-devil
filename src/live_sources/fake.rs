@@ -49,7 +49,7 @@ pub struct VideoWire {
 
 /// What a test pushes into one MQTT or DataHub connection and reads of it.
 pub struct MessageWire {
-    pub _messages: mpsc::Sender<Feed<Message>>,
+    pub messages: mpsc::Sender<Feed<Message>>,
     pub status: watch::Sender<Status>,
     pub closed: Arc<AtomicBool>,
 }
@@ -170,7 +170,7 @@ impl Connector for FakeConnector {
             );
         }
         let wire = Arc::new(MessageWire {
-            _messages: messages,
+            messages,
             status: watch::channel(Status::Connecting).0,
             closed: Arc::default(),
         });
@@ -180,7 +180,7 @@ impl Connector for FakeConnector {
     fn datahub(&self, _camera: &ResolvedCamera, _topic: &str, _channel: u32) -> Transport {
         let (messages, rx) = mpsc::channel(512);
         let wire = Arc::new(MessageWire {
-            _messages: messages,
+            messages,
             status: watch::channel(Status::Connecting).0,
             closed: Arc::default(),
         });

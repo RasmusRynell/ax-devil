@@ -1,11 +1,14 @@
 //! What a viewer is shown while it is paused and when it resumes.
 
-use std::sync::atomic::Ordering;
+use std::{sync::atomic::Ordering, time::Duration};
 
+use api_types::live::LiveStatusWire;
 use camera::Status;
 use foundation::MediaTime;
+use overlays::NONE_CELL;
+use tokio::time::timeout;
 
-use super::{Update, delivering, frame, rig, update};
+use super::{Update, delivering, frame, lost, luma, rig, update};
 use crate::live_sources::fake::{content, doc, rtsp, unit};
 
 #[tokio::test]
@@ -80,4 +83,53 @@ async fn stopping_ends_the_connection_and_starting_again_opens_a_new_one() {
     let _again = rig.open(&content).await;
     assert!(first.closed.load(Ordering::Acquire), "the stop was final");
     assert_eq!(rig.fake.videos().len(), 2, "a start makes a new source");
+}
+
+#[tokio::test]
+async fn a_paused_viewer_whose_decoder_fell_behind_is_shown_the_new_connection_after_the_gap() {
+    let rig = rig();
+    let mut viewer = rig.open(&content("cam", rtsp())).await;
+    let video = rig.fake.videos()[0].clone();
+    let docs = video.docs.clone().expect("metadata was asked for");
+    video.status.send(Status::Live { epoch: 1 }).unwrap();
+    delivering(&mut viewer, &docs, doc(1, "1000")).await;
+
+    // The decoder cannot keep up with a burst while nobody is shown a picture, and the connection is replaced.
+    rig.hold.close();
+    viewer.pause(true);
+    for n in 2..=303 {
+        docs.send(doc(1, &(n * 1_000).to_string())).await.unwrap();
+    }
+    // The decoder stays held until the viewer reports the lane behind, so the burst cannot have been drained.
+    let gap = timeout(Duration::from_secs(20), async {
+        while !matches!(
+            update(&mut viewer).await,
+            Update::Status(LiveStatusWire { behind: true, .. })
+        ) {}
+        video.status.send(lost()).unwrap();
+        video.status.send(Status::Live { epoch: 2 }).unwrap();
+        rig.hold.open();
+        loop {
+            if let Update::Gap { time_us } = update(&mut viewer).await {
+                return time_us;
+            }
+        }
+    })
+    .await
+    .expect("a gap after the overflow and the reconnect");
+    assert!(gap < 303_000, "{gap}");
+
+    // Resumed, the viewer is shown the new connection's picture with the new connection's sample.
+    viewer.pause(false);
+    docs.send(doc(2, "5000000")).await.unwrap();
+    video
+        .units
+        .send(unit(2, Some(5_000_000), 40))
+        .await
+        .unwrap();
+    docs.send(doc(2, "6000000")).await.unwrap();
+    let shown = frame(&mut viewer).await;
+    assert_eq!(luma(&shown), 40);
+    // Every earlier sample is seconds away from this picture, so a cell means the new connection's sample.
+    assert_ne!(shown.out.unwrap().map.samples, [NONE_CELL]);
 }

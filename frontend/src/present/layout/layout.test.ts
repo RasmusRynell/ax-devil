@@ -210,10 +210,10 @@ describe("primitive quads", () => {
     pen: number;
   };
   /** The quads a mark draws for an entity whose box is (320, 180) to (640, 360) on the 1280 x 720 oracle view. */
-  const quadsOf = (mark: object, score = 0.5): Quad[] => {
+  const quadsOf = (mark: object | object[], score = 0.5): Quad[] => {
     const sample = fullSample([{ id: "a", score, box: [0.25, 0.25, 0.5, 0.5] }]);
     const marks = new MarkBuffer();
-    const catalog = compile([{ marks: [mark] }]);
+    const catalog = compile([{ marks: [mark].flat() }]);
     const set = filterRows(sample, null, { enabled: new Uint32Array(0), options: 0 }, new RowSet());
     evaluate(sample, set, catalog, { hidden: 0, theme: null }, marks, new EvalReport());
     const lane = new LaneQuads();
@@ -307,6 +307,22 @@ describe("primitive quads", () => {
     const [rect, ...glyphs] = label({ background: "#000000" });
     expect(rect.h).toBe(Math.ceil(18.56 + 4.72 + 6));
     expect(glyphs[0].y).toBe(Math.round(180 + 3 + 18.56) - 15);
+  });
+
+  it("sizes a bare label by its own ink however a filled label beside it is sized", () => {
+    // The reference reserves the font's ascent and descent for every label of a batch that has a filled one; here a
+    // label's place does not depend on the other rules of the lane.
+    const label = (extra: object) => ({
+      mark: "label",
+      size: "20px",
+      pad: ["2px", "3px"],
+      runs: [{ text: "'Ag'", color: "#ffffff" }],
+      place: [{ at: "top-left", anchor: "top-left" }],
+      ...extra,
+    });
+    const alone = quadsOf(label({}));
+    const beside = quadsOf([label({ background: "#000000" }), label({})]);
+    expect(beside.slice(-alone.length)).toEqual(alone);
   });
 
   describe("baseline anchor", () => {

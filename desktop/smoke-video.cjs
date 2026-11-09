@@ -16,6 +16,7 @@ const {
 } = require("./smoke-kit.cjs");
 
 const { headerMenu } = require("./smoke-header-menu.cjs");
+const { transport } = require("./smoke-transport.cjs");
 
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
 const SHOWN = `Number.parseInt(document.querySelector("input[aria-label=Frame]")?.value ?? "")`;
@@ -309,6 +310,7 @@ module.exports.video = async (window) => {
     Math.abs(anchor.top - canvas.top - (canvas.bottom - anchor.bottom)) <= 2,
     "The pointer anchor must be centred like the picture",
   );
+  await transport(window);
   await fullscreen(window);
 };
 

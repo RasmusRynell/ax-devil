@@ -32,6 +32,7 @@ const { remote } = require("./smoke-remote.cjs");
 const { handedOff } = require("./smoke-handoff.cjs");
 const { sharing } = require("./smoke-sharing.cjs");
 const { reload: reloadOffer } = require("./smoke-reload.cjs");
+const { pixels } = require("./smoke-pixels.cjs");
 const { video } = require("./smoke-video.cjs");
 
 module.exports = async (window, shell) => {
@@ -365,6 +366,8 @@ module.exports = async (window, shell) => {
   await gallery(window);
   console.log("smoke: video");
   await video(window);
+  console.log("smoke: pixels");
+  await pixels();
   console.log("smoke: export");
   await exportDialog(window);
   console.log("smoke: bookmarks");
