@@ -18,8 +18,8 @@ Inspection requests are review-only; apply fixes when requested or already autho
 Read [the module map](../../../docs/architecture/module-map.md) when assessing ownership, relevant sections of
 [domain invariants](../../../docs/domain/invariants.md) for affected behavior, and
 [the testing runbook](../../../docs/runbooks/testing.md) when assessing or running tests. For a parity row, compare
-with the behavior its source defines at the reference commit (`docs/rebuild/README.md`) and check that
-`docs/parity.md` names the test that proves it.
+with the behavior its source defines at the reference commit (`docs/rebuild/README.md`) and check that its
+line in [parity](../../../docs/parity.md) names the test that proves it.
 
 ## Review priorities
 

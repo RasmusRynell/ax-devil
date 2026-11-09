@@ -29,11 +29,10 @@ Dependencies point down only.
 | 8 | Entry and bootstrap | CLI, app bootstrap: creates services and passes them down | `src/ax_devil/cli.py`, `src/ax_devil/app.py` |
 
 - **MUST** keep layers 1–3 free of the UI toolkit; event-loop adapters are layer 3a, never inside 3, so the CLI and
-  M3 exits need no toolkit. *Current:* only `workspace/core` is enforced Qt-free; the store, sources, sync adapters and settings emit Qt signals. **change**.
+  workspace lifecycle tests need no toolkit. *Current:* only `workspace/core` is enforced Qt-free; the store, sources, sync adapters and settings emit Qt signals. **change**.
 - **MUST** let domain code take values, never read settings; the settings service is wired at bootstrap.
   *Current:* settings sit below everything as a process-wide singleton. **change**.
-- **MUST** enforce the boundaries automatically ([10](10-quality-gates.md)); start from the forbidden-import table in
-  `scripts/check-architecture.cjs`.
+- **MUST** enforce the boundaries automatically, as [the architecture check](../../scripts/check-architecture.cjs) does.
 
 ## Seams to keep
 

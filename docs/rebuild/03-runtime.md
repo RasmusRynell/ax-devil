@@ -45,7 +45,7 @@ frame rates or bursts can exhaust the frame buffer"):
   bookmarks), a timer service and the task executor. No module reads a clock or sleeps except through them. This
   covers debounces, the recovery-copy rewrite, the snapshot rate limit, the stall detector and clock-following playback.
 - Policy tests use a virtual clock and a controllable executor; inline execution only where scheduling is irrelevant
-  ([09](09-testing.md#reliability-must)).
+  ([write-tests](../../.agents/skills/write-tests/SKILL.md#make-it-reliable)).
 
 ## Lifecycle
 

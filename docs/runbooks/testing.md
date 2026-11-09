@@ -1,7 +1,7 @@
 # Testing
 
 What to test and how to judge a test is in the [write-tests skill](../../.agents/skills/write-tests/SKILL.md); the
-test policy being ported is [09](../rebuild/09-testing.md).
+test pyramid and oracle policy are in [09](../rebuild/09-testing.md).
 
 ## Running tests
 
@@ -35,7 +35,8 @@ A crate's integration tests are one binary, `tests/it/main.rs`: add a file there
 Every suite runs through `scripts/isolated`:
 
 - `HOME` and the XDG config, data, cache, state and runtime folders point into a fresh temporary folder, removed
-  afterwards. Toolchains keep their real locations.
+  afterwards. Toolchains keep their real locations. Tests therefore load no user plugins, and the private settings
+  turn the startup network scan off; devices and transports are faked.
 - `DISPLAY`, `WAYLAND_DISPLAY` and the session bus are unset, so nothing can reach the user's desktop.
 - `--display` starts a private Xvfb server for that run only (`xvfb-run -a`), so parallel runs never share a display
   or compete for focus. Without Xvfb the run fails; it never falls back to the user's display.
@@ -76,7 +77,7 @@ both themes, at the window minimum and at 200% zoom. It also runs a sharing scen
 through a link, and a third window that lists the shared Session) and asserts that no page of the app
 reports a Content Security Policy violation. In smoke
 mode the desktop's listener for other machines takes a free loopback port through the hidden `--share-address`, so
-nothing leaves the machine. `desktop/fit-coverage.test.cjs` fails until each new dialog names the scenario that fit-checks it, or a reason ([DT-02](../parity.md#developer-tooling)).
+nothing leaves the machine. `desktop/fit-coverage.test.cjs` fails until each new dialog names the scenario that fit-checks it, or a reason ([DT-02](../parity/app.md#developer-tooling)).
 
 ## Sharing across two machines
 

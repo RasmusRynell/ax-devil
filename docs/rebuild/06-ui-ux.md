@@ -38,7 +38,7 @@ Rebuild the kit listed in the write-ui skill's building-blocks table (`.agents/s
 window and dialog frames, segmented toggle, toggle chips, popover, ask/notify dialog, form layout, browse button,
 key chips, menu button, small button, sidebar view parts (panel, row list, caption, row, chip, banner), icons from
 one bundled set. Port its conventions (outlined buttons, accent only for checked/selected/focused, `…` only for work in
-progress, icons not glyphs) as the new write-ui skill ([12](12-agent-setup.md)).
+progress, icons not glyphs) as the [write-ui skill](../../.agents/skills/write-ui/SKILL.md).
 
 ## Layout and sizing (MUST)
 
@@ -47,7 +47,7 @@ progress, icons not glyphs) as the new write-ui skill ([12](12-agent-setup.md)).
 - Restructure (pages, tabs, groups) rather than scroll. Scrolling is for content that grows with user data, and as
   accessible overflow when screen bounds make fitting impossible.
 - The main window restores size and maximized state only.
-- Every control stays reachable and unclipped at the window minimum and at browser zoom up to 200% (fit test, [09](09-testing.md#ui-verification)).
+- Every control stays reachable and unclipped at the window minimum and at browser zoom up to 200% (fit test, [write-ui](../../.agents/skills/write-ui/SKILL.md#verify)).
 - Details: write-ui skill "Common patterns" and `chrome/README.md#rules`.
 
 ## Large lists (MUST)

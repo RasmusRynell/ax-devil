@@ -8,7 +8,7 @@ description: Build or change ax-devil's interface (windows, dialogs, panels, lis
 One compact, restrained interface, one theme, readable in light and dark at any browser zoom up to 200%. A button is
 a button: every control gets its look from the shared kit, never from classes written in feature code. Requirements:
 [06](../../../docs/rebuild/06-ui-ux.md). Components project backend state and never own it or do file, network or
-decode work ([UI Lifecycle](../../../docs/domain/invariants.md#ui-lifecycle)).
+decode work ([UI Lifecycle](../../../docs/domain/app-invariants.md#ui-lifecycle)).
 
 ## I need a UI element
 
