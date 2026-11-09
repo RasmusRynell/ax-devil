@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import type { ItemRecipe, ItemState } from "../generated/api";
-import { FakeSocket } from "../session/fakeSession";
+import { FakeSocket, video } from "../session/fakeSession";
+import { viewing } from "../session/fakeViews";
 import { CLIP, commands, renderTree, shown } from "./WorkspaceTree.fixture";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
@@ -73,19 +74,36 @@ it("leaves the keys pressed on a row's own button to that button, not to the row
   expect(commands()).toEqual([{ type: "openViewer", item: "b" }]);
 });
 
-it("keeps a seat without the content power from starting a live stream by Enter or double click, while a recording still opens", async () => {
+it("keeps a seat without the content power from starting a live stream, saying so, while it still brings a running one forward and opens a recording", async () => {
   const open = (item: ItemState): ItemState => ({ ...item, open: true });
-  await renderTree([open(camera("a", "Lobby")), open(CLIP)], [], "explore");
-  const lobby = screen.getByRole("treeitem", { name: /^Lobby/ });
-  fireEvent.click(lobby);
-  fireEvent.keyDown(lobby.parentElement!, { key: "Enter" });
-  fireEvent.doubleClick(lobby);
-  await act(async () => {});
-  expect(shown().viewers).toEqual({});
-  expect(commands()).toEqual([]);
+  const room = await renderTree(
+    [open(camera("a", "Lobby")), open(camera("b", "Dock")), open(video("w", false)), open(CLIP)],
+    [],
+    "explore",
+  );
+  // Lobby and w.mp4 are shown, w.mp4 in front. Dock is open in the Doc with no viewer, and so is v.mp4.
+  act(() =>
+    room.publish({ sidebar: { view: "workspace", open: true }, ...viewing("a", "w"), active: 2 }),
+  );
+  const row = (name: RegExp) => screen.getByRole("treeitem", { name });
+  const front = () => shown().active;
+  expect(front()).toBe(2);
 
-  // A recording is not started, only shown, which a seat that explores may do.
-  fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
+  fireEvent.doubleClick(row(/^Dock/));
+  fireEvent.click(row(/^Dock/));
+  fireEvent.keyDown(row(/^Dock/).parentElement!, { key: "Enter" });
   await act(async () => {});
-  expect(Object.values(shown().viewers)).toMatchObject([{ item: "v" }]);
+  expect(Object.keys(shown().viewers)).toEqual(["1", "2"]);
+  expect(commands()).toEqual([]);
+  expect(screen.getByRole("alert").textContent).toBe("Dock: Not allowed");
+
+  fireEvent.doubleClick(row(/^Lobby/));
+  await act(async () => {});
+  expect(front()).toBe(1);
+  expect(Object.keys(shown().viewers)).toEqual(["1", "2"]);
+
+  // A recording not shown yet opens in the front pane, as for any seat that views.
+  fireEvent.doubleClick(row(/^v\.mp4/));
+  await act(async () => {});
+  expect(shown().viewers[front()]).toMatchObject({ item: "v" });
 });

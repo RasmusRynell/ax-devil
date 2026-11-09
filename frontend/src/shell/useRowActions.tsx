@@ -85,8 +85,12 @@ export function useRowActions(): RowActions {
   const open = (row: TreeRow, side = false, say: Say = setProblem) => {
     const { status } = row.info;
     if (status.status === "Pending" || isHiddenLane(row)) return Promise.resolve();
-    // Opening a live stream starts it, which changes the workspace: a seat that may not do that is told nothing.
-    if (isStream(row) && !powers.content) return Promise.resolve();
+    // Opening a stopped live stream starts it, which changes the workspace: a seat that may not do that is told so.
+    // A stream already running is only brought forward, which any seat that views may do.
+    if (isStream(row) && !powers.content && !openKeys.has(row.info.key)) {
+      say(`${row.info.label}: Not allowed`);
+      return Promise.resolve();
+    }
     if (status.status === "Unavailable") {
       say(`${row.info.label}: ${reasonOf(status)}`);
       return Promise.resolve();
