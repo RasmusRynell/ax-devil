@@ -129,15 +129,31 @@ fn the_watch_operation_takes_absolute_paths_within_its_byte_budget_and_no_other_
         reason,
         "line 2: the watched path 'info.ini' is not an absolute path"
     );
-    assert_eq!(collected.into_watched(), [Path::new("/runs/a/info.ini")]);
+    assert_eq!(collected.into_watched().0, [Path::new("/runs/a/info.ini")]);
 
+    // Two paths whose bytes add up to exactly the budget are both kept; one byte more is refused.
     let fill = |bytes: usize| format!("/{}", "x".repeat(bytes - 1));
+    let (first, exact, over) = (
+        fill(WATCH_BYTES / 2),
+        fill(WATCH_BYTES / 2),
+        fill(WATCH_BYTES / 2 + 1),
+    );
     let mut collected = Collected::new(Op::Watch);
-    let Next::Continue = collected.line(1, line(&fill(WATCH_BYTES)).as_bytes()) else {
-        panic!("the whole budget fits");
+    for (number, path) in [(1, &first), (2, &exact)] {
+        let Next::Continue = collected.line(number, line(path).as_bytes()) else {
+            panic!("{WATCH_BYTES} bytes in all fit");
+        };
+    }
+    assert_eq!(
+        collected.into_watched().0,
+        [first.clone(), exact].map(PathBuf::from)
+    );
+    let mut collected = Collected::new(Op::Watch);
+    let Next::Continue = collected.line(1, line(&first).as_bytes()) else {
+        panic!("the first path fits");
     };
-    let Next::Stop(reason) = collected.line(2, line("/y").as_bytes()) else {
-        panic!("one byte over is refused");
+    let Next::Stop(reason) = collected.line(2, line(&over).as_bytes()) else {
+        panic!("{} bytes in all are refused", WATCH_BYTES + 1);
     };
     assert_eq!(
         reason,

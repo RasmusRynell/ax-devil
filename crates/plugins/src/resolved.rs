@@ -199,21 +199,30 @@ impl Collected {
         self.choices
     }
 
-    pub(crate) fn into_watched(self) -> Vec<PathBuf> {
-        self.watched
+    /// The files a `watch` operation named, and its warnings, which have no channel to the user and are logged.
+    pub(crate) fn into_watched(mut self) -> (Vec<PathBuf>, Vec<Warning>) {
+        let warnings = self.take_warnings();
+        (self.watched, warnings)
     }
 
-    /// The playlists in the order they were printed; entries printed before any playlist line form one named
-    /// `fallback`.
-    pub(crate) fn into_playlists(mut self, fallback: &str) -> ResolvedPlaylists {
+    /// The warnings kept, then one that counts those past [`MAX_WARNINGS`].
+    fn take_warnings(&mut self) -> Vec<Warning> {
+        let mut warnings = std::mem::take(&mut self.warnings);
         if self.suppressed > 0 {
-            self.warnings.push(Warning {
+            warnings.push(Warning {
                 problem: format!("{} more warnings suppressed", self.suppressed),
                 reasons: Vec::new(),
                 consequence: "They are not listed.".to_owned(),
                 more_reasons: false,
             });
         }
+        warnings
+    }
+
+    /// The playlists in the order they were printed; entries printed before any playlist line form one named
+    /// `fallback`.
+    pub(crate) fn into_playlists(mut self, fallback: &str) -> ResolvedPlaylists {
+        let warnings = self.take_warnings();
         ResolvedPlaylists {
             playlists: self
                 .playlists
@@ -226,7 +235,7 @@ impl Collected {
                     metadata: printed.metadata,
                 })
                 .collect(),
-            warnings: self.warnings,
+            warnings,
         }
     }
 

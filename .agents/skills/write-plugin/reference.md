@@ -157,7 +157,7 @@ which a form shows at that setting.
 
 The request `{"protocol":3,"op":"watch","handler":"acme_runs","settings":{...}}` is sent before every resolve, with the
 resolve's settings, and only to a handler whose manifest says `watches`. It runs while the item is opened, so keep it
-fast. A failed `watch` (an `error`, a nonzero exit, `idle_timeout_s`) is logged and the resolve goes on without it.
+fast. A failed `watch` (an `error`, a nonzero exit, `idle_timeout_s`) is logged and the resolve goes on without it; its `warning` lines are logged too and not shown to the user.
 
 The host fails the operation, naming the line, when a line is not valid JSON or has the wrong keys, a path is not
 absolute, a playlist name is empty, or a slot or label repeats within an entry. A playlist with no entry, or no

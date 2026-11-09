@@ -95,11 +95,6 @@ impl SourcePaths {
         added
     }
 
-    /// Whether there is nothing to watch.
-    pub fn is_empty(&self) -> bool {
-        self.files.is_empty() && self.folders.is_empty()
-    }
-
     /// What the disk looks like at these paths now. At most [`MAX_FOLDERS`] folders are walked in all, symbolic links
     /// not followed; a path that does not exist is absent.
     ///
@@ -148,7 +143,8 @@ impl Watch {
     /// Runs `read`, which resolves the item `recipe` belongs to, between two looks at the disk, and returns its result
     /// with what it read: the recipe's paths as they were before `read` began (a path that was absent then stays
     /// absent in the baseline, so its appearance is a change), and the overlay files the Content names that the recipe
-    /// did not. `None` when there is nothing to watch or `cancel` was triggered.
+    /// did not. Nothing to watch is a `Watch` of no paths, which replaces what was recorded for the item before;
+    /// `None` is only for a `cancel` that was triggered, which says nothing about the item.
     pub fn read<E>(
         recipe: &Recipe,
         handlers: &Handlers,
@@ -175,8 +171,7 @@ impl Watch {
                 paths.folders
             );
         }
-        let watch = (!paths.is_empty()).then_some(Self { paths, baseline });
-        (result, watch)
+        (result, Some(Self { paths, baseline }))
     }
 
     /// What the disk looks like at the watched paths now.

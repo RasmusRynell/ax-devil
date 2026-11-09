@@ -73,7 +73,7 @@ fn a_snapshot_tells_which_watched_paths_were_written_added_or_removed() {
 }
 
 #[test]
-fn a_file_that_appears_while_the_item_is_read_is_a_change_and_a_recipe_with_no_paths_records_nothing()
+fn a_file_that_appears_while_the_item_is_read_is_a_change_and_a_recipe_with_no_paths_replaces_what_was_recorded()
  {
     let folder = tempfile::tempdir().unwrap();
     let (video_file, overlay_file) = (folder.path().join("a.mp4"), folder.path().join("gt.txt"));
@@ -99,12 +99,14 @@ fn a_file_that_appears_while_the_item_is_read_is_a_change_and_a_recipe_with_no_p
 
     let bare = video(&video_file, &[], &handlers).unwrap();
     let (_, nothing) = Watch::read(&bare.recipe, &handlers, &token, || Err::<Content, ()>(()));
-    assert!(nothing.is_none());
+    let nothing = nothing.expect("a Watch of no paths, which replaces the item's old one");
+    assert!(nothing.changes(&nothing.look(&token).unwrap()).is_empty());
 }
 
 #[test]
-fn a_file_the_resolver_watches_is_a_change_when_the_read_rewrites_it_and_then_fails() {
-    struct Watching(PathBuf, ResolverSpec);
+fn a_file_the_resolver_watches_is_a_change_when_the_read_rewrites_it_and_a_later_read_naming_none_drops_it()
+ {
+    struct Watching(std::sync::Mutex<Vec<PathBuf>>, ResolverSpec);
     impl PlaylistResolver for Watching {
         fn spec(&self) -> &ResolverSpec {
             &self.1
@@ -114,7 +116,7 @@ fn a_file_the_resolver_watches_is_a_change_when_the_read_rewrites_it_and_then_fa
             _: &Values,
             _: &CancelToken,
         ) -> Result<Vec<PathBuf>, Interrupt<UserError>> {
-            Ok(vec![self.0.clone()])
+            Ok(self.0.lock().unwrap().clone())
         }
         fn resolve(
             &self,
@@ -135,9 +137,9 @@ fn a_file_the_resolver_watches_is_a_change_when_the_read_rewrites_it_and_then_fa
             .spec()
             .clone()
     };
-    let handlers = Handlers::built_in().with_resolvers([
-        Arc::new(Watching(descriptor.clone(), spec)) as Arc<dyn PlaylistResolver>,
-    ]);
+    let watching = Arc::new(Watching(vec![descriptor.clone()].into(), spec));
+    let handlers =
+        Handlers::built_in().with_resolvers([watching.clone() as Arc<dyn PlaylistResolver>]);
     let settings = Settings::from_iter([("root".into(), root.path().to_str().unwrap().into())]);
     let item = playlist("watching", settings, &handlers).unwrap();
     let token = CancelToken::new();
@@ -151,8 +153,15 @@ fn a_file_the_resolver_watches_is_a_change_when_the_read_rewrites_it_and_then_fa
     let watch = watch.unwrap();
     assert_eq!(
         watch.changes(&watch.look(&token).unwrap()),
-        BTreeSet::from([descriptor])
+        BTreeSet::from([descriptor.clone()])
     );
+
+    // Edited so it names nothing, the item's next read is a Watch that no longer holds the file.
+    watching.0.lock().unwrap().clear();
+    let (_, watch) = Watch::read(&item.recipe, &handlers, &token, || Err::<Content, ()>(()));
+    let watch = watch.expect("a completed read always replaces the item's old Watch");
+    write_at(&descriptor, "again!!", 3_000);
+    assert!(watch.changes(&watch.look(&token).unwrap()).is_empty());
 }
 
 /// Sets the modification time of `folder` far in the past, so a later entry added to it shows as a change however

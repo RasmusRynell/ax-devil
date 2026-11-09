@@ -117,8 +117,16 @@ impl PlaylistResolver for PluginResolver {
             "handler": self.spec.id,
             "settings": settings.declared(),
         });
-        self.call(Op::Watch, &request, cancel)
-            .map(Collected::into_watched)
+        let (files, warnings) = self.call(Op::Watch, &request, cancel)?.into_watched();
+        for warning in warnings {
+            tracing::warn!(
+                "Playlist resolver '{}' watch: {} ({})",
+                self.spec.id,
+                warning.problem,
+                warning.reasons.join("; ")
+            );
+        }
+        Ok(files)
     }
 
     fn resolve(
