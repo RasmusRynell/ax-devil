@@ -118,6 +118,7 @@ fn project_in(doc: &Doc, audience: Audience, env: &Environment) -> DocWire {
                             *generation,
                             &label,
                             live_recipe(stored_label, &recipe.source, audience),
+                            audience,
                         ),
                     },
                     Some(Resolution::Failed(error)) => {
@@ -344,6 +345,7 @@ fn content_info(
     generation: ContentGen,
     label: &str,
     recipe: Option<Box<NewLiveWire>>,
+    audience: Audience,
 ) -> ContentInfo {
     let id = content.id().to_string();
     let generation = generation.0;
@@ -358,7 +360,7 @@ fn content_info(
                 display_name: label.to_owned(),
                 entry: EntryInfo {
                     label: label.to_owned(),
-                    ..entry_info(entry)
+                    ..entry_info(entry, audience)
                 },
             }
         }
@@ -366,7 +368,11 @@ fn content_info(
             id,
             generation,
             display_name,
-            entries: playlist.entries.iter().map(entry_info).collect(),
+            entries: playlist
+                .entries
+                .iter()
+                .map(|entry| entry_info(entry, audience))
+                .collect(),
             playlists: playlist
                 .playlists
                 .iter()
@@ -376,7 +382,7 @@ fn content_info(
                     entries: u32::try_from(span.entries).unwrap_or(u32::MAX),
                     matches: span.matches,
                     sequence_groups: span.sequence_groups,
-                    metadata: metadata_fields(&span.metadata),
+                    metadata: host_only(audience, || metadata_fields(&span.metadata)),
                 })
                 .collect(),
         },
@@ -410,7 +416,20 @@ fn content_info(
     }
 }
 
-fn entry_info(entry: &Entry) -> EntryInfo {
+/// What a resolver states in metadata is free-form, so a path or a name of the host may be in it: only an audience
+/// with host details gets it.
+fn host_only(
+    audience: Audience,
+    fields: impl FnOnce() -> Vec<(String, String)>,
+) -> Vec<(String, String)> {
+    if audience.host_details {
+        fields()
+    } else {
+        Vec::new()
+    }
+}
+
+fn entry_info(entry: &Entry, audience: Audience) -> EntryInfo {
     let Entry {
         id,
         label,
@@ -430,10 +449,10 @@ fn entry_info(entry: &Entry) -> EntryInfo {
             .iter()
             .map(|overlay| overlay.handler.clone())
             .collect(),
-        metadata: metadata_fields(metadata),
+        metadata: host_only(audience, || metadata_fields(metadata)),
         lane_metadata: overlays
             .iter()
-            .map(|overlay| metadata_fields(&overlay.metadata))
+            .map(|overlay| host_only(audience, || metadata_fields(&overlay.metadata)))
             .collect(),
     }
 }
