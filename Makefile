@@ -10,7 +10,7 @@ ROOT_FILES := desktop/*.cjs scripts/*.cjs vite.config.ts package.json pnpm-works
 # The loader paths of a FFmpeg outside the system's (package builds): Linux, macOS and Windows each read one of them.
 FFMPEG_LOADER := $(if $(FFMPEG_DIR),LD_LIBRARY_PATH="$(FFMPEG_DIR)/lib$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" DYLD_LIBRARY_PATH="$(FFMPEG_DIR)/lib$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}" PATH="$$(cygpath -u '$(FFMPEG_DIR)/bin' 2>/dev/null || echo '$(FFMPEG_DIR)/bin'):$$PATH")
 .PHONY: help web desktop build app cli check check-fast format package smoke-packaged verify-release-version test \
-	test-frontend test-backend test-integration test-desktop test-camera bench bench-export bench-present bench-tables bench-browser \
+	test-frontend test-backend test-integration test-desktop test-camera audit bench bench-export bench-present bench-tables bench-browser \
 	bench-browser-smoke _check _types _frontend-build _static _clippy _clippy-no-default _licenses _dev _dev-rust
 
 help:
@@ -27,6 +27,7 @@ help:
 	  '  test        Run all test suites' \
 	  '  test-camera  Run the real-camera checks (AX_DEVIL_TARGET_*, AX_DEVIL_MQTT_BROKER_*); not part of check or CI' \
 	  '  check       The gate: every static check, all test suites, and a check that they left no generated file changed' \
+	  '  audit       Check the locked dependencies for known vulnerabilities (needs the network); not part of check, CI runs it weekly' \
 	  '  bench       Run the Rust benchmarks (sample item encode); numbers on stdout' \
 	  '  bench-export  Time export (1080p, 4K) through the real render page, on SwiftShader and the GPU when it can render there' \
 	  '  bench-present  Time the frontend presentation path in plain Node (AX_BENCH_SIZES, _CATALOGS, _MODES, _REPEAT)' \
@@ -175,8 +176,11 @@ endif
 bench-browser-smoke:
 	BENCH_SMOKE=1 BENCH_DISPLAY=swiftshader $(MAKE) --no-print-directory bench-browser
 
-# File size, architecture, formatting and lint. CHANGED=--changed limits the file-size check.
+# Whitespace, file size, architecture, formatting and lint. CHANGED=--changed limits the file-size check.
+# The whitespace check reads every tracked file against the empty tree, so a clean checkout is covered; .gitattributes
+# lists the files it skips (-whitespace).
 _static: node_modules/.installed _types
+	git diff --check "$$(git hash-object -t tree /dev/null)"
 	node scripts/check-file-tokens.cjs $(CHANGED)
 	$(CARGO) metadata --locked --format-version 1 | node scripts/check-architecture.cjs
 	pnpm exec vp fmt --check $(ROOT_FILES)
@@ -193,6 +197,12 @@ _clippy-no-default:
 _licenses: node_modules/.installed $(CARGO_DENY)
 	$(if $(CARGO_DENY),PATH="$(CURDIR)/.tools/bin:$$PATH" )$(CARGO) deny --locked check licenses
 	node scripts/check-js-licenses.cjs
+
+# Known vulnerabilities in the locked dependencies. Advisories change without a code change and need the network,
+# so this is not part of check; .github/workflows/audit.yml runs it weekly.
+audit: $(CARGO_DENY)
+	$(if $(CARGO_DENY),PATH="$(CURDIR)/.tools/bin:$$PATH" )$(CARGO) deny --locked check advisories
+	pnpm audit --prod
 
 check-fast: CHANGED := --changed
 check-fast: _static _clippy

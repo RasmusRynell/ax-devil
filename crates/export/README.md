@@ -24,4 +24,3 @@ treat them as an order of magnitude, nothing asserts them.
 | 1080p | 100 | 29 fps | 366 fps |
 | 1080p | 1000 | 17 fps | 429 fps |
 | 4K | 100 | 7.5 fps | 65 fps |
-

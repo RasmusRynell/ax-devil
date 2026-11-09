@@ -1,0 +1,17 @@
+# LF in every checkout, Windows included: bash scripts and the Makefile break on CRLF.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.mp4 binary
+*.mkv binary
+*.nut binary
+*.h264 binary
+*.hevc binary
+*.bin binary
+
+# Fixtures are byte-exact test data (frames.xml mixes line endings on purpose); generated files follow their generator.
+# The whitespace check (make check) skips both.
+fixtures/** -text -whitespace
+desktop/generated/** -whitespace
+frontend/src/generated/** -whitespace
