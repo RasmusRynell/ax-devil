@@ -332,6 +332,7 @@ mod tests {
             overlays: Vec::new(),
             starts_hidden: false,
             lanes_starting_hidden: Vec::new(),
+            metadata: Default::default(),
         }
     }
 
@@ -396,6 +397,7 @@ mod tests {
                 entries: 2,
                 matches: None,
                 sequence_groups: None,
+                metadata: Default::default(),
             }],
             warnings: Vec::new(),
         });

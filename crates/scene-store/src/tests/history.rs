@@ -143,6 +143,7 @@ fn open(dir: &TempDir, registry: &TrackRegistry) -> Arc<Track> {
         path: source,
         handler: "TEST".into(),
         options: Settings::new(),
+        metadata: Default::default(),
     };
     match registry.open(&overlay, &CancelToken::new()) {
         Ok(track) => track,

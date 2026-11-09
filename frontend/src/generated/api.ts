@@ -1324,7 +1324,15 @@ lanes: Array<string>,
 /**
  * The decoder id of each overlay lane, in order; empty for an entry without overlays.
  */
-handlers: Array<string>, };
+handlers: Array<string>, 
+/**
+ * What the resolver states about the entry: key and text rows, keys sorted.
+ */
+metadata: Array<[string, string]>, 
+/**
+ * What the resolver states about each overlay lane, as `metadata`, in the order of `handlers`.
+ */
+lane_metadata: Array<Array<[string, string]>>, };
 
 /**
  * One playlist of a playlist item: a run of its entries a viewer steps within.
@@ -1349,7 +1357,11 @@ matches?: number,
 /**
  * How many sequence groups the resolver found, when it says.
  */
-sequence_groups?: number, };
+sequence_groups?: number, 
+/**
+ * What the resolver states about the playlist: key and text rows, keys sorted.
+ */
+metadata: Array<[string, string]>, };
 
 /**
  * What the user asked to add; the intake turns each into an item.

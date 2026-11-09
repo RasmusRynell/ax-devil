@@ -123,13 +123,19 @@ impl WorkspaceItem {
 
 impl Recipe {
     /// The name an item of this recipe has when the user gave it none: the resolver id of a playlist, the file name of
-    /// a video and the host of a live stream.
+    /// a video, the host of a live stream and the kind the file gave an unreadable item.
     pub fn default_name(&self) -> String {
         match &self.source {
             Source::Live(recipe) => recipe.default_name(),
             Source::Video(video) => file_name(video.video.as_path()),
             Source::Playlist(playlist) => playlist.resolver.clone(),
-            Source::Unreadable(_) => "Unreadable item".to_owned(),
+            Source::Unreadable(unreadable) => unreadable
+                .raw
+                .get("kind")
+                .and_then(Value::as_str)
+                .filter(|kind| !kind.is_empty())
+                .unwrap_or("Unreadable item")
+                .to_owned(),
         }
     }
 
@@ -268,6 +274,7 @@ fn resolve_video(
             path: path.to_path_buf(),
             handler: overlay.handler.clone(),
             options,
+            metadata: Default::default(),
         });
     }
     let entry = Entry {
@@ -277,6 +284,7 @@ fn resolve_video(
         overlays,
         starts_hidden: false,
         lanes_starting_hidden: Vec::new(),
+        metadata: Default::default(),
     };
     check_unique_lanes(item, &entry).map_err(Interrupt::Failed)?;
     Ok(Content::SeekableVideo(SeekableVideoContent {

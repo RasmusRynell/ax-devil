@@ -2,7 +2,7 @@
 
 use foundation::{CancelToken, Interrupt, UserError, Warning};
 
-use crate::{Form, OverlayRef, Values, VideoRef, invalid_field};
+use crate::{Form, OverlayRef, Settings, Values, VideoRef, invalid_field};
 
 /// What the host needs to know about a resolver without running it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -82,6 +82,8 @@ pub struct ResolvedPlaylist {
     pub matches: Option<u64>,
     /// How many sequence groups the playlist holds, when the resolver says (shown in Information).
     pub sequence_groups: Option<u64>,
+    /// Facts the resolver states about the playlist, shown in Information; no other behavior depends on them.
+    pub metadata: Settings,
 }
 
 /// One video and the overlays drawn on it.
@@ -97,4 +99,6 @@ pub struct ResolvedEntry {
     pub starts_hidden: bool,
     /// The labels of the overlays that are hidden until the user shows them.
     pub lanes_starting_hidden: Vec<String>,
+    /// Facts the resolver states about the entry, shown in Information; no other behavior depends on them.
+    pub metadata: Settings,
 }

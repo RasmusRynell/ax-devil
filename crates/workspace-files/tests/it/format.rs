@@ -78,7 +78,7 @@ fn sample(dir: &Path, outside: &Path) -> Workspace {
     let id = ItemId::generate();
     let unknown = WorkspaceItem {
         id,
-        label: "live_stream".into(),
+        label: String::new(),
         recipe: Recipe::new(Source::Unreadable(Unreadable {
             raw: json!({"kind": "live_stream", "id": id.to_string(), "extra": [1, {"z": null}]}),
             reason: "Unknown item kind: \"live_stream\". A newer version or a missing plugin?"
@@ -117,7 +117,7 @@ fn a_workspace_round_trips_with_paths_inside_its_folder_relative() {
     fs::create_dir(&dir).unwrap();
     let mut original = sample(&dir, &outside);
     original.items.push(item(
-        "Unreadable item",
+        "",
         Source::Unreadable(Unreadable {
             raw: json!("not an item"),
             reason: "This item is not a JSON object.".into(),
@@ -351,6 +351,31 @@ fn an_item_with_a_setting_the_format_does_not_know_is_kept_as_it_was() {
     save(&loaded, &file).unwrap();
     assert_eq!(read_json(&file)["items"][1], items[1]);
     assert_eq!(read_json(&file)["items"][2], items[2]);
+}
+
+#[test]
+fn an_unreadable_item_without_a_label_is_named_by_its_kind_else_generically() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join(format!("ws{SUFFIX}"));
+    let items = json!([
+        {"kind": "hologram", "id": ItemId::generate().to_string(), "label": ""},
+        {"kind": "hologram", "id": ItemId::generate().to_string()},
+        {"kind": "hologram", "id": ItemId::generate().to_string(), "label": "Mine"},
+        {"id": ItemId::generate().to_string(), "label": ""},
+    ]);
+    fs::write(
+        &file,
+        json!({"version": 2, "name": null, "items": items}).to_string(),
+    )
+    .unwrap();
+
+    let names: Vec<_> = load(&file)
+        .unwrap()
+        .items
+        .iter()
+        .map(WorkspaceItem::display_name)
+        .collect();
+    assert_eq!(names, ["hologram", "hologram", "Mine", "Unreadable item"]);
 }
 
 #[test]

@@ -9,6 +9,7 @@
 //! `decode` returns `Err` and the host, which counts the samples, marks the lane incomplete. A scan or resolve is
 //! used only if the plugin exits 0.
 
+mod budget;
 mod code;
 mod decoder;
 mod fields;

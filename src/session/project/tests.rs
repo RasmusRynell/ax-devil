@@ -19,6 +19,14 @@ fn item(id: ItemId, label: &str, folder: &str) -> WorkspaceItem {
     }
 }
 
+/// Free-form resolver metadata that names a folder of the host.
+fn sentinel(folder: &str, level: &str) -> handler_api::Settings {
+    handler_api::Settings::from_iter([(
+        "source_folder".to_owned(),
+        format!("/home/{folder}/{level}").into(),
+    )])
+}
+
 fn entry(id: ContentId, label: &str, folder: &str) -> Entry {
     Entry {
         id,
@@ -30,9 +38,11 @@ fn entry(id: ContentId, label: &str, folder: &str) -> Entry {
             path: PathBuf::from(format!("/home/{folder}/tracks.txt")),
             handler: "MOT_FILE".into(),
             options: Default::default(),
+            metadata: sentinel(folder, "lane"),
         }],
         starts_hidden: false,
         lanes_starting_hidden: Vec::new(),
+        metadata: sentinel(folder, "entry"),
     }
 }
 
@@ -106,6 +116,7 @@ fn doc() -> (Doc, [ItemId; 6]) {
                 entries: 2,
                 matches: None,
                 sequence_groups: None,
+                metadata: sentinel(folder, "playlist"),
             }],
             warnings: vec![Warning {
                 problem: "Skipped 1 of 3 sequences".into(),
@@ -209,6 +220,11 @@ fn a_watcher_learns_no_path_credential_or_reason_and_sees_only_what_is_open() {
         "SECRET-PATH-A",
         "SECRET-PATH-D",
         "SECRET-PATH-E",
+        // The resolver's metadata of a playlist, an entry and a lane.
+        "source_folder",
+        "/home/SECRET-PATH-D/playlist",
+        "/home/SECRET-PATH-D/entry",
+        "/home/SECRET-PATH-D/lane",
     ] {
         assert!(
             owner.contains(host_only),

@@ -351,31 +351,7 @@ impl LiveRecipe {
                 ),
             ));
         }
-        let mode = self.overlay.mode_name();
-        if let Some(handler) = self.overlay.handler() {
-            if handler.is_empty() {
-                return Err(invalid(
-                    "handler",
-                    format!("Select a handler type for {mode} overlays."),
-                ));
-            }
-            let Some(decoder) = handlers.decoder(handler) else {
-                return Err(UserError::new(
-                    ErrorCode::UnknownHandler,
-                    format!("Unknown live overlay handler type: {handler}"),
-                )
-                .at(Location::field("handler")));
-            };
-            if !decoder.reads_live() {
-                return Err(invalid(
-                    "handler",
-                    format!(
-                        "{} cannot decode a live overlay; select another handler type.",
-                        decoder.spec().name
-                    ),
-                ));
-            }
-        }
+        // The fields in the order the form lists them: the handler comes after the transport's own.
         match &self.overlay {
             LiveOverlay::Mqtt {
                 broker_host,
@@ -414,6 +390,31 @@ impl LiveRecipe {
                 }
             }
             LiveOverlay::None | LiveOverlay::Rtsp { .. } => {}
+        }
+        let mode = self.overlay.mode_name();
+        if let Some(handler) = self.overlay.handler() {
+            if handler.is_empty() {
+                return Err(invalid(
+                    "handler",
+                    format!("Select a handler type for {mode} overlays."),
+                ));
+            }
+            let Some(decoder) = handlers.decoder(handler) else {
+                return Err(UserError::new(
+                    ErrorCode::UnknownHandler,
+                    format!("Unknown live overlay handler type: {handler}"),
+                )
+                .at(Location::field("handler")));
+            };
+            if !decoder.reads_live() {
+                return Err(invalid(
+                    "handler",
+                    format!(
+                        "{} cannot decode a live overlay; select another handler type.",
+                        decoder.spec().name
+                    ),
+                ));
+            }
         }
         Ok(())
     }

@@ -211,6 +211,7 @@ fn check(
             .into_iter()
             .map(|(key, value)| (key, value.into()))
             .collect::<Settings>(),
+        metadata: Default::default(),
     };
     let tracks = TrackRegistry::new(handlers.decoder_lookup(), None);
     let track = match tracks.open(&overlay, cancel) {

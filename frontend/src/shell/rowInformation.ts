@@ -71,6 +71,7 @@ function playlistLane(
     ["overlay source", SOURCES.file],
     ...(path ? [["path", path] as [string, string]] : []),
     ["handler type", entry.handlers[at]],
+    ...entry.lane_metadata[at],
   ]);
 }
 
@@ -89,6 +90,7 @@ function playlistEntry(
       ["entry", number],
       ["lanes", entry.lanes.length],
       ["videos", entry.label],
+      ...entry.metadata,
     ],
     entry.handlers.map((_, at) => playlistLane(playlist, number, entry, at, paths)),
   );
@@ -110,6 +112,7 @@ function playlistRow(row: TreeRow, content: Playlist, paths: Paths) {
           ...(span.sequence_groups === undefined
             ? []
             : [["sequence_groups", span.sequence_groups] as [string, number]]),
+          ...span.metadata,
         ],
         entries.map((entry, at) => playlistEntry(span.label, at + 1, entry, paths)),
       );

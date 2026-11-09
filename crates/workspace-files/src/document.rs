@@ -274,10 +274,7 @@ fn unreadable(raw: Value, reason: String) -> WorkspaceItem {
         id: text("id")
             .and_then(ItemId::parse)
             .unwrap_or_else(ItemId::generate),
-        label: text("label")
-            .or_else(|| text("kind"))
-            .unwrap_or("Unreadable item")
-            .to_owned(),
+        label: text("label").unwrap_or_default().to_owned(),
         recipe: Recipe::new(Source::Unreadable(Unreadable { raw, reason })),
     }
 }
