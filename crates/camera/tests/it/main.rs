@@ -2,6 +2,7 @@
 
 mod datahub;
 mod mqtt;
+mod probe;
 mod real_camera;
 mod rtsp;
 mod scan;

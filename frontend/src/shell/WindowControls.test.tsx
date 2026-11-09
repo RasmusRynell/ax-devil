@@ -26,6 +26,7 @@ function bridge() {
     pickSaveWorkspace: vi.fn(() => Promise.resolve(null)),
     appVersion: async () => "0.0.0",
     openLogs: vi.fn(() => Promise.resolve()),
+    onFullScreenChange: () => () => {},
     onMaximizedChange: vi.fn((listener: (maximized: boolean) => void) => {
       report = listener;
       return () => {};

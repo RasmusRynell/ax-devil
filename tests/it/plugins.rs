@@ -79,6 +79,24 @@ fn install(home: &Path, name: &str) -> PathBuf {
 }
 
 #[test]
+fn list_handlers_and_plugins_list_do_not_read_a_broken_config_file() {
+    let home = tempfile::tempdir().unwrap();
+    let broken = home.path().join("broken.json");
+    std::fs::write(&broken, "{ not json").unwrap();
+    let commands: [&[&str]; 2] = [&["list-handlers"], &["plugins", "list"]];
+    for command in commands {
+        let mut args: Vec<&std::ffi::OsStr> = vec!["--config".as_ref(), broken.as_ref()];
+        args.extend(command.iter().map(std::ffi::OsStr::new));
+        let output = ax_devil(home.path(), &args);
+        assert!(
+            output.status.success(),
+            "{command:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
 fn the_command_line_installs_lists_and_checks_a_plugin_and_fails_a_check_that_proves_nothing() {
     if !python_available() {
         return;

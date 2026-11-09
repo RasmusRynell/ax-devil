@@ -13,8 +13,8 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
 - **MUST** keep one immutable settings state replaced whole; consumers subscribe, never poll.
 - **MUST** apply on OK: validate every field, write atomically, then notify; a failed save changes nothing.
 - **MUST** apply live where the stack allows; settings that cannot carry one shared restart marker.
-- **MUST** keep startup storage folders active until restart, except recovery copies and recents, which follow the
-  newly saved folder.
+- **MUST** keep the state, log, recents and recovery folders fixed in the standard folders, with no setting and no
+  live switching. Only the cache and catalog roots are settings, and a saved change applies at the next start.
 - **MUST** let changed defaults prefill only new items; environment preferences (connection timeout) are read when
   used and never stored on items.
 - **MUST** accept `$NAME` references in connection, analytics and network-scan fields and keep them as

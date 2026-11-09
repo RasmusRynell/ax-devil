@@ -50,6 +50,8 @@ describe("hover card", () => {
   it("shows a video's first frame once the pointer has rested, and drops it on leaving", async () => {
     const room = await renderTree();
     const row = screen.getByRole("treeitem", { name: /^v\.mp4/ });
+    // A row with a picture has no text tip, which would show beside its card.
+    expect(row.hasAttribute("title")).toBe(false);
     fireEvent.pointerEnter(row);
     expect(fetched.mock.calls[0][0]).toBe(`/api/thumbnail?session=${room.id}&entry=content-v`);
     await act(async () => {});

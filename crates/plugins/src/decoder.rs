@@ -117,8 +117,11 @@ impl PluginDecoder {
             let Some(record) = input.next(cancel)? else {
                 break self.close(process.take(), &mut records, cancel);
             };
-            let (position, line) = (record.position, record_line(record.bytes));
-            records.at(position);
+            // Text that is blank after trimming is no record, as a file's blank lines are none.
+            let Some(line) = record_line(record.bytes) else {
+                continue;
+            };
+            records.at(record.position);
             match self.answer(&mut process, &request, line, &mut records, cancel) {
                 Ok(()) => answered = true,
                 Err(End::Incomplete(reason)) if answered => {
@@ -189,13 +192,15 @@ impl PluginDecoder {
     }
 }
 
-/// A record as the plugin gets it: its text when it is UTF-8, otherwise its bytes in base64.
-fn record_line(bytes: &[u8]) -> String {
+/// A record as the plugin gets it: its text, trimmed of whitespace, when it is UTF-8, otherwise its bytes in base64.
+/// `None` for text that is blank.
+fn record_line(bytes: &[u8]) -> Option<String> {
     let record = match std::str::from_utf8(bytes) {
-        Ok(text) => json!({ "text": text }),
+        Ok(text) if text.trim().is_empty() => return None,
+        Ok(text) => json!({ "text": text.trim() }),
         Err(_) => json!({ "base64": STANDARD.encode(bytes) }),
     };
-    json!({ "record": record }).to_string()
+    Some(json!({ "record": record }).to_string())
 }
 
 impl Decoder for PluginDecoder {

@@ -95,8 +95,8 @@ end:
 {"record":{"base64":"/wAB"}}
 ```
 
-A record is `text` when its bytes are UTF-8 and `base64` otherwise. For a file a record is a line, trimmed, with blank
-lines left out; for a live source it is one document, such as one message. The host sends a record only after the
+A record is `text`, trimmed, when its bytes are UTF-8 and `base64` otherwise; text that is blank is no record. For a
+file a record is a line; for a live source it is one document, such as one message. The host sends a record only after the
 plugin has answered the one before: print zero or more output lines for it, then `{"done":{}}`. No sample is "no
 overlay for this record"; `{"skipped": "why"}` drops it (counted, and reported at the record's position, not at the
 output line's number). `done` is not accepted in a `path` decoder's output.
