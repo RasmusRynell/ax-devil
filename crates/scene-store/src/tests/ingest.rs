@@ -128,40 +128,60 @@ fn a_scene_before_the_video_is_not_stored_and_is_warned_about() {
         ["line 2: frame number -2 is before the video"]
     );
 
-    // Read by lines: the reason names the physical line, a blank line before it included, and a record that
-    // also gives a malformed output is still one skipped record.
-    let malformed = Step {
-        skip: Some("not JSON"),
-        ..before_video(-2)
+    // Read by lines: the reason names the physical line, a blank line before it included. A record that gives
+    // several Scenes and malformed outputs is one skipped record, and each cause is listed once.
+    let lines_track = |steps: Vec<Step>, text: &str| {
+        let mut script = Script::new(steps);
+        script.spec.framing = Framing::Records;
+        let rig = Rig::new(script, Tuning::default());
+        fs::write(rig.dir.path().join("overlay.txt"), text).expect("source");
+        let track = rig.open().expect("opens");
+        let warnings = track.warnings();
+        let [skipped] = &warnings[..] else {
+            panic!("{warnings:?}")
+        };
+        (skipped.clone(), track.snapshot().keys.frames.clone())
     };
-    let mut script = Script::new(vec![
-        step(0, &[(1, 10)], OnEqualKey::Merge),
-        malformed,
-        step(1, &[(1, 11)], OnEqualKey::Merge),
-    ]);
-    script.spec.framing = Framing::Records;
-    let rig = Rig::new(script, Tuning::default());
-    fs::write(
-        rig.dir.path().join("overlay.txt"),
+    let negative = |frame, skip, again| Step {
+        skip,
+        again,
+        ..before_video(frame)
+    };
+    let (skipped, frames) = lines_track(
+        vec![
+            step(0, &[(1, 10)], OnEqualKey::Merge),
+            negative(-2, Some("not JSON"), false),
+            negative(-2, Some("not UTF-8"), true),
+            step(1, &[(1, 11)], OnEqualKey::Merge),
+        ],
         "one\n\nnegative\nthree\n",
-    )
-    .expect("source");
-
-    let track = rig.open().expect("opens");
-
-    assert_eq!(track.snapshot().keys.frames, Some(in_order(&[0, 1])));
-    let warnings = track.warnings();
-    let [skipped] = &warnings[..] else {
-        panic!("{warnings:?}")
-    };
+    );
+    assert_eq!(frames, Some(in_order(&[0, 1])));
     assert_eq!(skipped.problem, "Skipped 1 of 3 lines");
     assert_eq!(
         skipped.reasons,
         [
             "line 3: frame number -2 is before the video",
-            "line 3: not JSON"
+            "line 3: not JSON",
+            "line 3: not UTF-8"
         ]
     );
+    assert!(!skipped.more_reasons);
+
+    // More causes than a warning lists: it says so, though the record count is below the listing limit.
+    let (skipped, _) = lines_track(
+        vec![
+            step(0, &[(1, 10)], OnEqualKey::Merge),
+            negative(-1, None, false),
+            negative(-2, None, true),
+            negative(-3, None, true),
+            negative(-4, None, true),
+        ],
+        "one\nmany\n",
+    );
+    assert_eq!(skipped.problem, "Skipped 1 of 2 lines");
+    assert_eq!(skipped.reasons.len(), 3);
+    assert!(skipped.more_reasons);
 }
 
 #[test]

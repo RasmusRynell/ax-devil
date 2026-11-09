@@ -20,9 +20,8 @@ pub(super) struct Feed<'a> {
     pub(super) position: &'a Cell<u64>,
     /// The records of a decoder that reads the file itself, which no input counts.
     pub(super) whole: Whole,
-    /// The last record counted in `skipped` and the reason last given for it, so a record counts once however many
-    /// Scenes or skips it gave, and one cause is named once.
-    pub(super) counted: Option<(u64, String)>,
+    /// The last record counted in `skipped`, so a record counts once however many Scenes or skips it gave.
+    pub(super) counted: Option<u64>,
     /// The records the decoder gave up on; the warning names them with the count of lines read.
     pub(super) skipped: SkippedRecords,
 }
@@ -76,15 +75,12 @@ impl Feed<'_> {
     /// Counts the record at `ordinal` as skipped, once however many causes it has; a later, different cause only
     /// adds its reason.
     fn skip_record(&mut self, ordinal: u64, reason: String) {
-        match &self.counted {
-            Some((counted, last)) if *counted == ordinal => {
-                if *last != reason {
-                    self.skipped.also(reason.clone());
-                }
-            }
-            _ => self.skipped.add(reason.clone()),
+        if self.counted == Some(ordinal) {
+            self.skipped.also(reason);
+        } else {
+            self.counted = Some(ordinal);
+            self.skipped.add(reason);
         }
-        self.counted = Some((ordinal, reason));
     }
 
     /// The records the skipped warning counts against.
