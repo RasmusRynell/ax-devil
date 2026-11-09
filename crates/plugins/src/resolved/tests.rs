@@ -73,6 +73,49 @@ fn metadata_of_a_playlist_an_entry_and_an_overlay_is_carried() {
 }
 
 #[test]
+fn metadata_is_kept_to_its_budget_and_a_plugin_over_it_is_stopped() {
+    use crate::budget::{Budget, OBJECT_BYTES, RUN_BYTES};
+    // `{"k":"xxx"}` is eight bytes longer than its text.
+    let object =
+        |bytes: usize| Settings::from_iter([("k".to_owned(), "x".repeat(bytes - 8).into())]);
+    let mut budget = Budget::default();
+    budget.take(&object(OBJECT_BYTES)).unwrap();
+    assert!(
+        budget.take(&object(OBJECT_BYTES + 1)).is_err(),
+        "one byte over an object"
+    );
+
+    // Exactly the run's bytes fit, and one more does not; a refused object takes nothing.
+    let mut budget = Budget::default();
+    budget.take(&object(100)).unwrap();
+    for _ in 0..127 {
+        budget.take(&object(OBJECT_BYTES)).unwrap();
+    }
+    let rest = RUN_BYTES - 100 - 127 * OBJECT_BYTES;
+    assert!(
+        budget.take(&object(rest + 1)).is_err(),
+        "one byte over the run"
+    );
+    budget.take(&object(rest)).unwrap();
+    assert!(
+        budget.take(&object(8)).is_err(),
+        "nothing fits after the run is full"
+    );
+
+    // One value larger than the whole object budget stops the run at its line.
+    let big = "x".repeat(OBJECT_BYTES);
+    let line = format!(r#"{{"playlist": {{"name": "p", "metadata": {{"k": "{big}"}}}}}}"#);
+    let mut collected = Collected::new(Op::Resolve);
+    let Next::Stop(reason) = collected.line(7, line.as_bytes()) else {
+        panic!("an oversized metadata value is refused");
+    };
+    assert!(
+        reason.starts_with("line 7: a metadata object is "),
+        "{reason}"
+    );
+}
+
+#[test]
 fn playlist_lines_split_the_entries_and_entries_before_the_first_one_take_the_resolvers_name() {
     let entry =
         |name: &str| format!(r#"{{"entry": {{"name": "{name}", "video": {{"file": "/v.mp4"}}}}}}"#);

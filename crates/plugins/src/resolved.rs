@@ -13,6 +13,7 @@ use handler_api::{
 use serde::Deserialize;
 
 use crate::{
+    budget::Budget,
     run::{LineHandler, Next},
     wire::{ErrorIn, WarningIn, cut, json_reason, load_warning},
 };
@@ -163,6 +164,8 @@ pub(crate) struct Collected {
     /// Entries and playlist lines so far.
     printed: usize,
     warnings: Vec<Warning>,
+    /// The metadata kept so far.
+    budget: Budget,
     /// Warnings printed after `MAX_WARNINGS` were kept.
     suppressed: usize,
 }
@@ -176,6 +179,7 @@ impl Collected {
             playlists: Vec::new(),
             printed: 0,
             warnings: Vec::new(),
+            budget: Budget::default(),
             suppressed: 0,
         }
     }
@@ -285,6 +289,7 @@ impl Collected {
                         return Err(format!("'{key}' is more than {MAX_COUNT}"));
                     }
                 }
+                self.budget.take(&playlist.metadata)?;
                 self.printed += 1;
                 self.playlists.push(Printed {
                     matches: playlist.matches,
@@ -346,6 +351,7 @@ impl Collected {
                 frame_count: sequence.frame_count,
             }),
         };
+        self.budget.take(&entry.metadata)?;
         let mut slots = HashSet::new();
         let mut labels = HashSet::new();
         let mut overlays = Vec::with_capacity(entry.overlays.len());
@@ -363,6 +369,7 @@ impl Collected {
                     entry.name, overlay.label
                 ));
             }
+            self.budget.take(&overlay.metadata)?;
             if !overlay.considered {
                 lanes_starting_hidden.push(overlay.label.clone());
             }
