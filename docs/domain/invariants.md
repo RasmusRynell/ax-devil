@@ -93,16 +93,14 @@ implementing module closes.
   rendering consume it.
 - Published Scenes are snapshots: publish a replacement instead of mutating a delivered one; unchanged identities
   may reuse their encoded Sample Item.
-- An entity's observations stay time-sorted on the Scene's clock; every observation carries that clock and may
-  carry the other.
+- An entity's observations stay sorted on the Scene's clock.
 - A classification type is a dynamic string; known values are only a convenience. Routing by classification is catalog
   policy: UI code never switches on classification strings.
 - Score and confidence are separate: a decoder sets what its source provides and never derives one from the other or
   a default; a missing value stays missing and the sample is kept. Both are any finite number shown plain; a bar for a
   value in 0..1 is a display hint, not a range requirement. The primary classification ranks scored before unscored,
   then by score, then by confidence.
-- A relation is a directed link between entity ids. A relation with a missing endpoint is valid Scene data but is not
-  rendered.
+- A relation is a directed link between entity ids. A relation with a missing endpoint is valid but not rendered.
 - An observation's source data holds what the source supplied verbatim; its debug data holds what the decoder
   computed. Both hold only schema value types (null, bool, number, string, list, map); inspection shows and queries
   them under Debug, each field with its origin. Scene-level debug data is decoder-owned frame diagnostics, never
