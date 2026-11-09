@@ -542,3 +542,21 @@ pub struct SessionSummary {
     #[ts(optional)]
     pub link_problem: Option<String>,
 }
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<SessionAuth>();
+    types.visit::<DocCommand>();
+    types.visit::<SessionCommand>();
+    types.visit::<WorkspaceCommand>();
+    types.visit::<CursorRegion>();
+    types.visit::<CursorElement>();
+    types.visit::<CursorPoint>();
+    types.visit::<SessionClientMessage>();
+    types.visit::<SeatAccess>();
+    types.visit::<SharingInfo>();
+    types.visit::<DocWire>();
+    types.visit::<AckOutcome>();
+    types.visit::<SessionServerMessage>();
+    types.visit::<SessionSummary>();
+}

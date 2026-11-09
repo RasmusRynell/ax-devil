@@ -181,3 +181,18 @@ pub enum IngestWire {
     /// The reader stopped early, and why. What it read stays; frames after it have no overlay.
     Incomplete(ErrorWire),
 }
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<BasisWire>();
+    types.visit::<LanePolicyWire>();
+    types.visit::<StickyWire>();
+    types.visit::<LaneDefaultsWire>();
+    types.visit::<LaneInfo>();
+    types.visit::<FilterOptionInfo>();
+    types.visit::<WarningInfo>();
+    types.visit::<LaneStatusWire>();
+    types.visit::<AlignmentWire>();
+    types.visit::<AlignmentVerdictWire>();
+    types.visit::<IngestWire>();
+}

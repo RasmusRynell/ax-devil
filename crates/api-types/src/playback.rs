@@ -423,5 +423,16 @@ pub enum ServerMessage {
     Error(ErrorWire),
 }
 
+/// Visits the types this module sends to the frontend, and its modules' types.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<ClientMessage>();
+    types.visit::<ServerMessage>();
+    events::visit_api_types(types);
+    export::visit_api_types(types);
+    file_scope::visit_api_types(types);
+    lane::visit_api_types(types);
+    want::visit_api_types(types);
+}
+
 #[cfg(test)]
 mod tests;

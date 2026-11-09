@@ -1,7 +1,7 @@
 //! What the overlay modes not chosen hold, as a request carries it: no decoder, since nothing reads it until its mode
 //! is chosen.
 
-use super::{NewLiveWire, WireSecret, reference_only};
+use super::{NewLiveWire, WireSecret, new_live::reference_only};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use workspace::{DataHubSettings, LiveRecipe, MqttSettings, Secret, intake};
@@ -96,4 +96,10 @@ impl From<KeptDataHubWire> for intake::NewDataHub {
             channel: hub.channel,
         }
     }
+}
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<KeptMqttWire>();
+    types.visit::<KeptDataHubWire>();
 }

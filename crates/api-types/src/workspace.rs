@@ -275,3 +275,23 @@ pub struct HiddenTarget {
     #[ts(optional)]
     pub lane: Option<String>,
 }
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<WorkspaceState>();
+    types.visit::<RecentWorkspace>();
+    types.visit::<RowInfo>();
+    types.visit::<RowKindWire>();
+    types.visit::<RowStatusInfo>();
+    types.visit::<ItemState>();
+    types.visit::<LiveShown>();
+    types.visit::<ReloadFailure>();
+    types.visit::<ItemRecipe>();
+    types.visit::<ItemKind>();
+    types.visit::<ResolutionState>();
+    types.visit::<NewItem>();
+    types.visit::<NewOverlayWire>();
+    types.visit::<CheckFilesRequest>();
+    types.visit::<FileCheck>();
+    types.visit::<HiddenTarget>();
+}

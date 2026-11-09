@@ -194,3 +194,11 @@ pub trait Renderer {
     /// Waits for the pixels of the oldest job not answered yet.
     fn receive(&mut self) -> Result<Pixels, UserError>;
 }
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<Output>();
+    types.visit::<LaneStyle>();
+    types.visit::<RenderLane>();
+    types.visit::<RenderSetup>();
+}

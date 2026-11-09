@@ -26,4 +26,4 @@ persistent_comment = true
 max_model_tokens = 200000
 
 [ignore]
-glob = ['Cargo.lock', 'pnpm-lock.yaml', 'frontend/src/generated/*', 'desktop/generated/*']
+glob = ['Cargo.lock', 'pnpm-lock.yaml', 'frontend/src/generated/**', 'desktop/generated/*']

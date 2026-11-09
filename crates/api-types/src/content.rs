@@ -95,3 +95,10 @@ pub struct EntryInfo {
     /// What the resolver states about each overlay lane, as `metadata`, in the order of `handlers`.
     pub lane_metadata: Vec<Vec<(String, String)>>,
 }
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<ContentInfo>();
+    types.visit::<PlaylistSpanInfo>();
+    types.visit::<EntryInfo>();
+}
