@@ -49,7 +49,9 @@ describe("popover placement", () => {
   // jsdom lays nothing out: the area, the button and the panel's content are stubbed, and the panel's own height is
   // whatever `content` says, as a browser would measure it.
   const area = { left: 50, top: 100, right: 450, bottom: 500 };
-  const near = { left: 400, top: 440, right: 430, bottom: 470 };
+  const bottomButton = { left: 400, top: 440, right: 430, bottom: 470 };
+  const topButton = { left: 100, top: 120, right: 130, bottom: 150 };
+  let near = bottomButton;
   const wide = 200;
   let content = 200;
   // A resize reaches the callback only for an element registered through `observe()` and not since dropped.
@@ -59,6 +61,7 @@ describe("popover placement", () => {
 
   beforeEach(() => {
     content = 200;
+    near = bottomButton;
     observers.clear();
     vi.stubGlobal(
       "ResizeObserver",
@@ -116,6 +119,13 @@ describe("popover placement", () => {
     expect(top).toBeGreaterThanOrEqual(area.top);
     expect(left).toBeGreaterThanOrEqual(area.left);
     expect(left + wide).toBeLessThanOrEqual(area.right);
+  });
+
+  it("opens below a button with room beneath it", () => {
+    near = topButton;
+    const { top, bottom } = box(open());
+    expect(top).toBeGreaterThanOrEqual(near.bottom);
+    expect(bottom).toBeLessThanOrEqual(area.bottom);
   });
 
   it("caps a panel taller than its area to the area", () => {

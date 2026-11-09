@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Column } from "./columns";
 import { Table } from "./Table";
@@ -48,6 +48,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -105,6 +106,26 @@ describe("Table", () => {
     rerender(table("replaced", 40, rows.slice(0, 5), onActivate, "a"));
     rerender(table("replaced", 40, [...rows].reverse(), onActivate, "a"));
     expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  it("shows a copied row's check for the full time after its latest copy", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    render(table("copied", 3, [rowAt(1), rowAt(2), rowAt(3)]));
+    const wait = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+    const copy = () =>
+      act(async () => {
+        fireEvent.keyDown(screen.getByRole("listbox"), { key: "c", ctrlKey: true });
+      });
+
+    await copy();
+    expect(screen.queryByText("Copied")).not.toBeNull();
+    await wait(1000);
+    await copy();
+    await wait(1000);
+    expect(screen.queryByText("Copied")).not.toBeNull();
+    await wait(1000);
+    expect(screen.queryByText("Copied")).toBeNull();
   });
 
   it("keeps the width the user gave a column when the table is drawn again", () => {

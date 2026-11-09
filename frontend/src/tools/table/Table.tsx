@@ -308,7 +308,8 @@ export function Table<Row>({
     place(next);
     reveal(next);
   };
-  const [copied, setCopied] = useState<string | null>(null);
+  // An object, so copying the row already marked is a new mark and restarts the time.
+  const [copied, setCopied] = useState<{ key: string } | null>(null);
   useEffect(() => {
     if (copied === null) return;
     const timer = setTimeout(() => setCopied(null), COPIED_MS);
@@ -316,7 +317,7 @@ export function Table<Row>({
   }, [copied]);
   /** Copies the text of the row with `key`; the check shows once the clipboard has it. */
   const copy = useCallback(async (key: string, text: string) => {
-    if (await writeClipboard(text)) setCopied(key);
+    if (await writeClipboard(text)) setCopied({ key });
   }, []);
   const copyRow = useCallback(
     (index: number) => {
@@ -463,7 +464,7 @@ export function Table<Row>({
                     active={index === at}
                     dimmed={row !== undefined && dimmed?.(row) === true}
                     tinted={row !== undefined && tint?.(row) === true}
-                    copied={row !== undefined && copied === keyOf(row)}
+                    copied={row !== undefined && copied?.key === keyOf(row)}
                     cursor={row === undefined ? undefined : cursorId(row)}
                     onPick={pick}
                     onCopy={copyRow}
