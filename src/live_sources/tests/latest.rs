@@ -1,12 +1,21 @@
 //! What waits for the decoder when messages arrive faster than it reads.
 
-use std::time::{Duration, SystemTime};
+use std::{
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::{Duration, SystemTime},
+};
 
 use bytes::Bytes;
 use camera::{Feed as Delivery, Message, Status};
-use foundation::CancelToken;
+use foundation::{CancelToken, Interrupt};
+use handler_api::{DecodeError, DecodeSummary, Decoder, Input, Record, SceneSink, Spec, Values};
 use overlays::NONE_CELL;
 use scene_store::Feed;
+use tokio::time::timeout;
 use workspace::LiveOverlay;
 
 use super::{frame, luma, rig};
@@ -73,11 +82,85 @@ fn adf(second: u32) -> Delivery<Message> {
     ))
 }
 
+/// A built-in decoder under another id that counts how often the decoder asks for a record. The decoder asks again only
+/// when it has finished the record before, so a count says how many records it has taken in.
+struct Counting {
+    inner: Arc<dyn Decoder>,
+    spec: Spec,
+    asked: Arc<AtomicUsize>,
+}
+
+struct CountingInput<'a> {
+    inner: &'a mut dyn Input,
+    asked: &'a AtomicUsize,
+}
+
+impl Input for CountingInput<'_> {
+    fn path(&self) -> Option<&Path> {
+        self.inner.path()
+    }
+
+    fn next(&mut self, cancel: &CancelToken) -> Result<Option<Record<'_>>, Interrupt<DecodeError>> {
+        self.asked.fetch_add(1, Ordering::SeqCst);
+        self.inner.next(cancel)
+    }
+}
+
+impl Decoder for Counting {
+    fn spec(&self) -> &Spec {
+        &self.spec
+    }
+
+    fn reads_live(&self) -> bool {
+        self.inner.reads_live()
+    }
+
+    fn decode(
+        &self,
+        input: &mut dyn Input,
+        options: &Values,
+        sink: &mut dyn SceneSink,
+        cancel: &CancelToken,
+    ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
+        let mut counting = CountingInput {
+            inner: input,
+            asked: &self.asked,
+        };
+        self.inner.decode(&mut counting, options, sink, cancel)
+    }
+}
+
+/// Waits, for at most 20 s, until the decoder has asked for a record `count` times.
+async fn asked(asked: &AtomicUsize, count: usize) {
+    timeout(Duration::from_secs(20), async {
+        while asked.load(Ordering::SeqCst) < count {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("the decoder took the record in");
+}
+
 #[tokio::test]
 async fn a_malformed_mqtt_message_costs_only_itself_in_a_built_in_decoder() {
-    let rig = rig();
+    let mut rig = rig();
+    let built_in = rig.handlers.decoder("ADF_V1_FRAME").cloned().unwrap();
+    let counted = Arc::new(AtomicUsize::new(0));
+    let spec = Spec {
+        id: "ADF_COUNTED".into(),
+        ..built_in.spec().clone()
+    };
+    let counting = Counting {
+        inner: built_in,
+        spec,
+        asked: Arc::clone(&counted),
+    };
+    rig.handlers = rig
+        .handlers
+        .clone()
+        .with_decoders([Arc::new(counting) as _]);
     let overlay = LiveOverlay::Mqtt {
-        handler: "ADF_V1_FRAME".into(),
+        handler: "ADF_COUNTED".into(),
         broker_host: "broker".into(),
         broker_port: 1883,
         broker_user: String::new(),
@@ -89,17 +172,16 @@ async fn a_malformed_mqtt_message_costs_only_itself_in_a_built_in_decoder() {
     video.status.send(Status::Live { epoch: 1 }).unwrap();
     wire.status.send(Status::Live { epoch: 1 }).unwrap();
 
-    // Only the newest waiting message is kept, so the decoder is given time to read each one before the next.
-    wire.messages.send(adf(1)).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    wire.messages
-        .send(message("{not json".into()))
-        .await
-        .unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    wire.messages.send(adf(2)).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    wire.messages.send(adf(3)).await.unwrap();
+    // Only the newest waiting message is kept, so each is sent once the decoder has finished the one before: its
+    // next request for a record says so.
+    asked(&counted, 1).await;
+    for (sent, message) in [adf(1), message("{not json".into()), adf(2), adf(3)]
+        .into_iter()
+        .enumerate()
+    {
+        wire.messages.send(message).await.unwrap();
+        asked(&counted, sent + 2).await;
+    }
 
     video
         .units

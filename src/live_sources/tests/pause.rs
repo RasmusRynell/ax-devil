@@ -1,10 +1,12 @@
 //! What a viewer is shown while it is paused and when it resumes.
 
-use std::sync::atomic::Ordering;
+use std::{sync::atomic::Ordering, time::Duration};
 
+use api_types::live::LiveStatusWire;
 use camera::Status;
 use foundation::MediaTime;
 use overlays::NONE_CELL;
+use tokio::time::timeout;
 
 use super::{Update, delivering, frame, lost, luma, rig, update};
 use crate::live_sources::fake::{content, doc, rtsp, unit};
@@ -98,16 +100,24 @@ async fn a_paused_viewer_whose_decoder_fell_behind_is_shown_the_new_connection_a
     for n in 2..=303 {
         docs.send(doc(1, &(n * 1_000).to_string())).await.unwrap();
     }
-    video.status.send(lost()).unwrap();
-    video.status.send(Status::Live { epoch: 2 }).unwrap();
-    rig.hold.open();
-    let mut gap = None;
-    while gap.is_none() {
-        if let Update::Gap { time_us } = update(&mut viewer).await {
-            gap = Some(time_us);
+    // The decoder stays held until the viewer reports the lane behind, so the burst cannot have been drained.
+    let gap = timeout(Duration::from_secs(20), async {
+        while !matches!(
+            update(&mut viewer).await,
+            Update::Status(LiveStatusWire { behind: true, .. })
+        ) {}
+        video.status.send(lost()).unwrap();
+        video.status.send(Status::Live { epoch: 2 }).unwrap();
+        rig.hold.open();
+        loop {
+            if let Update::Gap { time_us } = update(&mut viewer).await {
+                return time_us;
+            }
         }
-    }
-    assert!(gap.is_some_and(|time_us| time_us < 303_000), "{gap:?}");
+    })
+    .await
+    .expect("a gap after the overflow and the reconnect");
+    assert!(gap < 303_000, "{gap}");
 
     // Resumed, the viewer is shown the new connection's picture with the new connection's sample.
     viewer.pause(false);

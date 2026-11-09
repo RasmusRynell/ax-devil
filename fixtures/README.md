@@ -14,6 +14,7 @@ Committed test inputs, shared by Rust and frontend tests. Each one records where
 | `video/hevc_gop30.mp4` | Same generator, libx265: 90 frames, GOP 30 | Generated for this repository (MIT) |
 | `video/stream_h264_gop5.h264`, `video/stream_hevc_gop5.hevc`, `video/stream_h264_96x64.h264` | Same generator: raw Annex B streams of a live camera's shape, with parameter sets in every keyframe: 12 frames at 64x48 with a keyframe every 5 (H.264, HEVC), and one 96x64 H.264 keyframe; read by `crates/media/src/stream.rs` so its tests need no encoder | Generated for this repository (MIT) |
 | `video/pts_offset.mp4` | Same generator: 60 frames, `-output_ts_offset 10`, so the container starts at 10 s | Generated for this repository (MIT) |
+| `video/checker_h264_8x8.mp4` | Same generator: 8x8, 30 frames, 4x4-pixel blocks alternately luma 16 and 235 | Generated for this repository (MIT) |
 | `video/truncated.mp4` | `cfr_h264_gop10_bf2.mp4` with its last 30 bytes cut off by `generate.sh` | Generated for this repository (MIT) |
 | `video/not_video.mp4` | A line of text named like a video, written by `generate.sh` | Generated for this repository (MIT) |
 | `video/yuv444p10_w18.mkv`, `video/rgb24_w16.nut` | Same generator: four frames of one flat colour as 10-bit 4:4:4 BT.709 at width 18, and as raw RGB24 at width 16 | Generated for this repository (MIT) |

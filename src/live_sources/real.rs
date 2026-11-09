@@ -240,38 +240,65 @@ mod tests {
     use super::*;
     use workspace::ResolvedCamera;
 
-    #[test]
-    fn a_camera_waits_as_long_as_the_connection_timeout_setting_says() {
-        let folder = tempfile::tempdir().unwrap();
-        let settings = settings::Settings::load(&folder.path().join("settings.json")).unwrap();
+    /// A camera that accepts connections and never answers.
+    async fn silent_camera() -> (tokio::net::TcpListener, ResolvedCamera) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let resolved = ResolvedCamera {
-            host: "cam".into(),
+            host: "127.0.0.1".into(),
             protocol: Protocol::Http,
-            port: 80,
-            rtsp_port: 554,
+            port: listener.local_addr().unwrap().port(),
+            rtsp_port: listener.local_addr().unwrap().port(),
             rtsp_route: workspace::RtspRoute::Direct,
             head: 1,
             resolution: None,
             url: None,
             login: None,
         };
+        (listener, resolved)
+    }
 
-        let settings = Arc::new(settings);
+    #[tokio::test]
+    async fn a_connection_gives_up_after_the_timeout_setting_as_it_stands_when_it_connects() {
+        let folder = tempfile::tempdir().unwrap();
+        let settings =
+            Arc::new(settings::Settings::load(&folder.path().join("settings.json")).unwrap());
         let connector = CameraConnector::new(settings.clone());
-        let waits = connector.timeout();
-        assert_eq!(waits, Duration::from_secs(10));
-        assert_eq!(camera_of(&resolved, waits).unwrap().timeout, waits);
+        let (_camera, resolved) = silent_camera().await;
 
-        // A changed setting reaches the next connection of a connector that already exists.
+        // The setting changes after the connector exists; the default would leave the attempt waiting for ten seconds.
         let mut values = settings.state().values(&settings::Scope::ALL);
-        values.insert("camera.timeout".into(), 25.into());
+        values.insert("camera.timeout".into(), 1.into());
         let change = settings::Change {
             values,
             shortcuts: Default::default(),
         };
         settings.replace(&settings::Scope::ALL, &change).unwrap();
-        let waits = connector.timeout();
-        assert_eq!(waits, Duration::from_secs(25));
-        assert_eq!(camera_of(&resolved, waits).unwrap().timeout, waits);
+
+        let broker = Broker {
+            host: "127.0.0.1".into(),
+            port: 1883,
+            login: None,
+        };
+        let transports = [
+            connector.video(&resolved, false),
+            connector.mqtt(&resolved, &broker, "scene"),
+            connector.datahub(&resolved, "topic", 1),
+        ];
+        for transport in transports {
+            let (inputs, close) = transport.split();
+            let mut status = inputs.status;
+            let failed = tokio::time::timeout(Duration::from_secs(6), async {
+                loop {
+                    if let Status::Reconnecting { error, .. } = &*status.borrow_and_update() {
+                        return error.kind;
+                    }
+                    status.changed().await.unwrap();
+                }
+            })
+            .await
+            .expect("the attempt ended within the changed timeout");
+            assert_eq!(failed, camera::ErrorKind::TimedOut);
+            close.await;
+        }
     }
 }
