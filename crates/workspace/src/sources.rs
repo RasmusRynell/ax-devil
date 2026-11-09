@@ -93,11 +93,12 @@ impl SourcePaths {
                 prints.insert(file.clone(), print);
             }
         }
-        let mut walked = 0;
+        let (mut walked, mut truncated) = (0, false);
         let mut pending: Vec<PathBuf> = self.folders.iter().rev().cloned().collect();
         while let Some(folder) = pending.pop() {
             token.check()?;
             if walked == MAX_FOLDERS {
+                truncated = true;
                 break;
             }
             walked += 1;
@@ -111,7 +112,7 @@ impl SourcePaths {
                 }
             }
         }
-        Ok(Snapshot { prints })
+        Ok(Snapshot { prints, truncated })
     }
 }
 
@@ -145,6 +146,12 @@ impl Watch {
                 Ok(extra) => baseline = baseline.or(extra),
                 Err(Cancelled) => return (result, None),
             }
+        }
+        if baseline.truncated {
+            tracing::warn!(
+                "A source spans over {MAX_FOLDERS} folders; changes in the rest go unnoticed: {:?}",
+                paths.folders
+            );
         }
         let watch = (!paths.is_empty()).then_some(Self { paths, baseline });
         (result, watch)
@@ -204,6 +211,8 @@ impl Fingerprint {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Snapshot {
     prints: BTreeMap<PathBuf, Fingerprint>,
+    /// Whether folders past [`MAX_FOLDERS`] were left out.
+    truncated: bool,
 }
 
 impl Snapshot {
@@ -211,6 +220,7 @@ impl Snapshot {
     #[must_use]
     fn or(mut self, other: Self) -> Self {
         self.prints.extend(other.prints);
+        self.truncated |= other.truncated;
         self
     }
 

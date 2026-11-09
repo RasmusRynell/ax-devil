@@ -46,6 +46,7 @@ describe("add video", () => {
       appVersion: async () => "0.0.0",
       openLogs: () => Promise.resolve(),
       onMaximizedChange: () => () => {},
+      onFullScreenChange: () => () => {},
     } satisfies WindowBridge;
   };
   const commands = () => FakeSocket.latest.received.filter((message) => message.type === "command");

@@ -102,10 +102,10 @@ export const MENUS: readonly { label: string; items: readonly Layout[] }[] = [
   {
     label: "View",
     items: [
-      action("fullscreen"),
+      check("fullscreen"),
       action("lane-fullscreen"),
       action("media-tools"),
-      action("sidebar"),
+      check("sidebar"),
       SEPARATOR,
       action("zoom-in"),
       action("zoom-out"),

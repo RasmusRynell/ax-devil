@@ -252,6 +252,20 @@ fn what_cannot_be_streamed_is_refused_naming_the_field_and_the_python_message() 
             "handler",
             "Unknown live overlay handler type: NOPE",
         ),
+        // The transport's own fields are checked before the handler.
+        (
+            mqtt(&|m| (m.broker_host, m.handler) = (Some(" ".into()), Some("NOPE".into()))),
+            "broker_host",
+            "MQTT Host is required for MQTT overlay mode.",
+        ),
+        (
+            datahub(NewDataHub {
+                handler: Some("NOPE".into()),
+                ..NewDataHub::default()
+            }),
+            "topic",
+            "Topic is required for WebSocket overlay mode.",
+        ),
     ];
     for (new, field, message) in cases {
         let (_, reason, location) = refusal(new.clone());

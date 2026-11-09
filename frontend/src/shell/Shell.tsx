@@ -35,7 +35,7 @@ import { LISTED_VIEWS, Sidebar } from "./Sidebar";
 import { Welcome } from "./Welcome";
 import { WorkspaceFileDialog } from "./WorkspaceFileDialog";
 import type { ActivityItem } from "./views";
-import { toggleAppFullscreen, useServerKind } from "./windowBridge";
+import { toggleAppFullscreen, useAppFullscreen, useServerKind } from "./windowBridge";
 
 const TEXT_INPUTS = new Set(["text", "search", "number", "email", "url", "tel", "password"]);
 
@@ -73,6 +73,7 @@ type Dialog =
  */
 export function Shell({ version }: { version: string }) {
   const [sidebar, setSidebar] = useView("sidebar");
+  const fullscreen = useAppFullscreen();
   const { viewers, active } = useViewers();
   useSidebarOnReplace();
   const allowed = useAllowed();
@@ -189,7 +190,8 @@ export function Shell({ version }: { version: string }) {
     setDialog("add-live-stream");
   };
   const select = (item: MenuCommand) => {
-    if (item.kind === "check" && !(item.id in SETTING_CHECKS))
+    // A check with no command behind it only flips its mark.
+    if (item.kind === "check" && !(item.id in actions) && !(item.id in viewerActions))
       setChecked((now) => {
         const next = new Set(now);
         if (!next.delete(item.id)) next.add(item.id);
@@ -265,6 +267,8 @@ export function Shell({ version }: { version: string }) {
             checked={
               new Set([
                 ...checked,
+                ...(fullscreen ? ["fullscreen"] : []),
+                ...(sidebar.open ? ["sidebar"] : []),
                 ...Object.entries(SETTING_CHECKS)
                   .filter(([, key]) => values[key] === true)
                   .map(([id]) => id),

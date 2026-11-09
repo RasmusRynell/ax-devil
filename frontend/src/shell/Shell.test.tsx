@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { CommandId } from "../generated/settings";
+import { installFakeFullscreen } from "../fakeFullscreen";
 import { FakeSocket, video } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
 import { useViewerActions } from "../viewer/actions";
 import { renderShell, showShell } from "./shellHarness";
+
+installFakeFullscreen();
 
 const playback = { togglePlay: vi.fn(), step: vi.fn() };
 const offered = {
@@ -142,6 +145,7 @@ describe("about on the desktop", () => {
     window.axDevilWindow = {
       appVersion: async () => "0.9.0",
       onMaximizedChange: () => () => undefined,
+      onFullScreenChange: () => () => undefined,
     } as unknown as Window["axDevilWindow"];
     for (const [grants, remote] of [
       [["preferences", "sessions"], false],
@@ -173,6 +177,7 @@ describe("diagnostics", () => {
     window.axDevilWindow = {
       appVersion: async () => "0.9.0",
       onMaximizedChange: () => () => undefined,
+      onFullScreenChange: () => () => undefined,
       openLogs,
     } as unknown as Window["axDevilWindow"];
     const file = { path: "/cfg/settings.json", version: 1, log: "/state/logs/ax-devil.log" };
@@ -235,7 +240,7 @@ describe("sidebar", () => {
     await renderShell();
     expect(screen.getByRole("complementary", { name: "Sidebar" })).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitem", { name: "View" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Sidebar/ }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Sidebar/ }));
     expect(screen.queryByRole("complementary")).toBeNull();
     fireEvent.keyDown(document, { key: "\\", ctrlKey: true });
     expect(screen.getByRole("complementary")).toBeTruthy();
@@ -254,6 +259,22 @@ describe("view settings", () => {
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Lane Names/ }));
     const box = await screen.findByRole("dialog", { name: "Settings" });
     expect(box.textContent).toContain("preference: full");
+  });
+});
+
+describe("view menu checks", () => {
+  it("mark Sidebar and Fullscreen while they are on, however they were changed", async () => {
+    await renderShell();
+    const marks = () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "View" }));
+      return [/^Sidebar/, /^Fullscreen/].map((name) =>
+        screen.getByRole("menuitemcheckbox", { name }).getAttribute("aria-checked"),
+      );
+    };
+    expect(marks()).toEqual(["true", "false"]);
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /^Sidebar/ }));
+    await act(() => document.documentElement.requestFullscreen());
+    expect(marks()).toEqual(["false", "true"]);
   });
 });
 

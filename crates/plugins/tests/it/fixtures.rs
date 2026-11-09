@@ -185,7 +185,8 @@ fn the_shell_records_plugin_answers_each_record_of_a_live_source_with_one_sample
             b"100000 7 car 0.1 0.2 0.3 0.4",
             b"not a record",
             &[0xff, 0xfe],
-            b"200000 7 car 0.15 0.2 0.35 0.4",
+            "\u{3000}200000 7 car 0.15 0.2 0.35 0.4\u{a0}".as_bytes(),
+            "\u{a0} \t".as_bytes(),
         ],
         Duration::ZERO,
     );

@@ -34,5 +34,7 @@ describe("shortcutOf", () => {
     expect(of({ key: "s", metaKey: true })).toBeNull();
     expect(of({ key: "å" })).toBeNull();
     expect(of({ key: ">", shiftKey: true })).toBe(">");
+    // Keypad Enter is Enter, not a key of its own that would record as nothing.
+    expect(of({ key: "Enter", code: "NumpadEnter", ctrlKey: true })).toBe("Ctrl+Enter");
   });
 });

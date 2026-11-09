@@ -158,6 +158,7 @@ fn a_tree_past_the_folder_limit_still_gives_a_snapshot_of_the_folders_before_the
     };
     let token = CancelToken::new();
     let before = paths.snapshot(&token).unwrap();
+    assert!(before.truncated);
 
     fs::write(past.join("late.txt"), "x").unwrap();
     assert!(before.changes(&paths.snapshot(&token).unwrap()).is_empty());

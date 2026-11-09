@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useGrants } from "../access";
 
 /** What the Electron shell's preload exposes to the page; absent in a plain browser. */
@@ -7,6 +8,8 @@ export interface WindowBridge {
   close(): void;
   /** Puts the whole window into or out of fullscreen. */
   toggleFullScreen(): void;
+  /** Reports whether the window is fullscreen at once and on every change after; returns the way to stop listening. */
+  onFullScreenChange(listener: (fullscreen: boolean) => void): () => void;
   /** Opens the native file dialog for one video file. Resolves to the absolute path chosen; null when cancelled. */
   pickVideo(): Promise<string | null>;
   /**
@@ -63,6 +66,21 @@ export function toggleAppFullscreen(): void {
       .then(() => document.documentElement.requestFullscreen())
       .catch(() => {});
   }
+}
+
+/** Whether the whole application is fullscreen, however it got there: the window in the desktop, the page in a browser. */
+export function useAppFullscreen(): boolean {
+  const bridge = window.axDevilWindow;
+  const [fullscreen, setFullscreen] = useState(
+    !bridge && document.fullscreenElement === document.documentElement,
+  );
+  useEffect(() => {
+    if (bridge) return bridge.onFullScreenChange(setFullscreen);
+    const changed = () => setFullscreen(document.fullscreenElement === document.documentElement);
+    document.addEventListener("fullscreenchange", changed);
+    return () => document.removeEventListener("fullscreenchange", changed);
+  }, [bridge]);
+  return fullscreen;
 }
 
 /**

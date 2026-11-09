@@ -22,12 +22,13 @@ use foundation::{
     MediaTime, PixelFormat, Plane, UserError, VideoFrame,
 };
 use handler_api::{
-    DecodeError, DecodeSummary, Decoder, Form, Framing, Input, OnEqualKey, SceneSink, Spec, Values,
+    DecodeError, DecodeSummary, Decoder, Form, Framing, Header, Input, OnEqualKey, SceneSink, Spec,
+    Values,
 };
 use overlay_sync::{MatchBasis as Basis, MatchPolicy, Sticky};
 use scene::{
-    BoundingBox, Coverage, Entity, EntityId, Event, FilterPolicy, Geometry, MatchBasis,
-    Observation, Operation, Scene, SceneTime, TimeSlice,
+    BoundingBox, ClassRule, Coverage, Entity, EntityId, Event, FilterOption, FilterPolicy,
+    Geometry, MatchBasis, Observation, Operation, Scene, SceneTime, TimeSlice,
 };
 use tokio::sync::{mpsc, watch};
 use workspace::{LiveOverlay, LiveVideoContent, ResolvedCamera};
@@ -334,6 +335,23 @@ pub struct TestDecoder(pub Arc<Hold>);
 impl TestDecoder {
     /// The id the handler registers under.
     pub const ID: &'static str = "LIVE_TEST";
+
+    /// The one class filter the decoder offers, which a viewer is told of.
+    pub fn filter() -> FilterPolicy {
+        FilterPolicy {
+            name: "",
+            options: vec![FilterOption {
+                id: "show_car".into(),
+                label: "Car".into(),
+                default_enabled: true,
+                rule: ClassRule {
+                    types: vec!["car".into()],
+                    include_empty: false,
+                    exclude: false,
+                },
+            }],
+        }
+    }
 }
 
 fn scene_of(line: &str) -> Scene {
@@ -372,6 +390,11 @@ impl Decoder for TestDecoder {
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
+        sink.header(Header {
+            filter: TestDecoder::filter(),
+            coverage: Coverage::Sparse,
+            metadata: Default::default(),
+        });
         while let Some(record) = input.next(cancel)? {
             if !self.0.wait(cancel) {
                 return Err(Interrupt::Cancelled);
@@ -381,10 +404,7 @@ impl Decoder for TestDecoder {
         }
         Ok(DecodeSummary {
             warnings: Vec::new(),
-            filter: FilterPolicy {
-                name: "",
-                options: Vec::new(),
-            },
+            filter: TestDecoder::filter(),
             metadata: Default::default(),
             coverage: Coverage::Sparse,
         })

@@ -19,6 +19,7 @@ handlers.workspace = true
 overlay-sync.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tracing.workspace = true
 # One reading of a stream URL's destination, the parser the camera crate connects by (live/endpoint.rs).
 # A stream URL's user is compared as the connection reads it (live/endpoint.rs).
 percent-encoding = "2"

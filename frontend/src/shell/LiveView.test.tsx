@@ -484,6 +484,9 @@ describe("a hover picture", () => {
   it("is asked for only on a camera the scan signed in to", async () => {
     await renderView([]);
     await screen.findByText("10.0.0.3");
+    // A row with a picture has no text tip, which would show beside its card; one without keeps it.
+    const tipped = (name: RegExp) => screen.getByRole("treeitem", { name }).hasAttribute("title");
+    expect([tipped(/10\.0\.0\.2/), tipped(/10\.0\.0\.3/)]).toEqual([false, true]);
     fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /10\.0\.0\.3/ }), MOUSE);
     expect(fetched).not.toHaveBeenCalledWith(
       expect.stringContaining("/api/live/snapshot"),

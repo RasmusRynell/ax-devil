@@ -166,8 +166,8 @@ implementing module closes.
 ## Synchronization
 
 - Live sync pairs data by capture time, not arrival time. While the feed has an overlay, a live frame waits until its
-  overlay is settled or a bounded wait ends (D28), and frames leave one per arriving frame; no future sample shows
-  early. Sharing an RTSP connection does not pair arrivals; both keep their capture timestamps.
+  overlay is settled or a bounded wait ends (D28), and frames leave paced by the video: one per arriving frame, or on
+  a timer when none arrives; no future sample shows early. Sharing an RTSP connection does not pair arrivals; both keep their capture timestamps.
 - Every live queue is bounded with an owner-defined overflow policy; every drop is counted in timing diagnostics.
   Encoded video is discarded codec-aware and resyncs at the next keyframe. DataHub and embedded metadata decode
   losslessly: overflow is a lane error ("overlay decoder behind") that holds until the queue drains, resets the

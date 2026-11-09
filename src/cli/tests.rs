@@ -67,12 +67,14 @@ fn a_plain_launch_opens_nothing_and_keeps_the_global_options() {
     assert_eq!(parse(&[]).unwrap().global.log_level, logging::Level::Info);
 
     // A global option applies before or after the command.
-    for args in [
-        ["clear-cache", "--config", "x.json"],
-        ["--config", "x.json", "clear-cache"],
-    ] {
+    let placed: [&[&str]; 3] = [
+        &["clear-cache", "--config", "x.json"],
+        &["--config", "x.json", "clear-cache"],
+        &["--config", "x.json", "catalog", "list"],
+    ];
+    for args in placed {
         assert_eq!(
-            parse(&args).unwrap().global.config,
+            parse(args).unwrap().global.config,
             Some(PathBuf::from("x.json"))
         );
     }

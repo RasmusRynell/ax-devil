@@ -1,7 +1,7 @@
 // The smoke test's Live stream scenario, on a backend of its own that opens a workspace file with two saved streams:
 // an MQTT one whose broker is a `$NAME` reference and whose camera head is 2, which the Live view's row opens on the
 // broker as it expands; and a DataHub one whose decoder is not installed, which Edit offers as unavailable instead of a
-// blank choice. Both are saved in each theme; the Edit dialog and the stream's info line are fit-checked at the smallest
+// blank choice. Both are saved in each theme; the Edit dialog, the stream's info line and the camera row's width priority are fit-checked at the smallest
 // window and at 200% zoom. The MQTT stream is then opened, on documentation addresses where no camera answers.
 const { nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
@@ -99,6 +99,27 @@ module.exports.liveStreams = async () => {
           if (box.left < 0 || box.right > innerWidth + 1) problems.push('the info line is outside the window');
           return problems;
         }`;
+        // A camera row keeps room for six characters of its name, and its aside gives way before the name is cut (the
+        // list row rule). Checked with the info line, at the same sizes.
+        const nameKeepsRoom = `() => {
+          const problems = [];
+          for (const item of document.querySelectorAll('[role=treeitem][aria-level="1"]')) {
+            const [name, aside] = [...item.firstElementChild.children].filter((e) =>
+              e.classList.contains('truncate'),
+            );
+            if (!name || !aside) continue;
+            const probe = document.createElement('span');
+            probe.style.cssText = 'position:absolute;visibility:hidden;width:6ch';
+            probe.style.font = getComputedStyle(name).font;
+            document.body.append(probe);
+            const least = probe.getBoundingClientRect().width;
+            probe.remove();
+            if (name.clientWidth + 1 < least) problems.push('the name has less than six characters');
+            if (name.scrollWidth > name.clientWidth + 1 && aside.clientWidth > 1)
+              problems.push('the name is cut while the aside still shows');
+          }
+          return problems;
+        }`;
         await fs.mkdir(SCREENSHOTS, { recursive: true });
         await setView(window, [1100, 720], 1);
         await js("document.querySelector('nav [aria-label=Live][aria-pressed=false]')?.click()");
@@ -110,7 +131,7 @@ module.exports.liveStreams = async () => {
         await wait(row("scene"));
         await js(`${row("scene")}.click()`);
         await wait(row(`${BROKER}:1883`));
-        await views("live-stream-info", `(${infoFits})()`);
+        await views("live-stream-info", `[...(${infoFits})(), ...(${nameKeepsRoom})()]`);
 
         // A saved decoder the app no longer has is offered as unavailable in the Edit dialog.
         await js(

@@ -35,6 +35,13 @@ contextBridge.exposeInMainWorld("axDevilWindow", {
     void ipcRenderer.invoke("window:is-maximized").then(listener);
     return () => ipcRenderer.off("window:maximized", changed);
   },
+  // Reports whether the window is fullscreen at once and on every change after; returns the way to stop listening.
+  onFullScreenChange: (listener) => {
+    const changed = (_event, fullscreen) => listener(fullscreen);
+    ipcRenderer.on("window:fullscreen", changed);
+    void ipcRenderer.invoke("window:is-fullscreen").then(listener);
+    return () => ipcRenderer.off("window:fullscreen", changed);
+  },
   // Replaces this window with one on another machine's server (a server address or a join link); only the local
   // page may ask. Rejects when the address is not a web address.
   connect: (target, password) => ipcRenderer.invoke("window:connect", target, password),

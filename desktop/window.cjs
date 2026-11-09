@@ -91,6 +91,9 @@ async function openWindow(
   const sendMaximized = () => contents.send("window:maximized", window.isMaximized());
   window.on("maximize", sendMaximized);
   window.on("unmaximize", sendMaximized);
+  const sendFullScreen = () => contents.send("window:fullscreen", window.isFullScreen());
+  window.on("enter-full-screen", sendFullScreen);
+  window.on("leave-full-screen", sendFullScreen);
   // There is no application menu, so zoom is handled here; Chromium remembers it per host.
   contents.on("before-input-event", (event, input) => {
     if (input.type !== "keyDown" || !input.control || input.alt) return;
@@ -185,6 +188,7 @@ function installIpc({ connect, disconnect, restart }) {
     if (!remote) restart();
   });
   handle("window:is-maximized", ({ window }) => window.isMaximized());
+  handle("window:is-fullscreen", ({ window }) => window.isFullScreen());
   handle("app:version", () => app.getVersion());
   // Only the native dialog: the page sends the chosen path to the backend itself. Resolves to the absolute path of one
   // file, null when the dialog is cancelled. `kind` is `video` or `overlay`; an overlay's `extensions` (with their

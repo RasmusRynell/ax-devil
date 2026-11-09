@@ -426,6 +426,11 @@ async fn a_frame_released_at_the_deadline_draws_the_sample_still_open_for_it() {
     let out = shown.out.as_ref().unwrap();
     assert_eq!((luma(&shown), out.map.samples.clone()), (20, vec![0]));
     assert_eq!(out.items.len(), 1);
+
+    // The viewer is told the decoder's class filters with the lane's status.
+    let filters = viewer.lane_ready().unwrap().filter;
+    let ids: Vec<String> = filters.options.iter().map(|o| o.id.to_string()).collect();
+    assert_eq!(ids, ["show_car"]);
 }
 
 #[tokio::test]

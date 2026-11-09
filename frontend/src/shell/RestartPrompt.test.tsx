@@ -44,6 +44,7 @@ describe("restart prompt", () => {
     window.axDevilWindow = {
       restart,
       onMaximizedChange: () => () => undefined,
+      onFullScreenChange: () => () => undefined,
     } as unknown as WindowBridge;
     await showShell(["configuration", "preferences"]);
     saveSetting("General", "Theme", "dark");
@@ -63,7 +64,10 @@ describe("restart prompt", () => {
   });
 
   it("only says so where the app cannot restart the backend: a browser, or a desktop on one it did not start", async () => {
-    window.axDevilWindow = { onMaximizedChange: () => () => undefined } as unknown as WindowBridge;
+    window.axDevilWindow = {
+      onMaximizedChange: () => () => undefined,
+      onFullScreenChange: () => () => undefined,
+    } as unknown as WindowBridge;
     await showShell(["configuration"]);
     saveSetting("Storage", "Cache folder", "/elsewhere");
     await screen.findByRole("dialog", { name: "Restart ax-devil?" });
