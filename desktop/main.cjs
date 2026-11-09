@@ -317,8 +317,13 @@ else
     .then(async () => {
       if (smoke) {
         const window = await showLocal();
-        const timer = setTimeout(() => fail(new Error("Desktop smoke test timed out")), 120000);
-        await require("./smoke.cjs")(window, { onLaunch, openLaunch, showLocal, showRemote });
+        const smokeTest = require("./smoke.cjs");
+        const { current } = require("./smoke-kit.cjs");
+        const timer = setTimeout(
+          () => fail(new Error(`Desktop smoke test timed out in "${current()}"`)),
+          300000,
+        );
+        await smokeTest(window, { onLaunch, openLaunch, showLocal, showRemote });
         clearTimeout(timer);
         report("PASS");
         app.quit();

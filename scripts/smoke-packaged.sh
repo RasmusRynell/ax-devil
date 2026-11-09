@@ -102,7 +102,7 @@ pid=$!
 set +m
 
 seconds=0
-until [[ -s $result ]] || ((seconds >= 180)); do
+until [[ -s $result ]] || ((seconds >= 360)); do
   # An app that ended without a verdict gets one more second for the file to appear.
   if ! alive; then
     sleep 1

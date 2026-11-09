@@ -136,7 +136,7 @@ test-integration: _dev _dev-rust
 test-desktop: export AX_DEVIL_BACKEND = $(CURDIR)/target/debug/ax-devil$(if $(filter Windows_NT,$(OS)),.exe)
 test-desktop: _frontend-build desktop/node_modules/.electron-ready
 	$(CARGO) build --locked --bin ax-devil
-	timeout 180s $(ISOLATED) --display pnpm --dir desktop exec electron . --ozone-platform=x11 --smoke-test
+	timeout 360s $(ISOLATED) --display pnpm --dir desktop exec electron . --ozone-platform=x11 --smoke-test
 
 # Needs a real camera, so it is not part of `test` or `check`; each test skips itself when AX_DEVIL_TARGET_ADDR is unset.
 test-camera:

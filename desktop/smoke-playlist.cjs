@@ -14,7 +14,7 @@ const { fields } = require("./smoke-fields.cjs");
 const { twice } = require("./smoke-twice.cjs");
 const kit = require("./smoke-kit.cjs");
 const { pauseAtStart } = require("./smoke-video.cjs");
-const { SCREENSHOTS, SHOWN, SMOKE_ROOT, delay, frames, page, setView, showChrome } = kit;
+const { SCREENSHOTS, SHOWN, SMOKE_ROOT, begin, delay, frames, page, setView, showChrome } = kit;
 
 const DATASET = path.join(SMOKE_ROOT, "fixtures/datasets/mot");
 const THEMES_AND_ZOOMS = [
@@ -254,8 +254,11 @@ module.exports.playlist = async (window) => {
   await js("document.querySelector('[aria-label=\"Previous entry\"]').click()");
   await showEntry("MINI-02", 1);
   await goToFrame(0);
+  begin("playlist: overlays");
   const { point } = await overlays(window, { setTheme });
+  begin("playlist: panels");
   await panels(window, { setTheme, shoot, showEntry, point });
+  begin("playlist: objects");
   await objects(window, { setTheme, shoot });
 
   // The playlist's pane closes and the video opens again, as the one open item for the scenarios that follow.
@@ -268,12 +271,16 @@ module.exports.playlist = async (window) => {
   await wait(`${panes}.map((pane) => pane.ariaLabel).join() === 'long_gop_h264.mp4'`);
 
   // A resolver that returns two playlists: the dialog's states and the tree they make.
+  begin("playlist: multiplaylist");
   await multiplaylist(window);
 
   // One overlay file given twice is two lanes, in a window of its own on another backend.
+  begin("playlist: twice");
   await twice();
   // Two ADF files on a video: the object page of an object with colours, a motion state and a picture.
+  begin("playlist: fields");
   await fields();
   // An ADF file with events on a video: the Events list, an event's page and its objects' pages.
+  begin("playlist: events");
   await events();
 };

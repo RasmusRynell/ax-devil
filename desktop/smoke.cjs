@@ -8,6 +8,7 @@ const fit = require("./fit.cjs");
 const {
   SCREENSHOTS,
   SMOKE_ROOT,
+  begin,
   button,
   isolatedState,
   page,
@@ -360,39 +361,29 @@ module.exports = async (window, shell) => {
     }
   }
 
-  console.log("smoke: live");
-  await live(window);
-  console.log("smoke: kit gallery");
-  await gallery(window);
-  console.log("smoke: video");
-  await video(window);
-  console.log("smoke: pixels");
-  await pixels();
-  console.log("smoke: export");
-  await exportDialog(window);
-  console.log("smoke: bookmarks");
-  await bookmarks(window);
-  console.log("smoke: playlist");
-  await playlist(window);
-  console.log("smoke: split");
-  await split(window);
-  console.log("smoke: reload offer");
-  await reloadOffer();
-  console.log("smoke: live streams");
-  await liveStreams();
-  console.log("smoke: plugins");
-  await plugins(window);
-  console.log("smoke: items");
-  await items(window);
-  console.log("smoke: tree rows");
-  await rows(window);
-  console.log("smoke: sidebar");
-  await sidebar(window);
-  console.log("smoke: sharing");
-  await sharing(window, shell, ownerCsp);
-  console.log("smoke: remote");
-  await remote(window, shell);
-  console.log("smoke: second launch");
-  await handedOff(shell);
+  const scenarios = [
+    ["live", () => live(window)],
+    ["kit gallery", () => gallery(window)],
+    ["video", () => video(window)],
+    ["pixels", () => pixels()],
+    ["export", () => exportDialog(window)],
+    ["bookmarks", () => bookmarks(window)],
+    ["playlist", () => playlist(window)],
+    ["split", () => split(window)],
+    ["reload offer", () => reloadOffer()],
+    ["live streams", () => liveStreams()],
+    ["plugins", () => plugins(window)],
+    ["items", () => items(window)],
+    ["tree rows", () => rows(window)],
+    ["sidebar", () => sidebar(window)],
+    ["sharing", () => sharing(window, shell, ownerCsp)],
+    ["remote", () => remote(window, shell)],
+    ["second launch", () => handedOff(shell)],
+  ];
+  for (const [name, run] of scenarios) {
+    begin(name);
+    await run();
+  }
+  begin("end");
   console.log(`PASS: app shell loaded; screenshots in ${path.relative(SMOKE_ROOT, SCREENSHOTS)}`);
 };

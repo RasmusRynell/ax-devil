@@ -39,10 +39,11 @@ function isolatedState() {
 // an expression must not evaluate to a DOM node.
 const page = (window) => {
   const js = (expression) => window.webContents.executeJavaScript(expression);
+  // Polled every 20 ms for 10 s: a state that arrives between two polls costs the smoke the gap.
   const wait = async (expression) => {
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 500; i++) {
       if (await js(`Boolean(${expression})`)) return;
-      await delay(100);
+      await delay(20);
     }
     throw new Error(
       `Timed out: ${expression}\n${await js("document.body.innerText")}\n${await saveFailure(window)}`,
@@ -100,10 +101,10 @@ async function setView(window, [width, height], zoom) {
   window.webContents.setZoomFactor(zoom);
   const expected = [width / zoom, height / zoom];
   let seen = [];
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 500; i++) {
     seen = await js("[innerWidth, innerHeight]");
     if (seen.every((size, axis) => Math.abs(size - expected[axis]) <= 1)) return frames({ js });
-    await delay(100);
+    await delay(20);
   }
   throw new Error(
     `Timed out: the page must be ${expected.join("x")} CSS pixels at ${width}x${height} and ${zoom * 100}% zoom, but is ${seen.join("x")}`,
@@ -340,15 +341,28 @@ async function click(window, id) {
 
 // Polls until `find` returns something.
 async function until(find, what) {
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 500; i++) {
     const found = await find();
     if (found) return found;
-    await delay(100);
+    await delay(20);
   }
   throw new Error(`Timed out: ${what}`);
 }
 
+// The part of the smoke test running, for a timeout to name, and when it began. `begin` ends it, logging how long it
+// took and the time so far, and starts the next.
+let running = "shell";
+let began = Date.now();
+const started = began;
+function begin(next) {
+  const now = Date.now();
+  console.log(`smoke: ${running} took ${now - began} ms (${now - started} ms in all)`);
+  [running, began] = [next, now];
+}
+
 module.exports = {
+  begin,
+  current: () => running,
   SMOKE_ROOT,
   SCREENSHOTS,
   button,
