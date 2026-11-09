@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { reasonOf } from "../errors";
 import type { HandlersInfo, ResolverInfo } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { Select, TextField } from "../kit/Fields";
-import { ResolverForm, sameSettings, useResolverForm } from "../resolvers/ResolverForm";
+import { ResolverForm, draftForm, sameSettings, useResolverForm } from "../resolvers/ResolverForm";
 import { resolvePlaylists } from "../resolvers/resolve";
 import type { Settings } from "../resolvers/scan";
 import { HandlersFailure, useHandlers } from "../resolvers/useHandlers";
@@ -167,57 +167,89 @@ function PlaylistForm({
       setResolving(false);
     }
   };
+  const actionLabel = editing ? "Save" : "Load Playlist";
+  // The page in view, with the other pages drawn as the person left them, out of sight, so the dialog is as big as the
+  // biggest page and choosing a source does not resize it.
+  const pages: [string, ReactNode][] = [
+    [
+      "",
+      lost ? (
+        <Refusal reason={`Playlist source '${lost}' is unavailable.`} />
+      ) : (
+        <>
+          <p className="m-0">{INTRODUCTION}</p>
+          {resolvers.map((candidate) => (
+            <p key={candidate.id} className="m-0">
+              {candidate.description
+                ? `${candidate.display_name}: ${candidate.description}`
+                : candidate.display_name}
+            </p>
+          ))}
+        </>
+      ),
+    ],
+    ...resolvers.map((candidate): [string, ReactNode] => [
+      candidate.id,
+      <>
+        {candidate.description && <p className="m-0 text-muted">{candidate.description}</p>}
+        {candidate.id === resolver.id ? (
+          <ResolverForm
+            form={form}
+            action={
+              <Button type="submit" disabled={!canAdd} onClick={() => void add()}>
+                {actionLabel}
+              </Button>
+            }
+          />
+        ) : (
+          <ResolverForm form={draftForm(form, candidate)} action={<Button>{actionLabel}</Button>} />
+        )}
+      </>,
+    ]),
+  ];
   return (
     <>
       <DialogBody>
-        <TextField
-          label="Name"
-          value={name}
-          placeholder="Optional"
-          selectOnOpen={editing !== undefined}
-          onChange={(value) => {
-            latestName.current = value;
-            setName(value);
-          }}
-        />
-        <fieldset disabled={resolving || !!lost} className="contents">
-          <Select
-            label="Playlist source"
-            value={resolver.id}
-            disabled={editing !== undefined}
-            options={[
-              ["", "Select a source"],
-              ...resolvers.map((candidate) => [candidate.id, candidate.display_name] as const),
-            ]}
-            onChange={setResolverId}
+        <div className="flex w-form max-w-full min-w-0 flex-col gap-l">
+          <TextField
+            label="Name"
+            value={name}
+            placeholder="Optional"
+            selectOnOpen={editing !== undefined}
+            onChange={(value) => {
+              latestName.current = value;
+              setName(value);
+            }}
           />
-          {resolver.id ? (
-            <>
-              {resolver.description && <p className="m-0 text-muted">{resolver.description}</p>}
-              <ResolverForm
-                form={form}
-                action={
-                  <Button type="submit" disabled={!canAdd} onClick={() => void add()}>
-                    {editing ? "Save" : "Load Playlist"}
-                  </Button>
-                }
-              />
-            </>
-          ) : lost ? (
-            <Refusal reason={`Playlist source '${lost}' is unavailable.`} />
-          ) : (
-            <>
-              <p className="m-0">{INTRODUCTION}</p>
-              {resolvers.map((candidate) => (
-                <p key={candidate.id} className="m-0">
-                  {candidate.description
-                    ? `${candidate.display_name}: ${candidate.description}`
-                    : candidate.display_name}
-                </p>
+          <fieldset disabled={resolving || !!lost} className="contents">
+            <Select
+              label="Playlist source"
+              value={resolver.id}
+              disabled={editing !== undefined}
+              options={[
+                ["", "Select a source"],
+                ...resolvers.map((candidate) => [candidate.id, candidate.display_name] as const),
+              ]}
+              onChange={setResolverId}
+            />
+            <div className="grid">
+              {/* The page in view comes first in the document, ahead of the others. */}
+              {[
+                ...pages.filter(([id]) => id === resolver.id),
+                ...pages.filter(([id]) => id !== resolver.id),
+              ].map(([id, page]) => (
+                <div
+                  key={id}
+                  aria-hidden={id !== resolver.id || undefined}
+                  inert={id !== resolver.id}
+                  className={`col-start-1 row-start-1 flex min-w-0 flex-col gap-l ${id === resolver.id ? "" : "invisible"}`}
+                >
+                  {page}
+                </div>
               ))}
-            </>
-          )}
-        </fieldset>
+            </div>
+          </fieldset>
+        </div>
       </DialogBody>
       {resolving && (
         <p role="status" className="m-0 text-muted">

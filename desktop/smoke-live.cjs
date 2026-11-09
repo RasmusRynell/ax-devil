@@ -6,7 +6,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, frames, page, setView } = require("./smoke-kit.cjs");
+const { SCREENSHOTS, dialogSize, frames, page, setView } = require("./smoke-kit.cjs");
 
 // Each overlay mode, with a label only its page of the dialog has (none for the modes whose page is a note).
 const MODES = [
@@ -106,11 +106,19 @@ module.exports.live = async (window) => {
       "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent.startsWith('Add Live Stream')).click()",
     );
     await wait("document.querySelector('dialog[open] h2')?.textContent === 'Add Live Stream'");
+    let size;
     for (const [mode, field] of MODES) {
       await choose("Overlay Mode", mode);
       await wait(`${picked("Overlay Mode")} === '${mode}'`);
       if (field) await wait(labelled(field));
       await frames({ js });
+      // The dialog is as big as its biggest mode's page, so choosing a mode does not resize it.
+      size ??= await dialogSize({ js });
+      assert.equal(
+        await dialogSize({ js }),
+        size,
+        `The Add Live Stream dialog must keep its size in the ${mode} mode ${where}`,
+      );
       assert.deepEqual(
         await js(`(${fit.dialog.toString()})()`),
         [],

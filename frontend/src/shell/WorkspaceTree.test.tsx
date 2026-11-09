@@ -414,7 +414,7 @@ describe("items", () => {
     );
     await renderTree([stored(CLIP)], []);
     fireEvent.keyDown(screen.getByRole("tree", { name: "Videos" }), { key: "F2" });
-    expect(await screen.findByRole("dialog", { name: "Edit video" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "Edit Video" })).toBeTruthy();
     expect((screen.getByLabelText("Video path") as HTMLInputElement).value).toBe("/v.mp4");
   });
 

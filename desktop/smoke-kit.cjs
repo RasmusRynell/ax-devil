@@ -92,6 +92,14 @@ async function saveFailure(window) {
 const frames = (driver) =>
   driver.js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
 
+// The open dialog's width and height, once drawn, for a check that a change inside it leaves its size alone.
+async function dialogSize(driver) {
+  await frames(driver);
+  return driver.js(
+    "(() => { const box = document.querySelector('dialog[open]').getBoundingClientRect(); return `${box.width}x${box.height}`; })()",
+  );
+}
+
 // Sizes a window and zooms its page, then waits until the page reports the geometry the fit checks assume: the window's
 // size divided by the zoom, in CSS pixels. Both changes reach the page some time after the calls return, and below 640
 // CSS pixels the layout changes (the sidebar fills the window), so measuring earlier sees an intermediate layout.
@@ -378,6 +386,7 @@ module.exports = {
   colourful,
   click,
   delay,
+  dialogSize,
   frames,
   goToFrame,
   hideChrome,

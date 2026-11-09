@@ -208,9 +208,31 @@ export function sameSettings(a: Settings | null, b: Settings | null): boolean {
   return canonical(a) === canonical(b);
 }
 
+/** Whether everything the `Scan` field `key` reads is filled in, in `values`. */
+function scanReady(
+  resolver: ResolverInfo,
+  decoders: readonly DecoderInfo[],
+  key: string,
+  values: Settings,
+): boolean {
+  const kind = resolver.fields.find((field) => field.key === key)?.kind;
+  if (kind?.kind !== "Scan") return false;
+  const { settings } = effective(resolver, values, decoders);
+  // A blank setting with a default is met: the backend uses the default. A misread one is not.
+  const unmet = (need: string) => {
+    const field = resolver.fields.find((other) => other.key === need);
+    return field && misread(field, values)
+      ? true
+      : settings[need] === undefined && field?.default == null;
+  };
+  return !kind.depends_on.some(unmet);
+}
+
 /** A resolver form's state and what to do with it. */
 export interface ResolverFormState extends FieldForm {
   resolver: ResolverInfo;
+  /** The form of each resolver opened so far, by resolver id, which `draftForm` shows. */
+  forms: Forms;
   /** What loading sends, or `null` while the form cannot load. */
   settings: Settings | null;
   /**
@@ -251,19 +273,7 @@ export function useResolverForm(
   // The resolver and settings the form shows now, for a scan that was waited for to compare against.
   const latest = useRef<{ resolver: string; settings: Settings | null } | null>(null);
 
-  const canScanWith = (key: string, values: Settings) => {
-    const kind = resolver.fields.find((field) => field.key === key)?.kind;
-    if (kind?.kind !== "Scan") return false;
-    const { settings } = effective(resolver, values, decoders);
-    // A blank setting with a default is met: the backend uses the default. A misread one is not.
-    const unmet = (need: string) => {
-      const field = resolver.fields.find((other) => other.key === need);
-      return field && misread(field, values)
-        ? true
-        : settings[need] === undefined && field?.default == null;
-    };
-    return !kind.depends_on.some(unmet);
-  };
+  const canScanWith = (key: string, values: Settings) => scanReady(resolver, decoders, key, values);
   const run = (key: string, values: Settings): Promise<readonly ChoiceInfo[] | null> => {
     controllers.current.get(slot(key))?.abort();
     const controller = new AbortController();
@@ -343,6 +353,7 @@ export function useResolverForm(
     pickFolder: bridge && (() => bridge.pickFolder()),
     values: state.values,
     scans: state.scans,
+    forms,
     settings,
     settingsAfterScan,
     unchosen: unchosenOf(resolver, state),
@@ -367,6 +378,24 @@ export function useResolverForm(
     toggle: (key, value) =>
       dispatch({ type: "scan", resolver, key, update: (view) => toggled(view, value) }),
     toggleAll: (key) => dispatch({ type: "scan", resolver, key, update: toggledAll }),
+  };
+}
+
+/**
+ * `resolver`'s form as the person left it (blank if never opened), for a dialog that draws it out of sight to leave room
+ * for it, decoder options and scan results included.
+ */
+export function draftForm(form: ResolverFormState, resolver: ResolverInfo): ResolverFormState {
+  const state = form.forms.get(resolver.id) ?? start(resolver);
+  return {
+    ...form,
+    resolver,
+    ...state,
+    // What the draft shows is its own; the dialog keeps the page out of reach (`inert`), so nothing here is run.
+    settings: settingsOf(resolver, state, form.decoders),
+    settingsAfterScan: undefined,
+    unchosen: unchosenOf(resolver, state),
+    canScan: (key) => scanReady(resolver, form.decoders, key, state.values),
   };
 }
 

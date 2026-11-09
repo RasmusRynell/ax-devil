@@ -14,7 +14,18 @@ const { fields } = require("./smoke-fields.cjs");
 const { twice } = require("./smoke-twice.cjs");
 const kit = require("./smoke-kit.cjs");
 const { pauseAtStart } = require("./smoke-video.cjs");
-const { SCREENSHOTS, SHOWN, SMOKE_ROOT, begin, delay, frames, page, setView, showChrome } = kit;
+const {
+  SCREENSHOTS,
+  SHOWN,
+  SMOKE_ROOT,
+  begin,
+  delay,
+  dialogSize,
+  frames,
+  page,
+  setView,
+  showChrome,
+} = kit;
 
 const DATASET = path.join(SMOKE_ROOT, "fixtures/datasets/mot");
 const THEMES_AND_ZOOMS = [
@@ -64,7 +75,7 @@ module.exports.playlist = async (window) => {
 
   // File > Add Playlist and a resolver. MOT Challenge: the dataset folder typed in and scanned. Folder Pair: both
   // folders typed in and MOT Annotations chosen, which brings in that decoder's options.
-  const openAddPlaylist = async (resolver = "MOT Challenge") => {
+  const openDialog = async () => {
     await closeMenu();
     await js(
       "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'File').click()",
@@ -74,6 +85,9 @@ module.exports.playlist = async (window) => {
       "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent.startsWith('Add Playlist')).click()",
     );
     await wait("!!document.querySelector('dialog[open] select')");
+  };
+  const openAddPlaylist = async (resolver = "MOT Challenge") => {
+    await openDialog();
     await choose("document.querySelector('dialog[open] select')", resolver);
     if (resolver === "Folder Pair") {
       await fill("Videos", DATASET);
@@ -93,6 +107,36 @@ module.exports.playlist = async (window) => {
     await wait("/MINI-01/.test(document.querySelector('dialog[open]').innerText)");
     await wait("/MINI-02/.test(document.querySelector('dialog[open]').innerText)");
   };
+
+  // The dialog is as big as its biggest page, so choosing a source, or none, does not resize it.
+  await openDialog();
+  const size = await dialogSize({ js });
+  for (const source of ["MOT Challenge", "Folder Pair", ""]) {
+    await choose("document.querySelector('dialog[open] select')", source || "Select a source");
+    assert.equal(
+      await dialogSize({ js }),
+      size,
+      `The Add Playlist dialog must keep its size on ${source || "the list of sources"}`,
+    );
+  }
+  // A source's page stays as filled in: with both folders and a decoder chosen, the status the folders bring and the
+  // decoder's options count when another source is chosen.
+  await choose("document.querySelector('dialog[open] select')", "Folder Pair");
+  await fill("Videos", DATASET);
+  await fill("Overlays", DATASET);
+  await choose(`${labelled("Decoder")}.control`, "MOT Annotations (MOT_FILE)");
+  await wait("/Image width/.test(document.querySelector('dialog[open]').innerText)");
+  const populated = await dialogSize({ js });
+  for (const source of ["MOT Challenge", "Select a source", "Folder Pair", "MOT Challenge"]) {
+    await choose("document.querySelector('dialog[open] select')", source);
+    assert.equal(
+      await dialogSize({ js }),
+      populated,
+      `The Add Playlist dialog must keep its size on ${source} with the folders and decoder options filled in`,
+    );
+  }
+  await clickButton("Cancel");
+  await wait("!document.querySelector('dialog')");
 
   // Each form at the smallest window, then Add at the normal size.
   for (const [resolver, name] of [

@@ -389,7 +389,7 @@ it("edits a video: the form starts from the item, and Save replaces that item wi
       />
     </SessionProvider>,
   );
-  expect(await screen.findByRole("dialog", { name: "Edit video" })).toBeTruthy();
+  expect(await screen.findByRole("dialog", { name: "Edit Video" })).toBeTruthy();
   expect(((await screen.findByLabelText("Overlay path")) as HTMLInputElement).value).toBe(
     "/gt.txt",
   );

@@ -260,7 +260,7 @@ describe("add playlist dialog", () => {
     stubBackend(undefined, () => held.promise);
     await open();
     choose("folder_pair");
-    expect(screen.queryByLabelText("Dataset folder")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Dataset folder" })).toBeNull();
     const decoder = screen.getByLabelText("Decoder") as HTMLSelectElement;
     expect(decoder.value).toBe("");
     fireEvent.change(screen.getByLabelText("Videos"), { target: { value: "/videos" } });
@@ -410,7 +410,8 @@ describe("add playlist dialog", () => {
     expect(screen.getByText(/^Build a playlist from video and overlay files/)).toBeTruthy();
     expect(screen.getByText("MOT Challenge: Reads MOT sequences.")).toBeTruthy();
     choose("folder_pair");
-    expect(screen.queryByText(/^Build a playlist/)).toBeNull();
+    // The page stays, drawn out of sight, so choosing a source does not resize the dialog.
+    expect(screen.getByText(/^Build a playlist/).closest("[inert]")).not.toBeNull();
   });
 
   it("opens on the source it is given, and on the list when there is no such source", async () => {
