@@ -370,6 +370,19 @@ export function useResolverForm(
   };
 }
 
+/** `resolver`'s form as it starts, blank, for a dialog that draws it out of sight to leave room for it. */
+export function blankForm(form: ResolverFormState, resolver: ResolverInfo): ResolverFormState {
+  return {
+    ...form,
+    resolver,
+    ...start(resolver),
+    settings: null,
+    settingsAfterScan: undefined,
+    unchosen: null,
+    canScan: () => false,
+  };
+}
+
 /**
  * The fields of a resolver, each with the failed scans that are about it. `action` is the dialog's own button: it
  * sits beside the Scan button of a count-only scan, or else closes the form on a row of its own.

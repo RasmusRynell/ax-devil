@@ -64,7 +64,7 @@ describe("add video", () => {
     await renderShell({ grants: local });
     fireEvent.click(screen.getByRole("menuitem", { name: "File" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Add Video/ }));
-    await screen.findByRole("dialog", { name: "Add video" });
+    await screen.findByRole("dialog", { name: "Add Video" });
     fireEvent.click(screen.getByRole("button", { name: "Choose video file" }));
     await enabled();
     expect(commands()).toEqual([]);
@@ -127,7 +127,7 @@ describe("add video", () => {
           outcome: { status: "refused", code: "Invalid" },
         }),
       );
-      expect(screen.getByRole("dialog", { name: "Add video" }).textContent).toContain(
+      expect(screen.getByRole("dialog", { name: "Add Video" }).textContent).toContain(
         "cannot open",
       );
       // The dialog stays for another try, which closes it once accepted.

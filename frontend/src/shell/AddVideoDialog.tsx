@@ -144,7 +144,7 @@ export function AddVideoDialog({
   };
   return (
     <Dialog
-      title={editing ? "Edit video" : "Add video"}
+      title={editing ? "Edit Video" : "Add Video"}
       okLabel={editing ? "Save" : "Add"}
       onOk={() => void ok()}
       onCancel={() => {
@@ -232,10 +232,13 @@ export function AddVideoDialog({
           selectOnOpen={editing !== undefined}
           onChange={setName}
         />
-        {!path.trim() && <Refusal reason="Choose a video file to continue." />}
-        {videoProblem && <Refusal reason={videoProblem} />}
-        {unavailable && <HandlersFailure failure={unavailable} retry={retry} />}
-        {failure && <Refusal reason={failure} />}
+        {/* A line is kept for the reasons, so one appearing or going does not move the form. */}
+        <div className="flex min-h-lh flex-col gap-s">
+          {!path.trim() && <Refusal reason="Choose a video file to continue." />}
+          {videoProblem && <Refusal reason={videoProblem} />}
+          {unavailable && <HandlersFailure failure={unavailable} retry={retry} />}
+          {failure && <Refusal reason={failure} />}
+        </div>
       </DialogBody>
     </Dialog>
   );
