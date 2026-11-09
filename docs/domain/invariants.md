@@ -93,7 +93,8 @@ implementing module closes.
   rendering consume it.
 - Published Scenes are snapshots: publish a replacement instead of mutating a delivered one; unchanged identities
   may reuse their encoded Sample Item.
-- An entity's observations stay time-sorted.
+- An entity's observations stay time-sorted on the Scene's clock; every observation carries that clock and may
+  carry the other.
 - A classification type is a dynamic string; known values are only a convenience. Routing by classification is catalog
   policy: UI code never switches on classification strings.
 - Score and confidence are separate: a decoder sets what its source provides and never derives one from the other or

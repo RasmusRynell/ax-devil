@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     BoundingBox, ClassType, Classification, Confidence, EntityId, Fields, GeographicCoordinates,
-    Image, ImageVelocity, Measurements, Name, Point, Polygon, Score,
+    Image, ImageVelocity, Measurements, Name, ObservationTime, Point, Polygon, SceneTime, Score,
 };
 use bytes::Bytes;
 use foundation::MediaTime;
@@ -12,7 +12,7 @@ fn entity(observation: Observation) -> Entity {
     entity
 }
 
-fn observation(time: SceneTime) -> Observation {
+fn observation(time: impl Into<ObservationTime>) -> Observation {
     let bounds = BoundingBox::new(0.125, 0.25, 0.375, 0.75).expect("a box");
     Observation::new(time, Geometry::Box(bounds))
 }
@@ -87,7 +87,8 @@ fn fields_are_grouped_in_display_order_and_debug_fields_say_who_produced_them() 
     ];
     let mut other = class("truck", Some(-0.5), None);
     other.attributes = vec![pair("axles", Value::Int(3))];
-    let mut observation = observation(SceneTime::Frame(4));
+    let both = ObservationTime::new(Some(4), Some(MediaTime(1500))).expect("a time");
+    let mut observation = observation(both);
     observation.classifications = vec![other, primary];
     observation.measurements = Some(Box::new(Measurements {
         image_velocity: Some(ImageVelocity { vx: 0.5, vy: -1.0 }),
@@ -163,6 +164,7 @@ fn fields_are_grouped_in_display_order_and_debug_fields_say_who_produced_them() 
             "Debug/Decoder text = \"\"",
             "Raw end_reason = \"lost\"",
             "Raw frame_number = Int(4)",
+            "Raw timestamp = \"1970-01-01T00:00:00.001500+00:00\"",
             "Images 0.timestamp = \"1970-01-01T00:00:00.000900+00:00\"",
             "Images 0.bounding_box.x = Float(0.5)",
             "Images 0.bounding_box.y = Float(0.0)",

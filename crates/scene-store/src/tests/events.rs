@@ -16,7 +16,7 @@ fn id(name: &str) -> EntityId {
 
 /// An event on sample `sample`.
 fn event(sample: u64, operation: Operation) -> Event {
-    Event::new(TimeSlice::at(SceneTime::Frame(sample)), operation)
+    Event::new(TimeSlice::at(SceneTime::Frame(sample as i64)), operation)
 }
 
 /// Five samples. `a` (a car) is in 0 and 1, `b` (a bus) in 0 to 3. Events: 0 deletes `a`; 1 renames `a` to `z`; 2 merges

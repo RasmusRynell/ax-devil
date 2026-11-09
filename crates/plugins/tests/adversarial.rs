@@ -292,7 +292,7 @@ fn run_fake(mode: &str, extra: &str, cancel: &CancelToken, sink: TestSink) -> Ru
     )
 }
 
-fn frame_of(run: &Run, index: usize) -> u64 {
+fn frame_of(run: &Run, index: usize) -> i64 {
     match run.sink.samples[index].0.time().start() {
         SceneTime::Frame(frame) => frame,
         SceneTime::Timestamp(_) => panic!("a frame-keyed sample"),
@@ -418,7 +418,7 @@ fn a_line_over_16_mib_ends_the_run_and_keeps_the_samples() {
 fn bad_lines_are_skipped_and_counted_by_line_number() {
     let run = run_fake("bad-lines", "", &CancelToken::new(), TestSink::default());
     run.summary();
-    let frames: Vec<u64> = (0..run.sink.samples.len())
+    let frames: Vec<i64> = (0..run.sink.samples.len())
         .map(|index| frame_of(&run, index))
         .collect();
     assert_eq!(frames, [0, 1, 3]);

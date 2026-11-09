@@ -46,13 +46,14 @@ mark 0, id -1, a box past the image and an 8-column row (skipped). Reasons in `*
 
 ## Scene form (C2)
 
-`{"scene_version":"4.0","scenes":[Scene...]}`, one entity per line.
+`{"scene_version":"4.1","scenes":[Scene...]}`, one entity per line.
 
 ```
 Scene       {"time":{"start":T,"end":T},"entities":[Entity],"events":[],"relations":[{"type","source","target"}],"debug":{}}
 T           {"frame":N} | {"us":N}
+OT          {"frame":N} | {"us":N} | {"frame":N,"us":N}   an observation has at least one key; N may be negative
 Entity      {"id","observations":[Observation],"end_reason":null,"motion_state":null|"moving"|"stationary"|"unknown"}
-Observation {"time":T,"geometry":G,"classifications":[{"type","score":null|f,"confidence":null|f,"attributes":{name:value}}],
+Observation {"time":OT,"geometry":G,"classifications":[{"type","score":null|f,"confidence":null|f,"attributes":{name:value}}],
              "measurements":{"image_velocity":{"vx","vy"}}}   (measurements, source_data, debug only when present)
 G           {"box":[left,top,right,bottom]} | {"polygon":[[x,y],...]}   normalized, may lie outside 0..1
 ```

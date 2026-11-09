@@ -62,7 +62,7 @@ impl Decided {
     pub(crate) fn below(open: SceneTime, ordinal: Option<u64>) -> Self {
         match open {
             SceneTime::Frame(frame) => Self::Below {
-                frame: Some(frame),
+                frame: u64::try_from(frame).ok(),
                 time: None,
             },
             SceneTime::Timestamp(time) => Self::Below {

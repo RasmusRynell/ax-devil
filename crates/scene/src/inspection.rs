@@ -14,8 +14,8 @@ use leaf::{datetime_leaf, number_leaf};
 pub use query::{Budget, KeyTooLong, OverBudget, path_names, query_leaves};
 
 use crate::{
-    Classification, ColorEntry, Entity, Geometry, MotionState, Name, Observation, Rgb, SceneTime,
-    Value, WorldVelocity,
+    Classification, ColorEntry, Entity, Geometry, MotionState, Name, Observation, Rgb, Value,
+    WorldVelocity,
 };
 
 /// The most fields an inspection lists.
@@ -397,11 +397,11 @@ impl<S: Sink> Walk<'_, S> {
             self.under("end_reason", |walk| walk.text(place, reason));
         }
         if let Some(observation) = observation {
-            match observation.time {
-                SceneTime::Frame(frame) => self.count_at(place, "frame_number", frame),
-                SceneTime::Timestamp(time) => {
-                    self.under("timestamp", |walk| walk.leaf(place, datetime_leaf(time)));
-                }
+            if let Some(frame) = observation.time.frame() {
+                self.under("frame_number", |walk| walk.leaf(place, Leaf::Int(frame)));
+            }
+            if let Some(time) = observation.time.timestamp() {
+                self.under("timestamp", |walk| walk.leaf(place, datetime_leaf(time)));
             }
         }
     }

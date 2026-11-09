@@ -120,7 +120,10 @@ impl Merged {
                 ..
             } => frames
                 .into_iter()
-                .map(|frame| (sort_key(SceneTime::Frame(frame)), 0))
+                .map(|frame| {
+                    let frame = i64::try_from(frame).unwrap_or(i64::MAX);
+                    (sort_key(SceneTime::Frame(frame)), 0)
+                })
                 .collect(),
             Keys { .. } => Vec::new(),
         };

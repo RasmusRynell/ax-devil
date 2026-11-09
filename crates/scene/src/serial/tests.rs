@@ -7,8 +7,8 @@ use super::*;
 use crate::{
     BoundingBox, ClassType, Classification, Confidence, Entity, EntityId, EntityRelation, Event,
     GeographicCoordinates, Geometry, Image, ImageVelocity, Measurements, MotionState, Observation,
-    Operation, Point, Polygon, SceneTime, Score, SphericalCoordinates, TimeSlice, Value,
-    WorldVelocity,
+    ObservationTime, Operation, Point, Polygon, SceneTime, Score, SphericalCoordinates, TimeSlice,
+    Value, WorldVelocity,
 };
 
 fn fixtures() -> PathBuf {
@@ -36,7 +36,7 @@ fn class(name: &'static str, score: Option<f64>, attributes: Fields) -> Classifi
 }
 
 /// A frame-keyed Scene the way the MOT decoder shapes it.
-fn mot_frame(frame: u64, boxes: &[(&str, f64)]) -> Scene {
+fn mot_frame(frame: i64, boxes: &[(&str, f64)]) -> Scene {
     let entities = boxes
         .iter()
         .map(|&(track, x)| {
@@ -128,7 +128,9 @@ fn rich_scene() -> Scene {
             .to_vec(),
     )
     .expect("three points");
-    let mut second = Observation::new(t(1_040_000), Geometry::Polygon(outline));
+    // On both clocks, with a frame before the video.
+    let both = ObservationTime::new(Some(-3), Some(MediaTime(1_040_000))).expect("a time");
+    let mut second = Observation::new(both, Geometry::Polygon(outline));
     second.measurements = Some(Box::new(Measurements {
         geographic: Some(GeographicCoordinates {
             latitude: 1.0,
@@ -325,7 +327,8 @@ fn a_document_that_breaks_a_model_rule_is_refused_with_the_reason() {
     let unit_box = r#"{"box":[0,0,1,1]}"#;
     let cases = [
         (one(frame, unit_box), None),
-        (one(r#"{"us":5}"#, unit_box), Some("cannot be mixed")),
+        (one(r#"{"us":5}"#, unit_box), Some("scene's clock")),
+        (one("{}", unit_box), Some("frame number or a timestamp")),
         (one(frame, r#"{"box":[1,0,0,1]}"#), Some("box maxima")),
         (
             one(frame, r#"{"polygon":[[0,0],[1,1]]}"#),
@@ -335,7 +338,7 @@ fn a_document_that_breaks_a_model_rule_is_refused_with_the_reason() {
             document(frame, frame, r#"{"id":"","observations":[]}"#),
             Some("entity id"),
         ),
-        (document(frame, r#"{"us":0}"#, ""), Some("cannot be mixed")),
+        (document(frame, r#"{"us":0}"#, ""), Some("scene's clock")),
         (document(r#"{"frame":2}"#, frame, ""), Some("ends before")),
     ];
 
@@ -352,8 +355,10 @@ fn a_document_that_breaks_a_model_rule_is_refused_with_the_reason() {
 fn a_document_of_another_version_is_refused() {
     let document = |version: &str| format!(r#"{{"scene_version":"{version}","scenes":[]}}"#);
 
-    assert_eq!(from_json_str(&document("4.0")), Ok(Vec::new()));
-    for version in ["5.0", "3.9", "4.1", "four", "4"] {
+    for accepted in ["4.0", "4.1"] {
+        assert_eq!(from_json_str(&document(accepted)), Ok(Vec::new()));
+    }
+    for version in ["5.0", "3.9", "4.2", "four", "4"] {
         assert!(from_json_str(&document(version)).is_err(), "{version}");
     }
     assert!(from_json_str(r#"{"scenes":[]}"#).is_err());

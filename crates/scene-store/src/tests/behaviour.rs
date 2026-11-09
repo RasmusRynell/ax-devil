@@ -245,7 +245,7 @@ fn the_scene_cache_stays_under_its_bound_over_a_long_track() {
             .wrapping_add(1_442_695_040_888_963_407)
             % 10_000;
         let scene = track.scene(frame as usize).expect("scene");
-        assert_eq!(scene.time().start(), SceneTime::Frame(frame));
+        assert_eq!(scene.time().start(), SceneTime::Frame(frame as i64));
         peak = peak.max(track.cached_bytes());
         assert!(track.cached_bytes() <= BOUND);
     }

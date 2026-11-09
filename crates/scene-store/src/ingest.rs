@@ -257,6 +257,16 @@ impl SceneSink for Feed<'_> {
         if store.refused.is_some() || store.cancel.is_cancelled() {
             return ControlFlow::Break(());
         }
+        if let SceneTime::Frame(frame) = scene.time().start()
+            && frame < 0
+        {
+            // The store keys frames from 0; a Scene before the video has no frame to be drawn on.
+            self.skipped.add(format!(
+                "line {}: frame number {frame} is before the video",
+                ordinal + 1
+            ));
+            return ControlFlow::Continue(());
+        }
         match store.accept(&mut self.link, scene, on_equal_key, ordinal) {
             Ok(()) => ControlFlow::Continue(()),
             Err(reason) => {

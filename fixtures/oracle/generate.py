@@ -22,7 +22,7 @@ HERE = Path(__file__).resolve().parent
 REFERENCE_COMMIT = "e31a7453"
 TARGET = (1280, 720)
 DECIMALS = 5
-SCENE_VERSION = "4.0"
+SCENE_VERSION = "4.1"
 
 # (catalog file, sheets to dump). Standard and Tracking get every sheet; the others a smoke subset to stay small.
 ALL_SHEETS = None
@@ -299,6 +299,18 @@ def time_json(value):
     return {"us": datetime_to_us(value)} if isinstance(value, datetime) else {"frame": int(value)}
 
 
+def observation_time_json(observation):
+    """An observation's time: the frame number and the timestamp it has, at least one."""
+    from ax_devil.core.time_units import datetime_to_us
+
+    result = {}
+    if observation.frame_number is not None:
+        result["frame"] = int(observation.frame_number)
+    if observation.timestamp is not None:
+        result["us"] = datetime_to_us(observation.timestamp)
+    return result
+
+
 def value_json(value):
     """Attribute and debug values: JSON scalars, lists and maps; a ColorClassification becomes a map."""
     from ax_devil.modules.scene.model import ColorClassification
@@ -322,7 +334,7 @@ def geometry_json(geometry):
 
 def observation_json(observation):
     result = {
-        "time": time_json(observation.frame_number if observation.frame_number is not None else observation.timestamp),
+        "time": observation_time_json(observation),
         "geometry": geometry_json(observation.geometry),
         "classifications": [
             {

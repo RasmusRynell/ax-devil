@@ -34,7 +34,7 @@ Decoder handler (`"kind": "decoder"`):
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `input` | yes | `"path"`: the request carries the overlay file's path. `"records"`: the request carries none and the records follow on stdin one at a time ([Records](#records)); a file is read line by line, and with `time` in `bases` the decoder also takes live sources |
-| `scene_version` | yes | The Scene version written, `"4.0"`; a different major or a newer minor does not load |
+| `scene_version` | yes | The Scene version written, `"4.1"` (`"4.0"` still loads); a different major or a newer minor does not load |
 | `extensions` | no | File name endings the decoder opens, lowercase with the dot, such as `.acme.jsonl`. Without any, it is picked only by id |
 | `bases` | no | `["frame"]`, `["time"]` or both: what a lane may match your records to video frames by. Frame: record k belongs to frame k (or the frame number you key by); a record is a `skipped` line or the samples in a row with one start key. Time: by the records' timestamps. Default `["frame"]` |
 | `default_basis` | no | One of `bases`, the one a lane starts with; default the first listed |
@@ -162,7 +162,9 @@ A scan or resolve the user abandons kills the plugin.
 ## Scene
 
 A sample is one Scene in the JSON of `scene::serial`. Times are `{"frame": N}` (frame-keyed) or `{"us": N}`
-(microseconds on the video's clock); one file uses one kind. Geometry is normalized to `[0,1]` of the frame. Absent
+(microseconds on the video's clock); one file uses one kind. An observation's `time` carries its Scene's key and may
+carry the other too, `{"frame": N, "us": N}`. Frame numbers are integers; a Scene keyed before frame 0 is skipped
+with a warning. Geometry is normalized to `[0,1]` of the frame. Absent
 parts may be left out.
 
 ```json

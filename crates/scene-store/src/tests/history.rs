@@ -11,7 +11,7 @@ use crate::{
 
 /// A Scene at `frame` whose entities are `(id, classes of its one observation)`.
 pub(super) fn scene_of(frame: u64, entities: &[(&str, &[&str])]) -> Scene {
-    let time = SceneTime::Frame(frame);
+    let time = SceneTime::Frame(frame as i64);
     let list = entities
         .iter()
         .map(|(id, classes)| {

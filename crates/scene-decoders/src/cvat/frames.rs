@@ -55,6 +55,8 @@ impl FrameAcc {
             }
             .max(1)
         });
+        let frame =
+            i64::try_from(frame).map_err(|_| format!("frame number {frame} is too large"))?;
         let time = SceneTime::Frame(frame);
         let mut entities: Vec<Entity> = Vec::new();
         index.clear();

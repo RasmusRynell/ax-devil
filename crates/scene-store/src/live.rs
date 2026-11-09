@@ -15,9 +15,7 @@ use handler_api::{
     SkippedRecords, Values,
 };
 use overlay_sync::{KeyChunks, MatchBasis, SampleKeys};
-use scene::{
-    Coverage, Fields, FilterPolicy, Scene, SceneTime, serial::columns::encode_sample_item,
-};
+use scene::{Coverage, Fields, FilterPolicy, Scene, serial::columns::encode_sample_item};
 
 use crate::{
     History, HistoryUnavailable, TrackRead,
@@ -391,7 +389,7 @@ impl SceneSink for Sink {
         if self.cancel.is_cancelled() {
             return ControlFlow::Break(());
         }
-        let SceneTime::Timestamp(time) = scene.time().start() else {
+        let Some(time) = scene.time().start_timestamp() else {
             self.skipped.add("a live sample needs a timestamp");
             return ControlFlow::Continue(());
         };
