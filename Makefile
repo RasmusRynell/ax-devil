@@ -202,7 +202,7 @@ _licenses: node_modules/.installed $(CARGO_DENY)
 # so this is not part of check; .github/workflows/audit.yml runs it weekly.
 audit: $(CARGO_DENY)
 	$(if $(CARGO_DENY),PATH="$(CURDIR)/.tools/bin:$$PATH" )$(CARGO) deny --locked check advisories
-	pnpm audit --prod
+	pnpm audit
 
 check-fast: CHANGED := --changed
 check-fast: _static _clippy

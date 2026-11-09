@@ -16,7 +16,7 @@ Sources: `Makefile`, `scripts/`, `.github/workflows/ci.yml`,
 | Whitespace | `git diff --check` of the whole tree, `make check-fast` and CI | No trailing whitespace or blank line at end of file; `.gitattributes` `-whitespace` exempts fixtures and generated files |
 | Generated artifacts | Catalog JSON Schema and language reference generated from the TypeScript catalog definitions | One source of truth; `make check` fails on stale generated files |
 | Dependencies | Bounded ranges; lowest-direct CI job | Same, plus license check ([13](13-security-packaging-ops.md#licensing)) |
-| Advisories | `make audit` (cargo-deny, `pnpm audit --prod`), weekly in `.github/workflows/audit.yml` | Advisory only, outside `make check` and the PR gate: advisories change without a code change |
+| Advisories | `make audit` (cargo-deny, `pnpm audit`, all dependencies because Electron ships from devDependencies), weekly in `.github/workflows/audit.yml` | Advisory only, outside `make check` and the PR gate: advisories change without a code change |
 | Fast mode | `make check-fast` | Changed-file mode for agents (SHOULD) |
 
 Agents need stable command verbs. The new tree keeps the prototype's Make verbs plus `check-fast` and `format`
