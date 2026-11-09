@@ -208,9 +208,41 @@ fn through_postcard(scene: &Scene) -> Scene {
     decode(&bytes).expect("decodes")
 }
 
+/// A frame-keyed Scene whose observations also carry timestamps, some missing and some against the frame order, so
+/// the order the Scene makes (by frame, ties in arrival order) differs from the order of arrival and from any order
+/// the timestamps would give.
+fn dual_clock_scene() -> Scene {
+    let mut entity = Entity::new(id("a"));
+    for (x, frame, us) in [
+        (0.1, 0, Some(2)),
+        (0.2, 1, Some(1)),
+        (0.3, 0, None),
+        (0.4, 1, Some(0)),
+    ] {
+        let time = ObservationTime::new(Some(frame), us.map(MediaTime)).expect("a time");
+        let geometry = Geometry::Box(bounds(x, 0.25, x + 0.125, 0.5));
+        entity.push_observation(Observation::new(time, geometry));
+    }
+    Scene::new(TimeSlice::at(SceneTime::Frame(0)))
+        .with_entities(vec![entity])
+        .expect("every observation has a frame")
+}
+
 #[test]
 fn every_model_value_survives_json_and_postcard() {
-    let scenes = [rich_scene(), mot_frame(7, &[("1", 0.5)]), mot_frame(8, &[])];
+    let dual = dual_clock_scene();
+    let order: Vec<f64> = dual.entities()[0]
+        .observations()
+        .iter()
+        .map(|o| o.geometry.bounds().left())
+        .collect();
+    assert_eq!(order, [0.1, 0.3, 0.2, 0.4]);
+    let scenes = [
+        rich_scene(),
+        mot_frame(7, &[("1", 0.5)]),
+        mot_frame(8, &[]),
+        dual,
+    ];
 
     // A JSON value tree sorts object keys, so it is checked as a document, not as the Scenes.
     let tree = to_json(&scenes);

@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use foundation::MediaTime;
 use serde::{Deserialize, Serialize};
 
@@ -70,16 +68,6 @@ impl ObservationTime {
         match kind {
             TimeKind::Frame => self.frame.map(SceneTime::Frame),
             TimeKind::Timestamp => self.timestamp.map(SceneTime::Timestamp),
-        }
-    }
-
-    /// How the two compare on a clock both have: timestamps when both have one, else frames when both have one, else
-    /// `None`.
-    pub fn cmp_shared(&self, other: &Self) -> Option<Ordering> {
-        match (self.timestamp, other.timestamp, self.frame, other.frame) {
-            (Some(a), Some(b), _, _) => Some(a.cmp(&b)),
-            (_, _, Some(a), Some(b)) => Some(a.cmp(&b)),
-            _ => None,
         }
     }
 }

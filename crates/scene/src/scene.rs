@@ -1,7 +1,4 @@
-use std::{
-    cmp::Ordering,
-    collections::{HashMap, HashSet, hash_map::Entry},
-};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -10,7 +7,7 @@ use crate::{
     EntityId, Fields, Image, MotionState, Name, Observation, SceneError, TimeKind, TimeSlice,
 };
 
-/// One tracked or untracked thing, with its observations in time order.
+/// One tracked or untracked thing, with its observations in time order once it is in a Scene.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Entity {
     id: EntityId,
@@ -40,7 +37,7 @@ impl Entity {
         &self.id
     }
 
-    /// Where and what the entity was, in time order.
+    /// Where and what the entity was, in time order inside a Scene; in the order added before that.
     pub fn observations(&self) -> &[Observation] {
         &self.observations
     }
@@ -50,22 +47,14 @@ impl Entity {
         self.observations.last()
     }
 
-    /// Adds an observation behind every one that is not later on a clock they share
-    /// (`ObservationTime::cmp_shared`); observations of equal time keep the order they were added in. Adding in time
-    /// order appends.
+    /// Adds an observation after the others. The order in time is made once, by [`Scene::with_entities`], on the
+    /// Scene's clock.
     pub fn push_observation(&mut self, observation: Observation) {
         if self.observations.is_empty() {
             // Most entities of a Scene have one observation; do not reserve the default four.
             self.observations.reserve_exact(1);
         }
-        let mut at = self.observations.len();
-        while at > 0
-            && self.observations[at - 1].time.cmp_shared(&observation.time)
-                == Some(Ordering::Greater)
-        {
-            at -= 1;
-        }
-        self.observations.insert(at, observation);
+        self.observations.push(observation);
     }
 
     /// The earliest to the latest time of the observations that have one on the `kind` clock; `None` when none has.
@@ -422,38 +411,29 @@ mod tests {
     }
 
     #[test]
-    fn observations_stay_in_time_order_on_the_clock_they_share() {
-        let xs = |entity: &Entity| -> Vec<f64> {
-            let lefts = entity.observations().iter();
-            lefts.map(|o| o.geometry.bounds().left()).collect()
-        };
+    fn a_scene_orders_observations_by_its_clock_and_equal_times_keep_arrival_order() {
         let mut entity = Entity::new(id("a"));
         for (time, x) in [(5, 0.5), (2, 0.2), (5, 0.6), (9, 0.9), (2, 0.3)] {
             entity.push_observation(observation(SceneTime::Frame(time), x));
         }
 
-        assert_eq!(
-            xs(&entity),
-            [0.2, 0.3, 0.5, 0.6, 0.9],
-            "equal times keep arrival order"
-        );
+        let scene = Scene::new(TimeSlice::at(SceneTime::Frame(0)))
+            .with_entities(vec![entity])
+            .expect("frames");
+
+        let entity = &scene.entities()[0];
+        let order: Vec<_> = entity
+            .observations()
+            .iter()
+            .map(|o| o.geometry.bounds().left())
+            .collect();
+        assert_eq!(order, [0.2, 0.3, 0.5, 0.6, 0.9]);
         assert_eq!(
             entity.span(TimeKind::Frame),
             TimeSlice::new(SceneTime::Frame(2), SceneTime::Frame(9)).ok()
         );
         // No observation on the clock, no span: Python's sentinel start and end are this `None`.
         assert_eq!(entity.span(TimeKind::Timestamp), None);
-
-        // Timestamps decide when both observations have one; an observation with a clock the others lack stays
-        // where it landed.
-        let both =
-            |frame, us| ObservationTime::new(Some(frame), Some(MediaTime(us))).expect("a time");
-        let mut mixed = Entity::new(id("b"));
-        mixed.push_observation(observation(both(1, 20), 0.1));
-        mixed.push_observation(observation(both(2, 10), 0.2));
-        mixed.push_observation(observation(SceneTime::Frame(0), 0.3));
-        mixed.push_observation(observation(SceneTime::Timestamp(MediaTime(5)), 0.4));
-        assert_eq!(xs(&mixed), [0.3, 0.4, 0.2, 0.1]);
     }
 
     #[test]
