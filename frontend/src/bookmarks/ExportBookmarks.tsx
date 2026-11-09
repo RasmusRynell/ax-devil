@@ -2,8 +2,8 @@ import { useState, type ReactNode } from "react";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { TextField } from "../kit/Fields";
 import { useCommand, useDoc } from "../session/session";
-import { Refusal } from "../shell/SettingField";
-import { useServerKind } from "../shell/windowBridge";
+import { Refusal } from "../kit/Refusal";
+import { useServerKind } from "../windowBridge";
 
 /**
  * Exporting every bookmark to a CSV file on the machine that runs the backend: the function that starts it, and the

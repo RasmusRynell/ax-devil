@@ -2,7 +2,7 @@ import { useLayoutEffect, useMemo } from "react";
 import type { SidebarView } from "../generated/api";
 import { useStreaming } from "../live/cameras";
 import { useDoc, useView } from "../session/session";
-import { useKept } from "./keptState";
+import { useKept } from "../kit/keptState";
 import { NO_FOLDS, revealShown } from "./reveal";
 import { treeOf } from "./treeModel";
 

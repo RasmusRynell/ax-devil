@@ -3,8 +3,8 @@ import { credential, holdPassword, PASSWORD_RULE, sendable } from "../access";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
 import { TextField } from "../kit/Fields";
-import { Banner as Card } from "../shell/Banner";
-import { useServerKind } from "../shell/windowBridge";
+import { Banner as Card } from "../kit/Banner";
+import { useServerKind } from "../windowBridge";
 import type { Ending } from "./connection";
 import type { SessionState } from "./store";
 

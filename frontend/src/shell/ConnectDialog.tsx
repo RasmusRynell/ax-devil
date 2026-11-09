@@ -2,7 +2,7 @@ import { useState } from "react";
 import { PASSWORD_RULE, sendable } from "../access";
 import { Dialog } from "../kit/Dialog";
 import { TextField } from "../kit/Fields";
-import "./windowBridge";
+import "../windowBridge";
 
 /** True for a server address (http or https, no fragment): the one kind of target a password goes with. */
 function isPlainServer(text: string): boolean {

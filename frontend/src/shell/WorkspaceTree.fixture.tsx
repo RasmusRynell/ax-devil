@@ -3,7 +3,7 @@ import { useLayoutEffect } from "react";
 import type { Access, ItemState } from "../generated/api";
 import { entry, failed, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
 import { SessionProvider, useView } from "../session/session";
-import { KeptStateProvider } from "./keptState";
+import { KeptStateProvider } from "../kit/keptState";
 import { RevealShown, useFolds } from "./RevealShown";
 import { WorkspaceTree } from "./WorkspaceTree";
 

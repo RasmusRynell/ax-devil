@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { GrantsContext } from "../access";
 import type { DecoderInfo, ResolverInfo } from "../generated/api";
-import type { WindowBridge } from "../shell/windowBridge";
+import type { WindowBridge } from "../windowBridge";
 import { ResolverForm, useResolverForm } from "./ResolverForm";
 import type { Settings } from "./scan";
 

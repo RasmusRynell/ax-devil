@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { apiFetch } from "../api";
-import type { RecentWorkspace } from "../generated/api";
-import { useCan, useDoc, useWorkspaceAnswers } from "../session/session";
+import { apiFetch } from "./api";
+import type { RecentWorkspace } from "./generated/api";
+import { useCan, useDoc, useWorkspaceAnswers } from "./session/session";
 
 /** The id of a menu entry or start-panel row that opens the recent workspace at the path after it. */
 export const RECENT_ID = "recent:";

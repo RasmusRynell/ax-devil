@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ConnectDialog } from "./ConnectDialog";
-import type { WindowBridge } from "./windowBridge";
+import type { WindowBridge } from "../windowBridge";
 
 afterEach(() => {
   cleanup();

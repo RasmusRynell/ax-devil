@@ -6,7 +6,7 @@ import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { AddVideoDialog } from "./AddVideoDialog";
 import { decodersFor } from "./OverlayRow";
-import type { WindowBridge } from "./windowBridge";
+import type { WindowBridge } from "../windowBridge";
 
 const decoder = (handler: string, ...extensions: string[]): DecoderInfo => ({
   handler,

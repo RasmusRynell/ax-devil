@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { View } from "../generated/api";
-import type { Say } from "../shell/useRowActions";
-import type { Hidden } from "./hidden";
+import type { Say } from "./useRowActions";
+import type { Hidden } from "../viewer/hidden";
 import type { PaneTarget } from "./PaneMenu";
-import { entriesOf, shownEntry } from "./shownEntry";
-import type { Viewer } from "./useViewers";
+import { entriesOf, shownEntry } from "../viewer/shownEntry";
+import type { Viewer } from "../viewer/useViewers";
 
 /** Why a header action failed, and what it acted on. */
 export type Failure = PaneTarget & { message: string };

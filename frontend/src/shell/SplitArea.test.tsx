@@ -13,10 +13,10 @@ import {
 } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import type { ViewerProps } from "../viewers";
-import { registerExport } from "./exportTargets";
-import { PANE_MIME } from "./Pane";
+import { registerExport } from "../viewer/exportTargets";
+import { PANE_MIME } from "../viewer/Pane";
 import { SplitArea } from "./SplitArea";
-import { useFrontViewer } from "./useViewers";
+import { useFrontViewer } from "../viewer/useViewers";
 
 const mounted = vi.hoisted(() => [] as string[]);
 

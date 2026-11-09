@@ -117,13 +117,13 @@ Dependencies point down only. Numbers are the layers of [02](../rebuild/02-archi
 | 2 | Domain and contracts | Rust crates, `layer = "domain"` | same |
 | 3 | Runtime services | Rust crates, `layer = "services"` | same |
 | 3a | Event-loop adapters: routes, sockets, wire types | `crates/api-types` (`layer = "adapters"`) and the routes in `src/lib.rs` and `src/routes/` | May use the server crates |
-| 4–7 | UI support, generic display, workflows, shell | `frontend/src/` | — |
+| 4–7 | UI support, generic display, workflows, shell | `frontend/src/` | Folder layers in `FRONTEND_LAYERS` |
 | 8 | Entry and bootstrap | `src/main.rs` (backend), `desktop/` (window and backend lifetime) | The root crate holds the routes and `main.rs`, so it declares `layer = "entry"` |
 
 Every crate declares its layer in `[package.metadata.ax-devil]`; `scripts/check-architecture.cjs` (part of
 `make check`) rejects a crate that depends on a higher layer, a layer 1–3 crate that depends on the HTTP server, and the
 pairs it lists (for example `playback` on `media`).
-The frontend's layers 4–7 get their import rules when the first of those modules land.
+Each `frontend/src` folder and root-level file sits in one layer of `FRONTEND_LAYERS` in `scripts/check-frontend-layers.cjs`, lowest first; a file imports only its own layer or below, so code two layers share moves to the lower one, and UI two features share to `frontend/src/kit/`.
 
 ## Runtime
 

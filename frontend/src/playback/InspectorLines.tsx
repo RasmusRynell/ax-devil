@@ -14,7 +14,7 @@ import { IconButton } from "../kit/IconButton";
 import type { MenuEntry } from "../kit/Menu";
 import { MiddleElided } from "../kit/MiddleElided";
 import { SectionCaption } from "../kit/SectionCaption";
-import { useRowWindow } from "../shell/useRowWindow";
+import { useRowWindow } from "../kit/useRowWindow";
 import {
   copyValue,
   displayValue,

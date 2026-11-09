@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { SETTINGS } from "../generated/settings";
 import { Button } from "../kit/Button";
 import { FIELD } from "../kit/look";
-import { literalSecret, Refusal } from "./SettingField";
+import { literalSecret } from "./SettingField";
+import { Refusal } from "../kit/Refusal";
 
 /** A login of the `scan.logins` setting: a user and a password, each as written, so `$NAME` stays a reference. */
 export type Login = Record<string, string>;

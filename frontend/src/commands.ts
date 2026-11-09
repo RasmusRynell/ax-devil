@@ -1,7 +1,7 @@
 import { COMMANDS, type CommandId } from "./generated/settings";
 import type { RecentWorkspace } from "./generated/api";
 import type { MenuEntry } from "./kit/Menu";
-import { RECENT_ID, recentLabel } from "./shell/recents";
+import { RECENT_ID, recentLabel } from "./recents";
 
 /**
  * What a command needs of the seat, as the backend's `Can` names it: `host` (read the host's files), `content` (change

@@ -2,7 +2,7 @@ import { reasonOf } from "../errors";
 import type { ReloadFailure } from "../generated/api";
 import { Button } from "../kit/Button";
 import { useCan, useCommand } from "../session/session";
-import { Banner } from "../shell/Banner";
+import { Banner } from "../kit/Banner";
 
 /**
  * Offers to read an open item's files again after they changed on disk. `changed` counts the changes since the viewer

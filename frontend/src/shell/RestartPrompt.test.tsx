@@ -6,7 +6,7 @@ import type { ApiError, Grant } from "../generated/api";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { Shell } from "./Shell";
-import type { WindowBridge } from "./windowBridge";
+import type { WindowBridge } from "../windowBridge";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 

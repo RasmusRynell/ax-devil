@@ -5,7 +5,6 @@ import { BrowseButton } from "../kit/Button";
 import { SegmentedControl } from "../kit/Chips";
 import { Checkbox, LABELLED, Select, TextField } from "../kit/Fields";
 import { Icon } from "../kit/Icon";
-import { TONE } from "../kit/look";
 import { LoginsEditor } from "./LoginsEditor";
 
 /** A setting's value as the backend stores it. */
@@ -178,16 +177,6 @@ export function PlainTextNote({ id, reference }: { id: string; reference: boolea
       {reference
         ? "Saved as plain text. Use $VARIABLE to read it from the environment."
         : "Saved as plain text."}
-    </p>
-  );
-}
-
-/** Why the backend refused a value, shown at the value in the danger tone; `title` is the fuller reason on hover. */
-export function Refusal({ reason, title }: { reason: string; title?: string }) {
-  return (
-    <p role="alert" title={title} className={`m-0 flex items-center gap-s ${TONE.danger.text}`}>
-      <Icon name="triangle-alert" />
-      <span className="min-w-0 [overflow-wrap:anywhere]">{reason}</span>
     </p>
   );
 }

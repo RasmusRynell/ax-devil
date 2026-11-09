@@ -1,10 +1,10 @@
 import { Menu } from "../kit/Menu";
 import { Popup } from "../kit/Popup";
 import { useDoc, useView } from "../session/session";
-import { useRowActions, type Say } from "../shell/useRowActions";
-import { shownBy, useExportTargets } from "./exportTargets";
-import { entriesOf, shownEntry } from "./shownEntry";
-import { useHidden } from "./useViewers";
+import { useRowActions, type Say } from "./useRowActions";
+import { shownBy, useExportTargets } from "../viewer/exportTargets";
+import { entriesOf, shownEntry } from "../viewer/shownEntry";
+import { useHidden } from "../viewer/useViewers";
 
 const NOTHING_CHECKED: ReadonlySet<string> = new Set();
 

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider, useView } from "../session/session";
-import { KeptStateProvider } from "./keptState";
+import { KeptStateProvider } from "../kit/keptState";
 import { Sidebar } from "./Sidebar";
 
 /** Whether the session's view has the sidebar open. */

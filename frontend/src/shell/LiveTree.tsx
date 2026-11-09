@@ -5,7 +5,7 @@ import { Popup } from "../kit/Popup";
 import { SectionCaption } from "../kit/SectionCaption";
 import { ACTIONS, type Row, type RowAction, type SectionView, type Shown } from "../live/rows";
 import { HoverPicture } from "./HoverPicture";
-import { useKept } from "./keptState";
+import { useKept } from "../kit/keptState";
 import { LiveList, type Listed } from "./LiveList";
 import { useLiveTrack } from "./RevealShown";
 import { useHoverPicture } from "./useHoverPicture";

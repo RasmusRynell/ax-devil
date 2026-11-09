@@ -9,7 +9,7 @@ import { ChoiceChips } from "../kit/Chips";
 import { SearchField } from "../kit/Fields";
 import { IconButton } from "../kit/IconButton";
 import { useCan, useCommand, useDoc } from "../session/session";
-import { useKept } from "../shell/keptState";
+import { useKept } from "../kit/keptState";
 import { useShow } from "../viewer/useViewers";
 import { BookmarkGroup, type RowActions } from "./BookmarkGroup";
 import { useExportBookmarks } from "./ExportBookmarks";

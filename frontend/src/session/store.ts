@@ -10,7 +10,7 @@ import type {
   ContentRef,
   View,
 } from "../generated/api";
-import { OffsetEstimator } from "../playback/timeSync";
+import { OffsetEstimator } from "./timeSync";
 import { connect, type Connection, type Ending, type Entry, type Status } from "./connection";
 import { Cursors } from "./cursors";
 import { EMPTY_VIEW, canDo, shareView, shownView, type Pending } from "./views";

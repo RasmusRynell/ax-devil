@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useGrants } from "../access";
+import { useGrants } from "./access";
 
 /** What the Electron shell's preload exposes to the page; absent in a plain browser. */
 export interface WindowBridge {

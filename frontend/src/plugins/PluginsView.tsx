@@ -16,7 +16,7 @@ import { Chip } from "../kit/Chips";
 import { TextField } from "../kit/Fields";
 import { SectionCaption, type CaptionMark } from "../kit/SectionCaption";
 import { ask, type Answer } from "../resolvers/handlers";
-import { Refusal } from "../shell/SettingField";
+import { Refusal } from "../kit/Refusal";
 import { failedIn, reportFailedPlugins } from "./failed";
 
 /** What the handlers of each kind are called in a plugin's row; a new kind is a new entry. */

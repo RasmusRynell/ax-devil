@@ -9,7 +9,7 @@ import { resolvePlaylists } from "../resolvers/resolve";
 import type { Settings } from "../resolvers/scan";
 import { HandlersFailure, useHandlers } from "../resolvers/useHandlers";
 import { useCommand, useSession } from "../session/session";
-import { Refusal } from "./SettingField";
+import { Refusal } from "../kit/Refusal";
 
 /** Stands for no resolver while none is chosen. */
 const NONE: ResolverInfo = { id: "", display_name: "", description: "", fields: [] };

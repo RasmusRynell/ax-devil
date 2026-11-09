@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, type ReactNode } from "react";
 import { reasonOf } from "../errors";
 import type { ChoiceInfo, DecoderInfo, ErrorWire, FieldInfo, ResolverInfo } from "../generated/api";
-import { Refusal } from "../shell/SettingField";
-import { useServerKind } from "../shell/windowBridge";
+import { Refusal } from "../kit/Refusal";
+import { useServerKind } from "../windowBridge";
 import { decoderOptions, FieldControl, misread, needsValue, shown, type FieldForm } from "./fields";
 import {
   checkedCount,
