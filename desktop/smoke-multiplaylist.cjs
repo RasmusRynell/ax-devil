@@ -6,7 +6,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { SMOKE_ROOT, page } = require("./smoke-kit.cjs");
+const { page, removeTemp, SMOKE_ROOT } = require("./smoke-kit.cjs");
 
 const VIDEO = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
 
@@ -100,6 +100,6 @@ module.exports.multiplaylist = async (window) => {
     );
     await post("/api/plugins/remove", { target: "two-runs" });
   } finally {
-    await fs.rm(folder, { recursive: true, force: true });
+    await removeTemp(folder);
   }
 };

@@ -9,7 +9,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, frames, page, setView } = require("./smoke-kit.cjs");
+const { frames, page, removeTemp, SCREENSHOTS, setView } = require("./smoke-kit.cjs");
 const { inBackendWindow } = require("./smoke-twice.cjs");
 
 const BROKER = "198.51.100.2";
@@ -147,6 +147,6 @@ module.exports.liveStreams = async () => {
       { command: "open", env: { AX_DEVIL_SMOKE_BROKER: BROKER } },
     );
   } finally {
-    await fs.rm(folder, { recursive: true, force: true });
+    await removeTemp(folder);
   }
 };

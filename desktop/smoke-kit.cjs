@@ -349,6 +349,11 @@ async function until(find, what) {
   throw new Error(`Timed out: ${what}`);
 }
 
+// Removes a scenario's temporary folder. On Windows a video stays open until the stream that reads it has ended,
+// which follows the item's removal a moment later, so a locked file is tried again for up to 11 s before it fails.
+const removeTemp = (folder) =>
+  fs.rm(folder, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+
 // The part of the smoke test running, for a timeout to name, and when it began. `begin` ends it, logging how long it
 // took and the time so far, and starts the next.
 let running = "shell";
@@ -362,6 +367,7 @@ function begin(next) {
 
 module.exports = {
   begin,
+  removeTemp,
   current: () => running,
   SMOKE_ROOT,
   SCREENSHOTS,

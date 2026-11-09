@@ -7,13 +7,14 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const {
-  SCREENSHOTS,
-  SMOKE_ROOT,
   frames,
   moveTo,
   openAddVideo,
   page,
+  removeTemp,
+  SCREENSHOTS,
   setView,
+  SMOKE_ROOT,
 } = require("./smoke-kit.cjs");
 
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
@@ -214,6 +215,6 @@ module.exports.sidebar = async (window) => {
     }
   } finally {
     nativeTheme.themeSource = theme;
-    await fs.rm(folder, { recursive: true, force: true });
+    await removeTemp(folder);
   }
 };
