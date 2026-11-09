@@ -346,22 +346,32 @@ mod tests {
             );
         }
     }
+
     #[test]
     fn memory_keeps_the_most_recently_used_pictures() {
         let thumbnails = Thumbnails::new(PathBuf::new());
         let jpeg = Bytes::from_static(b"jpeg");
-        for n in 0..REMEMBERED {
+        // 48 pictures fit; asking for the oldest makes it the newest, so the next one in goes out of memory
+        // instead of it.
+        for n in 0..48 {
             thumbnails.remember(&n.to_string(), &jpeg);
         }
         assert!(thumbnails.recall("0").is_some(), "asked for again");
         thumbnails.remember("new", &jpeg);
+
+        let kept: Vec<_> = ["0", "new"]
+            .into_iter()
+            .map(str::to_owned)
+            .chain((2..48).map(|n| n.to_string()))
+            .collect();
+        assert_eq!(kept.len(), 48);
         assert!(
             thumbnails.recall("1").is_none(),
             "the least recently used went"
         );
-        assert!(thumbnails.recall("0").is_some());
-        assert!(thumbnails.recall("new").is_some());
-        assert_eq!(thumbnails.remembered().len(), REMEMBERED);
+        for tag in &kept {
+            assert!(thumbnails.recall(tag).is_some(), "{tag} stays");
+        }
     }
 
     #[test]

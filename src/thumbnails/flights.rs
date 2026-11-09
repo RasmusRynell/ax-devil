@@ -236,31 +236,43 @@ mod tests {
         assert_eq!(runs.load(Ordering::SeqCst), 3);
     }
 
+    const WAIT: Duration = Duration::from_secs(5);
+
     #[tokio::test(flavor = "multi_thread")]
     async fn only_the_workers_decode_at_once_and_a_read_left_waiting_is_never_started() {
         let flights = Flights::default();
         let runs = Arc::new(AtomicU64::new(0));
-        let mut held = Vec::new();
-        for tag in ["a", "b", "c", "d"] {
+        let join = |tag: &str| {
             let (work, token, release) = held_work(&runs, Ok(Bytes::new()));
-            held.push((tag, flights.join(tag, work), token, release));
-        }
-        let mut third = held.split_off(WORKERS);
-        for (_, _, token, _) in &held {
-            token.recv().unwrap();
-        }
-        // The other two wait for a free worker; one has no one left to answer.
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        assert_eq!(runs.load(Ordering::SeqCst), 2);
-        drop(third.pop());
+            (flights.join(tag, work), token, release)
+        };
 
-        // A worker that finishes lets the next read start, and the abandoned one is skipped.
-        let (_, _, _, release) = &held[0];
+        // Both workers are busy before anything else is asked for.
+        let busy: Vec<_> = ["a", "b"].map(join).into();
+        for (_, token, _) in &busy {
+            token.recv_timeout(WAIT).unwrap();
+        }
+        let (abandoned, ..) = join("c");
+        let (waiting, token, release) = join("d");
+        drop(abandoned);
+        assert_eq!(runs.load(Ordering::SeqCst), WORKERS as u64);
+
+        // A worker that finishes lets the waiting read start, whichever of the two the semaphore serves first.
+        busy[0].2.send(()).unwrap();
+        token.recv_timeout(WAIT).unwrap();
         release.send(()).unwrap();
-        let (_, _, token, release) = &third[0];
-        token.recv_timeout(Duration::from_secs(5)).unwrap();
-        release.send(()).unwrap();
-        assert_eq!(third[0].1.outcome().await, Ok(Bytes::new()));
+        assert_eq!(
+            tokio::time::timeout(WAIT, waiting.outcome()).await,
+            Ok(Ok(Bytes::new()))
+        );
+        busy[1].2.send(()).unwrap();
+
+        // The abandoned read was processed without running.
+        let deadline = Instant::now() + WAIT;
+        while flights.lock().contains_key("c") && Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(!flights.lock().contains_key("c"));
         assert_eq!(runs.load(Ordering::SeqCst), 3);
     }
 }
