@@ -77,8 +77,9 @@ function checkParity({ docs, exists, targets }) {
   const areaFiles = [...docs.keys()].filter((name) => /^docs\/parity\/[^/]+\.md$/.test(name));
   const linked = new Set(
     linkTargets(index)
-      .filter((target) => /^parity\/[\w-]+\.md$/.test(target))
-      .map((target) => `docs/${target}`),
+      .map((target) => resolveLink(RULES_FILE, target.split("#")[0]))
+      .filter((link) => link && !link.slash && /^docs\/parity\/[\w-]+\.md$/.test(link.path))
+      .map((link) => link.path),
   );
   for (const name of linked)
     if (!exists.has(name))
@@ -252,6 +253,14 @@ function linkTargets(text) {
   return [...inline, ...defined].map((match) => match[1].replace(/^<|>$/g, ""));
 }
 
+/** The repository `path` a link path `rel` in `file` names (the root is `.`) and whether it ended in `/`; a leading `/` starts at the root; null if it leaves the repository. */
+function resolveLink(file, rel) {
+  const base = rel.startsWith("/") ? "" : path.posix.dirname(file);
+  const resolved = path.posix.normalize(path.posix.join(base, rel.replace(/^\/+|\/$/g, "")));
+  if (resolved === ".." || resolved.startsWith("../")) return null;
+  return { path: resolved, slash: rel.endsWith("/") };
+}
+
 /** The problems in relative markdown links across `docs` (every listed `*.md`), and how many links it checked. */
 function checkLinks({ docs, exists }) {
   const problems = [];
@@ -261,12 +270,20 @@ function checkLinks({ docs, exists }) {
       if (/^[a-z][a-z0-9+.-]*:/i.test(target)) continue;
       links++;
       const [rel, anchor] = target.split("#");
-      const resolved = rel
-        ? path.posix.normalize(path.posix.join(path.posix.dirname(file), rel))
-        : file;
-      if (!exists.has(resolved))
+      const link = rel ? resolveLink(file, rel) : { path: file, slash: false };
+      const resolved = link?.path;
+      if (!link) problems.push(`${file}: link ${target} leaves the repository; fix or remove it.`);
+      else if (resolved !== "." && !exists.has(resolved))
         problems.push(
           `${file}: link ${target} points at ${resolved}, which does not exist; fix or remove it.`,
+        );
+      else if (
+        link.slash &&
+        resolved !== "." &&
+        ![...exists].some((e) => e.startsWith(`${resolved}/`))
+      )
+        problems.push(
+          `${file}: link ${target} ends in / but ${resolved} is a file; drop the slash.`,
         );
       else if (anchor && docs.has(resolved) && !anchors(docs.get(resolved)).has(anchor))
         problems.push(
