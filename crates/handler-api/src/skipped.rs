@@ -43,6 +43,13 @@ impl SkippedRecords {
         }
     }
 
+    /// Adds a reason for a record already counted by [`add`](Self::add), so a record with two causes is one skip.
+    pub fn also(&mut self, reason: impl Into<String>) {
+        if self.reasons.len() < MAX_REASONS {
+            self.reasons.push(shorten(&reason.into()));
+        }
+    }
+
     /// The warning for `total` records read, or `None` when nothing was skipped.
     pub fn warning(self, total: usize) -> Option<Warning> {
         (self.skipped > 0).then(|| Warning {

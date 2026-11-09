@@ -6,25 +6,27 @@
 //! Scene is a fragment record, and at the end the fragments are sorted, joined per key and written to a new
 //! artifact that replaces the published one as the next generation.
 
+mod feed;
+
 use std::{
     cell::Cell,
     cmp::Ordering,
     fs::File,
     io::BufWriter,
-    ops::ControlFlow,
     path::PathBuf,
     sync::{Arc, mpsc},
     thread,
     time::{Duration, Instant},
 };
 
-use foundation::{CancelToken, ErrorCode, Interrupt, UserError, Warning};
+use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
 use handler_api::{
-    DecodeError, DecodeSummary, Decoder, Framing, Header, OnEqualKey, SceneSink, SkippedRecords,
-    Values,
+    DecodeError, DecodeSummary, Decoder, Header, OnEqualKey, SkippedRecords, Values,
 };
 use overlay_sync::MatchBasis;
 use scene::{Scene, SceneTime, TimeKind};
+
+use feed::{Feed, Whole};
 
 use crate::{
     format::Identity,
@@ -128,14 +130,16 @@ fn run(job: Job) {
         }
     };
     let records = Cell::new(0);
-    let mut input = FileInput::new(&source, spec.framing, &records);
+    let position = Cell::new(0);
+    let mut input = FileInput::new(&source, spec.framing, &records, &position);
     let mut feed = Feed {
         link,
         store,
         framing: spec.framing,
         records: &records,
+        position: &position,
         whole: Whole::default(),
-        before_video: None,
+        counted: None,
         skipped: SkippedRecords::new("lines", "Those lines are not drawn."),
     };
     let result = decoder.decode(&mut input, &options, &mut feed, &cancel);
@@ -151,68 +155,6 @@ fn run(job: Job) {
     }
     if let Err(interrupt) = store.conclude(&mut link, result, &source, identity) {
         link.fail(interrupt);
-    }
-}
-
-/// The sink the decoder feeds.
-struct Feed<'a> {
-    link: Link,
-    store: Store,
-    framing: Framing,
-    /// How many records the input has given; the last is the one the decoder is working on.
-    records: &'a Cell<u64>,
-    /// The records of a decoder that reads the file itself, which no input counts.
-    whole: Whole,
-    /// The last record counted as skipped for lying before the video.
-    before_video: Option<u64>,
-    /// The records the decoder gave up on; the warning names them with the count of lines read.
-    skipped: SkippedRecords,
-}
-
-/// The records of a decoder that reads the file itself (a plugin): a skip is one, and so are the consecutive
-/// Scenes of one start key, which the host joins.
-#[derive(Default)]
-struct Whole {
-    /// How many records have been seen.
-    count: u64,
-    /// The start key of the record the last Scene joined; a skip clears it.
-    key: Option<SceneTime>,
-}
-
-impl Whole {
-    /// The place of a Scene with start `key`, from 0.
-    fn sample(&mut self, key: SceneTime) -> u64 {
-        if self.key != Some(key) {
-            self.count += 1;
-            self.key = Some(key);
-        }
-        self.count - 1
-    }
-
-    fn skip(&mut self) {
-        self.count += 1;
-        self.key = None;
-    }
-}
-
-impl Feed<'_> {
-    /// Where the file puts the Scene with start `key` that arrives now, from 0, for matching by frame. A record is
-    /// placed by its own place among the file's records, so one that gave no Scene (skipped, or with nothing to
-    /// draw) still holds its frame.
-    fn ordinal(&mut self, key: SceneTime) -> u64 {
-        match self.framing {
-            Framing::Records => self.records.get().saturating_sub(1),
-            Framing::Whole => self.whole.sample(key),
-        }
-    }
-
-    /// The records the skipped warning counts against.
-    fn lines(&self) -> usize {
-        let count = match self.framing {
-            Framing::Records => self.records.get(),
-            Framing::Whole => self.whole.count,
-        };
-        usize::try_from(count).unwrap_or(usize::MAX)
     }
 }
 
@@ -242,55 +184,6 @@ struct Store {
     last_publish: Option<Instant>,
     /// The records readers already have.
     published_records: usize,
-}
-
-impl SceneSink for Feed<'_> {
-    fn header(&mut self, header: Header) {
-        let store = &mut self.store;
-        if store.header.is_some() || store.clock.is_some() {
-            store.refused = Some("the decoder gave its header after its first sample".into());
-            return;
-        }
-        store.header = Some(header);
-    }
-
-    fn sample(&mut self, scene: Scene, on_equal_key: OnEqualKey) -> ControlFlow<()> {
-        let ordinal = self.ordinal(scene.time().start());
-        let store = &mut self.store;
-        if store.refused.is_some() || store.cancel.is_cancelled() {
-            return ControlFlow::Break(());
-        }
-        if let SceneTime::Frame(frame) = scene.time().start()
-            && frame < 0
-        {
-            // The store keys frames from 0; a Scene before the video has no frame to be drawn on. A record that
-            // gave several such Scenes is one skipped record.
-            if self.before_video != Some(ordinal) {
-                self.before_video = Some(ordinal);
-                self.skipped.add(format!(
-                    "line {}: frame number {frame} is before the video",
-                    ordinal + 1
-                ));
-            }
-            return ControlFlow::Continue(());
-        }
-        match store.accept(&mut self.link, scene, on_equal_key, ordinal) {
-            Ok(()) => ControlFlow::Continue(()),
-            Err(reason) => {
-                store.refused = Some(reason);
-                ControlFlow::Break(())
-            }
-        }
-    }
-
-    fn skip(&mut self, position: u64, reason: String) {
-        self.whole.skip();
-        self.skipped.add(format!("line {position}: {reason}"));
-    }
-
-    fn warn(&mut self, warning: Warning) {
-        self.store.warnings.push(warning);
-    }
 }
 
 impl Store {

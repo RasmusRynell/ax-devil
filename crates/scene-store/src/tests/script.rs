@@ -12,6 +12,8 @@ pub(super) struct Step {
     pub(super) time: SceneTime,
     pub(super) entities: Vec<(u64, u32)>,
     pub(super) on_equal_key: OnEqualKey,
+    /// A reason the decoder then reports the record as skipped for, as a second problem with the same record.
+    pub(super) skip: Option<&'static str>,
 }
 
 pub(super) fn step(time: u64, entities: &[(u64, u32)], on_equal_key: OnEqualKey) -> Step {
@@ -19,6 +21,7 @@ pub(super) fn step(time: u64, entities: &[(u64, u32)], on_equal_key: OnEqualKey)
         time: SceneTime::Frame(time as i64),
         entities: entities.to_vec(),
         on_equal_key,
+        skip: None,
     }
 }
 
@@ -95,7 +98,7 @@ impl Decoder for Script {
 
     fn decode(
         &self,
-        _input: &mut dyn Input,
+        input: &mut dyn Input,
         _options: &Values,
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
@@ -113,9 +116,17 @@ impl Decoder for Script {
                 gate(n, cancel);
             }
             cancel.check()?;
+            // With lines for records, each step answers the next record, and names it by its line.
+            let position = match self.spec.framing {
+                Framing::Records => input.next(cancel)?.map_or(0, |record| record.position),
+                Framing::Whole => n as u64 + 1,
+            };
             // A plugin that is told to stop answers as if it had been cancelled.
             if sink.sample(scene_of(step), step.on_equal_key).is_break() {
                 return Err(Interrupt::Cancelled);
+            }
+            if let Some(reason) = step.skip {
+                sink.skip(position, reason.into());
             }
         }
         if let Some(reason) = self.fail {

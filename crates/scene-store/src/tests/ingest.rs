@@ -95,10 +95,11 @@ fn fragments_of_one_key_join_and_a_replace_drops_what_the_key_held() {
 
 #[test]
 fn a_scene_before_the_video_is_not_stored_and_is_warned_about() {
-    let before = Step {
-        time: SceneTime::Frame(-2),
+    let before_video = |frame| Step {
+        time: SceneTime::Frame(frame),
         ..step(0, &[(1, 10)], OnEqualKey::Merge)
     };
+    let before = before_video(-2);
     // Per-object Scenes of one record at the same negative key are one skipped record.
     let before_again = Step {
         entities: vec![(2, 20)],
@@ -125,6 +126,41 @@ fn a_scene_before_the_video_is_not_stored_and_is_warned_about() {
     assert_eq!(
         skipped.reasons,
         ["line 2: frame number -2 is before the video"]
+    );
+
+    // Read by lines: the reason names the physical line, a blank line before it included, and a record that
+    // also gives a malformed output is still one skipped record.
+    let malformed = Step {
+        skip: Some("not JSON"),
+        ..before_video(-2)
+    };
+    let mut script = Script::new(vec![
+        step(0, &[(1, 10)], OnEqualKey::Merge),
+        malformed,
+        step(1, &[(1, 11)], OnEqualKey::Merge),
+    ]);
+    script.spec.framing = Framing::Records;
+    let rig = Rig::new(script, Tuning::default());
+    fs::write(
+        rig.dir.path().join("overlay.txt"),
+        "one\n\nnegative\nthree\n",
+    )
+    .expect("source");
+
+    let track = rig.open().expect("opens");
+
+    assert_eq!(track.snapshot().keys.frames, Some(in_order(&[0, 1])));
+    let warnings = track.warnings();
+    let [skipped] = &warnings[..] else {
+        panic!("{warnings:?}")
+    };
+    assert_eq!(skipped.problem, "Skipped 1 of 3 lines");
+    assert_eq!(
+        skipped.reasons,
+        [
+            "line 3: frame number -2 is before the video",
+            "line 3: not JSON"
+        ]
     );
 }
 
