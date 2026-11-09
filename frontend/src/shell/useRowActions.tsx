@@ -73,11 +73,13 @@ export function useRowActions(): RowActions {
       reuse: (!side && row.info.kind === "lane") || isStream(row),
       lane: row.info.kind === "lane" ? row.info.label : undefined,
     }).then(() => say(null), fail(say));
-  const stop = (row: TreeRow, say: Say = setProblem) =>
-    void command({ type: "content", command: { type: "closeViewer", item: row.item } }).then(
+  const stop = (row: TreeRow, say: Say = setProblem) => {
+    if (!powers.content) return;
+    command({ type: "content", command: { type: "closeViewer", item: row.item } }).then(
       () => say(null),
       fail(say),
     );
+  };
   // A row that cannot open says why and sends nothing; one still resolving, or a lane hidden itself (Unhide and open
   // opens that), does nothing.
   const open = (row: TreeRow, side = false, say: Say = setProblem) => {

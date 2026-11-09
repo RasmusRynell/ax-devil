@@ -22,26 +22,28 @@ const menuOf = (name: RegExp) => {
   return names;
 };
 
-it("starts a live stream beside the open viewers from its row and stops it by closing its viewer", async () => {
-  const lobby: ItemState = {
-    id: "cam",
-    label: "Lobby",
-    kind: "live",
-    open: false,
-    resolution: {
-      status: "Resolved",
-      content: {
-        kind: "LiveVideo",
-        id: "cam",
-        generation: 1,
-        display_name: "Lobby",
-        slot: "live",
-        overlay: "none",
-        lanes: ["Lobby"],
-        recipe: null,
-      },
+const camera = (id: string, label: string): ItemState => ({
+  id,
+  label,
+  kind: "live",
+  open: false,
+  resolution: {
+    status: "Resolved",
+    content: {
+      kind: "LiveVideo",
+      id,
+      generation: 1,
+      display_name: label,
+      slot: "live",
+      overlay: "none",
+      lanes: [label],
+      recipe: null,
     },
-  };
+  },
+});
+
+it("starts a live stream beside the open viewers from its row and stops it by closing its viewer", async () => {
+  const lobby = camera("cam", "Lobby");
   await renderTree([stored(CLIP), stored(lobby)], []);
   const live = () => screen.getByRole("treeitem", { name: /^Lobby/ });
   expect(menuOf(/^Lobby/)).toEqual(["Start stream", "Information", "Edit", "Remove"]);
@@ -56,4 +58,17 @@ it("starts a live stream beside the open viewers from its row and stops it by cl
   fireEvent.click(screen.getByRole("button", { name: "Stop Lobby" }));
   await act(async () => {});
   expect(commands().at(-1)).toEqual({ type: "closeViewer", item: "cam" });
+});
+
+it("leaves the keys pressed on a row's own button to that button, not to the row the keyboard is on", async () => {
+  await renderTree([stored(camera("a", "Lobby")), stored(camera("b", "Dock"))], []);
+  fireEvent.click(screen.getByRole("treeitem", { name: /^Lobby/ }));
+  const dock = screen.getByRole("button", { name: "Start Dock" });
+  dock.focus();
+  // Enter on the button is its own activation: the tree neither takes it nor starts the selected row.
+  expect(fireEvent.keyDown(dock, { key: "Enter" })).toBe(true);
+  expect(commands()).toEqual([]);
+  fireEvent.click(dock);
+  await act(async () => {});
+  expect(commands()).toEqual([{ type: "openViewer", item: "b" }]);
 });

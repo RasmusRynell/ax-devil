@@ -190,6 +190,8 @@ export function WorkspaceList({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // A key pressed on a control inside a row (its Start or Hide button, a warnings popover) is that control's own.
+    if (event.target !== event.currentTarget) return;
     const active = rows[from]?.row;
     if (event.key === "Enter" && event.ctrlKey && !event.altKey && !event.metaKey && active)
       return onOpen(active, true);
