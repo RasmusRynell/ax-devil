@@ -7,8 +7,8 @@ use super::*;
 use crate::{
     BoundingBox, ClassType, Classification, Confidence, Entity, EntityId, EntityRelation, Event,
     GeographicCoordinates, Geometry, Image, ImageVelocity, Measurements, MotionState, Observation,
-    Operation, Point, Polygon, SceneTime, Score, SphericalCoordinates, TimeSlice, Value,
-    WorldVelocity,
+    ObservationTime, Operation, Point, Polygon, SceneTime, Score, SphericalCoordinates, TimeSlice,
+    Value, WorldVelocity,
 };
 
 fn fixtures() -> PathBuf {
@@ -36,7 +36,7 @@ fn class(name: &'static str, score: Option<f64>, attributes: Fields) -> Classifi
 }
 
 /// A frame-keyed Scene the way the MOT decoder shapes it.
-fn mot_frame(frame: u64, boxes: &[(&str, f64)]) -> Scene {
+fn mot_frame(frame: i64, boxes: &[(&str, f64)]) -> Scene {
     let entities = boxes
         .iter()
         .map(|&(track, x)| {
@@ -128,7 +128,9 @@ fn rich_scene() -> Scene {
             .to_vec(),
     )
     .expect("three points");
-    let mut second = Observation::new(t(1_040_000), Geometry::Polygon(outline));
+    // On both clocks, with a frame before the video.
+    let both = ObservationTime::new(Some(-3), Some(MediaTime(1_040_000))).expect("a time");
+    let mut second = Observation::new(both, Geometry::Polygon(outline));
     second.measurements = Some(Box::new(Measurements {
         geographic: Some(GeographicCoordinates {
             latitude: 1.0,
@@ -206,9 +208,41 @@ fn through_postcard(scene: &Scene) -> Scene {
     decode(&bytes).expect("decodes")
 }
 
+/// A frame-keyed Scene whose observations also carry timestamps, some missing and some against the frame order, so
+/// the order the Scene makes (by frame, ties in arrival order) differs from the order of arrival and from any order
+/// the timestamps would give.
+fn dual_clock_scene() -> Scene {
+    let mut entity = Entity::new(id("a"));
+    for (x, frame, us) in [
+        (0.1, 0, Some(2)),
+        (0.2, 1, Some(1)),
+        (0.3, 0, None),
+        (0.4, 1, Some(0)),
+    ] {
+        let time = ObservationTime::new(Some(frame), us.map(MediaTime)).expect("a time");
+        let geometry = Geometry::Box(bounds(x, 0.25, x + 0.125, 0.5));
+        entity.push_observation(Observation::new(time, geometry));
+    }
+    Scene::new(TimeSlice::at(SceneTime::Frame(0)))
+        .with_entities(vec![entity])
+        .expect("every observation has a frame")
+}
+
 #[test]
 fn every_model_value_survives_json_and_postcard() {
-    let scenes = [rich_scene(), mot_frame(7, &[("1", 0.5)]), mot_frame(8, &[])];
+    let dual = dual_clock_scene();
+    let order: Vec<f64> = dual.entities()[0]
+        .observations()
+        .iter()
+        .map(|o| o.geometry.bounds().left())
+        .collect();
+    assert_eq!(order, [0.1, 0.3, 0.2, 0.4]);
+    let scenes = [
+        rich_scene(),
+        mot_frame(7, &[("1", 0.5)]),
+        mot_frame(8, &[]),
+        dual,
+    ];
 
     // A JSON value tree sorts object keys, so it is checked as a document, not as the Scenes.
     let tree = to_json(&scenes);
@@ -325,7 +359,8 @@ fn a_document_that_breaks_a_model_rule_is_refused_with_the_reason() {
     let unit_box = r#"{"box":[0,0,1,1]}"#;
     let cases = [
         (one(frame, unit_box), None),
-        (one(r#"{"us":5}"#, unit_box), Some("cannot be mixed")),
+        (one(r#"{"us":5}"#, unit_box), Some("scene's clock")),
+        (one("{}", unit_box), Some("frame number or a timestamp")),
         (one(frame, r#"{"box":[1,0,0,1]}"#), Some("box maxima")),
         (
             one(frame, r#"{"polygon":[[0,0],[1,1]]}"#),
@@ -335,7 +370,7 @@ fn a_document_that_breaks_a_model_rule_is_refused_with_the_reason() {
             document(frame, frame, r#"{"id":"","observations":[]}"#),
             Some("entity id"),
         ),
-        (document(frame, r#"{"us":0}"#, ""), Some("cannot be mixed")),
+        (document(frame, r#"{"us":0}"#, ""), Some("scene's clock")),
         (document(r#"{"frame":2}"#, frame, ""), Some("ends before")),
     ];
 
@@ -352,8 +387,10 @@ fn a_document_that_breaks_a_model_rule_is_refused_with_the_reason() {
 fn a_document_of_another_version_is_refused() {
     let document = |version: &str| format!(r#"{{"scene_version":"{version}","scenes":[]}}"#);
 
-    assert_eq!(from_json_str(&document("4.0")), Ok(Vec::new()));
-    for version in ["5.0", "3.9", "4.1", "four", "4"] {
+    for accepted in ["4.0", "4.1"] {
+        assert_eq!(from_json_str(&document(accepted)), Ok(Vec::new()));
+    }
+    for version in ["5.0", "3.9", "4.2", "four", "4"] {
         assert!(from_json_str(&document(version)).is_err(), "{version}");
     }
     assert!(from_json_str(r#"{"scenes":[]}"#).is_err());

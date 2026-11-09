@@ -63,6 +63,8 @@ impl KeyLog {
         match time {
             SceneTime::Frame(frame) => {
                 if let Some(frames) = &mut self.frames {
+                    // A Scene before the video is never stored, so the frame is not negative here.
+                    let frame = u64::try_from(frame).unwrap_or_default();
                     frames.pending.push(FrameKey { frame, sample });
                 }
             }

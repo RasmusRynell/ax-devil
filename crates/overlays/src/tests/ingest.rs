@@ -64,7 +64,7 @@ fn scene_at(key: u64, timed: bool) -> Scene {
     let time = if timed {
         SceneTime::Timestamp(MediaTime(RECORDING_START + key as i64 * 40_000))
     } else {
-        SceneTime::Frame(key)
+        SceneTime::Frame(key as i64)
     };
     let mut entity = Entity::new(EntityId::from(key));
     entity.push_observation(Observation::new(

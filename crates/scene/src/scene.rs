@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    EntityId, Fields, Image, MotionState, Name, Observation, SceneError, SceneTime, TimeSlice,
+    EntityId, Fields, Image, MotionState, Name, Observation, SceneError, TimeKind, TimeSlice,
 };
 
-/// One tracked or untracked thing, with its observations sorted by time.
+/// One tracked or untracked thing, with its observations in time order once it is in a Scene.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Entity {
     id: EntityId,
@@ -37,7 +37,7 @@ impl Entity {
         &self.id
     }
 
-    /// Where and what the entity was, sorted by time.
+    /// Where and what the entity was, in time order inside a Scene; in the order added before that.
     pub fn observations(&self) -> &[Observation] {
         &self.observations
     }
@@ -47,32 +47,24 @@ impl Entity {
         self.observations.last()
     }
 
-    /// Adds an observation behind every one that is not later; observations of equal time keep the order they were
-    /// added in. Adding in time order appends.
+    /// Adds an observation after the others. The order in time is made once, by [`Scene::with_entities`], on the
+    /// Scene's clock.
     pub fn push_observation(&mut self, observation: Observation) {
-        match self.observations.last() {
-            Some(last) if last.time > observation.time => {
-                let at = self
-                    .observations
-                    .partition_point(|o| o.time <= observation.time);
-                self.observations.insert(at, observation);
-            }
-            _ => {
-                if self.observations.is_empty() {
-                    // Most entities of a Scene have one observation; do not reserve the default four.
-                    self.observations.reserve_exact(1);
-                }
-                self.observations.push(observation);
-            }
+        if self.observations.is_empty() {
+            // Most entities of a Scene have one observation; do not reserve the default four.
+            self.observations.reserve_exact(1);
         }
+        self.observations.push(observation);
     }
 
-    /// The times of the first and last observation.
-    pub fn time_span(&self) -> Option<(SceneTime, SceneTime)> {
-        Some((
-            self.observations.first()?.time,
-            self.observations.last()?.time,
-        ))
+    /// The earliest to the latest time of the observations that have one on the `kind` clock; `None` when none has.
+    pub fn span(&self, kind: TimeKind) -> Option<TimeSlice> {
+        let mut times = self.observations.iter().filter_map(|o| o.time.on(kind));
+        let first = times.next()?;
+        let (start, end) = times.fold((first, first), |(start, end), time| {
+            (start.min(time), end.max(time))
+        });
+        TimeSlice::new(start, end).ok()
     }
 }
 
@@ -255,16 +247,25 @@ impl Scene {
         }
     }
 
-    /// Sets the entities. Every observation must be on the Scene's clock.
+    /// Sets the entities. Every observation must have a time on the Scene's clock; each entity's observations are then
+    /// ordered by that clock, equal times keeping their order.
     ///
     /// An id given twice keeps the position of its first entity and the value of its last.
     pub fn with_entities(mut self, entities: Vec<Entity>) -> Result<Self, SceneError> {
         let kind = self.time.kind();
         let mut slots: HashMap<EntityId, usize> = HashMap::with_capacity(entities.len());
         let mut unique: Vec<Entity> = Vec::with_capacity(entities.len());
-        for entity in entities {
-            if entity.observations.iter().any(|o| o.time.kind() != kind) {
+        for mut entity in entities {
+            if entity
+                .observations
+                .iter()
+                .any(|o| o.time.on(kind).is_none())
+            {
                 return Err(SceneError::TimeKindMismatch);
+            }
+            let clock = |o: &Observation| o.time.on(kind);
+            if !entity.observations.is_sorted_by_key(clock) {
+                entity.observations.sort_by_key(clock);
             }
             match slots.entry(entity.id.clone()) {
                 Entry::Occupied(slot) => unique[*slot.get()] = entity,
@@ -342,13 +343,13 @@ mod tests {
     use foundation::MediaTime;
 
     use super::*;
-    use crate::{BoundingBox, Geometry};
+    use crate::{BoundingBox, Geometry, ObservationTime, SceneTime};
 
     fn id(text: &str) -> EntityId {
         EntityId::new(text).expect("non-empty")
     }
 
-    fn observation(time: SceneTime, x: f64) -> Observation {
+    fn observation(time: impl Into<ObservationTime>, x: f64) -> Observation {
         let bounds = BoundingBox::new(x, 0.0, x + 0.1, 0.1).expect("a box");
         Observation::new(time, Geometry::Box(bounds))
     }
@@ -410,37 +411,33 @@ mod tests {
     }
 
     #[test]
-    fn observations_stay_in_time_order_and_equal_times_in_arrival_order() {
+    fn a_scene_orders_observations_by_its_clock_and_equal_times_keep_arrival_order() {
         let mut entity = Entity::new(id("a"));
         for (time, x) in [(5, 0.5), (2, 0.2), (5, 0.6), (9, 0.9), (2, 0.3)] {
             entity.push_observation(observation(SceneTime::Frame(time), x));
         }
 
+        let scene = Scene::new(TimeSlice::at(SceneTime::Frame(0)))
+            .with_entities(vec![entity])
+            .expect("frames");
+
+        let entity = &scene.entities()[0];
         let order: Vec<_> = entity
             .observations()
             .iter()
-            .map(|o| (o.time, o.geometry.bounds().left()))
+            .map(|o| o.geometry.bounds().left())
             .collect();
+        assert_eq!(order, [0.2, 0.3, 0.5, 0.6, 0.9]);
         assert_eq!(
-            order,
-            [
-                (SceneTime::Frame(2), 0.2),
-                (SceneTime::Frame(2), 0.3),
-                (SceneTime::Frame(5), 0.5),
-                (SceneTime::Frame(5), 0.6),
-                (SceneTime::Frame(9), 0.9),
-            ]
+            entity.span(TimeKind::Frame),
+            TimeSlice::new(SceneTime::Frame(2), SceneTime::Frame(9)).ok()
         );
-        assert_eq!(
-            entity.time_span(),
-            Some((SceneTime::Frame(2), SceneTime::Frame(9)))
-        );
-        // No observation, no span: Python's sentinel start and end are this `None`.
-        assert_eq!(Entity::new(id("bare")).time_span(), None);
+        // No observation on the clock, no span: Python's sentinel start and end are this `None`.
+        assert_eq!(entity.span(TimeKind::Timestamp), None);
     }
 
     #[test]
-    fn a_scene_replaces_repeated_entities_and_holds_one_kind_of_time() {
+    fn a_scene_replaces_repeated_entities_and_holds_its_clock() {
         let scene = || Scene::new(TimeSlice::at(SceneTime::Frame(0)));
         let entity_at = |name: &str, time| {
             let mut entity = Entity::new(id(name));
@@ -470,6 +467,24 @@ mod tests {
             scene().with_entities(vec![entity_at("a", stamp)]),
             Err(SceneError::TimeKindMismatch)
         );
+        // An observation may carry the other clock too. Each Scene orders by its own: here the timestamps and the
+        // frames disagree.
+        let mut dual = Entity::new(id("a"));
+        for (frame, us, x) in [(2, 10, 0.2), (1, 20, 0.1)] {
+            let time = ObservationTime::new(Some(frame), Some(MediaTime(us))).expect("a time");
+            dual.push_observation(observation(time, x));
+        }
+        let lefts = |scene: Scene| -> Vec<f64> {
+            let observations = scene.entities()[0].observations();
+            observations
+                .iter()
+                .map(|o| o.geometry.bounds().left())
+                .collect()
+        };
+        let by_frame = scene().with_entities(vec![dual.clone()]).expect("frames");
+        let by_time = Scene::new(TimeSlice::at(stamp)).with_entities(vec![dual]);
+        assert_eq!(lefts(by_frame), [0.1, 0.2]);
+        assert_eq!(lefts(by_time.expect("timestamps")), [0.2, 0.1]);
         let late = Event::new(TimeSlice::at(stamp), Operation::Delete { entity: id("a") });
         assert_eq!(
             scene().with_events(vec![late]),

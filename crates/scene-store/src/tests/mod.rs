@@ -8,6 +8,7 @@ mod ingest;
 mod live;
 mod query;
 mod reuse;
+mod script;
 
 use std::{
     fs,
@@ -171,7 +172,7 @@ impl Decoder for Counting {
         match self.shape {
             Shape::Frames { frames, boxes } => {
                 for frame in 0..frames {
-                    step(frame, entities(SceneTime::Frame(frame), boxes), sink)?;
+                    step(frame, entities(SceneTime::Frame(frame as i64), boxes), sink)?;
                 }
             }
             Shape::Mixed => {

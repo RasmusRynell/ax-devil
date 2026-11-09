@@ -31,8 +31,10 @@ pub enum SceneError {
     EmptyFilterLabel(Name),
     /// Two filter options of one policy have the same id.
     DuplicateFilterId(Name),
-    /// A time is of another kind (frame number or timestamp) than the time it must agree with.
+    /// A time is of another kind (frame number or timestamp) than the clock it must be on.
     TimeKindMismatch,
+    /// An observation has neither a frame number nor a timestamp.
+    NoObservationTime,
     /// A time slice ends before it starts.
     ReversedTimeSlice,
     /// Serialized Scene data could not be read or written; carries the reason.
@@ -56,8 +58,9 @@ impl fmt::Display for SceneError {
             Self::EmptyFilterId => f.write_str("filter option id cannot be empty"),
             Self::EmptyFilterLabel(id) => write!(f, "filter option '{id}' has an empty label"),
             Self::DuplicateFilterId(id) => write!(f, "filter option id '{id}' appears twice"),
-            Self::TimeKindMismatch => {
-                f.write_str("frame numbers and timestamps cannot be mixed in one scene")
+            Self::TimeKindMismatch => f.write_str("a time is not on the scene's clock"),
+            Self::NoObservationTime => {
+                f.write_str("an observation needs a frame number or a timestamp")
             }
             Self::ReversedTimeSlice => f.write_str("time slice ends before it starts"),
             Self::Serial(reason) => write!(f, "scene data: {reason}"),

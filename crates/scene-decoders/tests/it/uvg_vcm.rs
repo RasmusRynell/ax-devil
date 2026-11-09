@@ -82,7 +82,7 @@ fn frames_keep_their_numbers_and_each_detection_is_kept_as_the_source_wrote_it()
     assert_eq!(summary.coverage, Coverage::Dense);
 
     let first = &scenes[0].entities()[0].observations()[0];
-    assert_eq!(first.time, SceneTime::Frame(0));
+    assert_eq!(first.time, SceneTime::Frame(0).into());
     let Geometry::Box(bounds) = &first.geometry else {
         panic!("a box");
     };

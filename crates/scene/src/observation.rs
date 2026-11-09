@@ -1,7 +1,8 @@
 use std::cmp::Ordering;
 
 use crate::{
-    ClassType, Confidence, Fields, Geometry, Measurements, SceneError, SceneTime, Score, Value,
+    ClassType, Confidence, Fields, Geometry, Measurements, ObservationTime, SceneError, Score,
+    Value,
 };
 
 /// A class an observation was given.
@@ -54,7 +55,7 @@ fn rank(a: &Classification, b: &Classification) -> Ordering {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Observation {
     /// When the sighting happened.
-    pub time: SceneTime,
+    pub time: ObservationTime,
     /// Where the entity was.
     pub geometry: Geometry,
     /// What the entity was, in the order the source gave them.
@@ -67,9 +68,9 @@ pub struct Observation {
 
 impl Observation {
     /// A sighting with no classes, measurements or details.
-    pub fn new(time: SceneTime, geometry: Geometry) -> Self {
+    pub fn new(time: impl Into<ObservationTime>, geometry: Geometry) -> Self {
         Self {
-            time,
+            time: time.into(),
             geometry,
             classifications: Vec::new(),
             measurements: None,

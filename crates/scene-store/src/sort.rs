@@ -65,19 +65,19 @@ impl Entry {
 
 /// A number that orders like the time, whichever clock it is on.
 pub(crate) fn sort_key(time: SceneTime) -> u64 {
-    match time {
+    let signed = match time {
         SceneTime::Frame(frame) => frame,
-        SceneTime::Timestamp(time) => (time.0 as u64) ^ (1 << 63),
-    }
+        SceneTime::Timestamp(time) => time.0,
+    };
+    (signed as u64) ^ (1 << 63)
 }
 
 /// The time of a [`sort_key`] on `kind`'s clock.
 pub(crate) fn time_of(kind: TimeKind, key: u64) -> SceneTime {
+    let signed = (key ^ (1 << 63)) as i64;
     match kind {
-        TimeKind::Frame => SceneTime::Frame(key),
-        TimeKind::Timestamp => {
-            SceneTime::Timestamp(foundation::MediaTime((key ^ (1 << 63)) as i64))
-        }
+        TimeKind::Frame => SceneTime::Frame(signed),
+        TimeKind::Timestamp => SceneTime::Timestamp(foundation::MediaTime(signed)),
     }
 }
 

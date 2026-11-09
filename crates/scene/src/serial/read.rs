@@ -10,8 +10,8 @@ use super::{
 };
 use crate::{
     BoundingBox, ClassType, Classification, Confidence, Entity, EntityId, EntityRelation, Event,
-    Geometry, Image, Measurements, MotionState, Name, Observation, Operation, Point, Polygon,
-    Scene, SceneError, SceneTime, Score, TimeSlice,
+    Geometry, Image, Measurements, MotionState, Name, Observation, ObservationTime, Operation,
+    Point, Polygon, Scene, SceneError, SceneTime, Score, TimeSlice,
 };
 
 #[derive(Deserialize)]
@@ -41,9 +41,17 @@ struct SliceIn {
 #[derive(Clone, Copy, Deserialize)]
 enum TimeIn {
     #[serde(rename = "frame")]
-    Frame(u64),
+    Frame(i64),
     #[serde(rename = "us")]
     Us(i64),
+}
+
+/// An observation's time: at least one of the clocks.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ObservationTimeIn {
+    frame: Option<i64>,
+    us: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -74,7 +82,7 @@ struct ImageIn {
 
 #[derive(Deserialize)]
 struct ObservationIn {
-    time: TimeIn,
+    time: ObservationTimeIn,
     geometry: GeometryIn,
     #[serde(default)]
     classifications: Vec<ClassificationIn>,
@@ -229,8 +237,9 @@ impl ObservationIn {
                     .collect::<Result<_, _>>()?,
             )?),
         };
-        let mut observation = Observation::new(self.time.build(), geometry)
-            .with_details(self.source_data.0, self.debug.0)?;
+        let time = ObservationTime::new(self.time.frame, self.time.us.map(foundation::MediaTime))?;
+        let mut observation =
+            Observation::new(time, geometry).with_details(self.source_data.0, self.debug.0)?;
         observation.classifications = self
             .classifications
             .into_iter()

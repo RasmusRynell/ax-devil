@@ -24,7 +24,7 @@ pub use filter::{ClassRule, FilterChoice, FilterOption, FilterPolicy, SceneView}
 pub use geometry::{BoundingBox, Geometry, Point, Polygon};
 pub use observation::{Classification, Observation};
 pub use scene::{Entity, EntityRelation, Event, Operation, OperationKind, Scene};
-pub use time::{Coverage, MatchBasis, SceneTime, TimeKind, TimeSlice};
+pub use time::{Coverage, MatchBasis, ObservationTime, SceneTime, TimeKind, TimeSlice};
 pub use value::{Fields, MAX_VALUE_DEPTH, Name, Value};
 pub use values::{
     ClassType, ColorEntry, Confidence, EntityId, GeographicCoordinates, Image, ImageVelocity,
@@ -44,7 +44,7 @@ pub struct SceneVersion {
 }
 
 /// The version of the Scene model in this build.
-pub const SCENE_VERSION: SceneVersion = SceneVersion { major: 4, minor: 0 };
+pub const SCENE_VERSION: SceneVersion = SceneVersion { major: 4, minor: 1 };
 
 impl SceneVersion {
     /// Whether a decoder built for version `decoder` produces Scenes this version reads: the same major version,
@@ -71,6 +71,6 @@ mod tests {
 
         assert!(app.accepts(version(4, 0)) && app.accepts(version(4, 1)));
         assert!(!app.accepts(version(4, 2)) && !app.accepts(version(3, 0)));
-        assert_eq!(SCENE_VERSION.to_string(), "4.0");
+        assert_eq!(SCENE_VERSION.to_string(), "4.1");
     }
 }

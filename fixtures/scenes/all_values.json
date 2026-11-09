@@ -1,5 +1,5 @@
 {
-  "scene_version": "4.0",
+  "scene_version": "4.1",
   "scenes": [
     {
       "time": {
@@ -97,6 +97,7 @@
             },
             {
               "time": {
+                "frame": -3,
                 "us": 1040000
               },
               "geometry": {

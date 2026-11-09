@@ -150,6 +150,8 @@ fn read_track(track: &Object, v1: bool) -> Result<Track, String> {
     ) else {
         return Err("the track has no observations or path".to_owned());
     };
+    let span = TimeSlice::new(SceneTime::Timestamp(first), SceneTime::Timestamp(last))
+        .map_err(|error| error.to_string())?;
 
     let start = timestamp(track, "start_time", "start_time")?;
     let end = timestamp(track, "end_time", "end_time")?;
@@ -162,7 +164,7 @@ fn read_track(track: &Object, v1: bool) -> Result<Track, String> {
     match duration {
         None if !v1 => return Err("the track lacks its duration".to_owned()),
         // Exactly the seconds between the first and last observation, as a microsecond count is.
-        Some(seconds) if seconds != (last.0 - first.0) as f64 / 1_000_000.0 => {
+        Some(seconds) if seconds != span.duration() => {
             return Err("duration does not match the observations".to_owned());
         }
         _ => {}

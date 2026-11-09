@@ -22,6 +22,8 @@ pub struct SkippedRecords {
     consequence: String,
     skipped: usize,
     reasons: Vec<String>,
+    /// Whether a reason was left out for lack of room.
+    reasons_dropped: bool,
 }
 
 impl SkippedRecords {
@@ -32,6 +34,7 @@ impl SkippedRecords {
             consequence: consequence.into(),
             skipped: 0,
             reasons: Vec::new(),
+            reasons_dropped: false,
         }
     }
 
@@ -40,6 +43,22 @@ impl SkippedRecords {
         self.skipped += 1;
         if self.reasons.len() < MAX_REASONS {
             self.reasons.push(shorten(&reason.into()));
+        } else {
+            self.reasons_dropped = true;
+        }
+    }
+
+    /// Adds another cause of a record already counted by [`add`](Self::add), so that record is one skip. A reason
+    /// already listed is not listed again; one that finds no room is left out and the warning says so.
+    pub fn also(&mut self, reason: impl Into<String>) {
+        let reason = shorten(&reason.into());
+        if self.reasons.contains(&reason) {
+            return;
+        }
+        if self.reasons.len() < MAX_REASONS {
+            self.reasons.push(reason);
+        } else {
+            self.reasons_dropped = true;
         }
     }
 
@@ -49,7 +68,7 @@ impl SkippedRecords {
             problem: format!("Skipped {} of {total} {}", self.skipped, self.noun),
             reasons: self.reasons,
             consequence: self.consequence,
-            more_reasons: self.skipped > MAX_REASONS,
+            more_reasons: self.skipped > MAX_REASONS || self.reasons_dropped,
         })
     }
 }

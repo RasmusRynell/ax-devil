@@ -22,16 +22,24 @@ pub(crate) struct FileInput<'a> {
     line: u64,
     /// How many records were given. The ingest's sink reads it, so a Scene is placed by the record being read.
     records: &'a Cell<u64>,
+    /// The line of the last record given, from 1; 0 for a whole file. The sink names it in what it reports.
+    position: &'a Cell<u64>,
 }
 
 impl<'a> FileInput<'a> {
-    pub(crate) fn new(source: &'a LazySource, framing: Framing, records: &'a Cell<u64>) -> Self {
+    pub(crate) fn new(
+        source: &'a LazySource,
+        framing: Framing,
+        records: &'a Cell<u64>,
+        position: &'a Cell<u64>,
+    ) -> Self {
         Self {
             source,
             framing,
             next_start: 0,
             line: 0,
             records,
+            position,
         }
     }
 }
@@ -64,6 +72,7 @@ impl Input for FileInput<'_> {
             },
         };
         self.records.set(self.records.get() + 1);
+        self.position.set(position);
         Ok(Some(Record {
             bytes,
             position,

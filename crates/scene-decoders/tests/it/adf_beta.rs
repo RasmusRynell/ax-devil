@@ -67,7 +67,7 @@ fn a_frame_keeps_the_time_box_class_and_colors_of_each_observation() {
     for scene in &scenes {
         assert_eq!(scene.time().start(), time(0));
         let seen = &scene.entity("track-1").expect("the track").observations()[0];
-        assert_eq!(seen.time, time(0));
+        assert_eq!(seen.time, time(0).into());
         let bounds = seen.geometry.bounds();
         assert_eq!((bounds.left(), bounds.right()), (0.1, 0.4));
         let class = &seen.classifications[0];

@@ -1,4 +1,4 @@
-{"scene_version":"4.0","scenes":[
+{"scene_version":"4.1","scenes":[
 {"time":{"start":{"frame":0},"end":{"frame":0}},"entities":[
 {"id":"untracked:0:0","observations":[{"time":{"frame":0},"geometry":{"box":[0.15625,0.20833333333333334,0.234375,0.4166666666666667]},"classifications":[{"type":"person","score":0.9,"confidence":null,"attributes":{"class_id":1,"source":"det","visibility_ratio":1.0}}]}],"end_reason":null,"motion_state":null},
 {"id":"untracked:0:1","observations":[{"time":{"frame":0},"geometry":{"box":[0.5,0.5,0.6,0.6]},"classifications":[{"type":"person","score":12.5,"confidence":null,"attributes":{"class_id":1,"source":"det","visibility_ratio":1.0}}]}],"end_reason":null,"motion_state":null},

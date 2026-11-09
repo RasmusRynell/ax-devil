@@ -8,8 +8,9 @@ use crate::SceneError;
 /// The order is only meaningful between times of one [`TimeKind`]; a Scene never mixes kinds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SceneTime {
-    /// A frame number of the video the overlay belongs to, from 0.
-    Frame(u64),
+    /// A frame number of the video the overlay belongs to. Negative numbers are valid here; a decoder may give one
+    /// for a moment before the video starts.
+    Frame(i64),
     /// A time on the Media Time clock.
     Timestamp(MediaTime),
 }
@@ -29,6 +30,59 @@ impl SceneTime {
         match self {
             Self::Frame(_) => TimeKind::Frame,
             Self::Timestamp(_) => TimeKind::Timestamp,
+        }
+    }
+}
+
+/// When an observation was made: a frame number, a timestamp, or both.
+///
+/// The two clocks are independent facts and are never converted into each other. A Scene is on one of them
+/// ([`TimeSlice`]) and every observation in it carries that one; the other is extra.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ObservationTime {
+    frame: Option<i64>,
+    timestamp: Option<MediaTime>,
+}
+
+impl ObservationTime {
+    /// An observation time with the given clocks; at least one must be present.
+    pub fn new(frame: Option<i64>, timestamp: Option<MediaTime>) -> Result<Self, SceneError> {
+        if frame.is_none() && timestamp.is_none() {
+            return Err(SceneError::NoObservationTime);
+        }
+        Ok(Self { frame, timestamp })
+    }
+
+    /// The frame number, if the observation has one.
+    pub fn frame(&self) -> Option<i64> {
+        self.frame
+    }
+
+    /// The timestamp, if the observation has one.
+    pub fn timestamp(&self) -> Option<MediaTime> {
+        self.timestamp
+    }
+
+    /// The time on the `kind` clock, if the observation has one.
+    pub fn on(&self, kind: TimeKind) -> Option<SceneTime> {
+        match kind {
+            TimeKind::Frame => self.frame.map(SceneTime::Frame),
+            TimeKind::Timestamp => self.timestamp.map(SceneTime::Timestamp),
+        }
+    }
+}
+
+impl From<SceneTime> for ObservationTime {
+    fn from(time: SceneTime) -> Self {
+        match time {
+            SceneTime::Frame(frame) => Self {
+                frame: Some(frame),
+                timestamp: None,
+            },
+            SceneTime::Timestamp(time) => Self {
+                frame: None,
+                timestamp: Some(time),
+            },
         }
     }
 }
@@ -91,6 +145,28 @@ impl TimeSlice {
         self.end
     }
 
+    /// The start as a timestamp; `None` for a slice of frame numbers.
+    pub fn start_timestamp(&self) -> Option<MediaTime> {
+        match self.start {
+            SceneTime::Timestamp(time) => Some(time),
+            SceneTime::Frame(_) => None,
+        }
+    }
+
+    /// How long the slice lasts: seconds for timestamps, the number of frames from start to end for frame numbers.
+    pub fn duration(&self) -> f64 {
+        match (self.start, self.end) {
+            (SceneTime::Timestamp(start), SceneTime::Timestamp(end)) => {
+                (i128::from(end.0) - i128::from(start.0)) as f64 / 1e6
+            }
+            (SceneTime::Frame(start), SceneTime::Frame(end)) => {
+                (i128::from(end) - i128::from(start)) as f64
+            }
+            // `new` refuses a slice on two clocks.
+            _ => 0.0,
+        }
+    }
+
     /// Whether the slice is a single moment.
     pub fn is_instant(&self) -> bool {
         self.start == self.end
@@ -124,6 +200,15 @@ mod tests {
             TimeSlice::new(frame(3), frame(2)),
             Err(SceneError::ReversedTimeSlice)
         );
+        let span = |start, end| TimeSlice::new(start, end).expect("a slice");
+        assert_eq!(span(frame(-2), frame(5)).duration(), 7.0);
+        assert_eq!(span(stamp(1_000_000), stamp(3_500_000)).duration(), 2.5);
+        assert_eq!(TimeSlice::at(frame(4)).duration(), 0.0);
+        assert_eq!(
+            span(stamp(7), stamp(9)).start_timestamp(),
+            Some(MediaTime(7))
+        );
+        assert_eq!(span(frame(0), frame(1)).start_timestamp(), None);
         assert_eq!(
             TimeSlice::new(frame(0), stamp(1)),
             Err(SceneError::TimeKindMismatch)

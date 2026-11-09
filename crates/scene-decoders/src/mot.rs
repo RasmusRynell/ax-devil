@@ -117,7 +117,7 @@ struct Extent {
 
 /// One valid row, its box already normalized.
 struct Row {
-    frame: u64,
+    frame: i64,
     track_id: i64,
     geometry: BoundingBox,
     /// A detection's score; ground truth has none.
@@ -282,7 +282,7 @@ fn parse_row(line: &str, extent: Extent) -> Result<Row, String> {
         )
     };
     Ok(Row {
-        frame: (frame - 1) as u64,
+        frame: frame - 1,
         track_id,
         geometry,
         score,
@@ -310,7 +310,7 @@ fn number(field: &str, what: &str) -> Result<f64, String> {
 /// that frame.
 struct Track {
     id: EntityId,
-    frame: u64,
+    frame: i64,
     slot: usize,
 }
 

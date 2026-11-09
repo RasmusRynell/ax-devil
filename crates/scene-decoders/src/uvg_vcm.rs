@@ -261,7 +261,9 @@ fn decode_frame(
         .collect();
     repeated.dedup();
 
-    let time = SceneTime::Frame(index);
+    let time = SceneTime::Frame(
+        i64::try_from(index).map_err(|_| format!("Frame {frame}: too many frames"))?,
+    );
     let mut entities = Vec::with_capacity(detections.len());
     for (position, (detection, track_id)) in detections.into_iter().zip(track_ids).enumerate() {
         let context = format!("Frame {frame} detection {position}");

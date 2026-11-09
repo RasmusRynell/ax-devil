@@ -119,7 +119,7 @@ fn boxes_are_normalized_by_the_image_size_options() {
         near(top, 24.0 / 480.0);
         near(right, 96.0 / width);
         near(bottom, 72.0 / 480.0);
-        assert_eq!(observation.time, SceneTime::Frame(0));
+        assert_eq!(observation.time, SceneTime::Frame(0).into());
     }
 }
 

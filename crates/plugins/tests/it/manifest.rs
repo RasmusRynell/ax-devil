@@ -39,7 +39,7 @@ fn every_refusal_names_the_manifest_field() {
         ),
         (
             "handlers[0].scene_version",
-            Box::new(|m| m["handlers"][0]["scene_version"] = json!("4.1")),
+            Box::new(|m| m["handlers"][0]["scene_version"] = json!("4.2")),
         ),
         (
             "env",

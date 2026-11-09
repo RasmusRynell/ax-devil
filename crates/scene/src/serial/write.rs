@@ -15,7 +15,8 @@ use super::{
 };
 use crate::{
     Classification, Entity, EntityId, EntityRelation, Event, Geometry, Image, Measurements,
-    MotionState, Observation, Operation, SCENE_VERSION, Scene, SceneTime, TimeSlice,
+    MotionState, Observation, ObservationTime, Operation, SCENE_VERSION, Scene, SceneTime,
+    TimeSlice,
 };
 
 /// A borrowed model value being written.
@@ -86,6 +87,23 @@ impl Serialize for W<'_, SceneTime> {
                 serializer.serialize_newtype_variant("SceneTime", 1, "us", &time.0)
             }
         }
+    }
+}
+
+impl Serialize for W<'_, ObservationTime> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let (frame, us) = (self.0.frame(), self.0.timestamp().map(|time| time.0));
+        let keep_all = !serializer.is_human_readable();
+        let shown = [keep_all || frame.is_some(), keep_all || us.is_some()];
+        let mut out = serializer
+            .serialize_struct("ObservationTime", shown.iter().filter(|&&on| on).count())?;
+        if shown[0] {
+            out.serialize_field("frame", &frame)?;
+        }
+        if shown[1] {
+            out.serialize_field("us", &us)?;
+        }
+        out.end()
     }
 }
 
