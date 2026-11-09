@@ -72,3 +72,20 @@ it("leaves the keys pressed on a row's own button to that button, not to the row
   await act(async () => {});
   expect(commands()).toEqual([{ type: "openViewer", item: "b" }]);
 });
+
+it("keeps a seat without the content power from starting a live stream by Enter or double click, while a recording still opens", async () => {
+  const open = (item: ItemState): ItemState => ({ ...item, open: true });
+  await renderTree([open(camera("a", "Lobby")), open(CLIP)], [], "explore");
+  const lobby = screen.getByRole("treeitem", { name: /^Lobby/ });
+  fireEvent.click(lobby);
+  fireEvent.keyDown(lobby.parentElement!, { key: "Enter" });
+  fireEvent.doubleClick(lobby);
+  await act(async () => {});
+  expect(shown().viewers).toEqual({});
+  expect(commands()).toEqual([]);
+
+  // A recording is not started, only shown, which a seat that explores may do.
+  fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
+  await act(async () => {});
+  expect(Object.values(shown().viewers)).toMatchObject([{ item: "v" }]);
+});

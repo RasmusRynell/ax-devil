@@ -85,6 +85,8 @@ export function useRowActions(): RowActions {
   const open = (row: TreeRow, side = false, say: Say = setProblem) => {
     const { status } = row.info;
     if (status.status === "Pending" || isHiddenLane(row)) return Promise.resolve();
+    // Opening a live stream starts it, which changes the workspace: a seat that may not do that is told nothing.
+    if (isStream(row) && !powers.content) return Promise.resolve();
     if (status.status === "Unavailable") {
       say(`${row.info.label}: ${reasonOf(status)}`);
       return Promise.resolve();
@@ -95,10 +97,12 @@ export function useRowActions(): RowActions {
     row.target
       ? command({ type: "content", command: { type: "setHidden", target: row.target, hidden } })
       : Promise.resolve();
-  const toggleHidden = (row: TreeRow, say: Say = setProblem) =>
-    void setHidden(row, !row.info.hidden).then(() => say(null), fail(say));
-  const unhideOpen = (row: TreeRow, say: Say) =>
-    void setHidden(row, false).then(() => present(row, false, say), fail(say));
+  const toggleHidden = (row: TreeRow, say: Say = setProblem) => {
+    if (powers.content) void setHidden(row, !row.info.hidden).then(() => say(null), fail(say));
+  };
+  const unhideOpen = (row: TreeRow, say: Say) => {
+    if (powers.content) void setHidden(row, false).then(() => present(row, false, say), fail(say));
+  };
   const itemOf = (row: TreeRow) => workspace?.items.find(({ id }) => id === row.item);
   /** Edit and Remove act on the row's whole item and only a top-level row has them. */
   const editRow = (row: TreeRow) => {
