@@ -7,9 +7,7 @@
 //! already signed in with. Nothing here returns or logs a login.
 
 use crate::{AppState, glance::SNAPSHOT_TIMEOUT, live_sources::camera_of, session::live::defaults};
-use api_types::live::{
-    ExpansionsRequest, LiveCheckRequest, LiveExpansions, LiveProtocol, NetworkSignIn,
-};
+use api_types::live::{ExpansionsRequest, LiveCheckRequest, LiveExpansions, NetworkSignIn};
 use axum::{
     Json,
     extract::{Path, State},
@@ -21,7 +19,8 @@ use camera::{Camera, Head, Host, Scheme, Web};
 use sessions::session::HeldItem;
 use std::net::Ipv4Addr;
 use workspace::{
-    Connection, Content, Environment, HostReading, ItemId, LiveVideoContent, ResolvedCamera,
+    Connection, Content, Environment, HostReading, ItemId, LiveVideoContent, Protocol,
+    ResolvedCamera,
 };
 
 /// The live stream `id` names and what it resolved to, if it is a resolved live stream.
@@ -108,8 +107,8 @@ pub(super) async fn found_snapshot(
     camera.timeout = SNAPSHOT_TIMEOUT;
     camera.web = Web {
         scheme: match row.scheme {
-            LiveProtocol::Http => Scheme::Http,
-            LiveProtocol::Https => Scheme::Https,
+            Protocol::Http => Scheme::Http,
+            Protocol::Https => Scheme::Https,
         },
         port: row.port,
     };

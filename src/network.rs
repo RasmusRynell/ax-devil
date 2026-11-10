@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 
-use api_types::live::{LiveProtocol, NetworkIdentity, NetworkRow, NetworkSignIn, NetworkSnapshot};
+use api_types::live::{NetworkIdentity, NetworkRow, NetworkSignIn, NetworkSnapshot};
 use camera::{
     Found, Login, ScanFailed, ScanLoad, ScanPorts, Scheme, Secret, SignIn, Targets, scan,
 };
@@ -24,6 +24,7 @@ use tokio::{
     task::JoinHandle,
     time::{MissedTickBehavior, interval},
 };
+use workspace::Protocol;
 
 /// How often a running scan publishes the cameras it found since the last time.
 pub const SNAPSHOT_EVERY: Duration = Duration::from_millis(100);
@@ -86,8 +87,8 @@ pub(crate) fn row(found: &Found) -> NetworkRow {
     NetworkRow {
         address: found.addr.to_string(),
         scheme: match found.web.scheme {
-            Scheme::Http => LiveProtocol::Http,
-            Scheme::Https => LiveProtocol::Https,
+            Scheme::Http => Protocol::Http,
+            Scheme::Https => Protocol::Https,
         },
         port: found.web.port,
         identity: NetworkIdentity {

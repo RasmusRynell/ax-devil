@@ -102,7 +102,7 @@ mod tests {
     };
     use api_types::{
         Grant,
-        live::{LiveProtocol, NetworkSignIn, NetworkSnapshot},
+        live::{NetworkSignIn, NetworkSnapshot},
     };
     use axum::{
         body::Body,
@@ -116,6 +116,7 @@ mod tests {
         time::Duration,
     };
     use tokio::{sync::mpsc, time::timeout};
+    use workspace::Protocol;
 
     fn post(uri: &str, body: &str) -> Request<Body> {
         Request::builder()
@@ -216,7 +217,7 @@ mod tests {
         let row = &last.rows[0];
         assert_eq!(
             (row.address.as_str(), row.scheme, row.port),
-            ("10.9.9.2", LiveProtocol::Http, 80)
+            ("10.9.9.2", Protocol::Http, 80)
         );
         assert_eq!(row.identity.model, "Q1656");
         assert_eq!(

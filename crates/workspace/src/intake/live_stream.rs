@@ -6,7 +6,7 @@ use crate::{
     item::{Recipe, Source, WorkspaceItem},
     live::{
         DataHubSettings, KeptTransports, LiveOverlay, LiveRecipe, MqttSettings, Protocol,
-        RtspRoute, camera_endpoint, url_endpoint, url_has_login, url_password_dropped,
+        RtspRoute, StreamUrl, camera_endpoint, url_endpoint, url_has_login, url_password_dropped,
     },
 };
 use foundation::{ErrorCode, ItemId, Location, UserError};
@@ -57,9 +57,8 @@ pub enum NewLiveOverlay {
 }
 
 /// What the user entered to add a live stream. Text that is `None` or blank takes its default; numbers are checked
-/// against their range here, so the message names the field. `Debug` leaves out the password of a login in `url`
-/// (`live_debug.rs`).
-#[derive(Clone, Default, PartialEq, Eq)]
+/// against their range here, so the message names the field.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NewLive {
     /// The name the caller gives the item with [`with_label`](super::with_label); the intake leaves it unnamed.
     pub label: Option<String>,
@@ -82,7 +81,7 @@ pub struct NewLive {
     /// The resolution, such as `1280x720`; blank is the camera's own.
     pub resolution: Option<String>,
     /// A stream URL to use instead of the one made from the host, as typed (a login in it included).
-    pub url: Option<String>,
+    pub url: Option<StreamUrl>,
     /// The overlay; `None` is the configured one.
     pub overlay: Option<NewLiveOverlay>,
     /// What the form holds for MQTT while another mode is chosen; its handler is not used. Absent parts, and all of it
@@ -130,7 +129,7 @@ impl NewLive {
         if let (Some(saved), Some(sent)) = (source.url.as_deref(), self.url.as_deref())
             && url_password_dropped(saved, sent)
         {
-            self.url = Some(saved.to_owned());
+            self.url = source.url.clone();
         }
         let protocol = self.protocol.unwrap_or(defaults.protocol);
         let port = |protocol: Protocol, port: i64| match port {
@@ -442,7 +441,12 @@ pub fn live(
         rtsp_port,
         rtsp_route: new.rtsp_route.unwrap_or(defaults.rtsp_route),
         resolution: Some(text(&new.resolution, "")).filter(|r| !r.is_empty()),
-        url: Some(text(&new.url, "")).filter(|url| !url.is_empty()),
+        url: new
+            .url
+            .as_deref()
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+            .map(StreamUrl::from),
         overlay,
         kept,
     };

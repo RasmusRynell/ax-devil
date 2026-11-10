@@ -96,20 +96,10 @@ catalogs: Array<CatalogInfoWire>, };
 export type LiveOverlayKind = "none" | "rtsp" | "mqtt" | "datahub";
 
 /**
- * The protocol of a camera's web interface.
- */
-export type LiveProtocol = "http" | "https";
-
-/**
  * Why a feed is not live: the kind of the camera error, as a stable code the client words. Never the device's own
  * text, which can name the host.
  */
 export type LiveReason = "LoginRequired" | "LoginRejected" | "Forbidden" | "NotAxis" | "NotFound" | "Unsupported" | "SourceUnavailable" | "BrokerUnsupportedProtocol" | "BrokerClientIdRejected" | "BrokerBadCredentials" | "BrokerNotAuthorized" | "Busy" | "Unrestorable" | "InvalidTarget" | "Unreachable" | "TimedOut" | "Lost" | "Silent" | "Malformed" | "Throttled" | "DeviceFault";
-
-/**
- * Which door of the camera a stream comes through.
- */
-export type LiveRtspRoute = "direct" | "web_api";
 
 /**
  * The events of one sample.
