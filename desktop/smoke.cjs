@@ -205,11 +205,20 @@ module.exports = async (window, shell) => {
     "and-another-one-below-it",
     "Quarterly review.ax-devil.workspace",
   );
-  await fs.mkdir(path.join(state, "ax-devil"), { recursive: true });
-  await fs.writeFile(
-    path.join(state, "ax-devil", "recent-workspaces.json"),
-    JSON.stringify([{ path: deep, used_ms: Date.now() }]),
-  );
+  const recents = path.join(state, "ax-devil", "recent-workspaces.json");
+  // The title edits above left a recovery copy that the backend takes off the recents a moment after the title reads
+  // Untitled again; a copy recorded after the fixture is written would be listed ahead of it.
+  await until(async () => {
+    try {
+      return !JSON.parse(await fs.readFile(recents, "utf8")).some((recent) =>
+        recent.path.replaceAll("\\", "/").includes("/unsaved-workspaces/"),
+      );
+    } catch (error) {
+      return error.code === "ENOENT";
+    }
+  }, "the recovery copy off the recent workspaces");
+  await fs.mkdir(path.dirname(recents), { recursive: true });
+  await fs.writeFile(recents, JSON.stringify([{ path: deep, used_ms: Date.now() }]));
   await reload(window);
   await wait("document.querySelector('h1')?.textContent === 'ax-devil'");
   await wait("document.querySelector('[data-cursor-id^=\"row:recent:\"]')");

@@ -172,7 +172,6 @@ module.exports.playlist = async (window) => {
   );
   await wait(`${panes}.length === 1`);
 
-  const laneCells = () => kit.laneCells(window);
   const goToFrame = (target) => kit.goToFrame(window, target);
   const showEntry = async (label, lanes) => {
     await wait(`document.querySelector('[aria-label="Entry: ${label}"]')`);
@@ -192,11 +191,7 @@ module.exports.playlist = async (window) => {
       [0, true],
     ]) {
       await goToFrame(at);
-      const cells = await laneCells();
-      assert.deepEqual(
-        cells.map((cell) => cell.label),
-        lanes,
-      );
+      const cells = await kit.laneCellsLabelled(window, lanes);
       // Marks are drawn once the lane's sample is held, and again when its lane is resized: wait until they are on
       // screen. One capture serves every lane.
       const drawnCells = async () => {
