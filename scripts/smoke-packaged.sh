@@ -148,8 +148,18 @@ run_group() {
 # Every group runs, each on a fresh launch, even after one fails; the launcher owns the groups.
 failed=0
 summary=()
-# The plan's third field is the launcher's own deadline for the launch; node prints CRLF on Windows.
-while IFS=$' \t\r' read -r group names deadline; do
+# The plan is one row per launch: group, scenarios and the launcher's own deadline in seconds for it; the launcher owns the names.
+# Every row is checked before anything launches, so a stray line in the plan fails the smoke instead of becoming a launch.
+plan="$(node scripts/smoke-desktop.cjs --plan '')" || { echo "FAIL: could not plan the smoke groups" >&2; exit 1; }
+plan="${plan//$'\r'/}" # node prints CRLF on Windows
+[[ -n $plan ]] || { echo "FAIL: no smoke groups" >&2; exit 1; }
+rows=()
+while IFS= read -r row; do
+  [[ $row =~ ^[^[:space:]]+[[:space:]][^[:space:]]+[[:space:]][0-9]+$ ]] || { echo "FAIL: malformed smoke plan row: $row" >&2; exit 1; }
+  rows+=("$row")
+done <<<"$plan"
+for row in "${rows[@]}"; do
+  read -r group names deadline <<<"$row"
   echo "=== $group: $names (deadline ${deadline}s)"
   if run_group "$group" "$names" "$deadline"; then
     summary+=("PASS $group")
@@ -157,7 +167,6 @@ while IFS=$' \t\r' read -r group names deadline; do
     summary+=("FAIL $group")
     failed=1
   fi
-done < <(node scripts/smoke-desktop.cjs --plan '')
-((${#summary[@]} > 0)) || { echo "FAIL: no smoke groups" >&2; exit 1; }
+done
 printf '%s\n' "${summary[@]}"
 exit "$failed"

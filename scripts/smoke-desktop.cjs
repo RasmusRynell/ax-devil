@@ -4,6 +4,7 @@
 // launch: the deadline is how long the launcher waits for that launch's verdict (scripts/smoke-packaged.sh waits as long).
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
+const Module = require("node:module");
 const os = require("node:os");
 const path = require("node:path");
 
@@ -26,13 +27,52 @@ function refuse(message, groups) {
   process.exit(2);
 }
 
-/** The scenario modules by name, each checked to export `run`; plain Node loads them, so none may need Electron to load. */
+/**
+ * Loads a scenario module in plain Node, where `require("electron")` would be a path string (and, with no Electron
+ * installed, a download). It gets a stub that hands out the API objects but throws on any use of one, so a module
+ * that calls Electron while loading fails here; nothing is installed, downloaded or printed.
+ */
+function load(file) {
+  const unusable = () => {
+    throw new Error("it uses an Electron API while loading; do that inside run()");
+  };
+  const api = new Proxy(function () {}, {
+    get: unusable,
+    set: unusable,
+    apply: unusable,
+    construct: unusable,
+  });
+  const stub = new Proxy({}, { get: () => api });
+  const original = Module._load;
+  Module._load = (request, ...rest) =>
+    request === "electron" ? stub : original.call(Module, request, ...rest);
+  try {
+    return require(file);
+  } catch (error) {
+    return refuse(`${path.relative(process.cwd(), file)} failed to load: ${error.message}`);
+  } finally {
+    Module._load = original;
+  }
+}
+
+/** The scenario modules by name, each checked to export `run`. */
 function loadScenarios(groups) {
   const listed = Object.entries(groups).flatMap(([group, names]) =>
     names.map((name) => [group, name]),
   );
+  // One grammar for group and scenario names, which are file names and plan fields: lowercase words joined by hyphens.
+  const grammar = /^[a-z][a-z0-9-]*$/;
+  for (const group of Object.keys(groups))
+    if (!grammar.test(group))
+      refuse(
+        `Group "${group}" in desktop/smoke-groups.cjs must match ${grammar} (lowercase, digits, hyphens)`,
+      );
   const seen = new Set();
   for (const [group, name] of listed) {
+    if (!grammar.test(name))
+      refuse(
+        `Scenario "${name}" in group "${group}" must match ${grammar} (lowercase, digits, hyphens)`,
+      );
     if (seen.has(name)) refuse(`Scenario "${name}" is listed twice in desktop/smoke-groups.cjs`);
     seen.add(name);
     if (name in groups)
@@ -40,13 +80,13 @@ function loadScenarios(groups) {
     const file = path.join(desktop, `smoke-${name}.cjs`);
     if (!fs.existsSync(file))
       refuse(`Group "${group}" lists "${name}", but desktop/smoke-${name}.cjs does not exist`);
-    if (typeof require(file).run !== "function")
+    if (typeof load(file).run !== "function")
       refuse(`Group "${group}" lists "${name}", but desktop/smoke-${name}.cjs does not export run`);
   }
   const scenarios = new Map();
   for (const file of fs.readdirSync(desktop).filter((f) => /^smoke-.+\.cjs$/.test(f))) {
     const name = file.slice("smoke-".length, -".cjs".length);
-    const module = require(path.join(desktop, file));
+    const module = load(path.join(desktop, file));
     if (typeof module.run !== "function") continue;
     if (!seen.has(name))
       refuse(

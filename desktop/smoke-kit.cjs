@@ -12,7 +12,8 @@ const SCREENSHOTS = path.join(SMOKE_ROOT, "artifacts/screenshots");
 const SCENARIO_TIMEOUT_MS = 90_000;
 // How long the start of every launch (the first page and Quick Setup) may take before the launch fails naming it.
 const START_TIMEOUT_MS = 90_000;
-// AX_DEVIL_SMOKE_SLOWDOWN=4 runs every page's scripts that many times slower, and every limit that much longer.
+// AX_DEVIL_SMOKE_SLOWDOWN=4 runs every page's scripts that many times slower, and makes the start and scenario timeouts and the launch
+// deadline that much longer; the waits inside a scenario keep their own limits.
 const slowdown = () => Math.max(1, Number(process.env.AX_DEVIL_SMOKE_SLOWDOWN) || 1);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
