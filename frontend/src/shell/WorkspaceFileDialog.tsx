@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { TextField } from "../kit/Fields";
-import { SUFFIX } from "./recents";
-import { Refusal } from "./SettingField";
+import { SUFFIX } from "../recents";
+import { Refusal } from "../kit/Refusal";
 
 interface Props {
   /** `save` asks where to save the workspace, starting from `path`; `open` asks which workspace file to open. */

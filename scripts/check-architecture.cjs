@@ -1,8 +1,10 @@
-// Enforces the layer rules of docs/architecture/overview.md, and the crate-level rules below, on the Cargo workspace.
+// Enforces the layer rules of docs/architecture/overview.md, and the crate-level rules below, on the Cargo workspace,
+// and the import layers on frontend/src (check-frontend-layers.cjs).
 // Reads `cargo metadata --format-version 1` on stdin; every workspace crate declares its layer in
 // `[package.metadata.ax-devil] layer = "..."`.
 const fs = require("node:fs");
 const path = require("node:path");
+const { checkFrontendLayers, FRONTEND, SOURCE_FILE } = require("./check-frontend-layers.cjs");
 
 // Lowest first. A crate may depend on workspace crates in its own layer or below.
 const LAYERS = ["foundation", "domain", "services", "adapters", "entry"];
@@ -136,31 +138,46 @@ function checkProjection(sources) {
     : [];
 }
 
-/** Every Rust file under `src` and under each crate's `src` in the repository at `root`. */
-function rustSources(root) {
+/** Every file under `dir` (relative to the repository at `root`) whose name matches `pattern`, as `{ file, text }`. */
+function filesUnder(root, dir, pattern) {
   const found = [];
-  const walk = (dir) => {
-    for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
-      const file = `${dir}/${entry.name}`;
-      if (entry.isDirectory()) walk(file);
-      else if (entry.name.endsWith(".rs"))
-        found.push({ file, text: fs.readFileSync(path.join(root, file), "utf8") });
-    }
-  };
-  walk("src");
-  for (const crate of fs.readdirSync(path.join(root, "crates"))) walk(`crates/${crate}/src`);
+  for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+    const file = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) found.push(...filesUnder(root, file, pattern));
+    else if (pattern.test(entry.name))
+      found.push({ file, text: fs.readFileSync(path.join(root, file), "utf8") });
+  }
   return found;
 }
 
-module.exports = { check, checkRoutes, checkProjection };
+/** Every Rust file under `src` and under each crate's `src` in the repository at `root`. */
+function rustSources(root) {
+  const crates = fs.readdirSync(path.join(root, "crates"));
+  return [
+    ...filesUnder(root, "src", /\.rs$/),
+    ...crates.flatMap((crate) => filesUnder(root, `crates/${crate}/src`, /\.rs$/)),
+  ];
+}
+
+module.exports = { check, checkRoutes, checkProjection, checkFrontendLayers };
 
 if (require.main === module) {
+  const root = path.join(__dirname, "..");
   const { problems, crates } = check(JSON.parse(fs.readFileSync(0, "utf8")));
-  const sources = rustSources(path.join(__dirname, ".."));
+  const sources = rustSources(root);
+  const frontend = filesUnder(root, FRONTEND, SOURCE_FILE);
   problems.push(...checkRoutes(sources), ...checkProjection(sources));
+  if (frontend.length === 0) problems.push(`${FRONTEND} has no source files to check`);
+  try {
+    problems.push(...checkFrontendLayers(frontend));
+  } catch (error) {
+    problems.push(error.message);
+  }
   if (problems.length) {
     console.error(`Architecture check failed:\n  ${problems.join("\n  ")}`);
     process.exit(1);
   }
-  console.log(`Architecture check passed for ${crates} crates.`);
+  console.log(
+    `Architecture check passed for ${crates} crates and ${frontend.length} frontend files.`,
+  );
 }

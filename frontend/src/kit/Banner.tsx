@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import { Icon } from "../kit/Icon";
-import { IconButton } from "../kit/IconButton";
-import { TONE } from "../kit/look";
+import { Icon } from "./Icon";
+import { IconButton } from "./IconButton";
+import { TONE } from "./look";
 
 interface Props {
   /** `alert` for something that went wrong where the user acted, `status` for a state that may pass. */

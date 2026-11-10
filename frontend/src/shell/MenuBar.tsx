@@ -4,7 +4,7 @@ import { QUIET } from "../kit/look";
 import { Menu, type MenuCommand } from "../kit/Menu";
 import { useAllowed } from "../session/session";
 import { useSettings } from "../settings";
-import { useRecents } from "./recents";
+import { useRecents } from "../recents";
 
 interface Props {
   checked: ReadonlySet<string>;

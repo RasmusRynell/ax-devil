@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { installFakeFullscreen } from "../fakeFullscreen";
+import { installFakeFullscreen } from "./fakeFullscreen";
 import { toggleAppFullscreen } from "./windowBridge";
 
 const fake = installFakeFullscreen();

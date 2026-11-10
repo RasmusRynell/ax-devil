@@ -7,7 +7,7 @@ import { ViewPanel } from "../kit/ViewPanel";
 import { useCan, useDoc, useRenameWorkspace, useView } from "../session/session";
 import { PluginsView } from "../plugins/PluginsView";
 import { PanelDivider } from "../tools/PanelDivider";
-import { useKept } from "./keptState";
+import { useKept } from "../kit/keptState";
 import { LiveView } from "./LiveView";
 import { useStreaming } from "../live/cameras";
 import { OfflineAdd } from "./OfflineAdd";

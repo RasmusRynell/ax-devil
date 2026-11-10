@@ -11,16 +11,16 @@ import { reasonOf } from "../errors";
 import type { ItemState } from "../generated/api";
 import { useCan, useSetView, useView } from "../session/session";
 import { PaneBudget } from "../playback/budget";
-import { Banner } from "../shell/Banner";
+import { Banner } from "../kit/Banner";
 import { viewerFor } from "../viewers";
-import { extent, prune, rects, resize, seams, type Path, type Size } from "./layout";
-import { activated, moved, pinned, resized } from "./placement";
-import { Pane } from "./Pane";
+import { extent, prune, rects, resize, seams, type Path, type Size } from "../viewer/layout";
+import { activated, moved, pinned, resized } from "../viewer/placement";
+import { Pane } from "../viewer/Pane";
 import { useHeaderFailure } from "./headerFailure";
 import { PaneMenu, type PaneMenuAt } from "./PaneMenu";
-import { ReloadFailed, ReloadOffer } from "./ReloadOffer";
-import { Seam } from "./Seam";
-import { useClosePanes, useHidden, useViewers, type Viewer } from "./useViewers";
+import { ReloadFailed, ReloadOffer } from "../viewer/ReloadOffer";
+import { Seam } from "../viewer/Seam";
+import { useClosePanes, useHidden, useViewers, type Viewer } from "../viewer/useViewers";
 
 /** What shows for an item whose viewer is not ready: it is resolving, or it failed with a reason. */
 function ItemStatus({ item }: { item: ItemState }) {

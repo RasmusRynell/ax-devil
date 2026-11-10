@@ -9,7 +9,8 @@ import { SectionCaption } from "../kit/SectionCaption";
 import { Tabs } from "../kit/Tabs";
 import { useHandlers } from "../resolvers/useHandlers";
 import { useSettings } from "../settings";
-import { literalSecret, PlainTextNote, Refusal, SettingField, type Row } from "./SettingField";
+import { literalSecret, PlainTextNote, SettingField, type Row } from "./SettingField";
+import { Refusal } from "../kit/Refusal";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { useSaveDialog } from "./useSaveDialog";
 

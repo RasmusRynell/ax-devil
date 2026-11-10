@@ -12,7 +12,7 @@ import {
   renderTree,
   shown,
 } from "./WorkspaceTree.fixture";
-import { KeptStateProvider } from "./keptState";
+import { KeptStateProvider } from "../kit/keptState";
 import { WorkspaceTree } from "./WorkspaceTree";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));

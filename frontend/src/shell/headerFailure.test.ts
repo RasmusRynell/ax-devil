@@ -2,9 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { act, renderHook } from "@testing-library/react";
 import type { ItemState, View } from "../generated/api";
 import { entry } from "../session/fakeSession";
-import { NOTHING_HIDDEN } from "./hidden";
+import { NOTHING_HIDDEN } from "../viewer/hidden";
 import { useHeaderFailure } from "./headerFailure";
-import type { Viewer } from "./useViewers";
+import type { Viewer } from "../viewer/useViewers";
 
 /** A viewer of a playlist item of two entries, `<item>/1` and `<item>/2`. */
 const viewer = (id: number, item: string): Viewer => ({

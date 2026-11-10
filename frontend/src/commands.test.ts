@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { COMMANDS, SETTINGS } from "./generated/settings";
 import { menusFor, type Scope } from "./commands";
-import { RECENT_ID } from "./shell/recents";
+import { RECENT_ID } from "./recents";
 
 const allowed: Record<Scope, boolean> = { host: true, content: true, view: true, app: true };
 const none = Object.fromEntries(COMMANDS.map(({ id }) => [id, null])) as never;

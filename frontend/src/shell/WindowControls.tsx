@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { IconButton } from "../kit/IconButton";
-import "./windowBridge";
+import "../windowBridge";
 
 /** Minimize, maximize or restore, and close, drawn only inside the Electron shell, which frames no window itself. */
 export function WindowControls() {

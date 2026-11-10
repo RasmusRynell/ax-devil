@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react
 import type { Grant } from "../generated/api";
 import { FakeSocket } from "../session/fakeSession";
 import { renderShell } from "./shellHarness";
-import type { WindowBridge } from "./windowBridge";
+import type { WindowBridge } from "../windowBridge";
 
 // The added video's viewer is not under test, and needs the playback worker.
 vi.mock("../playback/VideoViewer", () => ({ VideoViewer: () => null }));

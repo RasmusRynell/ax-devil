@@ -5,7 +5,7 @@ import { Select, TextField } from "../kit/Fields";
 import { needsValue, shown } from "../resolvers/fields";
 import { ResolverForm, useResolverForm } from "../resolvers/ResolverForm";
 import type { Settings } from "../resolvers/scan";
-import { Refusal } from "./SettingField";
+import { Refusal } from "../kit/Refusal";
 
 /** One overlay of the dialog: the file typed and the handler picked for it, `""` while none is. */
 export interface OverlayEntry {

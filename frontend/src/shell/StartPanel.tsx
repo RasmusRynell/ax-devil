@@ -6,7 +6,7 @@ import { KIND, QUIET, type Kind } from "../kit/look";
 import { RowList } from "../kit/RowList";
 import { useAllowed } from "../session/session";
 import { useSettings } from "../settings";
-import { folderOf, RECENT_ID, recentLabel, usedOn, useRecents } from "./recents";
+import { folderOf, RECENT_ID, recentLabel, usedOn, useRecents } from "../recents";
 
 const OPEN: readonly [id: CommandId, icon: IconName, kind?: Kind][] = [
   ["open-workspace", "folder"],

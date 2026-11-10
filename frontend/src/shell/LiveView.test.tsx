@@ -8,7 +8,7 @@ import type { SettingsApi } from "../settings";
 import { FakeSocket, type Room } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
 import { SessionProvider } from "../session/session";
-import { KeptStateProvider } from "./keptState";
+import { KeptStateProvider } from "../kit/keptState";
 import { LiveView } from "./LiveView";
 
 const found = (address: string, sign_in: NetworkRow["sign_in"]): NetworkRow => ({

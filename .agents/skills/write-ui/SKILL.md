@@ -33,7 +33,7 @@ decode work ([UI Lifecycle](../../../docs/domain/invariants.md#ui-lifecycle)).
 | Group heading (count, note, aside, mark, fold) | `SectionCaption` (`mark`: `muted`, `accent`, a `Tone` or a `Kind`) |
 | Sidebar view: header, action, scrolling body | `ViewPanel` |
 | Captioned action rows | `RowList` |
-| Banner with actions | `shell/Banner.tsx`, its `actions` slot |
+| Banner with actions | `Banner`, its `actions` slot |
 | Text input, drop-down, search | `TextField`, `Select`, `SearchField` |
 | Checkbox, checkbox list, on/off applied at once | `Checkbox`, `CheckList`, `Switch` |
 | Modal with OK, then Cancel | `Dialog` |

@@ -4,7 +4,7 @@ import { GrantsContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
-import { folderOf, usedOn } from "./recents";
+import { folderOf, usedOn } from "../recents";
 import { Shell } from "./Shell";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));

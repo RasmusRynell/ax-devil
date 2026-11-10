@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { reasonOf } from "../errors";
 import type { ErrorWire, HandlersInfo } from "../generated/api";
 import { Button } from "../kit/Button";
-import { Refusal } from "../shell/SettingField";
+import { Refusal } from "../kit/Refusal";
 import { fetchHandlers } from "./handlers";
 
 /** The backend's handlers, loaded when the dialog opens: the handlers, else why they could not be loaded. */

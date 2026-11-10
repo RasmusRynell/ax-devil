@@ -13,9 +13,9 @@ import {
   type OverlayEntry,
   type OverlayRead,
 } from "./OverlayRow";
-import { Refusal } from "./SettingField";
+import { Refusal } from "../kit/Refusal";
 import { checkFiles, useFileProblems } from "./useFileProblems";
-import { useServerKind } from "./windowBridge";
+import { useServerKind } from "../windowBridge";
 
 const blankEntry = (key: number): OverlayEntry => ({ key, path: "", picked: "" });
 

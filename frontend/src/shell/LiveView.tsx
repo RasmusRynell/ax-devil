@@ -19,11 +19,11 @@ import { useSettings } from "../settings";
 import { useCan, useCommand, useDoc } from "../session/session";
 import { useShow, useShownItems } from "../viewer/useViewers";
 import { useItemDialogs } from "./ItemDialogs";
-import { useKept } from "./keptState";
+import { useKept } from "../kit/keptState";
 import { LiveToolbar } from "./LiveToolbar";
 import { LiveTree } from "./LiveTree";
 import { ScanSettings } from "./ScanSettings";
-import { Refusal } from "./SettingField";
+import { Refusal } from "../kit/Refusal";
 
 const NO_FACETS: ReadonlySet<string> = new Set();
 

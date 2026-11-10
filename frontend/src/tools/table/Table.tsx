@@ -15,7 +15,7 @@ import { ContextMenu } from "../../kit/ContextMenu";
 import { Icon } from "../../kit/Icon";
 import type { MenuEntry } from "../../kit/Menu";
 import { MiddleElided } from "../../kit/MiddleElided";
-import { useRowWindow } from "../../shell/useRowWindow";
+import { useRowWindow } from "../../kit/useRowWindow";
 import { categoryDot } from "../category";
 import { writeClipboard } from "./clipboard";
 import { KINDS, rowText, type Column, type SortOf } from "./columns";

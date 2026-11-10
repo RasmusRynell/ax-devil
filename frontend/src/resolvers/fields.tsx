@@ -3,7 +3,7 @@ import type { DecoderInfo, FieldInfo, FieldKindWire, ScanCountInfo } from "../ge
 import { Button } from "../kit/Button";
 import { CheckList, type CheckItem } from "../kit/CheckList";
 import { Select, TextField } from "../kit/Fields";
-import { Refusal } from "../shell/SettingField";
+import { Refusal } from "../kit/Refusal";
 import { countStatus, listed, type ScanView, type Settings } from "./scan";
 
 /** What a field control reads and changes: the form's state, whichever resolver it belongs to. */

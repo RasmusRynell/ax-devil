@@ -14,7 +14,7 @@ import { SectionCaption } from "../kit/SectionCaption";
 import { presenceColor } from "../session/Presence";
 import { useCommand, useParticipants, useSession } from "../session/session";
 import { ConnectDialog } from "./ConnectDialog";
-import { useServerKind } from "./windowBridge";
+import { useServerKind } from "../windowBridge";
 
 const REFRESH_MS = 2000;
 const COPIED_MS = 1500;

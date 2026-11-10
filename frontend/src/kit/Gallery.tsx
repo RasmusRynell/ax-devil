@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Banner } from "../shell/Banner";
+import { Banner } from "./Banner";
 import { BrowseButton, Button, MenuButton } from "./Button";
 import { Checkbox, SearchField, Select, TextField } from "./Fields";
 import { Form, FormCombo, FormInput, FormNote, FormSelect } from "./Form";

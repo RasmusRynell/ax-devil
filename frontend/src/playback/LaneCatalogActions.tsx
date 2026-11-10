@@ -13,7 +13,7 @@ import { ChoiceDialog } from "../kit/ChoiceDialog";
 import { TextField } from "../kit/Fields";
 import { ask } from "../resolvers/handlers";
 import { useSettings } from "../settings";
-import { Refusal } from "../shell/SettingField";
+import { Refusal } from "../kit/Refusal";
 import type { LaneSettings } from "./lanes";
 
 /** The Personal setting that holds the catalog new views start with. */

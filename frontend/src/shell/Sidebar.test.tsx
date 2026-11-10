@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { entry, failed, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
 import { FakeSettings } from "../fakeSettings";
 import { SessionProvider } from "../session/session";
-import { KeptStateProvider } from "./keptState";
+import { KeptStateProvider } from "../kit/keptState";
 import { Sidebar } from "./Sidebar";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));

@@ -6,7 +6,7 @@ import { Dialog, DialogFrame } from "../kit/Dialog";
 import { Checkbox, Select, TextField } from "../kit/Fields";
 import { MiddleElided } from "../kit/MiddleElided";
 import type { PlaybackView } from "../playback/view";
-import { useServerKind } from "../shell/windowBridge";
+import { useServerKind } from "../windowBridge";
 import { choicesOf } from "./lanes";
 import type { ExportJobs, ExportStatus } from "./jobs";
 

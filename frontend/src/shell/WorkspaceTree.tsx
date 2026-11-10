@@ -8,7 +8,7 @@ import { Popup } from "../kit/Popup";
 import { SectionCaption } from "../kit/SectionCaption";
 import { exportOf, useExportTargets } from "../viewer/exportTargets";
 import { HoverPicture } from "./HoverPicture";
-import { useKept } from "./keptState";
+import { useKept } from "../kit/keptState";
 import { useFolds } from "./RevealShown";
 import { unfold } from "./reveal";
 import {

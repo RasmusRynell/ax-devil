@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import type { BookmarkGroupInfo } from "../generated/api";
 import { entry, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
 import { SessionProvider, useFollowing, useSession, useView } from "../session/session";
-import { KeptStateProvider } from "../shell/keptState";
+import { KeptStateProvider } from "../kit/keptState";
 import { BookmarksView } from "./BookmarksView";
 import {
   SeekProvider,

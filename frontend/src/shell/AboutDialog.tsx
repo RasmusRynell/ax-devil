@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
 import { useSettings } from "../settings";
-import { useServerKind } from "./windowBridge";
+import { useServerKind } from "../windowBridge";
 
 /** Where the project lives; the desktop shell opens exactly this link in the default browser. */
 const PROJECT_LINK = "https://github.com/rasmusrynell/ax-devil";

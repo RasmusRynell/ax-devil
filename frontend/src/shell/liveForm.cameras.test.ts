@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ItemState, NewLiveWire } from "../generated/api";
 import { DEFAULT_SETTINGS } from "../fakeSettings";
-import { formFrom, newLive } from "../shell/liveForm";
-import { camerasOf, seedOf } from "./cameras";
+import { formFrom, newLive } from "./liveForm";
+import { camerasOf, seedOf } from "../live/cameras";
 
 const stream = (id: string, label: string, recipe: NewLiveWire): ItemState => ({
   id,

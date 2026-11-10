@@ -4,7 +4,7 @@ import type { ItemState } from "../generated/api";
 import { entry, FakeSocket, playlist, type Room } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
 import { SessionProvider } from "../session/session";
-import { KeptStateProvider } from "./keptState";
+import { KeptStateProvider } from "../kit/keptState";
 import { RevealShown } from "./RevealShown";
 import { CLIP, labels, LISTING, MOT, renderTree } from "./WorkspaceTree.fixture";
 import { WorkspaceTree } from "./WorkspaceTree";
