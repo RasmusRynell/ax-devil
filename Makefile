@@ -92,7 +92,7 @@ build: _frontend-build
 package:
 	scripts/package-desktop.sh $(OS)
 
-smoke-packaged:
+smoke-packaged: _smoke-fixtures
 	scripts/smoke-packaged.sh $(OS)
 
 verify-release-version:
@@ -145,9 +145,13 @@ test-integration: _dev _dev-rust
 
 # The debug backend, which test-backend has already compiled: a release build here would only repeat the package jobs'.
 test-desktop: export AX_DEVIL_BACKEND = $(CURDIR)/target/debug/ax-devil$(if $(filter Windows_NT,$(OS)),.exe)
-test-desktop: _frontend-build desktop/node_modules/.electron-ready
+test-desktop: _frontend-build desktop/node_modules/.electron-ready _smoke-fixtures
 	$(CARGO) build --locked --bin ax-devil
 	node scripts/smoke-desktop.cjs '$(SMOKE)'
+
+.PHONY: _smoke-fixtures
+_smoke-fixtures:
+	$(CARGO) build --locked -p camera --example loopback_rtsp
 
 # Needs a real camera, so it is not part of `test` or `check`; each test skips itself when AX_DEVIL_TARGET_ADDR is unset.
 test-camera:

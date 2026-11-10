@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -17,6 +17,7 @@ use tokio::task::JoinHandle;
 
 use super::digest::{self, Algorithm};
 use super::fake_vapix::{PASSWORD, USER};
+use super::rtp_packets::{rtp, video_payloads};
 
 const REALM: &str = "AXIS_ACCC8E000001";
 const NONCE: &str = "dcd98b7102dd2f0e8b11d0f600bfb0c093";
@@ -56,6 +57,8 @@ pub enum Fault {
 
 #[derive(Clone)]
 pub struct Behaviour {
+    /// Use decodable solid-colour pictures for viewer checks.
+    pub pictures: bool,
     /// Require a Digest login; otherwise every request is answered.
     pub login: bool,
     /// Offer a video stream (when the URL asks for one).
@@ -80,6 +83,7 @@ pub struct Behaviour {
 impl Default for Behaviour {
     fn default() -> Self {
         Self {
+            pictures: false,
             login: true,
             video: true,
             refuse_later: false,
@@ -105,6 +109,9 @@ struct Shared {
     behaviour: Behaviour,
     seen: Mutex<Vec<Seen>>,
     connections: AtomicUsize,
+    paused: tokio::sync::watch::Sender<bool>,
+    unsupported: AtomicBool,
+    drop_connections: tokio::sync::watch::Sender<u64>,
 }
 
 /// A running fake; dropping it stops it.
@@ -129,18 +136,45 @@ impl FakeRtsp {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let addr = listener.local_addr().expect("address");
         let shared = Arc::new(Shared {
-            behaviour,
+            behaviour: behaviour.clone(),
             seen: Mutex::new(Vec::new()),
             connections: AtomicUsize::new(0),
+            paused: tokio::sync::watch::channel(behaviour.pictures).0,
+            unsupported: AtomicBool::new(false),
+            drop_connections: tokio::sync::watch::channel(0).0,
         });
         let accepting = Arc::clone(&shared);
         let task = tokio::spawn(async move {
             while let Ok((socket, _)) = listener.accept().await {
                 let index = accepting.connections.fetch_add(1, Ordering::SeqCst);
-                tokio::spawn(serve(socket, Arc::clone(&accepting), index, addr));
+                let shared = Arc::clone(&accepting);
+                let mut dropped = shared.drop_connections.subscribe();
+                tokio::spawn(async move {
+                    tokio::select! {
+                        () = serve(socket, shared, index, addr) => {}
+                        _ = dropped.changed() => {}
+                    }
+                });
             }
         });
         Self { addr, shared, task }
+    }
+
+    /// Hold negotiation and pictures while connecting or recovering.
+    pub fn pause(&self, paused: bool) {
+        self.shared.paused.send_replace(paused);
+    }
+
+    /// Advertise an unsupported codec on subsequent connections.
+    pub fn unsupported(&self) {
+        self.shared.unsupported.store(true, Ordering::SeqCst);
+    }
+
+    /// End all current sessions, leaving the listener available for recovery.
+    pub fn disconnect(&self) {
+        self.shared
+            .drop_connections
+            .send_modify(|generation| *generation += 1);
     }
 
     /// A camera pointing at this fake, with the right login.
@@ -229,7 +263,7 @@ async fn serve(socket: TcpStream, shared: Arc<Shared>, index: usize, addr: Socke
     let mut reader = BufReader::new(read);
     let writer = Arc::new(AsyncMutex::new(write));
     let mut channels: HashMap<&'static str, u8> = HashMap::new();
-    let mut streaming: Option<JoinHandle<()>> = None;
+    let mut streaming = tokio::task::JoinSet::new();
     while let Some(request) = read_request(&mut reader).await {
         let authorization = request.headers.get("authorization").cloned();
         shared.seen.lock().expect("lock").push(Seen {
@@ -269,6 +303,10 @@ async fn serve(socket: TcpStream, shared: Arc<Shared>, index: usize, addr: Socke
         } else {
             match request.method.as_str() {
                 "DESCRIBE" => {
+                    let mut paused = shared.paused.subscribe();
+                    if paused.wait_for(|paused| !paused).await.is_err() {
+                        return;
+                    }
                     if let (0, Fault::Describe { status }) =
                         (index, shared.behaviour.first_connection)
                     {
@@ -282,7 +320,10 @@ async fn serve(socket: TcpStream, shared: Arc<Shared>, index: usize, addr: Socke
                     }
                     let wants_video = shared.behaviour.video && !request.uri.contains("video=0");
                     let wants_metadata = request.uri.contains("analytics=polygon");
-                    let sdp = sdp(&base, wants_video, wants_metadata);
+                    let mut sdp = sdp(&base, wants_video, wants_metadata);
+                    if shared.unsupported.load(Ordering::SeqCst) {
+                        sdp = sdp.replace("H264/90000", "VP8/90000");
+                    }
                     reply(
                         "200 OK",
                         &format!(
@@ -344,15 +385,17 @@ async fn serve(socket: TcpStream, shared: Arc<Shared>, index: usize, addr: Socke
                     } else {
                         Fault::None
                     };
-                    streaming = Some(tokio::spawn(stream(
+                    streaming.spawn(stream(
                         Arc::clone(&writer),
                         channels.clone(),
                         shared.behaviour.clone(),
                         fault,
-                    )));
+                        Arc::clone(&shared),
+                        index,
+                    ));
                     continue;
                 }
-                _ if streaming.is_some() && shared.behaviour.refuse_keepalive => {
+                _ if !streaming.is_empty() && shared.behaviour.refuse_keepalive => {
                     reply("401 Unauthorized", "", "")
                 }
                 _ => reply("200 OK", "Session: 12345678\r\n", ""),
@@ -361,9 +404,6 @@ async fn serve(socket: TcpStream, shared: Arc<Shared>, index: usize, addr: Socke
         if writer.lock().await.write_all(&answer).await.is_err() {
             break;
         }
-    }
-    if let Some(task) = streaming {
-        task.abort();
     }
 }
 
@@ -390,6 +430,8 @@ async fn stream(
     channels: HashMap<&'static str, u8>,
     behaviour: Behaviour,
     fault: Fault,
+    shared: Arc<Shared>,
+    connection: usize,
 ) {
     let mut sent = 0usize;
     let mut seq = [0u16; 2];
@@ -398,12 +440,20 @@ async fn stream(
         if frame >= behaviour.burst {
             tokio::time::sleep(behaviour.interval).await;
         }
+        if *shared.paused.borrow() {
+            continue;
+        }
         let capture = FIRST_CAPTURE + i64::from(frame) * FRAME_NANOS;
         let rtp_time = FIRST_RTP_TIME + frame * 3000;
         let mut packets: Vec<(u8, usize, bool, Vec<u8>)> = Vec::new();
         if let Some(&channel) = channels.get("video") {
             let keyframes = !matches!(fault, Fault::Damage { at } if frame >= at);
-            for (payload, marker) in video_payloads(frame, keyframes) {
+            let payloads = if behaviour.pictures {
+                super::pictures::payloads(connection)
+            } else {
+                video_payloads(frame, keyframes)
+            };
+            for (payload, marker) in payloads {
                 packets.push((channel, 0, marker, payload));
             }
         }
@@ -446,59 +496,4 @@ async fn stream(
             sent += 1;
         }
     }
-}
-
-/// The RTP payloads of frame `frame`, each with whether it ends the frame.
-fn video_payloads(frame: u32, keyframes: bool) -> Vec<(Vec<u8>, bool)> {
-    let index = u16::try_from(frame)
-        .expect("fewer than 65536 frames")
-        .to_be_bytes();
-    if !keyframes || !frame.is_multiple_of(GOP) {
-        let mut nal = vec![0x41, 0xBB, index[0], index[1], 0xBB];
-        nal.extend([0xAA; 200]);
-        return vec![(nal, true)];
-    }
-    let mut stap = vec![24, 0, SPS.len() as u8];
-    stap.extend(SPS);
-    stap.extend([0, PPS.len() as u8]);
-    stap.extend(PPS);
-    let mut idr = vec![0x65, 0xBB, index[0], index[1], 0xBB];
-    idr.extend([0xAA; 2500]);
-    // FU-A: the NAL header's type and importance go to the fragments' headers; its body is cut into pieces.
-    let body = &idr[1..];
-    let pieces: Vec<&[u8]> = body.chunks(1000).collect();
-    let mut payloads = vec![(stap, false)];
-    for (n, piece) in pieces.iter().enumerate() {
-        let (first, last) = (n == 0, n + 1 == pieces.len());
-        let header = (u8::from(first) << 7) | (u8::from(last) << 6) | 5;
-        let mut payload = vec![0x60 | 28, header];
-        payload.extend(*piece);
-        payloads.push((payload, last));
-    }
-    payloads
-}
-
-/// One RTP packet with the Axis capture time in its header extension.
-fn rtp(
-    payload_type: u8,
-    seq: u16,
-    timestamp: u32,
-    marker: bool,
-    capture: i64,
-    payload: &[u8],
-) -> Vec<u8> {
-    let seconds = u32::try_from(capture / 1_000_000_000 + 2_208_988_800).expect("NTP seconds");
-    let fraction =
-        u32::try_from((u128::from(capture.unsigned_abs() % 1_000_000_000) << 32) / 1_000_000_000)
-            .expect("fraction");
-    let mut packet = vec![0x90, (u8::from(marker) << 7) | payload_type];
-    packet.extend(seq.to_be_bytes());
-    packet.extend(timestamp.to_be_bytes());
-    packet.extend(0xAu32.to_be_bytes());
-    packet.extend([0xAB, 0xAC, 0, 3]);
-    packet.extend(seconds.to_be_bytes());
-    packet.extend(fraction.to_be_bytes());
-    packet.extend([0; 4]);
-    packet.extend(payload);
-    packet
 }

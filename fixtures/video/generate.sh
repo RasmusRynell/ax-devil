@@ -82,3 +82,10 @@ ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(luma 96x64 25)" "${PLAIN[@]}" -frames:v 1 "
 ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(luma 64x48 25)" "${PLAIN[@]}" -frames:v 12 -c:v libx265 -qp 1 -pix_fmt yuv420p \
   -x265-params keyint=5:min-keyint=5:scenecut=0:bframes=0:open-gop=0:repeat-headers=1:info=0:log-level=error \
   -f hevc stream_hevc_gop5.hevc
+
+# Distinct pictures for the loopback RTSP viewer and its closed-stream snapshot.
+for colour in red green; do
+  ffmpeg "${GLOBAL[@]}" -f lavfi -i "color=c=$colour:s=160x96" -frames:v 1 \
+    -c:v libx264 -profile:v baseline -x264-params keyint=1 -f h264 "rtsp-$colour.h264"
+done
+ffmpeg "${GLOBAL[@]}" -f lavfi -i color=c=blue:s=160x96 -frames:v 1 rtsp-snapshot.jpg
