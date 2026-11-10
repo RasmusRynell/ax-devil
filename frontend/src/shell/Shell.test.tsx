@@ -2,12 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { CommandId } from "../generated/settings";
 import { installFakeFullscreen } from "../fakeFullscreen";
-import { FakeSocket, video } from "../session/fakeSession";
+import { scenario } from "../session/fakeScenario";
+import { FakeSocket } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
 import { useViewerActions } from "../viewer/actions";
 import { renderShell, showShell } from "./shellHarness";
 
 installFakeFullscreen();
+
+const videos = scenario("two-videos");
 
 const playback = { togglePlay: vi.fn(), step: vi.fn() };
 const offered = {
@@ -299,7 +302,7 @@ describe("add playlist", () => {
 describe("viewer shortcuts", () => {
   async function openViewer(shortcuts?: Partial<Record<CommandId, string | null>>) {
     const room = await renderShell({ shortcuts });
-    act(() => room.setItems([video("a")]));
+    act(() => room.show(videos, "a-open"));
   }
 
   it("reach the open viewer, repeat only where the command says so, and leave text fields alone", async () => {
@@ -342,10 +345,10 @@ describe("viewer shortcuts", () => {
 describe("a watcher", () => {
   it("shows the presenter's window and cannot add to it", async () => {
     const room = FakeSocket.host();
-    room.setItems([video("a")]);
+    room.show(videos, "a-open");
     room.publish({
       sidebar: { view: "live", open: true },
-      ...viewing("a"),
+      ...viewing(videos.ids.a),
     });
     window.sessionStorage.setItem(
       "ax-devil.credential",
@@ -378,10 +381,10 @@ describe("a watcher", () => {
   /** A watcher of a session whose Doc has "a" and "b" open and whose presenter shows "a". */
   async function watchAB(access: "watch" | "explore") {
     const room = FakeSocket.host(access);
-    room.setItems([video("a"), video("b")]);
+    room.show(videos, "both-open");
     room.publish({
       sidebar: { view: "workspace", open: true },
-      ...viewing("a", "b"),
+      ...viewing(videos.ids.a, videos.ids.b),
     });
     window.sessionStorage.setItem(
       "ax-devil.credential",
@@ -400,13 +403,13 @@ describe("a watcher", () => {
     fireEvent.pointerDown(screen.getByRole("group", { name: "b.mp4" }));
     fireEvent.pointerDown(screen.getByRole("group", { name: "a.mp4" }));
     expect(selected()).toEqual(["a.mp4"]);
-    act(() => room.setItems([video("a", false), video("b")]));
+    act(() => room.show(videos, "b-open"));
     expect(selected()).toEqual(["b.mp4"]);
   });
 
   it("that follows leaves choosing to the presenter when the one shown closes", async () => {
     const room = await watchAB("explore");
-    act(() => room.setItems([video("a", false), video("b")]));
+    act(() => room.show(videos, "b-open"));
     expect(selected()).toEqual([]);
     expect(FakeSocket.latest.received.filter((message) => message.type === "view")).toEqual([]);
   });

@@ -1,0 +1,4123 @@
+{
+  "docs": {
+    "a-hidden": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": "v.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": "bad.mp4",
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      }
+    },
+    "b-shown": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": "v.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": "bad.mp4",
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      }
+    },
+    "bad-open": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": "v.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": true,
+              "recipe": {
+                "label": "bad.mp4",
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": true,
+              "resolution": {
+                "code": "FileNotFound",
+                "params": {},
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "params": {},
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "dpm-open": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": "v.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": "bad.mp4",
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "dpm-shown": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": "v.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": "bad.mp4",
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      }
+    },
+    "gt-a-hidden": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": "v.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": "bad.mp4",
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      }
+    },
+    "gt-hidden": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": "v.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": "bad.mp4",
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      }
+    },
+    "initial": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": "v.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": "bad.mp4",
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      }
+    },
+    "mot-open": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": "v.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": "bad.mp4",
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "swapped": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": "v.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": "bad.mp4",
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "v-mot-open": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": true,
+              "recipe": {
+                "label": "v.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": "bad.mp4",
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "v-open": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": true,
+              "recipe": {
+                "label": "v.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": "bad.mp4",
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "v-removed": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": "bad.mp4",
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      }
+    }
+  },
+  "ids": {
+    "bad": "00000000-0000-4000-8000-000000000003",
+    "mot": "00000000-0000-4000-8000-000000000001",
+    "mot/A": "00000000-0000-4000-8000-000000000001/Train/A",
+    "mot/B": "00000000-0000-4000-8000-000000000001/Train/B",
+    "mot/Train": "00000000-0000-4000-8000-000000000001/Train",
+    "v": "00000000-0000-4000-8000-000000000002"
+  },
+  "steps": [
+    {
+      "command": {
+        "command": {
+          "hidden": true,
+          "target": {
+            "entry": "00000000-0000-4000-8000-000000000001/Train/A"
+          },
+          "type": "setHidden"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "a-hidden"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000001",
+          "type": "openViewer"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "mot-open"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000002",
+          "type": "remove"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "v-removed"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000003",
+          "type": "openViewer"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "bad-open"
+    },
+    {
+      "command": {
+        "command": {
+          "hidden": false,
+          "target": {
+            "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+            "lane": "DPM"
+          },
+          "type": "setHidden"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "dpm-shown"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000001",
+          "type": "openViewer"
+        },
+        "type": "content"
+      },
+      "from": "dpm-shown",
+      "to": "dpm-open"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000002",
+          "type": "openViewer"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "v-open"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000001",
+          "type": "openViewer"
+        },
+        "type": "content"
+      },
+      "from": "v-open",
+      "to": "v-mot-open"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000002",
+          "type": "closeViewer"
+        },
+        "type": "content"
+      },
+      "from": "v-mot-open",
+      "to": "swapped"
+    },
+    {
+      "command": {
+        "command": {
+          "hidden": true,
+          "target": {
+            "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+            "lane": "GT"
+          },
+          "type": "setHidden"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "gt-hidden"
+    },
+    {
+      "command": {
+        "command": {
+          "hidden": true,
+          "target": {
+            "entry": "00000000-0000-4000-8000-000000000001/Train/A"
+          },
+          "type": "setHidden"
+        },
+        "type": "content"
+      },
+      "from": "gt-hidden",
+      "to": "gt-a-hidden"
+    },
+    {
+      "command": {
+        "command": {
+          "hidden": false,
+          "target": {
+            "entry": "00000000-0000-4000-8000-000000000001/Train/B"
+          },
+          "type": "setHidden"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "b-shown"
+    }
+  ]
+}

@@ -56,7 +56,7 @@ pub fn project(doc: &Doc, audience: Audience, expands: bool) -> DocWire {
 }
 
 /// [`project`] with the environment `env` reads references from.
-fn project_in(doc: &Doc, audience: Audience, env: &Environment) -> DocWire {
+pub(super) fn project_in(doc: &Doc, audience: Audience, env: &Environment) -> DocWire {
     let Doc { workspace: state } = doc;
     let WorkspaceParts {
         workspace,

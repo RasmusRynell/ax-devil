@@ -3,7 +3,8 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { FakeSettings } from "../fakeSettings";
 import { opened } from "../playback/fakeOpened";
 import type { Incoming } from "../playback/wire";
-import { entry, FakeSocket, playlist } from "../session/fakeSession";
+import { scenario } from "../session/fakeScenario";
+import { FakeSocket } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
 import { SessionProvider, useDoc } from "../session/session";
 import { PlaylistViewer } from "./PlaylistViewer";
@@ -41,12 +42,17 @@ afterEach(() => {
   sockets.length = 0;
 });
 
+const s = scenario("playlist");
+const { ids } = s;
+
 function Host() {
-  const resolution = useDoc()?.workspace.items.find((item) => item.id === "list")?.resolution;
+  const item = useDoc()?.workspace.items[0];
+  const resolution = item?.resolution;
   return (
+    item &&
     resolution?.status === "Resolved" &&
     resolution.content.kind === "Playlist" && (
-      <PlaylistViewer item="list" viewer={1} content={resolution.content} />
+      <PlaylistViewer item={item.id} viewer={1} content={resolution.content} />
     )
   );
 }
@@ -54,10 +60,10 @@ function Host() {
 /** A window that follows a presenter who shows entry A of a playlist, with its stream open. */
 async function follow() {
   const room = FakeSocket.host("watch");
-  room.setItems([playlist("list", [entry("list/A"), entry("list/B")])]);
+  room.show(s);
   const show = (entryId: string) =>
-    room.publish({ sidebar: room.presenter.sidebar, ...viewing(["list", { entry: entryId }]) });
-  show("list/A");
+    room.publish({ sidebar: room.presenter.sidebar, ...viewing([ids.list, { entry: entryId }]) });
+  show(ids["list/A"]);
   window.sessionStorage.setItem(
     "ax-devil.credential",
     JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
@@ -89,20 +95,20 @@ describe("a following window on a playlist", () => {
     await act(async () => sockets.at(-1)?.({ type: "closed", code: 4403 }));
     expect((await screen.findByRole("alert")).textContent).toContain("access to it was withdrawn");
 
-    act(() => show("list/B"));
+    act(() => show(ids["list/B"]));
     await act(async () => {});
     expect(screen.queryByRole("alert")).toBeNull();
     expect(await screen.findByRole("slider", { name: "Timeline" })).toBeTruthy();
-    expect(tickets().at(-1)).toMatchObject({ content: "list", entry: "list/B" });
+    expect(tickets().at(-1)).toMatchObject({ content: ids.list, entry: ids["list/B"] });
   });
 
   it("moves to it without any notice when the new view comes first", async () => {
     const { show } = await follow();
-    act(() => show("list/B"));
+    act(() => show(ids["list/B"]));
     await act(async () => {});
     await act(async () => sockets[0]({ type: "closed", code: 4403 }));
     expect(screen.queryByRole("alert")).toBeNull();
     expect(await screen.findByRole("slider", { name: "Timeline" })).toBeTruthy();
-    expect(tickets().at(-1)).toMatchObject({ entry: "list/B" });
+    expect(tickets().at(-1)).toMatchObject({ entry: ids["list/B"] });
   });
 });

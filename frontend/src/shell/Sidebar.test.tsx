@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { entry, failed, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
+import { scenario } from "../session/fakeScenario";
+import { FakeSocket, type Room } from "../session/fakeSession";
 import { FakeSettings } from "../fakeSettings";
 import { SessionProvider } from "../session/session";
 import { KeptStateProvider } from "../kit/keptState";
@@ -24,17 +25,11 @@ it("lists only Videos and Playlists in Offline, and counts them in the header", 
   );
   await act(async () => {});
   const room = FakeSocket.rooms.get("room-1") as Room;
-  act(() =>
-    room.setItems([
-      { ...failed("cam"), kind: "live" },
-      video("v", false),
-      playlist("mot", [entry("mot/A", "A", ["GT"])], false),
-    ]),
-  );
+  act(() => room.show(scenario("tree-kinds")));
   expect(screen.getByRole("heading", { name: /^Videos/ })).toBeTruthy();
   expect(screen.getByRole("heading", { name: /^Playlists/ })).toBeTruthy();
   expect(screen.queryByRole("heading", { name: /^Live/ })).toBeNull();
-  expect(screen.getByText("2")).toBeTruthy();
+  expect(screen.getByText("5")).toBeTruthy();
   expect(screen.getByRole("searchbox", { name: "Search files" })).toBeTruthy();
 });
 
@@ -53,7 +48,7 @@ it("shows the start panel alone while the workspace is empty, and the list once 
     "Open Workspace (Ctrl+O)",
   );
   expect(screen.queryByRole("searchbox")).toBeNull();
-  act(() => (FakeSocket.rooms.get("room-1") as Room).setItems([video("v", false)]));
+  act(() => (FakeSocket.rooms.get("room-1") as Room).show(scenario("tree")));
   expect(screen.getByRole("searchbox", { name: "Search items" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Open Workspace" })).toBeNull();
 });
@@ -68,7 +63,7 @@ it("offers the Location order in Offline and not in Workspace", async () => {
       </SessionProvider>,
     );
     await act(async () => {});
-    act(() => (FakeSocket.rooms.get("room-1") as Room).setItems([video("v", false)]));
+    act(() => (FakeSocket.rooms.get("room-1") as Room).show(scenario("tree")));
     fireEvent.click(screen.getByRole("button", { name: "Sort" }));
     const names = screen.getAllByRole("menuitemcheckbox").map((item) => item.textContent);
     cleanup();
@@ -89,9 +84,9 @@ it("keeps a view's search, sort and folds while another view or no view is shown
   const { rerender } = render(page("offline"));
   await act(async () => {});
   const room = FakeSocket.rooms.get("room-1") as Room;
-  act(() => room.setItems([video("v", false), video("w", false)]));
+  act(() => room.show(scenario("tree-kinds")));
   fireEvent.click(screen.getByRole("button", { name: "Videos" }));
-  expect(screen.queryByRole("tree")).toBeNull();
+  expect(screen.queryByRole("tree", { name: "Videos" })).toBeNull();
   const search = () => screen.getByRole("searchbox", { name: "Search files" }) as HTMLInputElement;
   fireEvent.change(search(), { target: { value: "w" } });
   fireEvent.click(screen.getByRole("button", { name: "Sort" }));
@@ -108,7 +103,7 @@ it("keeps a view's search, sort and folds while another view or no view is shown
   );
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
   fireEvent.change(search(), { target: { value: "" } });
-  expect(screen.queryByRole("tree")).toBeNull();
+  expect(screen.queryByRole("tree", { name: "Videos" })).toBeNull();
 });
 
 it("lets a seat that edits content rename the workspace from its title, and no other", async () => {

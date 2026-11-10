@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
-import type { ItemRecipe, ItemState } from "../generated/api";
-import { FakeSocket, video } from "../session/fakeSession";
+import { FakeSocket } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
-import { CLIP, commands, renderTree, shown } from "./WorkspaceTree.fixture";
+import { commands, KINDS, renderTree, shown } from "./WorkspaceTree.fixture";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 afterEach(() => {
@@ -14,8 +13,6 @@ afterEach(() => {
   FakeSocket.reset();
 });
 
-const recipe: ItemRecipe = { type: "Video", path: "/v.mp4", label: null, overlays: [] };
-const stored = (item: ItemState): ItemState => ({ ...item, recipe });
 const menuOf = (name: RegExp) => {
   fireEvent.contextMenu(screen.getByRole("treeitem", { name }));
   const names = screen.getAllByRole("menuitem").map((entry) => entry.textContent);
@@ -23,46 +20,25 @@ const menuOf = (name: RegExp) => {
   return names;
 };
 
-const camera = (id: string, label: string): ItemState => ({
-  id,
-  label,
-  kind: "live",
-  open: false,
-  resolution: {
-    status: "Resolved",
-    content: {
-      kind: "LiveVideo",
-      id,
-      generation: 1,
-      display_name: label,
-      slot: "live",
-      overlay: "none",
-      lanes: [label],
-      recipe: null,
-    },
-  },
-});
-
 it("starts a live stream beside the open viewers from its row and stops it by closing its viewer", async () => {
-  const lobby = camera("cam", "Lobby");
-  await renderTree([stored(CLIP), stored(lobby)], []);
+  await renderTree(KINDS);
   const live = () => screen.getByRole("treeitem", { name: /^Lobby/ });
   expect(menuOf(/^Lobby/)).toEqual(["Start stream", "Information", "Edit", "Remove"]);
 
   fireEvent.click(screen.getByRole("button", { name: "Start Lobby" }));
   await act(async () => {});
-  expect(commands()).toEqual([{ type: "openViewer", item: "cam" }]);
-  expect(shown().viewers).toMatchObject({ 1: { item: "cam" } });
+  expect(commands()).toEqual([{ type: "openViewer", item: KINDS.ids.cam }]);
+  expect(shown().viewers).toMatchObject({ 1: { item: KINDS.ids.cam } });
   expect(live().getAttribute("aria-current")).toBe("true");
   expect(menuOf(/^Lobby/)[0]).toBe("Stop stream");
 
   fireEvent.click(screen.getByRole("button", { name: "Stop Lobby" }));
   await act(async () => {});
-  expect(commands().at(-1)).toEqual({ type: "closeViewer", item: "cam" });
+  expect(commands().at(-1)).toEqual({ type: "closeViewer", item: KINDS.ids.cam });
 });
 
 it("leaves the keys pressed on a row's own button to that button, not to the row the keyboard is on", async () => {
-  await renderTree([stored(camera("a", "Lobby")), stored(camera("b", "Dock"))], []);
+  await renderTree(KINDS);
   fireEvent.click(screen.getByRole("treeitem", { name: /^Lobby/ }));
   const dock = screen.getByRole("button", { name: "Start Dock" });
   dock.focus();
@@ -71,19 +47,18 @@ it("leaves the keys pressed on a row's own button to that button, not to the row
   expect(commands()).toEqual([]);
   fireEvent.click(dock);
   await act(async () => {});
-  expect(commands()).toEqual([{ type: "openViewer", item: "b" }]);
+  expect(commands()).toEqual([{ type: "openViewer", item: KINDS.ids.dock }]);
 });
 
 it("keeps a seat without the content power from starting a live stream, saying so, while it still brings a running one forward and opens a recording", async () => {
-  const open = (item: ItemState): ItemState => ({ ...item, open: true });
-  const room = await renderTree(
-    [open(camera("a", "Lobby")), open(camera("b", "Dock")), open(video("w", false)), open(CLIP)],
-    [],
-    "explore",
-  );
+  const room = await renderTree(KINDS, "all-open", "explore");
   // Lobby and w.mp4 are shown, w.mp4 in front. Dock is open in the Doc with no viewer, and so is v.mp4.
   act(() =>
-    room.publish({ sidebar: { view: "workspace", open: true }, ...viewing("a", "w"), active: 2 }),
+    room.publish({
+      sidebar: { view: "workspace", open: true },
+      ...viewing(KINDS.ids.cam, KINDS.ids.w),
+      active: 2,
+    }),
   );
   const row = (name: RegExp) => screen.getByRole("treeitem", { name });
   const front = () => shown().active;
@@ -105,5 +80,5 @@ it("keeps a seat without the content power from starting a live stream, saying s
   // A recording not shown yet opens in the front pane, as for any seat that views.
   fireEvent.doubleClick(row(/^v\.mp4/));
   await act(async () => {});
-  expect(shown().viewers[front()]).toMatchObject({ item: "v" });
+  expect(shown().viewers[front()]).toMatchObject({ item: KINDS.ids.v });
 });

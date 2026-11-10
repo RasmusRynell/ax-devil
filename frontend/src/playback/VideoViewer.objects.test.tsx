@@ -3,7 +3,8 @@ import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { installFakeFullscreen } from "../fakeFullscreen";
 import { DEFAULT_SETTINGS } from "../fakeSettings";
-import { FakeSocket, video } from "../session/fakeSession";
+import { FakeSocket } from "../session/fakeSession";
+import { scenario } from "../session/fakeScenario";
 import { SessionProvider } from "../session/session";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
 import { focusLane } from "../viewer/laneFocus";
@@ -27,6 +28,7 @@ vi.mock("./VideoCanvas", () => ({
 }));
 
 installViewerHarness();
+const s = scenario("playlist");
 const fullscreen = installFakeFullscreen();
 
 const SELECTION = { lane: 0, source: 0, entity: "7" };
@@ -64,7 +66,7 @@ async function mount(settings?: typeof OFF, lanes?: LaneInfo[]) {
   const sent: ClientMessage[] = [];
   const view = render(tree(<Viewer sent={sent} settings={settings} lanes={lanes} />));
   await act(async () => {});
-  act(() => FakeSocket.rooms.get("room-1")?.setItems([video("a")]));
+  act(() => FakeSocket.rooms.get("room-1")?.show(s));
   await slider();
   const props = () => canvas.props as ComponentProps<typeof VideoCanvas>;
   return {
@@ -154,7 +156,7 @@ describe("video viewer objects", () => {
     const { props, run } = await mount(undefined, lanes);
     const grid = document.querySelector("[data-chrome-idle] .inset-0.flex") as HTMLElement;
     fireEvent.pointerMove(grid, { clientX: 50, clientY: 50 });
-    act(() => focusLane(1, "content-a", "GT"));
+    act(() => focusLane(1, s.ids["list/A"], "GT"));
     run("lane-fullscreen");
     expect(props().cells?.map(({ lane }) => lane)).toEqual([1]);
     // Leaving fullscreen, the next pointer move over a lane is the target again.
@@ -282,7 +284,7 @@ describe("video viewer objects", () => {
     expect(props().viewport?.zoom).toBeCloseTo(ZOOM_STEP ** 2);
     run("zoom-out");
     expect(props().viewport?.zoom).toBeCloseTo(ZOOM_STEP);
-    show({ entryId: "content-b" });
+    show({ entryId: s.ids["list/B"] });
     await slider();
     expect(props().viewport?.zoom).toBeCloseTo(ZOOM_STEP);
     run("zoom-reset");

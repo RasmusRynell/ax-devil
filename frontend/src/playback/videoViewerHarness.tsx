@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { useMemo } from "react";
 import { afterEach, beforeEach, vi } from "vite-plus/test";
 import { FakeSettings } from "../fakeSettings";
-import type { EntryInfo, SettingsState } from "../generated/api";
+import type { SettingsState } from "../generated/api";
 import { FakeSocket } from "../session/fakeSession";
 import { useDoc, useView } from "../session/session";
 import { useFrontViewer } from "../viewer/useViewers";
@@ -47,32 +47,12 @@ export function installViewerHarness() {
   });
 }
 
-const content = { id: "content-a", generation: 1, display_name: "a.mp4" };
-const ENTRIES: Record<string, EntryInfo> = {
-  "content-a": {
-    id: "content-a",
-    label: "a.mp4",
-    lanes: ["a.mp4"],
-    handlers: [],
-    metadata: [],
-    lane_metadata: [],
-  },
-  "content-b": {
-    id: "content-b",
-    label: "b.mp4",
-    lanes: ["b.mp4"],
-    handlers: [],
-    metadata: [],
-    lane_metadata: [],
-  },
-};
-
 /** What the playback sockets the viewer opened can be told, newest last. */
 export const sockets: ((incoming: Incoming) => void)[] = [];
 
 /**
- * The video viewer for the entry the window's view names, as a playlist viewer shows it, or the first when the view
- * names none.
+ * The video viewer for the first item of the Doc, on the entry the window's view names, as a playlist viewer shows it,
+ * or the first when the view names none.
  */
 export function Viewer({
   sent,
@@ -82,10 +62,7 @@ export function Viewer({
   onLaneMatching,
   hidden,
   settings,
-  generation = 1,
 }: {
-  /** The commit of the Content; a reload is a new one. */
-  generation?: number;
   sent: ClientMessage[];
   lanes?: LaneInfo[];
   /** Shows this entry whatever the view names. */
@@ -100,16 +77,25 @@ export function Viewer({
   const connect = useMemo<Connect>(() => open(sent, lanes), [sent, lanes]);
   const [viewers] = useView("viewers");
   useFrontViewer();
-  const entry = ENTRIES[entryId ?? viewers[1]?.entry ?? "content-a"];
+  const item = useDoc()?.workspace.items[0];
+  const content = item?.resolution.status === "Resolved" ? item.resolution.content : undefined;
+  const entries =
+    content?.kind === "SeekableVideo"
+      ? [content.entry]
+      : content?.kind === "Playlist"
+        ? content.entries
+        : [];
+  const wanted = entryId ?? viewers[1]?.entry;
+  const entry = entries.find(({ id }) => id === wanted) ?? entries[0];
   // The viewer opens once the Doc has its item, as the shell does.
-  return useDoc()?.workspace.items.length ? (
+  return item && content && entry ? (
     <FakeSettings state={settings}>
       <VideoViewer
         // A reload is a new stream, which the shell mounts a new viewer for.
-        key={generation}
-        item="a"
+        key={content.generation}
+        item={item.id}
         viewer={1}
-        content={{ ...content, generation }}
+        content={content}
         entry={entry}
         connect={connect}
         onHideLane={onHideLane}

@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { GrantsContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
-import type { Grant, ItemState, NetworkRow, NetworkSnapshot, NewLiveWire } from "../generated/api";
+import type { Grant, NetworkRow, NetworkSnapshot } from "../generated/api";
 import type { AddSeed } from "../live/cameras";
 import type { SettingsApi } from "../settings";
+import { scenario } from "../session/fakeScenario";
 import { FakeSocket, type Room } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
 import { SessionProvider } from "../session/session";
@@ -31,33 +32,7 @@ const FOUND: NetworkSnapshot = {
   ],
 };
 
-const RECIPE: NewLiveWire = {
-  host: "10.0.0.2",
-  username: "root",
-  protocol: "https",
-  head: 1,
-  rtsp_port: 554,
-  overlay: { mode: "none" },
-};
-const ready = (id: string, recipe: NewLiveWire | null = null): ItemState => ({
-  id,
-  label: "Lobby",
-  kind: "live",
-  open: false,
-  resolution: {
-    status: "Resolved",
-    content: {
-      kind: "LiveVideo",
-      id,
-      generation: 1,
-      display_name: "Lobby",
-      slot: "live",
-      overlay: "mqtt",
-      lanes: ["Lobby"],
-      recipe,
-    },
-  },
-});
+const streams = scenario("streams");
 
 const fetched = vi.fn();
 let refuseScan = false;
@@ -125,7 +100,7 @@ afterEach(() => {
 });
 
 async function renderView(
-  items: ItemState[],
+  state?: string,
   onAdd: (seed: AddSeed) => void = () => {},
   {
     grants = ["files", "preferences"],
@@ -145,7 +120,7 @@ async function renderView(
   );
   await act(async () => {});
   const room = FakeSocket.rooms.get("room-1") as Room;
-  act(() => room.setItems(items));
+  if (state) act(() => room.show(streams, state));
   return room;
 }
 
@@ -157,7 +132,7 @@ const sent = () =>
 describe("found cameras", () => {
   it("offers Add only after the scan signed in, and adds and starts the stream by address", async () => {
     const added = vi.fn();
-    await renderView([], added);
+    await renderView(undefined, added);
     await screen.findByText("10.0.0.3");
     expect(screen.getAllByRole("button", { name: "Add" })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
@@ -170,7 +145,7 @@ describe("found cameras", () => {
   });
 
   it("opens a camera's info on a click and finds it by what the scan learned", async () => {
-    await renderView([]);
+    await renderView();
     fireEvent.click(await screen.findByText("10.0.0.3"));
     expect(screen.getByText("10.0.0.3 · Box Camera · Firmware 11.8.1")).toBeTruthy();
     fireEvent.change(screen.getByRole("searchbox", { name: "Search" }), {
@@ -187,7 +162,7 @@ describe("found cameras", () => {
 describe("scanning", () => {
   it("says so in the scan settings when the range cannot be scanned", async () => {
     refuseScan = true;
-    await renderView([]);
+    await renderView();
     fireEvent.click(await screen.findByRole("button", { name: "Rescan" }));
     expect(await screen.findByText("Invalid IP range")).toBeTruthy();
   });
@@ -200,7 +175,7 @@ describe("scanning", () => {
 
   it("starts one scan however often Enter is pressed, showing the cameras as they arrive", async () => {
     SNAPSHOT = { scan: 0, scanning: false, rows: [], failure: null };
-    await renderView([]);
+    await renderView();
     const range = await screen.findByRole("textbox", { name: "IP range" });
     fireEvent.keyDown(range, { key: "Enter" });
     fireEvent.keyDown(range, { key: "Enter" });
@@ -229,7 +204,7 @@ describe("scanning", () => {
     holdScan = new Promise((resolve) => (answer = resolve));
     startedScan = 3;
     withhold = true;
-    await renderView([]);
+    await renderView();
     const range = await screen.findByRole("textbox", { name: "IP range" });
     fireEvent.keyDown(range, { key: "Enter" });
     await emit(idle(2));
@@ -263,7 +238,7 @@ describe("scanning", () => {
 
   it("lets a scan start again once the scan has run or the backend restarted, counting from zero", async () => {
     SNAPSHOT = idle(4);
-    await renderView([]);
+    await renderView();
     const range = await screen.findByRole("textbox", { name: "IP range" });
     startedScan = 5;
     fireEvent.keyDown(range, { key: "Enter" });
@@ -286,7 +261,7 @@ describe("scanning", () => {
   it("starts no scan before the snapshot stream has opened, or while it is down", async () => {
     let open = () => {};
     holdStream = new Promise((resolve) => (open = resolve));
-    await renderView([]);
+    await renderView();
     const range = await screen.findByRole("textbox", { name: "IP range" });
     expect(rescanButton().disabled).toBe(true);
     fireEvent.keyDown(range, { key: "Enter" });
@@ -312,7 +287,7 @@ describe("scanning", () => {
     scanReplies = [new Promise((resolve) => (answer = resolve))];
     startedScan = 7;
     SNAPSHOT = idle(1);
-    await renderView([]);
+    await renderView();
     const range = await screen.findByRole("textbox", { name: "IP range" });
     fireEvent.keyDown(range, { key: "Enter" });
     await reconnect(1);
@@ -330,7 +305,7 @@ describe("scanning", () => {
 
   it("says a scan failed, with the reason, and keeps the cameras it found", async () => {
     SNAPSHOT = { scan: 0, scanning: false, rows: [], failure: null };
-    await renderView([]);
+    await renderView();
     fireEvent.click(await screen.findByRole("button", { name: "Rescan" }));
     await emit({ ...FOUND, scan: 1, failure: "The scan stopped unexpectedly." });
     expect(await screen.findByText("Scan failed")).toBeTruthy();
@@ -340,7 +315,7 @@ describe("scanning", () => {
 
   it("takes the sign-in box for the scans it starts without saving it", async () => {
     const save = vi.fn(() => Promise.resolve(null));
-    await renderView([], undefined, { grants: ["files", "configuration"], save });
+    await renderView(undefined, undefined, { grants: ["files", "configuration"], save });
     fireEvent.click(await screen.findByRole("checkbox", { name: /sign in to found cameras/ }));
     fireEvent.click(screen.getByRole("button", { name: "Rescan" }));
     expect(JSON.parse(scansStarted()[0][1] as string)).toEqual({ sign_in: false });
@@ -389,35 +364,45 @@ describe("scanning", () => {
 describe("workspace streams", () => {
   it("adds a stream of a new camera from the Live caption", async () => {
     const added = vi.fn();
-    await renderView([], added);
+    await renderView(undefined, added);
     fireEvent.click(await screen.findByRole("button", { name: "Add stream" }));
     expect(added).toHaveBeenCalledWith({});
   });
 
   it("starts and stops a stream by opening and closing its viewer", async () => {
-    await renderView([ready("a")]);
+    await renderView("initial");
     fireEvent.click(await screen.findByRole("button", { name: "Start stream" }));
-    await waitFor(() => expect(sent()).toContainEqual({ type: "openViewer", item: "a" }));
+    await waitFor(() =>
+      expect(sent()).toContainEqual({ type: "openViewer", item: streams.ids.lobby }),
+    );
     fireEvent.click(await screen.findByRole("button", { name: "Stop stream" }));
-    await waitFor(() => expect(sent()).toContainEqual({ type: "closeViewer", item: "a" }));
+    await waitFor(() =>
+      expect(sent()).toContainEqual({ type: "closeViewer", item: streams.ids.lobby }),
+    );
   });
 
   it("starts a stream beside the open viewers, never in place of the one in front", async () => {
-    const room = await renderView([ready("a"), { ...ready("b"), open: true }]);
-    act(() => room.publish({ sidebar: { view: "live", open: true }, ...viewing("b") }));
-    fireEvent.click((await screen.findAllByRole("button", { name: "Start stream" }))[0]);
+    const room = await renderView("dock-open");
+    act(() =>
+      room.publish({ sidebar: { view: "live", open: true }, ...viewing(streams.ids.dock) }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Start stream" }));
     await waitFor(() => expect(Object.keys(room.presenter.viewers)).toHaveLength(2));
-    expect(Object.values(room.presenter.viewers).map((viewer) => viewer?.item)).toEqual(["b", "a"]);
+    expect(Object.values(room.presenter.viewers).map((viewer) => viewer?.item)).toEqual([
+      streams.ids.dock,
+      streams.ids.lobby,
+    ]);
   });
 });
 
 describe("stream menu", () => {
   it("offers Information and Remove beside Start, and removes the item", async () => {
-    await renderView([ready("a", RECIPE)]);
+    await renderView("initial");
     fireEvent.contextMenu(await screen.findByText("Video only"));
     expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
       "Start stream",
       "Information",
+      "Edit",
       "Remove",
     ]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Information" }));
@@ -427,12 +412,12 @@ describe("stream menu", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     fireEvent.contextMenu(await screen.findByText("Video only"));
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
-    await waitFor(() => expect(sent()).toContainEqual({ type: "remove", item: "a" }));
+    await waitFor(() => expect(sent()).toContainEqual({ type: "remove", item: streams.ids.lobby }));
   });
 
   it("takes Start from a stream whose camera refuses the login saved with it", async () => {
     loginRefused = true;
-    await renderView([ready("a", RECIPE)]);
+    await renderView("initial");
     expect(await screen.findByText("The camera refused the login saved with it.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Start stream" })).toBeNull();
   });
@@ -448,19 +433,21 @@ describe("keyboard", () => {
     document.getElementById(tree.getAttribute("aria-activedescendant") ?? "")?.textContent ?? "";
 
   it("starts on the first row, opens with Enter and removes with Delete", async () => {
-    await renderView([ready("a", RECIPE)]);
+    await renderView("initial");
     const tree = await focusTree("Live");
-    expect(activeLabel(tree)).toContain("10.0.0.2");
+    expect(activeLabel(tree)).toContain("Lobby");
     fireEvent.keyDown(tree, { key: "ArrowDown" });
     expect(activeLabel(tree)).toContain("Video only");
     fireEvent.keyDown(tree, { key: "Enter" });
-    await waitFor(() => expect(sent()).toContainEqual({ type: "openViewer", item: "a" }));
+    await waitFor(() =>
+      expect(sent()).toContainEqual({ type: "openViewer", item: streams.ids.lobby }),
+    );
     fireEvent.keyDown(tree, { key: "Delete" });
-    await waitFor(() => expect(sent()).toContainEqual({ type: "remove", item: "a" }));
+    await waitFor(() => expect(sent()).toContainEqual({ type: "remove", item: streams.ids.lobby }));
   });
 
   it("leaves Enter on a button inside a row to the button", async () => {
-    await renderView([ready("a")]);
+    await renderView("initial");
     const tree = await focusTree("Live");
     fireEvent.keyDown(await screen.findByRole("button", { name: "Start stream" }), {
       key: "Enter",
@@ -470,7 +457,7 @@ describe("keyboard", () => {
   });
 
   it("gives the focus back to the tree when a row's menu closes", async () => {
-    await renderView([ready("a", RECIPE)]);
+    await renderView("initial");
     const tree = await screen.findByRole("tree", { name: "Live" });
     fireEvent.contextMenu(await screen.findByText("Video only"));
     fireEvent.click(screen.getByRole("menuitem", { name: "Start stream" }));
@@ -482,7 +469,7 @@ const MOUSE = { pointerType: "mouse" };
 
 describe("a hover picture", () => {
   it("is asked for only on a camera the scan signed in to", async () => {
-    await renderView([]);
+    await renderView();
     await screen.findByText("10.0.0.3");
     // A row with a picture has no text tip, which would show beside its card; one without keeps it.
     const tipped = (name: RegExp) => screen.getByRole("treeitem", { name }).hasAttribute("title");
@@ -507,7 +494,7 @@ describe("a long scan", () => {
         found(`10.1.${Math.floor(at / 250)}.${at % 250}`, { state: "Refused" }),
       ),
     };
-    await renderView([]);
+    await renderView();
     await screen.findByText("10.1.0.0");
     const drawn = screen.getAllByRole("treeitem").length;
     expect(drawn).toBeGreaterThan(0);

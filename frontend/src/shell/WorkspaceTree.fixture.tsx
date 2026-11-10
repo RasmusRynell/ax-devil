@@ -1,31 +1,17 @@
 import { act, render, screen } from "@testing-library/react";
 import { useLayoutEffect } from "react";
-import type { Access, ItemState } from "../generated/api";
-import { entry, failed, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
+import type { Access } from "../generated/api";
+import { scenario, type Scenario } from "../session/fakeScenario";
+import { FakeSocket, type Room } from "../session/fakeSession";
 import { SessionProvider, useView } from "../session/session";
 import { KeptStateProvider } from "../kit/keptState";
 import { RevealShown, useFolds } from "./RevealShown";
 import { WorkspaceTree } from "./WorkspaceTree";
 
-export const MOT = playlist(
-  "mot",
-  [entry("mot/A", "A", ["GT", "DPM"]), entry("mot/B", "B", ["GT"])],
-  false,
-);
-// A video whose entry has no lanes, so its row has no children.
-export const CLIP: ItemState = {
-  ...video("v", false),
-  resolution: {
-    status: "Resolved",
-    content: {
-      kind: "SeekableVideo",
-      id: "content-v",
-      generation: 1,
-      display_name: "v.mp4",
-      entry: entry("content-v", "v.mp4", []),
-    },
-  },
-};
+/** A closed playlist with a hidden lane and a hidden entry, a video without lanes and a failed video. */
+export const TREE = scenario("tree");
+/** One of each kind of item: a playlist, a video, a failed, a resolving and an unreadable item, live streams. */
+export const KINDS = scenario("tree-kinds");
 /** What the Workspace view lists. */
 export const LISTING = {
   listed: ["live", "videos", "playlists", "other"],
@@ -33,8 +19,6 @@ export const LISTING = {
   search: "Search items",
   empty: "No items",
 } as const;
-export const ITEMS = [MOT, CLIP, failed("bad", "File not found")];
-export const HIDDEN = [{ entry: "mot/A", lane: "DPM" }, { entry: "mot/B" }];
 
 /** What the window shows, as the tree changed it. */
 function View() {
@@ -50,8 +34,8 @@ export function OpenAll() {
   return null;
 }
 
-/** The tree of the window's own Session, or with `access` of one someone else shares with that access. */
-export async function renderTree(items: ItemState[] = ITEMS, hidden = HIDDEN, access?: Access) {
+/** The tree of the window's own Session, or with `access` of one someone else shares with that access, showing `state` of `s`. */
+export async function renderTree(s: Scenario = TREE, state = "initial", access?: Access) {
   const shared = access && FakeSocket.host(access);
   if (shared)
     window.sessionStorage.setItem(
@@ -70,8 +54,7 @@ export async function renderTree(items: ItemState[] = ITEMS, hidden = HIDDEN, ac
   );
   await act(async () => {});
   const room = shared ?? (FakeSocket.rooms.get("room-1") as Room);
-  room.hidden = hidden;
-  act(() => room.setItems(items));
+  act(() => room.show(s, state));
   return room;
 }
 

@@ -1,0 +1,141 @@
+{
+  "docs": {
+    "initial": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "runs",
+              "open": false,
+              "recipe": {
+                "label": "runs",
+                "resolver": "runs",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Folder Pair",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/SEQ-01",
+                      "label": "SEQ-01",
+                      "lane_metadata": [
+                        [
+                          [
+                            "detector",
+                            "Yes"
+                          ]
+                        ]
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": [
+                        [
+                          "split",
+                          "train"
+                        ]
+                      ]
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "runs",
+                      "matches": 1,
+                      "metadata": [
+                        [
+                          "owner",
+                          "lab"
+                        ]
+                      ]
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/SEQ-01",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "runs",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/SEQ-01",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/SEQ-01",
+              "kind": "entry",
+              "label": "SEQ-01",
+              "location": "/data/runs/SEQ-01",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/SEQ-01",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/SEQ-01\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/runs/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      }
+    }
+  },
+  "ids": {
+    "runs": "00000000-0000-4000-8000-000000000001",
+    "runs/SEQ-01": "00000000-0000-4000-8000-000000000001/Train/SEQ-01",
+    "runs/Train": "00000000-0000-4000-8000-000000000001/Train"
+  },
+  "steps": []
+}

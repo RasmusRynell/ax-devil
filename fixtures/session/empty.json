@@ -1,0 +1,219 @@
+{
+  "docs": {
+    "discarded": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 2,
+          "file": null,
+          "items": [],
+          "modified": false,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 2,
+          "file": null,
+          "items": [],
+          "modified": false,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      }
+    },
+    "initial": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": false,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": false,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      }
+    },
+    "kept": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 1,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 1,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      }
+    },
+    "recovered": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 1,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": true,
+          "rows": []
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 1,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": true,
+          "rows": []
+        }
+      }
+    },
+    "review-0": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": "Review 0",
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": "Review 0",
+          "recovered": false,
+          "rows": []
+        }
+      }
+    },
+    "review-29": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": "Review 29",
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": "Review 29",
+          "recovered": false,
+          "rows": []
+        }
+      }
+    }
+  },
+  "ids": {},
+  "steps": [
+    {
+      "command": {
+        "command": {
+          "epoch": 0,
+          "name": "Review 0",
+          "type": "renameWorkspace"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "review-0"
+    },
+    {
+      "command": {
+        "command": {
+          "epoch": 0,
+          "name": "Review 29",
+          "type": "renameWorkspace"
+        },
+        "type": "content"
+      },
+      "from": "review-0",
+      "to": "review-29"
+    },
+    {
+      "command": {
+        "command": {
+          "epoch": 0,
+          "name": "Review 0",
+          "type": "renameWorkspace"
+        },
+        "type": "content"
+      },
+      "from": "review-29",
+      "to": "review-0"
+    },
+    {
+      "command": {
+        "command": {
+          "type": "keep"
+        },
+        "type": "workspace"
+      },
+      "from": "recovered",
+      "to": "kept"
+    },
+    {
+      "command": {
+        "command": {
+          "type": "discard"
+        },
+        "type": "workspace"
+      },
+      "from": "recovered",
+      "to": "discarded"
+    }
+  ]
+}

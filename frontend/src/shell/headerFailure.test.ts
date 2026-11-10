@@ -1,21 +1,20 @@
 import { describe, expect, it } from "vite-plus/test";
 import { act, renderHook } from "@testing-library/react";
-import type { ItemState, View } from "../generated/api";
-import { entry } from "../session/fakeSession";
+import type { View } from "../generated/api";
+import { scenario } from "../session/fakeScenario";
 import { NOTHING_HIDDEN } from "../viewer/hidden";
 import { useHeaderFailure } from "./headerFailure";
 import type { Viewer } from "../viewer/useViewers";
 
-/** A viewer of a playlist item of two entries, `<item>/1` and `<item>/2`. */
+const reveal = scenario("reveal");
+const { mot, other } = reveal.ids;
+const [A1, A2, B1] = [reveal.ids["mot/A"], reveal.ids["mot/B"], reveal.ids["other/X"]];
+const items = reveal.doc().workspace.items;
+
+/** A viewer of the playlist item `item`: `mot` of the entries A and B, or `other` of the entry X. */
 const viewer = (id: number, item: string): Viewer => ({
   id,
-  item: {
-    id: item,
-    resolution: {
-      status: "Resolved",
-      content: { kind: "Playlist", entries: [entry(`${item}/1`), entry(`${item}/2`)] },
-    },
-  } as ItemState,
+  item: items.find((found) => found.id === item)!,
   pinned: false,
 });
 const views = (shown: Record<number, string>): View["viewers"] =>
@@ -23,9 +22,9 @@ const views = (shown: Record<number, string>): View["viewers"] =>
     Object.entries(shown).map(([id, entry]) => [id, { item: "x", pinned: false, entry }]),
   ) as View["viewers"];
 
-const A = { viewer: 1, item: "a", entry: "a/1" };
-const B = { viewer: 2, item: "b", entry: "b/1" };
-const BOTH = { viewers: [viewer(1, "a"), viewer(2, "b")], views: views({ 1: "a/1", 2: "b/1" }) };
+const A = { viewer: 1, item: mot, entry: A1 };
+const B = { viewer: 2, item: other, entry: B1 };
+const BOTH = { viewers: [viewer(1, mot), viewer(2, other)], views: views({ 1: A1, 2: B1 }) };
 // A view that names no entry yet shows the first one: the same pane as one that names it.
 const ENTRYLESS = { ...BOTH, views: {} as View["viewers"] };
 
@@ -74,14 +73,14 @@ describe("a header action's failure", () => {
     fail();
     expect(result.current.failure).not.toBeNull();
     // Another entry, then back to the first.
-    rerender({ ...BOTH, views: views({ 1: "a/2", 2: "b/1" }) });
+    rerender({ ...BOTH, views: views({ 1: A2, 2: B1 }) });
     expect(result.current.failure).toBeNull();
     rerender(BOTH);
     expect(result.current.failure).toBeNull();
 
     // The pane closes and a new one takes its id for the same item and entry.
     fail();
-    rerender({ viewers: [viewer(2, "b")], views: views({ 2: "b/1" }) });
+    rerender({ viewers: [viewer(2, other)], views: views({ 2: B1 }) });
     expect(result.current.failure).toBeNull();
     rerender(BOTH);
     expect(result.current.failure).toBeNull();
@@ -106,14 +105,14 @@ describe("a header action's failure", () => {
     };
     // The pane closes while another stays, then the same item opens into the reused id; the response comes after.
     let say = start();
-    rerender({ viewers: [viewer(2, "b")], views: views({ 2: "b/1" }) });
+    rerender({ viewers: [viewer(2, other)], views: views({ 2: B1 }) });
     rerender(BOTH);
     act(() => say("late"));
     expect(result.current.failure).toBeNull();
 
     // Another entry and back before the response.
     say = start();
-    rerender({ ...BOTH, views: views({ 1: "a/2", 2: "b/1" }) });
+    rerender({ ...BOTH, views: views({ 1: A2, 2: B1 }) });
     rerender(BOTH);
     act(() => say("late"));
     expect(result.current.failure).toBeNull();
@@ -147,7 +146,7 @@ describe("a header action's failure", () => {
     act(() => {
       say = result.current.begin(A);
     });
-    rerender({ viewers: [viewer(2, "b")], views: views({ 2: "b/1" }) });
+    rerender({ viewers: [viewer(2, other)], views: views({ 2: B1 }) });
     act(() => say("too late"));
     expect(result.current.failure).toBeNull();
     rerender(BOTH);

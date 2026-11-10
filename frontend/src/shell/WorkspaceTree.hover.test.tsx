@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
-import type { ItemState } from "../generated/api";
-import { entry, FakeSocket, playlists } from "../session/fakeSession";
-import { ITEMS, labels, MOT, renderTree } from "./WorkspaceTree.fixture";
+import { scenario } from "../session/fakeScenario";
+import { FakeSocket } from "../session/fakeSession";
+import { KINDS, labels, renderTree, TREE } from "./WorkspaceTree.fixture";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 afterEach(() => {
@@ -53,7 +53,7 @@ describe("hover card", () => {
     // A row with a picture has no text tip, which would show beside its card.
     expect(row.hasAttribute("title")).toBe(false);
     fireEvent.pointerEnter(row);
-    expect(fetched.mock.calls[0][0]).toBe(`/api/thumbnail?session=${room.id}&entry=content-v`);
+    expect(fetched.mock.calls[0][0]).toBe(`/api/thumbnail?session=${room.id}&entry=${TREE.ids.v}`);
     await act(async () => {});
     expect(card()).toBeNull();
     await elapse(80);
@@ -65,43 +65,26 @@ describe("hover card", () => {
   });
 
   it("asks for a live stream's picture by its item, which has no entry", async () => {
-    const live: ItemState = {
-      id: "cam",
-      label: "Lobby",
-      kind: "live",
-      open: false,
-      resolution: {
-        status: "Resolved",
-        content: {
-          kind: "LiveVideo",
-          id: "cam",
-          generation: 1,
-          display_name: "Lobby",
-          slot: "live",
-          overlay: "none",
-          lanes: ["Lobby"],
-          recipe: null,
-        },
-      },
-    };
-    const room = await renderTree([live], []);
+    const room = await renderTree(KINDS);
     fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /^Lobby/ }));
-    expect(fetched.mock.calls[0][0]).toBe(`/api/thumbnail?session=${room.id}&entry=cam`);
+    expect(fetched.mock.calls[0][0]).toBe(
+      `/api/thumbnail?session=${room.id}&entry=${KINDS.ids.cam}`,
+    );
   });
 
   it("drops the card when its row goes away under a still pointer", async () => {
     const room = await renderTree();
     const row = screen.getByRole("treeitem", { name: /^v\.mp4/ });
     fireEvent.pointerEnter(row);
-    act(() => room.setItems([MOT]));
+    act(() => room.show(TREE, "v-removed"));
     expect(requests[0].signal.aborted).toBe(true);
     await elapse(80);
     expect(card()).toBeNull();
-    act(() => room.setItems(ITEMS));
+    act(() => room.show(TREE));
     fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
     await elapse(80);
     expect(card()).not.toBeNull();
-    act(() => room.setItems([MOT]));
+    act(() => room.show(TREE, "v-removed"));
     expect(card()).toBeNull();
     expect(requests[1].signal.aborted).toBe(true);
     expect(bitmaps[bitmaps.length - 1].close).toHaveBeenCalled();
@@ -186,11 +169,8 @@ describe("hover card", () => {
   });
 
   it("asks for no picture of a playlist or a lane, and each entry's own for an entry", async () => {
-    const runs = playlists("runs", [
-      ["Train", [entry("runs/Train/A", "A", ["GT"])]],
-      ["Train (2)", [entry("runs/Train (2)/A", "A", ["GT"])]],
-    ]);
-    const room = await renderTree([runs], []);
+    const runs = scenario("runs");
+    const room = await renderTree(runs);
     const rows = screen.getAllByRole("treeitem");
     expect(labels()).toEqual(["runs / Train", "A", "GT", "runs / Train (2)", "A", "GT"]);
     for (const index of [0, 2, 3, 5]) {
@@ -200,8 +180,8 @@ describe("hover card", () => {
     expect(fetched).not.toHaveBeenCalled();
 
     for (const [index, id] of [
-      [1, "runs/Train/A"],
-      [4, "runs/Train (2)/A"],
+      [1, runs.ids["runs/Train/A"]],
+      [4, runs.ids["runs/Train (2)/A"]],
     ] as const) {
       fireEvent.pointerEnter(rows[index]);
       fireEvent.pointerLeave(rows[index]);

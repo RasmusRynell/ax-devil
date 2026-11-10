@@ -7,6 +7,8 @@
 
 mod exit;
 mod files;
+#[cfg(all(test, unix))]
+mod frontend_fixtures;
 mod launch;
 mod list;
 pub mod live;

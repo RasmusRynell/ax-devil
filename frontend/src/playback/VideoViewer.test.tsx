@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { FakeSocket, video } from "../session/fakeSession";
+import { FakeSocket } from "../session/fakeSession";
+import { scenario } from "../session/fakeScenario";
 import { viewing } from "../session/fakeViews";
 import { SessionProvider } from "../session/session";
 import { SessionStore } from "../session/store";
@@ -25,6 +26,7 @@ import {
 vi.mock("./VideoCanvas", () => ({ VideoCanvas: () => null }));
 
 installViewerHarness();
+const s = scenario("one-video");
 
 describe("video viewer", () => {
   it("publishes where it was and at what speed when it goes away, and opens there when shown again", async () => {
@@ -36,7 +38,7 @@ describe("video viewer", () => {
     );
     await act(async () => {});
     const room = FakeSocket.rooms.get("room-1")!;
-    act(() => room.setItems([video("a")]));
+    act(() => room.show(s));
     fireEvent.change(await slider(), { target: { value: "37" } });
     setSpeed("2.5");
     expect(sent[0]).toMatchObject({ type: "Open", ticket: expect.any(String) });
@@ -69,7 +71,7 @@ describe("video viewer", () => {
       </SessionProvider>,
     );
     await act(async () => {});
-    act(() => FakeSocket.rooms.get("room-1")!.setItems([video("a")]));
+    act(() => FakeSocket.rooms.get("room-1")!.show(s));
     expect(document.activeElement).toBe((await slider()).closest("[tabindex='-1']"));
   });
 
@@ -85,8 +87,8 @@ describe("video viewer", () => {
     await act(async () => {});
     const room = FakeSocket.rooms.get("room-1")!;
     const clock = { frame: 10, playing: true, speedCenti: 100, atUs: serverNow - 400_000 };
-    room.presenter = { ...room.presenter, ...viewing(["a", { clock }]) };
-    act(() => room.setItems([video("a")]));
+    room.presenter = { ...room.presenter, ...viewing([s.ids.a, { clock }]) };
+    act(() => room.show(s));
     expect((await slider()).value).toBe("20");
     expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
     // The watchers' clock is right as it stands: nothing to correct.
@@ -105,7 +107,7 @@ describe("video viewer", () => {
         </SessionProvider>,
       );
       await act(async () => {});
-      act(() => FakeSocket.rooms.get("room-1")!.setItems([video("a")]));
+      act(() => FakeSocket.rooms.get("room-1")!.show(s));
       await slider();
       vi.useFakeTimers();
       FakeSocket.refuseTickets = refused;
@@ -135,7 +137,7 @@ describe("video viewer", () => {
       );
       await act(async () => {});
       const room = FakeSocket.rooms.get("room-1")!;
-      act(() => room.setItems([video("a")]));
+      act(() => room.show(s));
       await slider();
       vi.useFakeTimers();
       fireEvent.click(screen.getByRole("button", { name: "Play" }));
@@ -173,7 +175,7 @@ describe("video viewer", () => {
         </SessionProvider>,
       );
       await act(async () => {});
-      act(() => FakeSocket.rooms.get("room-1")!.setItems([video("a")]));
+      act(() => FakeSocket.rooms.get("room-1")!.show(s));
       fireEvent.change(await slider(), { target: { value: "5" } });
       vi.useFakeTimers();
       act(() => FakeSocket.latest.drop());
@@ -193,11 +195,11 @@ describe("video viewer", () => {
   /** A window that joined a session whose presenter plays frame 10 of "a" (400 ms in) 400 ms of backend time ago. */
   function follower(access: "watch" | "explore") {
     const room = FakeSocket.host(access);
-    room.setItems([video("a")]);
+    room.show(s);
     FakeSocket.clockOffsetUs = 5_000_000;
     const serverNow = 10_000 * 1000 + FakeSocket.clockOffsetUs;
     const clock = { frame: 10, playing: true, speedCenti: 100, atUs: serverNow - 400_000 };
-    room.presenter = { ...room.presenter, ...viewing(["a", { clock }]) };
+    room.presenter = { ...room.presenter, ...viewing([s.ids.a, { clock }]) };
     window.sessionStorage.setItem(
       "ax-devil.credential",
       JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
@@ -259,7 +261,7 @@ describe("video viewer", () => {
         </SessionProvider>,
       );
       await act(async () => {});
-      act(() => FakeSocket.rooms.get("room-1")!.setItems([video("a")]));
+      act(() => FakeSocket.rooms.get("room-1")!.show(s));
       await slider();
       return sent;
     };
@@ -340,7 +342,7 @@ describe("video viewer", () => {
       );
       const mounted = render(view(NOTHING_HIDDEN));
       await act(async () => {});
-      act(() => FakeSocket.rooms.get("room-1")!.setItems([video("a")]));
+      act(() => FakeSocket.rooms.get("room-1")!.show(s));
       await slider();
       mounted.rerender(view(hide("DPM", "GT")));
       expect(screen.getByRole("status").textContent).toBe("All lanes are hidden");
@@ -354,7 +356,7 @@ describe("video viewer", () => {
       const play = screen.queryByRole("button", { name: "Play" });
       if (play) fireEvent.click(play);
       expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
-      act(() => exportOf("a")?.());
+      act(() => exportOf(s.ids.a)?.());
       expect(screen.getByRole("heading", { name: "Export video" })).toBeTruthy();
       expect(screen.getByText(/Render catalogs are still loading/)).toBeTruthy();
       expect(screen.queryByRole("heading", { name: "Export Video with Overlays" })).toBeNull();

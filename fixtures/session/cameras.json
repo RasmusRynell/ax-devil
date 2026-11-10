@@ -1,0 +1,479 @@
+{
+  "docs": {
+    "initial": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "live",
+              "label": "Lobby",
+              "open": true,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.2",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Lobby",
+                "like": null,
+                "overlay": {
+                  "broker_host": "10.0.0.9",
+                  "broker_pass": "",
+                  "broker_port": 1883,
+                  "broker_user": "",
+                  "handler": "ADF_V1_FRAME",
+                  "mode": "mqtt",
+                  "source_key": "scene"
+                },
+                "password": "$CAM_PASS",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "web_api",
+                "type": "Live",
+                "url": null,
+                "username": "root"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Lobby",
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "MQTT"
+                  ],
+                  "overlay": "mqtt",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.2",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Lobby",
+                    "like": null,
+                    "overlay": {
+                      "broker_host": "10.0.0.9",
+                      "broker_pass": "",
+                      "broker_port": 1883,
+                      "broker_user": "",
+                      "handler": "ADF_V1_FRAME",
+                      "mode": "mqtt",
+                      "source_key": "scene"
+                    },
+                    "password": "$CAM_PASS",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "web_api",
+                    "url": null,
+                    "username": "root"
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": "10.0.0.9",
+                "host": "10.0.0.2"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "live",
+              "label": "Door",
+              "open": false,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.2",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Door",
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Door",
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Door"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.2",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Door",
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.2"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "10.0.0.2",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "Lobby",
+              "location": "10.0.0.2",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "10.0.0.2",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "Door",
+              "location": "10.0.0.2",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "live",
+              "label": "Lobby",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "Lobby",
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "MQTT"
+                  ],
+                  "overlay": "mqtt",
+                  "recipe": null,
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "Lobby",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "padded": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "live",
+              "label": "Lobby",
+              "open": true,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.2",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Lobby",
+                "like": null,
+                "overlay": {
+                  "broker_host": "10.0.0.9",
+                  "broker_pass": "",
+                  "broker_port": 1883,
+                  "broker_user": "",
+                  "handler": "ADF_V1_FRAME",
+                  "mode": "mqtt",
+                  "source_key": "scene"
+                },
+                "password": "$CAM_PASS",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "web_api",
+                "type": "Live",
+                "url": null,
+                "username": "root"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Lobby",
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "MQTT"
+                  ],
+                  "overlay": "mqtt",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.2",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Lobby",
+                    "like": null,
+                    "overlay": {
+                      "broker_host": "10.0.0.9",
+                      "broker_pass": "",
+                      "broker_port": 1883,
+                      "broker_user": "",
+                      "handler": "ADF_V1_FRAME",
+                      "mode": "mqtt",
+                      "source_key": "scene"
+                    },
+                    "password": "$CAM_PASS",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "web_api",
+                    "url": null,
+                    "username": "root"
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": "10.0.0.9",
+                "host": "10.0.0.2"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "live",
+              "label": "Door",
+              "open": false,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": " 10.0.0.2 ",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Door",
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Door",
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Door"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": " 10.0.0.2 ",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Door",
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": " 10.0.0.2 "
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "10.0.0.2",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "Lobby",
+              "location": "10.0.0.2",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "10.0.0.2",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "Door",
+              "location": "10.0.0.2",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "live",
+              "label": "Lobby",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "Lobby",
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "MQTT"
+                  ],
+                  "overlay": "mqtt",
+                  "recipe": null,
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "Lobby",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    }
+  },
+  "ids": {
+    "a": "00000000-0000-4000-8000-000000000001",
+    "b": "00000000-0000-4000-8000-000000000002"
+  },
+  "steps": []
+}

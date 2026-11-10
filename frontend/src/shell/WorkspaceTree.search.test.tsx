@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
-import { FakeSocket, video } from "../session/fakeSession";
-import { CLIP, labels, renderTree } from "./WorkspaceTree.fixture";
+import { scenario } from "../session/fakeScenario";
+import { FakeSocket } from "../session/fakeSession";
+import { labels, renderTree } from "./WorkspaceTree.fixture";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 afterEach(() => {
@@ -55,12 +56,20 @@ describe("search", () => {
 
 describe("Sort", () => {
   it("keeps the Name order when the workspace changes", async () => {
-    const room = await renderTree([video("w", false), CLIP], []);
-    expect(topLevel()).toEqual(["w.mp4", "v.mp4"]);
+    const places = scenario("tree-locations");
+    const room = await renderTree(places);
     fireEvent.click(screen.getByRole("button", { name: "Sort" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Name" }));
-    expect(topLevel()).toEqual(["v.mp4", "w.mp4"]);
-    act(() => room.setItems([video("w", false), CLIP, video("a", false)]));
-    expect(topLevel()).toEqual(["a.mp4", "v.mp4", "w.mp4"]);
+    act(() => room.show(places, "added"));
+    expect(topLevel()).toEqual([
+      "a.mp4",
+      "ab.mp4",
+      "also-none.mp4, unavailable: File not found",
+      "B.mp4",
+      "c.mp4",
+      "none.mp4, unavailable: File not found",
+      "same.mp4, p",
+      "same.mp4, q",
+    ]);
   });
 });

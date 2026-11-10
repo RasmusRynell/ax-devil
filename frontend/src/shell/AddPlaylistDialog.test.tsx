@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { HandlersInfo } from "../generated/api";
-import { FakeSocket, type Room } from "../session/fakeSession";
+import { scenario } from "../session/fakeScenario";
+import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { AddPlaylistDialog } from "./AddPlaylistDialog";
 
@@ -115,6 +116,11 @@ const scanRoot = async (root = "/data") => {
   fireEvent.click(screen.getByRole("button", { name: "Scan" }));
   await screen.findByRole("checkbox", { name: /SEQ-01/ });
 };
+const scanMot = async () => {
+  choose("mot_challenge");
+  await scanRoot();
+};
+const settle = () => new Promise((done) => setTimeout(done, 10));
 /** The requests to the resolve route so far. */
 const resolveCalls = () =>
   vi
@@ -131,6 +137,7 @@ function deferred() {
   return { promise, settle };
 }
 const add = () => screen.getByRole("button", { name: "Load Playlist" });
+const clickAdd = () => fireEvent.click(add());
 const commands = () => FakeSocket.latest.received.filter((message) => message.type === "command");
 
 describe("add playlist dialog", () => {
@@ -139,18 +146,17 @@ describe("add playlist dialog", () => {
     const held = deferred();
     stubBackend(() => held.promise);
     await open(onClose);
-    choose("mot_challenge");
-    await scanRoot();
+    await scanMot();
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-02/ }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: " Train " } });
-    fireEvent.click(add());
+    clickAdd();
 
     expect((await screen.findByRole("status")).textContent).toBe("Finding playlists…");
     expect(locked("Playlist source")).toBe(true);
     expect(locked("Dataset folder")).toBe(true);
     expect(locked("Name")).toBe(false);
     expect(screen.getByRole("button", { name: "Cancel" }).matches(":disabled")).toBe(false);
-    fireEvent.click(add());
+    clickAdd();
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: " Later " } });
     held.settle(reply(200, { item: "p1" }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -178,9 +184,8 @@ describe("add playlist dialog", () => {
     ];
     stubBackend(() => answers.shift()!);
     await open(onClose);
-    choose("mot_challenge");
-    await scanRoot();
-    fireEvent.click(add());
+    await scanMot();
+    clickAdd();
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("No MOT sequences found in '/data'.");
     expect(screen.queryByRole("status")).toBeNull();
@@ -189,7 +194,7 @@ describe("add playlist dialog", () => {
     expect(locked("Dataset folder")).toBe(false);
     expect(add()).toHaveProperty("disabled", false);
 
-    fireEvent.click(add());
+    clickAdd();
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(commands()).toHaveLength(1);
   });
@@ -199,29 +204,27 @@ describe("add playlist dialog", () => {
     const held = deferred();
     stubBackend(() => held.promise);
     await open(onClose);
-    choose("mot_challenge");
-    await scanRoot();
-    fireEvent.click(add());
+    await scanMot();
+    clickAdd();
     await screen.findByRole("status");
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     const [call] = resolveCalls();
     expect(call?.[1]?.signal?.aborted).toBe(true);
     held.settle(reply(200, { item: "p1" }));
-    await new Promise((done) => setTimeout(done, 10));
+    await settle();
 
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(commands()).toEqual([]);
   });
 
-  it("closes once on Cancel while the add is in flight, and the add completes", async () => {
+  it("closes once on Cancel while the add is in flight, without aborting the resolution, and the add is acknowledged ok", async () => {
     const onClose = vi.fn();
     const held = deferred();
     stubBackend(() => held.promise);
     await open(onClose);
-    choose("mot_challenge");
-    await scanRoot();
-    fireEvent.click(add());
+    await scanMot();
+    clickAdd();
     await screen.findByRole("status");
     FakeSocket.latest.defer = true;
     held.settle(reply(200, { item: "p1" }));
@@ -230,23 +233,27 @@ describe("add playlist dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(resolveCalls()[0][1]?.signal?.aborted).toBe(false);
+    const acks = vi.spyOn(FakeSocket.latest, "emit");
     act(() => FakeSocket.latest.flush());
-    await new Promise((done) => setTimeout(done, 10));
+    await settle();
 
+    expect(acks).toHaveBeenCalledWith({
+      type: "ack",
+      seq: commands()[0]?.seq,
+      outcome: { status: "ok" },
+    });
     expect(onClose).toHaveBeenCalledTimes(1);
-    expect((FakeSocket.rooms.get("room-1") as Room).items).toHaveLength(1);
   });
 
   it("keeps Load enabled with nothing checked, and says so instead of adding", async () => {
     const onClose = vi.fn();
     stubBackend();
     await open(onClose);
-    choose("mot_challenge");
-    await scanRoot();
+    await scanMot();
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-01/ }));
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-02/ }));
     expect(add()).toHaveProperty("disabled", false);
-    fireEvent.click(add());
+    clickAdd();
     expect((await screen.findByRole("alert")).textContent).toBe("No sequences selected.");
     expect(commands()).toEqual([]);
     expect(onClose).not.toHaveBeenCalled();
@@ -287,7 +294,7 @@ describe("add playlist dialog", () => {
     const { held, decoder } = await filledFolderPair();
 
     // Load scans first; a decoder picked meanwhile keeps it from going on.
-    fireEvent.click(add());
+    clickAdd();
     await screen.findByText("Scanning…");
     expect(add()).toHaveProperty("disabled", true);
     fireEvent.change(decoder, { target: { value: "" } });
@@ -297,7 +304,7 @@ describe("add playlist dialog", () => {
 
     // The count is kept, so loading with a decoder goes straight on.
     fireEvent.change(decoder, { target: { value: "MOT_FILE" } });
-    fireEvent.click(add());
+    clickAdd();
     await waitFor(() => expect(commands()).toHaveLength(1));
     const [url, init] = resolveCalls()[0];
     expect(url).toBe("/api/resolvers/folder_pair/resolve");
@@ -306,7 +313,7 @@ describe("add playlist dialog", () => {
 
   it("loads a folder pair whose decoder was changed away and back while its pairs were counted", async () => {
     const { held, decoder } = await filledFolderPair();
-    fireEvent.click(add());
+    clickAdd();
     await screen.findByText("Scanning…");
     fireEvent.change(decoder, { target: { value: "" } });
     fireEvent.change(decoder, { target: { value: "MOT_FILE" } });
@@ -335,20 +342,19 @@ describe("add playlist dialog", () => {
     fireEvent.change(screen.getByLabelText("Overlays"), { target: { value: "/overlays" } });
     fireEvent.change(screen.getByLabelText("Decoder"), { target: { value: "MOT_FILE" } });
     fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "1920" } });
-    fireEvent.click(add());
+    clickAdd();
     await screen.findByText("Scanning…");
 
-    choose("mot_challenge");
-    await scanRoot();
-    fireEvent.click(add());
+    await scanMot();
+    clickAdd();
     await waitFor(() => expect(resolveCalls()).toHaveLength(1));
     counting.settle(reply(200, [{ value: "a", label: "a", detail: "" }]));
-    await new Promise((done) => setTimeout(done, 10));
+    await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(resolveCalls()[0][1]?.signal?.aborted).toBe(true);
     resolving.settle(reply(200, { item: "p1" }));
-    await new Promise((done) => setTimeout(done, 10));
+    await settle();
     expect(commands()).toEqual([]);
   });
 
@@ -374,7 +380,7 @@ describe("add playlist dialog", () => {
       false,
     );
     // Only the source on show is added.
-    fireEvent.click(add());
+    clickAdd();
     await waitFor(() => expect(commands()).toHaveLength(1));
     const requests = resolveCalls();
     expect(requests).toHaveLength(1);
@@ -427,12 +433,14 @@ describe("add playlist dialog", () => {
 });
 
 describe("edit playlist dialog", () => {
+  const playlist = scenario("playlist");
   const edit = async (resolver: string, settings = {}) => {
     stubBackend();
+    FakeSocket.launch = { scenario: playlist, state: "initial" };
     render(
       <SessionProvider>
         <AddPlaylistDialog
-          editing="item-1"
+          editing={playlist.ids.list}
           initial={{ resolver, label: "Train", settings }}
           onClose={() => {}}
         />
@@ -457,7 +465,7 @@ describe("edit playlist dialog", () => {
     expect(commands()[0]).toMatchObject({
       cmd: {
         type: "content",
-        command: { type: "editResolved", item: "item-1", ticket: "p1", label: "Later" },
+        command: { type: "editResolved", item: playlist.ids.list, ticket: "p1", label: "Later" },
       },
     });
     expect(bodyOf(resolveCalls()[0][1])).toEqual({
@@ -473,7 +481,7 @@ describe("edit playlist dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(commands()).toHaveLength(1));
     expect(commands()[0]).toMatchObject({
-      cmd: { command: { type: "renameItem", item: "item-1", label: "Later" } },
+      cmd: { command: { type: "renameItem", item: playlist.ids.list, label: "Later" } },
     });
     expect(resolveCalls()).toEqual([]);
   });

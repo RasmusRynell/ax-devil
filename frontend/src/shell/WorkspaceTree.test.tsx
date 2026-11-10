@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, renderHook, screen, within } from "@testing-library/react";
-import type { ItemRecipe, ItemState, ViewerView } from "../generated/api";
-import { entry, failed, FakeSocket, playlists, video } from "../session/fakeSession";
+import type { ViewerView } from "../generated/api";
+import { scenario } from "../session/fakeScenario";
+import { FakeSocket } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
 import { registerExport } from "../viewer/exportTargets";
 import { useLaneFocus } from "../viewer/laneFocus";
-import { CLIP, commands, ITEMS, labels, MOT, renderTree, shown } from "./WorkspaceTree.fixture";
+import { commands, KINDS, labels, renderTree, shown, TREE } from "./WorkspaceTree.fixture";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 afterEach(() => {
@@ -36,11 +37,8 @@ describe("rows", () => {
   });
 
   it("lists each of several playlists as a row of its own, named by the item, which opens its first entry and cannot be hidden", async () => {
-    const runs = playlists("runs", [
-      ["Train", [entry("runs/Train/A", "A", ["GT"])]],
-      ["Train (2)", [entry("runs/Train (2)/A", "A", ["GT"])]],
-    ]);
-    await renderTree([runs], []);
+    const runs = scenario("runs");
+    await renderTree(runs);
     const rows = screen.getAllByRole("treeitem");
     expect(rows.map((row) => row.getAttribute("aria-level"))).toEqual([
       "1",
@@ -56,7 +54,7 @@ describe("rows", () => {
     await act(async () => {});
     expect(shown()).toMatchObject({
       active: 1,
-      viewers: { 1: { item: "runs", entry: "runs/Train (2)/A" } },
+      viewers: { 1: { item: runs.ids.runs, entry: runs.ids["runs/Train (2)/A"] } },
     });
     // Only the playlist whose entry a viewer shows is open, not its sibling of the same item.
     const current = () =>
@@ -69,8 +67,8 @@ describe("rows", () => {
     expect(shown()).toMatchObject({
       active: 2,
       viewers: {
-        1: { item: "runs", entry: "runs/Train (2)/A" },
-        2: { item: "runs", entry: "runs/Train/A", pinned: true },
+        1: { item: runs.ids.runs, entry: runs.ids["runs/Train (2)/A"] },
+        2: { item: runs.ids.runs, entry: runs.ids["runs/Train/A"], pinned: true },
       },
     });
     fireEvent.contextMenu(rows[3]);
@@ -78,7 +76,7 @@ describe("rows", () => {
   });
 
   it("names no reason for a failed item when the wire carries none", async () => {
-    await renderTree([failed("bad")]);
+    await renderTree(TREE, "bad-open", "watch");
     expect(labels()).toEqual(["bad.mp4, unavailable"]);
   });
 
@@ -117,14 +115,9 @@ describe("rows", () => {
     ) {
       return { top: 0, height: this.dataset.span ? 20 : 0 } as DOMRect;
     });
-    const many = Array.from({ length: 1000 }, (_, n) => ({
-      ...CLIP,
-      id: `v${n}`,
-      label: `video ${n}`,
-    }));
-    await renderTree(many, []);
+    await renderTree(scenario("many-videos"));
     expect(screen.getAllByRole("treeitem").length).toBeLessThan(40);
-    expect(screen.getAllByRole("treeitem")[0].getAttribute("aria-setsize")).toBe("1000");
+    expect(screen.getAllByRole("treeitem")[0].getAttribute("aria-setsize")).toBe("50");
   });
 });
 
@@ -133,10 +126,10 @@ describe("opening", () => {
     await renderTree();
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^A/ }));
     await act(async () => {});
-    expect(commands()).toEqual([{ type: "openViewer", item: "mot" }]);
+    expect(commands()).toEqual([{ type: "openViewer", item: TREE.ids.mot }]);
     expect(shown()).toEqual({
       active: 1,
-      viewers: { 1: { item: "mot", pinned: false, entry: "mot/A" } },
+      viewers: { 1: { item: TREE.ids.mot, pinned: false, entry: TREE.ids["mot/A"] } },
     });
   });
 
@@ -160,10 +153,13 @@ describe("opening", () => {
     await renderTree();
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
     await act(async () => {});
-    expect(shown()).toEqual({ active: 1, viewers: { 1: { item: "v", pinned: false } } });
+    expect(shown()).toEqual({ active: 1, viewers: { 1: { item: TREE.ids.v, pinned: false } } });
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^GT/ }));
     await act(async () => {});
-    expect(shown()).toMatchObject({ active: 2, viewers: { 2: { item: "mot", entry: "mot/A" } } });
+    expect(shown()).toMatchObject({
+      active: 2,
+      viewers: { 2: { item: TREE.ids.mot, entry: TREE.ids["mot/A"] } },
+    });
   });
 
   it("asks the viewer a lane opens to give that lane the keyboard, and a row that is not a lane asks nothing", async () => {
@@ -177,17 +173,13 @@ describe("opening", () => {
     expect(apply).not.toHaveBeenCalled();
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^GT/ }));
     await act(async () => {});
-    pane(2, "mot/A");
+    pane(2, TREE.ids["mot/A"]);
     expect(apply).toHaveBeenCalledExactlyOnceWith(0);
   });
 
   it("opens to the side with Ctrl, at most eight panes, and says so for the ninth, which stays closed", async () => {
-    const ids = Array.from({ length: 9 }, (_, n) => `v${n + 1}`);
-    await renderTree(
-      ids.map((id) => video(id, false)),
-      [],
-    );
-    for (const id of ids) {
+    await renderTree(scenario("nine-videos"));
+    for (const id of Array.from({ length: 9 }, (_, n) => `v${n + 1}`)) {
       fireEvent.doubleClick(
         screen.getAllByRole("treeitem", { name: new RegExp(`^${id}\\.mp4`) })[0],
         { ctrlKey: true },
@@ -203,21 +195,26 @@ describe("opening", () => {
   });
 
   it("replaces the preview in front with another entry, which starts from its beginning, and leaves the one on screen alone", async () => {
-    const room = await renderTree([{ ...MOT, open: true }, CLIP]);
+    const room = await renderTree(TREE, "mot-open");
     const clock = { frame: 7, playing: false, speedCenti: 100, atUs: 0 };
     act(() =>
       room.publish({
         sidebar: room.presenter.sidebar,
-        ...viewing(["mot", { entry: "mot/A", clock }]),
+        ...viewing([TREE.ids.mot, { entry: TREE.ids["mot/A"], clock }]),
       }),
     );
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^A/ }));
-    expect(shown().viewers[1]).toEqual({ item: "mot", pinned: false, entry: "mot/A", clock });
+    expect(shown().viewers[1]).toEqual({
+      item: TREE.ids.mot,
+      pinned: false,
+      entry: TREE.ids["mot/A"],
+      clock,
+    });
     fireEvent.click(screen.getByRole("button", { name: "Show hidden items" }));
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^B/ }));
     expect(shown()).toEqual({
       active: 2,
-      viewers: { 2: { item: "mot", pinned: false, entry: "mot/B" } },
+      viewers: { 2: { item: TREE.ids.mot, pinned: false, entry: TREE.ids["mot/B"] } },
     });
   });
 
@@ -231,10 +228,17 @@ describe("opening", () => {
     fireEvent.keyDown(tree, { key: "ArrowDown" });
     fireEvent.keyDown(tree, { key: "Enter" });
     await act(async () => {});
-    expect(shown()).toMatchObject({ active: 1, viewers: { 1: { item: "mot", entry: "mot/A" } } });
+    expect(shown()).toMatchObject({
+      active: 1,
+      viewers: { 1: { item: TREE.ids.mot, entry: TREE.ids["mot/A"] } },
+    });
     fireEvent.keyDown(tree, { key: "Enter", ctrlKey: true });
     await act(async () => {});
-    expect(shown().viewers[2]).toMatchObject({ item: "mot", entry: "mot/A", pinned: true });
+    expect(shown().viewers[2]).toMatchObject({
+      item: TREE.ids.mot,
+      entry: TREE.ids["mot/A"],
+      pinned: true,
+    });
   });
 
   it("selects on a click, ignores Space, and opens on a double click after showing the row's place", async () => {
@@ -282,15 +286,12 @@ describe("opening", () => {
     // A control inside another tree keeps the focus it took when the workspace changes.
     const hide = screen.getByRole("button", { name: "Hide A" });
     hide.focus();
-    act(() => room.setItems([...ITEMS]));
+    act(() => room.show(TREE));
     expect(document.activeElement).toBe(hide);
   });
 
   it("says why an unavailable row cannot open and sends nothing; a row still resolving does nothing", async () => {
-    await renderTree([
-      failed("bad", "File not found"),
-      video("wait", false, { status: "Pending" }),
-    ]);
+    await renderTree(KINDS);
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^bad\.mp4/ }));
     await act(async () => {});
     expect(screen.getByRole("alert").textContent).toBe("bad.mp4: File not found");
@@ -317,14 +318,6 @@ describe("opening", () => {
 });
 
 describe("items", () => {
-  const recipe: ItemRecipe = { type: "Video", path: "/v.mp4", label: null, overlays: [] };
-  const stored = (item: ItemState): ItemState => ({ ...item, recipe });
-  const unreadable: ItemState = {
-    ...failed("odd"),
-    kind: "unreadable",
-    label: "Unreadable item",
-    resolution: { status: "Failed", code: "WorkspaceInvalid", params: {}, reason: "Unknown kind" },
-  };
   const menuOf = (name: RegExp) => {
     fireEvent.contextMenu(screen.getByRole("treeitem", { name }));
     const names = screen.getAllByRole("menuitem").map((entry) => entry.textContent);
@@ -333,16 +326,7 @@ describe("items", () => {
   };
 
   it("offers each row what its item can do: Open says why when it cannot, Edit needs a readable item, nested rows leave the item alone", async () => {
-    await renderTree(
-      [
-        stored(CLIP),
-        stored(failed("bad", "File not found")),
-        stored(video("wait", false, { status: "Pending" })),
-        unreadable,
-        MOT,
-      ],
-      [],
-    );
+    await renderTree(KINDS);
     expect(menuOf(/^v\.mp4/)).toEqual([
       "Open",
       "Open to the Side",
@@ -359,12 +343,7 @@ describe("items", () => {
       "Remove",
     ]);
     expect(menuOf(/^wait\.mp4/)).toEqual(["Edit", "Remove"]);
-    expect(menuOf(/^Unreadable item/)).toEqual([
-      "Open",
-      "Open to the Side",
-      "Information",
-      "Remove",
-    ]);
+    expect(menuOf(/^mystery/)).toEqual(["Open", "Open to the Side", "Information", "Remove"]);
     expect(menuOf(/^A/)).toEqual([
       "Open",
       "Open to the Side",
@@ -375,7 +354,7 @@ describe("items", () => {
   });
 
   it("exports a video from its row once a viewer shows it, and says to open it first until then", async () => {
-    await renderTree([stored(CLIP)], []);
+    await renderTree();
     const exportItem = () => {
       fireEvent.contextMenu(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
       return screen.getByRole("menuitem", { name: "Export video" }) as HTMLButtonElement;
@@ -386,14 +365,14 @@ describe("items", () => {
     fireEvent.keyDown(document, { key: "Escape" });
 
     const run = vi.fn();
-    const leave = registerExport(1, "v", "v", run);
+    const leave = registerExport(1, TREE.ids.v, TREE.ids.v, run);
     fireEvent.click(exportItem());
     expect(run).toHaveBeenCalledTimes(1);
     leave();
   });
 
   it("removes the whole item at once from the menu or with Delete, and edits it with F2", async () => {
-    await renderTree([stored(CLIP), MOT], []);
+    await renderTree();
     fireEvent.contextMenu(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
     await act(async () => {});
@@ -403,7 +382,7 @@ describe("items", () => {
     fireEvent.keyDown(tree, { key: "Delete" });
     await act(async () => {});
     // A nested row has no Remove of its own, so only the first Delete reached the item.
-    expect(commands()).toEqual([{ type: "remove", item: "v" }]);
+    expect(commands()).toEqual([{ type: "remove", item: TREE.ids.v }]);
     expect(screen.queryByRole("dialog")).toBeNull();
 
     cleanup();
@@ -412,25 +391,13 @@ describe("items", () => {
       "fetch",
       async () => new Response(JSON.stringify({ decoders: [], resolvers: [] })),
     );
-    await renderTree([stored(CLIP)], []);
+    await renderTree();
     fireEvent.keyDown(screen.getByRole("tree", { name: "Videos" }), { key: "F2" });
     expect(await screen.findByRole("dialog", { name: "Edit Video" })).toBeTruthy();
-    expect((screen.getByLabelText("Video path") as HTMLInputElement).value).toBe("/v.mp4");
+    expect((screen.getByLabelText("Video path") as HTMLInputElement).value).toBe("/data/v/v.mp4");
   });
 
   it("lists what a row stands for: a video and its overlays, a playlist's entries numbered inside it, why an item is unavailable", async () => {
-    const withLane: ItemState = {
-      ...stored(video("v", false)),
-      recipe: {
-        ...recipe,
-        overlays: [{ path: "/gt.txt", handler: "MOT_FILE", label: "v.mp4", options: {} }],
-      },
-    };
-    const runs = playlists("runs", [
-      ["Train", [entry("runs/Train/A", "A", ["GT"])]],
-      ["Test", [entry("runs/Test/B", "B", ["GT", "DPM"])]],
-    ]);
-    await renderTree([withLane, runs, failed("bad", "File not found")], []);
     const info = (name: RegExp) => {
       fireEvent.contextMenu(screen.getAllByRole("treeitem", { name })[0]);
       fireEvent.click(screen.getByRole("menuitem", { name: "Information" }));
@@ -442,17 +409,22 @@ describe("items", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
       return text;
     };
+    await renderTree(KINDS);
     expect(info(/^v\.mp4/)).toEqual(
       expect.arrayContaining([
         "typeseekable video",
         "overlays1",
-        "path/v.mp4",
+        "path/data/v/v.mp4",
         "handler typeMOT_FILE",
       ]),
     );
+    expect(info(/^bad\.mp4/)).toContain("UnavailableFile not found");
+
+    cleanup();
+    FakeSocket.reset();
+    await renderTree(scenario("runs-lanes"));
     expect(info(/^B/)).toEqual(
       expect.arrayContaining(["runs / Test / Entry 1", "typeplaylist entry", "lanes2"]),
     );
-    expect(info(/^bad\.mp4/)).toContain("UnavailableFile not found");
   });
 });
