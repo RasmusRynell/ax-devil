@@ -41,6 +41,8 @@ export const LABELLED = "flex flex-wrap items-center justify-between gap-x-xl ga
 
 interface SelectProps<T extends string> {
   label: ReactNode;
+  /** Help announced when the control receives focus. */
+  help?: string;
   value: T;
   /** Each choice as `[value, label]`. */
   options: readonly (readonly [T, string])[];
@@ -55,6 +57,7 @@ interface SelectProps<T extends string> {
 /** A labelled drop-down over a closed set. */
 export function Select<T extends string>({
   label,
+  help,
   value,
   options,
   onChange,
@@ -64,6 +67,8 @@ export function Select<T extends string>({
 }: SelectProps<T>) {
   const select = (
     <select
+      title={help}
+      aria-description={help}
       value={value}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value as T)}
@@ -96,6 +101,8 @@ interface CheckboxProps extends Omit<
   "onChange" | "children"
 > {
   label: ReactNode;
+  /** Help announced on the checkbox itself, rather than its label. */
+  help?: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
@@ -106,6 +113,7 @@ interface CheckboxProps extends Omit<
 /** A labelled on/off box, the box at the far end of its row; extra attributes go on its label, so the whole row is one target. */
 export function Checkbox({
   label,
+  help,
   checked,
   onChange,
   disabled,
@@ -116,6 +124,8 @@ export function Checkbox({
   const box = (
     <input
       type="checkbox"
+      title={help}
+      aria-description={help}
       checked={checked}
       disabled={disabled}
       onChange={(event) => onChange(event.target.checked)}

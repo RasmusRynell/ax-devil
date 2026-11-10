@@ -124,6 +124,17 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
         })()`),
         `The ${tab} tab of the lane menu must stay inside the viewer, below the title bar, ${theme}`,
       );
+      if (tab === "Look") {
+        assert.equal(
+          await js(`(() => {
+          const control = document.querySelector(${JSON.stringify(`${menu} select`)});
+          control.focus();
+          return document.activeElement === control && control.getAttribute('aria-description')?.includes('Choose how this lane draws');
+        })()`),
+          true,
+          "Catalog help belongs to the focusable control at 200% zoom",
+        );
+      }
       await shoot(`lane-menu-${tab.toLowerCase()}-${theme}-200.png`);
     }
     // A new lane starts as the saved default says, so the Timing tab says so until the lane differs, then offers to

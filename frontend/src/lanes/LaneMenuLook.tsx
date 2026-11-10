@@ -70,7 +70,8 @@ export function LaneMenuLook({
   return (
     <>
       <Select
-        label={<span title={SECTION_HELP.catalog}>Catalog</span>}
+        label="Catalog"
+        help={SECTION_HELP.catalog}
         value={settings.catalog}
         options={entries.map(({ id, label }): [string, string] => [
           id,
@@ -98,7 +99,7 @@ export function LaneMenuLook({
           onChange={(theme) => onChange({ theme: theme === "" ? null : theme })}
         />
       )}
-      <Group label="Features" help={SECTION_HELP.details}>
+      <Group label="Features">
         <div className="grid grid-cols-[repeat(auto-fit,minmax(18ch,1fr))] gap-x-xl gap-y-s">
           {FEATURES.map((feature, bit) => {
             const supported = look !== undefined && (look.features & (1 << bit)) !== 0;
@@ -106,6 +107,7 @@ export function LaneMenuLook({
               <Checkbox
                 key={feature}
                 label={FEATURE_TEXT[feature].label}
+                help={SECTION_HELP.details}
                 title={supported ? FEATURE_TEXT[feature].description : UNSUPPORTED}
                 disabled={!supported}
                 checked={(settings.hidden & (1 << bit)) === 0}

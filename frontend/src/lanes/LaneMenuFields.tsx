@@ -10,6 +10,7 @@ import { useSettings } from "../client/settings";
 /** A number the user edits as text; the change applies when they press Enter or leave the field. */
 export function NumberField({
   label,
+  help,
   value,
   min,
   max,
@@ -20,6 +21,8 @@ export function NumberField({
   onCommit,
 }: {
   label: string;
+  /** Help announced when this editor receives focus. */
+  help?: string;
   value: number | null;
   min: number;
   max: number;
@@ -53,6 +56,8 @@ export function NumberField({
       <input
         id={id}
         type="number"
+        title={help}
+        aria-description={help}
         min={min}
         max={max}
         step={step}
@@ -71,20 +76,10 @@ export function NumberField({
 }
 
 /** A set of related controls under a name. */
-export function Group({
-  label,
-  help,
-  children,
-}: {
-  label: string;
-  help?: string;
-  children: ReactNode;
-}) {
+export function Group({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div
       role="group"
-      title={help}
-      aria-description={help}
       aria-label={label}
       className="flex flex-col gap-s border-t border-line pt-m first:border-t-0 first:pt-0"
     >

@@ -3,10 +3,13 @@ import type { ReactNode } from "react";
 /** A labelled on/off switch: the setting takes effect as it flips, and its state shows in the control itself. */
 export function Switch({
   label,
+  help,
   checked,
   onChange,
 }: {
   label: ReactNode;
+  /** Help announced when the switch receives focus. */
+  help?: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
 }) {
@@ -16,6 +19,8 @@ export function Switch({
       <input
         type="checkbox"
         role="switch"
+        title={help}
+        aria-description={help}
         aria-label={typeof label === "string" ? label : undefined}
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
