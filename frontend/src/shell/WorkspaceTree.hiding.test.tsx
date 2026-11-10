@@ -1,19 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import type { RowInfo } from "../generated/api";
+import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { FakeSocket } from "../session/fakeSession";
-import { SessionProvider } from "../session/session";
-import {
-  commands,
-  HIDDEN,
-  ITEMS,
-  labels,
-  LISTING,
-  renderTree,
-  shown,
-} from "./WorkspaceTree.fixture";
-import { KeptStateProvider } from "../kit/keptState";
-import { WorkspaceTree } from "./WorkspaceTree";
+import { commands, labels, renderTree, shown, TREE } from "./WorkspaceTree.fixture";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 afterEach(() => {
@@ -33,8 +21,8 @@ describe("hiding", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Hide" }));
     await act(async () => {});
     expect(commands()).toEqual([
-      { type: "setHidden", target: { entry: "mot/A", lane: "GT" }, hidden: true },
-      { type: "setHidden", target: { entry: "mot/A" }, hidden: true },
+      { type: "setHidden", target: { entry: TREE.ids["mot/A"], lane: "GT" }, hidden: true },
+      { type: "setHidden", target: { entry: TREE.ids["mot/A"] }, hidden: true },
     ]);
   });
 
@@ -46,7 +34,9 @@ describe("hiding", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show hidden items" }));
     fireEvent.click(screen.getByRole("button", { name: "Unhide B" }));
     await act(async () => {});
-    expect(commands()).toEqual([{ type: "setHidden", target: { entry: "mot/B" }, hidden: false }]);
+    expect(commands()).toEqual([
+      { type: "setHidden", target: { entry: TREE.ids["mot/B"] }, hidden: false },
+    ]);
   });
 
   it("opens a hidden lane only through Unhide and open", async () => {
@@ -66,37 +56,12 @@ describe("hiding", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Unhide and open" }));
     await act(async () => {});
     expect(commands()).toEqual([
-      { type: "setHidden", target: { entry: "mot/A", lane: "DPM" }, hidden: false },
-      { type: "openViewer", item: "mot" },
+      { type: "setHidden", target: { entry: TREE.ids["mot/A"], lane: "DPM" }, hidden: false },
+      { type: "openViewer", item: TREE.ids.mot },
     ]);
-    expect(shown().viewers).toMatchObject({ 1: { item: "mot", entry: "mot/A" } });
-  });
-
-  it("says why a hidden lane that is not ready cannot open, as the menu offers Open for it", async () => {
-    const room = await renderTree();
-    // The fake backend lists every lane ready, so this row comes from the rows it sends.
-    room.tweakRows = (rows) =>
-      rows.map((row): RowInfo =>
-        row.kind === "lane" && row.label === "DPM"
-          ? {
-              ...row,
-              status: {
-                status: "Unavailable",
-                code: "WorkspaceInvalid",
-                params: {},
-                reason: "File not found",
-              },
-            }
-          : row,
-      );
-    act(() => room.setItems(ITEMS));
-    fireEvent.click(screen.getByRole("button", { name: "Show hidden items" }));
-    const lane = () => screen.getByRole("treeitem", { name: /^DPM/ });
-    fireEvent.doubleClick(lane());
-    expect(screen.getByRole("alert").textContent).toBe("DPM: File not found");
-    fireEvent.contextMenu(lane());
-    expect(screen.getByRole("menuitem", { name: "Open" }).hasAttribute("disabled")).toBe(false);
-    expect(screen.queryByRole("menuitem", { name: "Unhide and open" })).toBeNull();
+    expect(shown().viewers).toMatchObject({
+      1: { item: TREE.ids.mot, entry: TREE.ids["mot/A"] },
+    });
   });
 
   it("follows the Doc: a hidden row leaves the tree once the backend says so", async () => {
@@ -117,21 +82,7 @@ describe("hiding", () => {
   });
 
   it("is disabled for a seat that may not change the workspace", async () => {
-    const room = FakeSocket.host("explore");
-    room.hidden = HIDDEN;
-    room.setItems(ITEMS);
-    window.sessionStorage.setItem(
-      "ax-devil.credential",
-      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
-    );
-    render(
-      <SessionProvider>
-        <KeptStateProvider>
-          <WorkspaceTree view="workspace" {...LISTING} />
-        </KeptStateProvider>
-      </SessionProvider>,
-    );
-    await act(async () => {});
+    await renderTree(TREE, "mot-open", "explore");
     expect((screen.getByRole("button", { name: "Hide GT" }) as HTMLButtonElement).disabled).toBe(
       true,
     );

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { FakeSettings } from "../fakeSettings";
+import { scenario } from "../session/fakeScenario";
 import { hiddenOf } from "../viewer/hidden";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { LaneGrid } from "./LaneGrid";
@@ -13,6 +14,11 @@ import type { PlaybackView } from "./view";
 vi.mock("./VideoCanvas", () => ({ VideoCanvas: () => null }));
 
 afterEach(cleanup);
+
+// Entry A of the playlist `mot` has the lanes GT and DPM; its DPM lane is hidden, or neither, or both.
+const tree = { source: scenario("tree"), entry: "mot/A" };
+// Entry E of the playlist `grid` has the lanes GT, DPM and SEG.
+const grid = { source: scenario("playlist-lanes"), entry: "grid/E" };
 
 describe("lane grid math", () => {
   it("puts one or two lanes side by side and more in the smallest square that holds them", () => {
@@ -61,10 +67,11 @@ function lane(label: string, visible = true): LaneState {
 
 function mount(
   labels: string[],
-  hiddenLabels: string[],
+  state: string,
   views: Record<string, boolean> = {},
   frame = { width: 0, height: 0 },
   title?: string,
+  at = tree,
 ) {
   vi.stubGlobal(
     "ResizeObserver",
@@ -81,20 +88,7 @@ function mount(
     lanes: labels.map((label) => lane(label, views[label] ?? true)),
     ...frame,
   } as unknown as PlaybackView;
-  const hidden = hiddenOf(
-    hiddenLabels.map((label) => ({
-      key: `e\u001f${label}`,
-      item: "e",
-      kind: "lane" as const,
-      label,
-      detail: "",
-      location: null,
-      status: { status: "Ready" as const },
-      hidden: true,
-      entry: "e",
-      warnings: [],
-    })),
-  );
+  const hidden = hiddenOf(at.source.doc(state).workspace.rows);
   act(() => {
     render(
       <FakeSettings>
@@ -104,7 +98,7 @@ function mount(
           name="clip"
           title={title}
           anchor="frame:i"
-          entry="e"
+          entry={at.source.ids[at.entry]}
           hidden={hidden}
           onHide={() => {}}
         />
@@ -116,36 +110,36 @@ function mount(
 
 describe("lane grid", () => {
   it("leaves a hidden lane out, stops its data and gives the rest the room", () => {
-    const session = mount(["A", "B", "C"], ["B"]);
-    expect(screen.getByText("A")).toBeTruthy();
-    expect(screen.getByText("C")).toBeTruthy();
-    expect(screen.queryByText("B")).toBeNull();
+    const session = mount(["GT", "DPM", "SEG"], "dpm-hidden", {}, undefined, undefined, grid);
+    expect(screen.getByText("GT")).toBeTruthy();
+    expect(screen.getByText("SEG")).toBeTruthy();
+    expect(screen.queryByText("DPM")).toBeNull();
     expect(session.setLane.mock.calls).toEqual([[1, { visible: false }]]);
   });
 
   it("shows a lane again once it is no longer hidden", () => {
-    const session = mount(["A", "B"], [], { B: false });
-    expect(screen.getByText("B")).toBeTruthy();
+    const session = mount(["GT", "DPM"], "dpm-shown", { DPM: false });
+    expect(screen.getByText("DPM")).toBeTruthy();
     expect(session.setLane.mock.calls).toEqual([[1, { visible: true }]]);
   });
 
   it("puts a lane's tag at the corner of the visible picture, not of the cell around it", () => {
     // A 4:3 video in an 800 x 300 cell is 400 wide with 200 pixels of bar on each side; the tag may run over the right bar.
-    mount(["A"], [], {}, { width: 400, height: 300 });
-    const tag = screen.getByText("A").closest(".absolute") as HTMLElement;
+    mount(["GT"], "dpm-shown", {}, { width: 400, height: 300 });
+    const tag = screen.getByText("GT").closest(".absolute") as HTMLElement;
     expect([tag.style.left, tag.style.top, tag.style.maxWidth]).toEqual(["200px", "0px", "600px"]);
   });
 
   it("leaves out the name of a lane that is the only one shown and is named as the viewer", () => {
-    mount(["A", "B"], ["B"], {}, undefined, "A");
-    expect(screen.queryByText("A")).toBeNull();
+    mount(["GT", "DPM"], "initial", {}, undefined, "GT");
+    expect(screen.queryByText("GT")).toBeNull();
     cleanup();
-    mount(["A", "B"], [], {}, undefined, "A");
-    expect(screen.getByText("A")).toBeTruthy();
+    mount(["GT", "DPM"], "dpm-shown", {}, undefined, "GT");
+    expect(screen.getByText("GT")).toBeTruthy();
   });
 
   it("says so when every lane is hidden", () => {
-    mount(["A"], ["A"]);
+    mount(["GT"], "gt-hidden");
     expect(screen.getByRole("status").textContent).toBe("All lanes are hidden");
   });
 });

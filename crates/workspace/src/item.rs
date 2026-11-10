@@ -20,6 +20,52 @@ pub struct VideoRecipe {
     pub overlays: Vec<OverlayRecipe>,
 }
 
+impl VideoRecipe {
+    /// The Content item `item` resolves to once its files are known readable: the decoder options of each overlay
+    /// checked and completed, one lane per overlay. Reads nothing; [`Recipe::resolve`] checks the files first.
+    pub fn content(
+        &self,
+        item: &ItemId,
+        handlers: &Handlers,
+        cancel: &CancelToken,
+    ) -> Result<Content, Interrupt<UserError>> {
+        let mut overlays = Vec::with_capacity(self.overlays.len());
+        for overlay in &self.overlays {
+            cancel.check()?;
+            let path = overlay.path.as_path();
+            let options =
+                decoder_options(handlers, &overlay.handler, &overlay.options).map_err(|error| {
+                    Interrupt::Failed(UserError {
+                        location: Some(Location::Host(HostPath::new(path))),
+                        ..error
+                    })
+                })?;
+            overlays.push(OverlayRef {
+                label: overlay.label.clone(),
+                slot: overlay.label.clone(),
+                path: path.to_path_buf(),
+                handler: overlay.handler.clone(),
+                options,
+                metadata: Default::default(),
+            });
+        }
+        let entry = Entry {
+            id: ContentId::of_item(item),
+            label: file_name(self.video.as_path()),
+            video: VideoRef::File(self.video.as_path().to_path_buf()),
+            overlays,
+            starts_hidden: false,
+            lanes_starting_hidden: Vec::new(),
+            metadata: Default::default(),
+        };
+        check_unique_lanes(item, &entry).map_err(Interrupt::Failed)?;
+        Ok(Content::SeekableVideo(SeekableVideoContent {
+            item_id: *item,
+            entry,
+        }))
+    }
+}
+
 /// An overlay file and the decoder that reads it, shown as a lane of its own: one file may be several lanes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OverlayRecipe {
@@ -257,40 +303,7 @@ fn resolve_video(
         cancel.check()?;
         check_readable_file(file.as_path()).map_err(Interrupt::Failed)?;
     }
-    let mut overlays = Vec::with_capacity(recipe.overlays.len());
-    for overlay in &recipe.overlays {
-        cancel.check()?;
-        let path = overlay.path.as_path();
-        let options =
-            decoder_options(handlers, &overlay.handler, &overlay.options).map_err(|error| {
-                Interrupt::Failed(UserError {
-                    location: Some(Location::Host(HostPath::new(path))),
-                    ..error
-                })
-            })?;
-        overlays.push(OverlayRef {
-            label: overlay.label.clone(),
-            slot: overlay.label.clone(),
-            path: path.to_path_buf(),
-            handler: overlay.handler.clone(),
-            options,
-            metadata: Default::default(),
-        });
-    }
-    let entry = Entry {
-        id: ContentId::of_item(item),
-        label: file_name(recipe.video.as_path()),
-        video: VideoRef::File(recipe.video.as_path().to_path_buf()),
-        overlays,
-        starts_hidden: false,
-        lanes_starting_hidden: Vec::new(),
-        metadata: Default::default(),
-    };
-    check_unique_lanes(item, &entry).map_err(Interrupt::Failed)?;
-    Ok(Content::SeekableVideo(SeekableVideoContent {
-        item_id: *item,
-        entry,
-    }))
+    recipe.content(item, handlers, cancel)
 }
 
 /// `settings` checked against `form`, and every decoder id a `Handler` field holds known to `handlers`: a playlist

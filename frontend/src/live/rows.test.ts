@@ -1,31 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { ItemState, LiveShown, NetworkRow, NewLiveWire } from "../generated/api";
+import type { ItemState, NetworkRow } from "../generated/api";
+import { scenario } from "../session/fakeScenario";
 import { camerasOf, streamingCount } from "./cameras";
 import { facetKey, offeredFacets, sectionsOf, viewsOf, type Section } from "./rows";
 import { statusOf, type StreamStatus } from "./streamState";
-
-const stream = (id: string, recipe: NewLiveWire, open = false, shown?: LiveShown): ItemState => ({
-  id,
-  shown,
-  label: recipe.label ?? "",
-  kind: "live",
-  open,
-  resolution: {
-    status: "Resolved",
-    content: {
-      kind: "LiveVideo",
-      id,
-      generation: 1,
-      display_name: recipe.label ?? "",
-      slot: "live",
-      overlay: { none: "none", mqtt: "mqtt", rtsp: "rtsp", datahub: "datahub" }[
-        recipe.overlay?.mode ?? "none"
-      ] as "none",
-      lanes: ["lane"],
-      recipe,
-    },
-  },
-});
 
 const scanned = (address: string, extra: Partial<NetworkRow> = {}): NetworkRow => ({
   address,
@@ -37,18 +15,9 @@ const scanned = (address: string, extra: Partial<NetworkRow> = {}): NetworkRow =
   ...extra,
 });
 
-const WORKSPACE = [
-  stream(
-    "a",
-    {
-      label: "Lobby",
-      host: "10.0.0.2",
-      overlay: { mode: "mqtt", broker_host: "10.0.0.9", broker_port: 1883, source_key: "scene" },
-    },
-    true,
-  ),
-  stream("b", { host: "10.0.0.2", overlay: { mode: "none" } }),
-];
+const cameras = scenario("cameras");
+const WORKSPACE = cameras.doc().workspace.items;
+const { a: A, b: B } = cameras.ids;
 
 const sections = (reported: Map<string, StreamStatus>, found: NetworkRow[] = []): Section[] =>
   sectionsOf({
@@ -58,14 +27,14 @@ const sections = (reported: Map<string, StreamStatus>, found: NetworkRow[] = [])
     reported,
     checks: new Map(),
     thumbnails: true,
-    viewed: new Set(["a"]),
+    viewed: new Set([A]),
     order: "address",
   });
 
 describe("camera rows", () => {
   it("shows a camera by its most urgent stream, and its streams by what they draw", () => {
     const failed = new Map([
-      ["a", { state: "failed", text: "Login rejected", anyLive: false }],
+      [A, { state: "failed", text: "Login rejected", anyLive: false }],
     ] as const);
     const [live] = sections(failed);
     const [camera] = live?.rows ?? [];
@@ -89,24 +58,7 @@ describe("camera rows", () => {
   });
 
   it("opens a stream on its broker as the reference expands, else on its host and a head other than 1", () => {
-    const mqtt = (broker_host: string): NewLiveWire["overlay"] => ({
-      mode: "mqtt",
-      broker_host,
-      broker_port: 1883,
-      source_key: "scene",
-    });
-    // What the Session reads each host as: a reference's value where it may expand, the text as typed where not.
-    const infoWhen = (read: (text: string) => string) => {
-      const item = (id: string, host: string, head: number, overlay: NewLiveWire["overlay"]) => {
-        const broker = overlay?.mode === "mqtt" ? overlay.broker_host : undefined;
-        const shown = { host: read(host), broker_host: broker === undefined ? null : read(broker) };
-        return stream(id, { host, head, overlay }, false, shown);
-      };
-      const items = [
-        item("a", "10.0.0.5", 2, mqtt("$BROKER")),
-        item("b", "10.0.0.5", 2, mqtt("$UNSET")),
-        item("c", "$CAM_HOST", 1, { mode: "none" }),
-      ];
+    const infoOf = (items: ItemState[]) => {
       const [live] = sectionsOf({
         cameras: camerasOf(items),
         found: [],
@@ -119,35 +71,24 @@ describe("camera rows", () => {
       });
       return live?.rows.flatMap((row) => row.children).map((row) => row.info);
     };
-    const values = new Map([
-      ["$BROKER", "198.51.100.2"],
-      ["$CAM_HOST", "10.0.0.6"],
-    ]);
-    // A variable that is not set reads as nothing, so the stream falls back to its host.
-    expect(infoWhen((text) => (text.startsWith("$") ? (values.get(text) ?? "") : text))).toEqual([
+    // The owner's session reads `$BROKER` and `$CAM_HOST` as values, and `$UNSET` as nothing, which leaves the host.
+    expect(infoOf(scenario("live-references").doc().workspace.items)).toEqual([
       ["198.51.100.2:1883"],
       ["10.0.0.5 · head 2"],
       ["10.0.0.6"],
     ]);
-    expect(infoWhen((text) => text)).toEqual([["$BROKER:1883"], ["$UNSET:1883"], ["$CAM_HOST"]]);
+    // A session that reads no environment shows each reference as typed.
+    expect(infoOf(scenario("live-typed").doc().workspace.items)).toEqual([
+      ["$BROKER:1883"],
+      ["$UNSET:1883"],
+      ["$CAM_HOST"],
+    ]);
   });
 });
 
 describe("found cameras the workspace holds", () => {
   it("are told by the host as entered and as a reference expands, whether or not the stream has resolved", () => {
-    const pending: ItemState = {
-      id: "p",
-      label: "10.0.0.8",
-      kind: "live",
-      open: false,
-      resolution: { status: "Pending" },
-      recipe: { type: "Live", host: "10.0.0.8" },
-    };
-    const items = [
-      stream("r", { host: "$CAM_HOST" }, false, { host: "10.0.0.6", broker_host: null }),
-      stream("e", { host: "10.0.0.5" }),
-      pending,
-    ];
+    const items = scenario("live-found").doc().workspace.items;
     const found = ["10.0.0.5", "10.0.0.6", "10.0.0.7", "10.0.0.8"].map((host) => scanned(host));
     const [live, network] = sectionsOf({
       cameras: camerasOf(items),
@@ -174,9 +115,9 @@ describe("stream rows", () => {
       found: [],
       scanned: false,
       reported: new Map(),
-      checks: new Map([["b", refused]]),
+      checks: new Map([[B, refused]]),
       thumbnails: true,
-      viewed: new Set(["a"]),
+      viewed: new Set([A]),
       order: "address",
     });
     const [camera] = live?.rows ?? [];
@@ -186,13 +127,13 @@ describe("stream rows", () => {
       mark: { icon: "triangle-alert", color: "caution" },
     });
     // Open, a stream can still be stopped; stopped, it has no Start and no picture to hover.
-    expect(open).toMatchObject({ action: "stop", thumbnail: "/api/live/snapshot/a" });
+    expect(open).toMatchObject({ action: "stop", thumbnail: `/api/live/snapshot/${A}` });
     expect(stopped).toMatchObject({
       action: null,
       detail: "The camera refused the login saved with it.",
       detailWarning: true,
       thumbnail: null,
-      menu: ["information", "remove"],
+      menu: ["information", "edit", "remove"],
     });
   });
 
@@ -212,31 +153,21 @@ describe("stream rows", () => {
     expect(live?.rows[0]).toMatchObject({ aside: "Stopped", dim: true });
     // The header counts what the rows show as running.
     expect(streamingCount(camerasOf(WORKSPACE), new Set(["other"]))).toBe(0);
-    expect(streamingCount(camerasOf(WORKSPACE), new Set(["a"]))).toBe(1);
+    expect(streamingCount(camerasOf(WORKSPACE), new Set([A]))).toBe(1);
   });
 
   it("lists streams that are resolving or failed, and offers what each can do", () => {
-    const base = stream("c", { label: "Lobby", host: "10.0.0.2", overlay: { mode: "none" } });
-    const items: ItemState[] = [
-      {
-        ...stream("a", { host: "10.0.0.2", overlay: { mode: "none" } }),
-        recipe: { type: "Live", host: "10.0.0.2", overlay: { mode: "none" } },
-      },
-      { ...base, resolution: { status: "Pending" } },
-      {
-        ...base,
-        id: "d",
-        resolution: {
-          status: "Failed",
-          code: "WorkspaceInvalid",
-          params: {},
-          reason: "Enter the device host.",
-        },
-      },
-    ];
-    const known = new Map([["c", { host: "10.0.0.2", overlay: { mode: "none" as const } }]]);
+    const states = scenario("live-states");
+    const { a, c, d } = states.ids;
+    const content = states.doc().workspace.items.find((item) => item.id === c)?.resolution;
+    // The recipe the resolving stream was read with before.
+    const recipe =
+      content?.status === "Resolved" && content.content.kind === "LiveVideo"
+        ? content.content.recipe
+        : null;
+    const known = new Map(recipe ? [[c, recipe]] : []);
     const [live] = sectionsOf({
-      cameras: camerasOf(items, known),
+      cameras: camerasOf(states.doc("resolving").workspace.items, known),
       found: [],
       scanned: false,
       reported: new Map(),
@@ -247,9 +178,9 @@ describe("stream rows", () => {
     });
     const rows = live?.rows.flatMap((camera) => camera.children) ?? [];
     expect(rows.map(({ id, action, menu, thumbnail }) => [id, action, menu, thumbnail])).toEqual([
-      ["a", "start", ["start", "information", "edit", "remove"], null],
-      ["c", null, ["remove"], null],
-      ["d", null, ["information", "remove"], null],
+      [a, "start", ["start", "information", "edit", "remove"], null],
+      [c, null, ["edit", "remove"], null],
+      [d, null, ["information", "edit", "remove"], null],
     ]);
     expect(rows[2]).toMatchObject({ detail: "Enter the device host.", detailWarning: true });
     // A stream that resolves again stays with its camera.

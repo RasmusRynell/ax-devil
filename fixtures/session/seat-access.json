@@ -1,0 +1,26 @@
+{
+  "edit": {
+    "content": true,
+    "control": false,
+    "host": false,
+    "view": true
+  },
+  "explore": {
+    "content": false,
+    "control": false,
+    "host": false,
+    "view": true
+  },
+  "owner": {
+    "content": true,
+    "control": true,
+    "host": true,
+    "view": true
+  },
+  "watch": {
+    "content": false,
+    "control": false,
+    "host": false,
+    "view": false
+  }
+}

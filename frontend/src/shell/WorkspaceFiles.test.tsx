@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { GrantsContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
+import { scenario } from "../session/fakeScenario";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { folderOf, usedOn } from "../recents";
@@ -116,11 +117,7 @@ describe("workspace files", () => {
 
   it("offers Keep and Discard for restored changes, even with nothing in the workspace", async () => {
     const room = await renderShell();
-    const restore = () =>
-      act(async () => {
-        room.recovered = true;
-        room.setItems([]);
-      });
+    const restore = () => act(async () => room.show(scenario("empty"), "recovered"));
     for (const choice of ["Keep", "Discard"]) {
       await restore();
       fireEvent.click(screen.getByRole("button", { name: choice }));

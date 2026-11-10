@@ -1,0 +1,299 @@
+{
+  "docs": {
+    "initial": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "live",
+              "label": "10.0.0.5",
+              "open": false,
+              "recipe": {
+                "found": null,
+                "head": 2,
+                "host": "10.0.0.5",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": null,
+                "like": null,
+                "overlay": {
+                  "broker_host": "$BROKER",
+                  "broker_pass": "",
+                  "broker_port": 1883,
+                  "broker_user": "",
+                  "handler": "ADF_V1_FRAME",
+                  "mode": "mqtt",
+                  "source_key": "scene"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "10.0.0.5",
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "MQTT"
+                  ],
+                  "overlay": "mqtt",
+                  "recipe": {
+                    "found": null,
+                    "head": 2,
+                    "host": "10.0.0.5",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": null,
+                    "like": null,
+                    "overlay": {
+                      "broker_host": "$BROKER",
+                      "broker_pass": "",
+                      "broker_port": 1883,
+                      "broker_user": "",
+                      "handler": "ADF_V1_FRAME",
+                      "mode": "mqtt",
+                      "source_key": "scene"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": "$BROKER",
+                "host": "10.0.0.5"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "live",
+              "label": "10.0.0.5",
+              "open": false,
+              "recipe": {
+                "found": null,
+                "head": 2,
+                "host": "10.0.0.5",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": null,
+                "like": null,
+                "overlay": {
+                  "broker_host": "$UNSET",
+                  "broker_pass": "",
+                  "broker_port": 1883,
+                  "broker_user": "",
+                  "handler": "ADF_V1_FRAME",
+                  "mode": "mqtt",
+                  "source_key": "scene"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "10.0.0.5",
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "MQTT"
+                  ],
+                  "overlay": "mqtt",
+                  "recipe": {
+                    "found": null,
+                    "head": 2,
+                    "host": "10.0.0.5",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": null,
+                    "like": null,
+                    "overlay": {
+                      "broker_host": "$UNSET",
+                      "broker_pass": "",
+                      "broker_port": 1883,
+                      "broker_user": "",
+                      "handler": "ADF_V1_FRAME",
+                      "mode": "mqtt",
+                      "source_key": "scene"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": "$UNSET",
+                "host": "10.0.0.5"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "live",
+              "label": "$CAM_HOST",
+              "open": false,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "$CAM_HOST",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": null,
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "$CAM_HOST",
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000003",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "$CAM_HOST"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "$CAM_HOST",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": null,
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "$CAM_HOST"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "10.0.0.5 · head 2 (1)",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "10.0.0.5",
+              "location": "10.0.0.5 · head 2",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "10.0.0.5 · head 2 (2)",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "10.0.0.5",
+              "location": "10.0.0.5 · head 2",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000003",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "$CAM_HOST",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      }
+    }
+  },
+  "ids": {
+    "a": "00000000-0000-4000-8000-000000000001",
+    "b": "00000000-0000-4000-8000-000000000002",
+    "c": "00000000-0000-4000-8000-000000000003"
+  },
+  "steps": []
+}

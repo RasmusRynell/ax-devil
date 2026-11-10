@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
@@ -8,7 +8,8 @@ import { PLAYBACK_PROTOCOL } from "../playback/protocol";
 import type { Geometry } from "../playback/renderer";
 import type { VideoCanvas } from "../playback/VideoCanvas";
 import type { Connect, Incoming } from "../playback/wire";
-import { FakeSocket, video } from "../session/fakeSession";
+import { scenario } from "../session/fakeScenario";
+import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider, useDoc } from "../session/session";
 import { LiveVideoViewer } from "./LiveViewer";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "./actions";
@@ -51,23 +52,11 @@ const connect: Connect = (onIncoming) => {
 
 function Viewer(): ReactNode {
   useFrontViewer();
-  return useDoc()?.workspace.items.length ? (
+  const item = useDoc()?.workspace.items[0];
+  const content = item?.resolution.status === "Resolved" ? item.resolution.content : undefined;
+  return item && content?.kind === "LiveVideo" ? (
     <FakeSettings state={DEFAULT_SETTINGS}>
-      <LiveVideoViewer
-        item="a"
-        viewer={1}
-        content={{
-          kind: "LiveVideo",
-          id: "content-a",
-          generation: 1,
-          display_name: "Camera",
-          slot: "overlay",
-          overlay: "rtsp",
-          lanes: [],
-          recipe: null,
-        }}
-        connect={connect}
-      />
+      <LiveVideoViewer item={item.id} viewer={1} content={content} connect={connect} />
     </FakeSettings>
   ) : null;
 }
@@ -103,7 +92,7 @@ describe("live viewer objects", () => {
       </SessionProvider>,
     );
     await act(async () => {});
-    act(() => FakeSocket.rooms.get("room-1")?.setItems([video("a")]));
+    act(() => FakeSocket.rooms.get("room-1")?.show(scenario("live-video")));
     await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
     act(() =>
       tell({

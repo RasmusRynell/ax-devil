@@ -1,16 +1,9 @@
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import type { ItemRecipe } from "../generated/api";
-import {
-  entry,
-  FakeSocket,
-  playlist,
-  playlists,
-  resolved,
-  video,
-  type Room,
-} from "../session/fakeSession";
+import { scenario } from "../session/fakeScenario";
+import { FakeSocket, type Room } from "../session/fakeSession";
+import { viewing } from "../session/fakeViews";
 import { SessionProvider } from "../session/session";
 import type { ViewerProps } from "../viewers";
 import { registerExport } from "../viewer/exportTargets";
@@ -63,6 +56,11 @@ function Area() {
   return <SplitArea />;
 }
 
+const one = scenario("one-video");
+const split = scenario("split");
+const { a: itemA } = one.ids;
+
+/** Shows `state` of `scene` in the owner's window. */
 async function setup() {
   render(
     <SessionProvider>
@@ -73,8 +71,7 @@ async function setup() {
   const room = FakeSocket.rooms.get("room-1") as Room;
   return {
     room,
-    send: (...items: Parameters<typeof video>[]) =>
-      act(() => room.setItems(items.map((item) => video(...item)))),
+    show: (state: string, scene = one) => act(() => room.show(scene, state)),
   };
 }
 
@@ -82,103 +79,108 @@ const pane = (name: string) => screen.getByRole("group", { name });
 
 describe("split area", () => {
   it("shows an item as opening until it resolves, then its viewer", async () => {
-    const { send } = await setup();
-    send(["a", true, { status: "Pending" }]);
+    const { show } = await setup();
+    show("pending");
     expect(screen.getByRole("status").textContent).toBe("Opening a.mp4…");
-    send(["a", true, resolved("a")]);
-    expect(screen.getByText("playing content-a")).toBeTruthy();
+    show("initial");
+    expect(screen.getByText(`playing ${itemA}`)).toBeTruthy();
   });
 
-  it("says why an item failed, and where only when the backend told it", async () => {
-    const { send } = await setup();
-    const failed = { status: "Failed" as const, code: "FileNotFound" as const, params: {} };
-    send(["a", true, { ...failed, reason: "no such file", location: "/clips/a.mp4" }]);
-    expect(screen.getByRole("alert").textContent).toBe("no such file/clips/a.mp4");
-    send(["a", true, failed]);
-    expect(screen.getByRole("alert").textContent).toBe("The file was not found.");
+  it("says why an item failed, and where only to a seat that may read it", async () => {
+    const { show } = await setup();
+    show("failed");
+    expect(screen.getByRole("alert").textContent).toBe("File not found/data/a/a.mp4");
+    // A playlist without entries is refused by the backend, which gives the reason.
+    show("empty-refused", scenario("playlist-groups"));
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Playlists require at least one entry.",
+    );
+    cleanup();
+
+    const room = FakeSocket.host("watch");
+    room.show(one, "failed");
+    room.publish({ sidebar: room.presenter.sidebar, ...viewing(itemA) });
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+    );
+    render(
+      <SessionProvider>
+        <Area />
+      </SessionProvider>,
+    );
+    expect((await screen.findByRole("alert")).textContent).toBe("The file was not found.");
   });
 
   it("offers to reload a viewer whose files changed, once per change, and reloading resolves the item", async () => {
-    const { room, send } = await setup();
+    const { show } = await setup();
     const offer = () => screen.queryByText("Source changed, reload current viewer?");
-    send(["a", true, resolved("a")]);
+    show("initial");
     expect(offer()).toBeNull();
 
-    const set = (count: number) => act(() => room.setItems([{ ...video("a"), changed: count }]));
-    set(1);
+    show("changed-1");
     expect(offer()).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(offer()).toBeNull();
-    set(1);
+    show("changed-1");
     expect(offer()).toBeNull();
-    set(2);
+    show("changed-2");
     expect(offer()).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
     expect(FakeSocket.latest.received).toContainEqual(
       expect.objectContaining({
-        cmd: { type: "content", command: { type: "resolve", item: "a" } },
+        cmd: { type: "content", command: { type: "resolve", item: itemA } },
       }),
     );
   });
 
   it("says why a reload failed above the viewer it left in place, until dismissed, and again for the next failure", async () => {
-    const { room, send } = await setup();
-    send(["a", true, resolved("a")]);
-    const fail = (attempt: number, reason: string) =>
-      act(() =>
-        room.setItems([
-          {
-            ...video("a"),
-            reload_failure: { attempt, error: { code: "FileNotFound", params: {}, reason } },
-          },
-        ]),
-      );
-    fail(3, "gate.mp4 is gone");
-    expect(screen.getByRole("alert").textContent).toBe("Could not reload: gate.mp4 is gone");
-    expect(screen.getByText("playing content-a")).toBeTruthy();
+    const { show } = await setup();
+    show("initial");
+    show("reload-failed-1");
+    expect(screen.getByRole("alert").textContent).toBe("Could not reload: File not found");
+    expect(screen.getByText(`playing ${itemA}`)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByRole("alert")).toBeNull();
-    fail(3, "gate.mp4 is gone");
+    show("reload-failed-1");
     expect(screen.queryByRole("alert")).toBeNull();
-    fail(5, "gate.mp4 is gone");
+    show("reload-failed-2");
     expect(screen.getByRole("alert")).toBeTruthy();
   });
 
   it("gives eight open items a pane and closes the ninth again", async () => {
-    const { send } = await setup();
-    const ids = Array.from({ length: 9 }, (_, n) => `v${n + 1}`);
-    send(...ids.map((id) => [id, true, resolved(id)] as Parameters<typeof video>));
+    const { show } = await setup();
+    show("nine-open", split);
     expect(screen.getAllByRole("group")).toHaveLength(8);
     expect(FakeSocket.latest.received).toContainEqual(
       expect.objectContaining({
-        cmd: { type: "content", command: { type: "closeViewer", item: "v9" } },
+        cmd: { type: "content", command: { type: "closeViewer", item: split.ids.i } },
       }),
     );
   });
 
   it("gives each pane an equal share of the window's 512 MiB of frames, redivided as panes come and go", async () => {
-    const { send } = await setup();
-    const budget = (id: string) => screen.getByLabelText(`budget content-${id}`).textContent;
-    send(["a", true, resolved("a")]);
+    const { show } = await setup();
+    const budget = (key: string) => screen.getByLabelText(`budget ${split.ids[key]}`).textContent;
+    show("a-open", split);
     expect(budget("a")).toBe(String(512 * 1024 * 1024));
-    send(["a", true, resolved("a")], ["b", true, resolved("b")], ["c", true, resolved("c")]);
+    show("abc-open", split);
     expect(budget("a")).toBe(String(Math.floor((512 * 1024 * 1024) / 3)));
     fireEvent.click(within(pane("c.mp4")).getByRole("button", { name: "Close this pane" }));
     expect(budget("a")).toBe(String(256 * 1024 * 1024));
   });
 
   it("gives a pane's header the row's menu without Edit, exporting from that pane's own viewer, and Remove closes the item", async () => {
-    const { room } = await setup();
-    const recipe: ItemRecipe = { type: "Video", path: "/a.mp4", label: null, overlays: [] };
-    act(() => room.setItems([{ ...video("a"), recipe }]));
+    const { show } = await setup();
+    show("initial");
     const id = Number(pane("a.mp4").getAttribute("data-cursor-pane"));
     // Another viewer of the same item, registered first: the header exports the one of its own pane.
     const other = vi.fn();
     const own = vi.fn();
     const leave = [
-      registerExport(id + 1, "a", "content-a", other),
-      registerExport(id, "a", "content-a", own),
+      registerExport(id + 1, itemA, itemA, other),
+      registerExport(id, itemA, itemA, own),
     ];
     fireEvent.contextMenu(within(pane("a.mp4")).getByText("a.mp4"));
     expect(screen.getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual([
@@ -194,15 +196,16 @@ describe("split area", () => {
     fireEvent.contextMenu(within(pane("a.mp4")).getByText("a.mp4"));
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
     expect(FakeSocket.latest.received).toContainEqual(
-      expect.objectContaining({ cmd: { type: "content", command: { type: "remove", item: "a" } } }),
+      expect.objectContaining({
+        cmd: { type: "content", command: { type: "remove", item: itemA } },
+      }),
     );
     leave.forEach((release) => release());
   });
 
   it("says in its pane why a header action failed, until dismissed, Escape or the next menu", async () => {
-    const { room } = await setup();
-    const recipe: ItemRecipe = { type: "Video", path: "/a.mp4", label: null, overlays: [] };
-    act(() => room.setItems([{ ...video("a"), recipe }]));
+    const { show } = await setup();
+    show("initial");
     const header = () => pane("a.mp4").querySelector("[draggable]") as HTMLElement;
     const alert = () => within(pane("a.mp4")).queryByRole("alert");
     FakeSocket.refuseContent = "NotAllowed";
@@ -230,21 +233,14 @@ describe("split area", () => {
   });
 
   it("acts from a header on the entry the pane shows: with a whole first playlist hidden, one of the second", async () => {
-    const { room } = await setup();
-    act(() =>
-      room.setItems([
-        playlists("p", [
-          ["one", [entry("a1")]],
-          ["two", [entry("b1")]],
-        ]),
-      ]),
-    );
-    act(() => room.setHidden({ entry: "a1" }, true));
-    const id = Number(pane("p").getAttribute("data-cursor-pane"));
+    const { show } = await setup();
+    const groups = scenario("playlist-groups");
+    show("p-hidden", groups);
+    const id = Number(pane("list").getAttribute("data-cursor-pane"));
     const shownExport = vi.fn();
-    const leave = registerExport(id, "p", "b1", shownExport);
-    fireEvent.contextMenu(pane("p").querySelector("[draggable]") as HTMLElement);
-    // The row of b1, which is not hidden: Hide, not Unhide; and b1's own export runs.
+    const leave = registerExport(id, groups.ids.list, groups.ids["list/C"], shownExport);
+    fireEvent.contextMenu(pane("list").querySelector("[draggable]") as HTMLElement);
+    // The row of C, which is not hidden: Hide, not Unhide; and C's own export runs.
     expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toContain("Hide");
     fireEvent.click(screen.getByRole("menuitem", { name: "Export video" }));
     expect(shownExport).toHaveBeenCalledTimes(1);
@@ -252,10 +248,10 @@ describe("split area", () => {
   });
 
   it("keeps a playlist header's menu while its entry's playback is not ready, with Export disabled", async () => {
-    const { room } = await setup();
-    act(() => room.setItems([playlist("p", [entry("p/a", "A"), entry("p/b", "B")])]));
+    const { show } = await setup();
+    show("initial", scenario("playlist"));
     // No viewer registered an export: the entry's media is still opening or failed.
-    fireEvent.contextMenu(pane("p").querySelector("[draggable]") as HTMLElement);
+    fireEvent.contextMenu(pane("list").querySelector("[draggable]") as HTMLElement);
     const names = screen.getAllByRole("menuitem").map((item) => item.textContent);
     expect(names).toEqual(
       expect.arrayContaining(["Open", "Open to the Side", "Information", "Export video"]),
@@ -267,8 +263,8 @@ describe("split area", () => {
   });
 
   it("moves a dragged pane to the side it is dropped on without restarting its viewer or unpinning it", async () => {
-    const { send } = await setup();
-    send(["a", true, resolved("a")], ["b", true, resolved("b")]);
+    const { show } = await setup();
+    show("ab-open", split);
     fireEvent.click(within(pane("a.mp4")).getByRole("button", { name: /^Pin:/ }));
     const left = (name: string) => pane(name).style.left;
     expect([left("a.mp4"), left("b.mp4")]).toEqual(["0px", "200px"]);
@@ -296,6 +292,6 @@ describe("split area", () => {
     // Dropped on the right half of b: a now sits right of it.
     expect([left("a.mp4"), left("b.mp4")]).toEqual(["200px", "0px"]);
     expect(within(pane("a.mp4")).getByRole("button", { name: /^Unpin:/ })).toBeTruthy();
-    expect(mounted).toEqual(["content-a", "content-b"]);
+    expect(mounted).toEqual([split.ids.a, split.ids.b]);
   });
 });

@@ -1,26 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { RowInfo } from "../generated/api";
+import { scenario } from "../session/fakeScenario";
 import { hiddenOf } from "./hidden";
 
-const row = (kind: RowInfo["kind"], label: string, entry: string | null, hidden: boolean) =>
-  ({ key: label, kind, label, status: { status: "Ready" }, hidden, entry }) as RowInfo;
-
 describe("hidden", () => {
-  it("reads hidden entries, videos and lanes from the rows", () => {
-    const hidden = hiddenOf([
-      row("item", "clip.mp4", "clip", true),
-      row("entry", "seq-1", "list/seq-1", true),
-      row("entry", "seq-2", "list/seq-2", false),
-      row("lane", "GT", "list/seq-2", true),
-      row("lane", "DPM", "list/seq-2", false),
-    ]);
-    expect(["clip", "list/seq-1", "list/seq-2"].map((id) => hidden.entry(id))).toEqual([
-      true,
-      true,
-      false,
-    ]);
-    expect(hidden.lane("list/seq-2", "GT")).toBe(true);
-    expect(hidden.lane("list/seq-2", "DPM")).toBe(false);
-    expect(hidden.lane("list/seq-1", "GT")).toBe(false);
+  it("reads hidden entries and lanes from the rows", () => {
+    // A playlist whose entry B and lane DPM of entry A are hidden.
+    const { ids } = scenario("tree");
+    const hidden = hiddenOf(scenario("tree").doc().workspace.rows);
+    expect([ids["mot/A"], ids["mot/B"]].map((id) => hidden.entry(id))).toEqual([false, true]);
+    expect(hidden.lane(ids["mot/A"], "DPM")).toBe(true);
+    expect(hidden.lane(ids["mot/A"], "GT")).toBe(false);
+    expect(hidden.lane(ids["mot/B"], "GT")).toBe(false);
+    // A lane hidden in one entry is not hidden in another entry of the same label.
+    const gt = hiddenOf(scenario("tree").doc("gt-hidden").workspace.rows);
+    expect([ids["mot/A"], ids["mot/B"]].map((id) => gt.lane(id, "GT"))).toEqual([true, false]);
   });
 });

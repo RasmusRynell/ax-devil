@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { FakeSocket } from "../session/fakeSession";
+import { scenario } from "../session/fakeScenario";
 import { SessionProvider } from "../session/session";
 import { AddLiveStreamDialog } from "./AddLiveStreamDialog";
 
@@ -245,11 +246,13 @@ describe("add live stream dialog", () => {
   });
 
   it("edits a stream: it starts from the saved recipe, keeps a saved topic the camera does not list until the connection changes, and saves under the same id", async () => {
+    const live = scenario("live-video");
+    FakeSocket.launch = { scenario: live, state: "initial" };
     render(
       <FakeSettings state={DEFAULT_SETTINGS}>
         <SessionProvider>
           <AddLiveStreamDialog
-            editing="item-1"
+            editing={live.ids.a}
             initial={{
               label: "Gate",
               host: "10.0.0.7",
@@ -279,8 +282,10 @@ describe("add live stream dialog", () => {
     expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("");
     // The sizes are asked as the stream is saved: by its saved login.
     await waitFor(() => expect(asked.length).toBeGreaterThan(0));
-    expect(asked.every((connection) => connection.like === "item-1")).toBe(true);
+    expect(asked.every((connection) => connection.like === live.ids.a)).toBe(true);
 
+    // The backend accepts only a handler it has: the saved one is shown, and a Save needs another.
+    type("Handler Type", "ADF_V1_FRAME");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(commands()).toHaveLength(1));
     expect(commands()[0]).toMatchObject({
@@ -288,14 +293,14 @@ describe("add live stream dialog", () => {
         type: "content",
         command: {
           type: "editItem",
-          item: "item-1",
+          item: live.ids.a,
           new: {
             type: "Live",
             host: "10.0.0.7",
             username: "root",
             // A blank password is sent empty: the backend reads it as the saved one.
             password: "",
-            overlay: { mode: "datahub", topic: "saved.topic", channel: 3 },
+            overlay: { mode: "datahub", handler: "ADF_V1_FRAME", topic: "saved.topic", channel: 3 },
             kept_mqtt: { source_key: "custom" },
           },
         },

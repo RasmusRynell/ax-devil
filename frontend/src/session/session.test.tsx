@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { SidebarView, View } from "../generated/api";
+import { scenario, seatAccess } from "./fakeScenario";
 import { FakeSocket, type Room } from "./fakeSession";
 import {
   SessionProvider,
@@ -158,7 +159,7 @@ describe("session", () => {
       docRev: 9,
       presenterRev: 9,
       access: "owner" as const,
-      can: { view: true, content: true, host: true, control: true },
+      can: seatAccess().owner,
       mode: "following" as const,
       view: part,
       viewsDone: 0,
@@ -169,18 +170,7 @@ describe("session", () => {
       socket.emit({
         type: "doc",
         docRev: 9,
-        doc: {
-          workspace: {
-            name: null,
-            modified: false,
-            recovered: false,
-            epoch: 0,
-            file: null,
-            items: [],
-            rows: [],
-            bookmarks: [],
-          },
-        },
+        doc: scenario("empty").doc(),
       }),
     );
     expect(screen.getByText("live open editable")).toBeTruthy();
@@ -287,18 +277,7 @@ describe("session", () => {
       FakeSocket.latest.emit({
         type: "doc",
         docRev: 99,
-        doc: {
-          workspace: {
-            name: null,
-            modified: false,
-            recovered: false,
-            epoch: 1,
-            file: null,
-            items: [],
-            rows: [],
-            bookmarks: [],
-          },
-        },
+        doc: scenario("empty").doc("kept"),
       }),
     );
     act(() => void vi.advanceTimersByTime(1_000));

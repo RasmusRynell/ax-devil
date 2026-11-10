@@ -103,6 +103,8 @@ Automated checks cannot cut a real network or open a real LAN listener, so run t
 Committed inputs live in `fixtures/` with their provenance and license. Each test owns its temporary files and
 caches; nothing is shared between tests through the filesystem.
 
+`fixtures/session/` holds Session Docs, steps and seat rights written by the backend's own projection (`src/session/frontend_fixtures`). Backend tests rewrite them, and `make check` fails when running it changes them, so a clean checkout (CI) catches a stale committed one. Frontend tests take backend-derived values from them through `frontend/src/session/fakeScenario.ts`; a new shape is a new scenario in `src/session/frontend_fixtures`, never built or patched in TypeScript. A command a test sends changes the fake's Doc only through a recorded step; one with none fails the test unless it is in `UNRECORDED` in `fakeSession.ts` (random ids or file work, so no live edit).
+
 ## CI
 
 `make check` is the gate. CI runs exactly it once, on Linux; the per-OS jobs only build and smoke-test the packaged

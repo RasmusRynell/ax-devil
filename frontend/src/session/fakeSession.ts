@@ -1,108 +1,16 @@
 import type {
   Access,
-  BookmarkGroupInfo,
-  Can,
   CursorPoint,
-  EntryInfo,
   ErrorWire,
-  HiddenTarget,
-  ItemState,
   RefusalCode,
-  ResolutionState,
-  RowInfo,
   SeatAccess,
   SessionClientMessage,
+  SessionCommand,
   SessionServerMessage,
   View,
 } from "../generated/api";
-import { restrict } from "./fakeViews";
-import { hides, rowsOf } from "./fakeRows";
+import { type Scenario, Showing, scenario, seatAccess } from "./fakeScenario";
 import { EMPTY_VIEW } from "./views";
-
-export const resolved = (id: string): ResolutionState => ({
-  status: "Resolved",
-  content: {
-    kind: "SeekableVideo",
-    id: `content-${id}`,
-    generation: 1,
-    display_name: `${id}.mp4`,
-    entry: {
-      id: `content-${id}`,
-      label: `${id}.mp4`,
-      lanes: [`${id}.mp4`],
-      handlers: [],
-      metadata: [],
-      lane_metadata: [],
-    },
-  },
-});
-
-/** One entry of a playlist: its id, and the lanes it plays. */
-export const entry = (id: string, label = id, lanes: string[] = [label]): EntryInfo => ({
-  id,
-  label,
-  lanes,
-  handlers: [],
-  metadata: [],
-  lane_metadata: [],
-});
-
-/** A playlist item that resolved to these entries. */
-export const playlist = (id: string, entries: EntryInfo[], open = true): ItemState =>
-  playlists(id, [[id, entries]], open);
-
-/** A playlist item that resolved to several named playlists, their entries in order. */
-export const playlists = (
-  id: string,
-  groups: readonly (readonly [name: string, entries: EntryInfo[]])[],
-  open = true,
-): ItemState => ({
-  id,
-  label: id,
-  kind: "playlist",
-  open,
-  resolution: {
-    status: "Resolved",
-    content: {
-      kind: "Playlist",
-      id,
-      generation: 1,
-      display_name: id,
-      entries: groups.flatMap(([, entries]) => entries),
-      playlists: groups.map(([name, entries]) => ({
-        id: `${id}/${name}`,
-        label: groups.length > 1 ? `${id} / ${name}` : id,
-        entries: entries.length,
-        metadata: [],
-      })),
-    },
-  },
-});
-
-/** An item that failed; `reason` is what a seat with host details also reads. */
-export const failed = (id: string, reason?: string): ItemState => ({
-  id,
-  label: `${id}.mp4`,
-  kind: "video",
-  open: false,
-  resolution: { status: "Failed", code: "FileNotFound", params: {}, reason },
-});
-
-export const video = (id: string, open = true, resolution = resolved(id)): ItemState => ({
-  id,
-  label: `${id}.mp4`,
-  kind: "video",
-  open,
-  resolution,
-});
-
-/** What the fake tells each kind of seat it can do. Fixed test data, not policy: the real backend decides. */
-const CAN: Record<SeatAccess, Can> = {
-  owner: { view: true, content: true, host: true, control: true },
-  watch: { view: false, content: false, host: false, control: false },
-  explore: { view: true, content: false, host: false, control: false },
-  edit: { view: true, content: true, host: false, control: false },
-};
 
 interface Seat {
   id: number;
@@ -115,23 +23,41 @@ interface Seat {
 }
 
 /**
+ * The commands that change the Doc but have no recorded step, each for one reason. Random ids: `addItems`,
+ * `addResolved`, `editResolved` (a staged playlist), `bookmark.add`. Files read or written: `editItem.video`, `open`,
+ * `save`, `exportBookmarks`. A test sees their ack and no new Doc.
+ */
+const UNRECORDED = new Set([
+  "addItems",
+  "addResolved",
+  "editItem.video",
+  "editResolved",
+  "bookmark.add",
+  "open",
+  "save",
+  "exportBookmarks",
+]);
+
+/** The name `UNRECORDED` knows a content or workspace command by. */
+const nameOf = (cmd: Extract<SessionCommand, { type: "content" | "workspace" }>): string => {
+  if (cmd.type !== "content") return cmd.command.type;
+  if (cmd.command.type === "bookmark") return `bookmark.${cmd.command.command.type}`;
+  if (cmd.command.type === "editItem") return `editItem.${cmd.command.new.type.toLowerCase()}`;
+  return cmd.command.type;
+};
+
+/** The workspace a session starts with unless a test says otherwise: an empty one. */
+const launched = () => ({ scenario: scenario("empty"), state: "initial" });
+
+/**
  * One Session of the fake backend, as the real one keeps it: the Doc, the presenter's view, sharing, and a seat per
  * participant with its own view while it explores. Tests drive the owner through it when the client under test is a
  * watcher.
  */
 export class Room {
-  items: ItemState[] = [];
-  /** What the owner hid in the workspace tree. */
-  hidden: HiddenTarget[] = [];
-  /** Changes the rows the backend would list, for a state the items cannot make, such as an unavailable lane. */
-  tweakRows: (rows: RowInfo[]) => RowInfo[] = (rows) => rows;
-  /** The bookmark groups the Bookmarks view lists. */
-  bookmarks: BookmarkGroupInfo[] = FakeSocket.launch.bookmarks;
+  /** The scenario this room shows, and the state it is in. */
+  shown = new Showing(FakeSocket.launch.scenario, FakeSocket.launch.state);
   docRev = 0;
-  /** Counts the workspaces that replaced the open one. */
-  epoch = FakeSocket.launch.epoch;
-  /** Whether changes restored from a recovery copy await Keep or Discard. */
-  recovered = false;
   presenter: View = EMPTY_VIEW;
   /** What watchers may do while sharing is on; null while it is off. */
   access: Access | null = null;
@@ -154,35 +80,17 @@ export class Room {
     return seat;
   }
 
+  /** Shows a backend-written scenario in one of its states. */
+  show(s: Scenario, state = "initial") {
+    this.shown = new Showing(s, state);
+    this.docRev += 1;
+    this.share();
+  }
+
   /** The owner shows another view. */
   publish(view: View) {
-    this.presenter = restrict(view, this.items, this.hidden);
+    this.presenter = view;
     this.share();
-  }
-
-  /** The Doc changes. */
-  setItems(items: ItemState[]) {
-    this.items = items;
-    this.docRev += 1;
-    this.presenter = restrict(this.presenter, items, this.hidden);
-    this.seats.forEach(
-      (seat) => seat.view && (seat.view = restrict(seat.view, items, this.hidden)),
-    );
-    this.share();
-  }
-
-  /** The owner hides or shows an entry or one lane of it; a video's own entry and a live stream stay shown. */
-  setHidden({ entry, lane }: HiddenTarget, hidden: boolean) {
-    const standalone = this.items.some(({ resolution }) => {
-      if (resolution.status !== "Resolved") return false;
-      const { content } = resolution;
-      if (content.kind === "LiveVideo") return content.id === entry;
-      return content.kind === "SeekableVideo" && !lane && content.entry.id === entry;
-    });
-    if (standalone) return;
-    this.hidden = this.hidden.filter((target) => !hides([target], entry, lane));
-    if (hidden) this.hidden.push({ entry, lane });
-    this.setItems(this.items);
   }
 
   /** The owner changes what watchers may do; a watcher that may not explore goes back to following. */
@@ -208,8 +116,8 @@ export class FakeSocket {
   static sockets: FakeSocket[] = [];
   static rooms = new Map<string, Room>();
   static tokens = 0;
-  /** The epoch and bookmarks of the workspace a new session starts with, as when the app opens a file at launch. */
-  static launch: { epoch: number; bookmarks: BookmarkGroupInfo[] } = { epoch: 0, bookmarks: [] };
+  /** The scenario state a new session starts in, as when the app opens a file at launch. */
+  static launch = launched();
   /** The backend's clock minus the client's, in microseconds. */
   static clockOffsetUs = 5_000_000;
   /** While set, the backend refuses every change to the workspace with this code. */
@@ -222,8 +130,12 @@ export class FakeSocket {
   static refuseTickets = false;
   /** The server password the fake backend asks of a caller who is not joining by a link; null for a server without one. */
   static serverPassword: string | null = null;
+  /** The commands that changed the Doc in the backend, or would not be accepted, though no recorded step says so. */
+  static unrecorded: string[] = [];
 
+  /** Clears the fake between tests; fails the test that sent a command with no recorded step and no exemption. */
   static reset() {
+    const missed = FakeSocket.unrecorded.splice(0);
     FakeSocket.refuseTickets = false;
     FakeSocket.existingFiles.clear();
     FakeSocket.refuseContent = null;
@@ -231,8 +143,12 @@ export class FakeSocket {
     FakeSocket.serverPassword = null;
     FakeSocket.sockets = [];
     FakeSocket.rooms.clear();
-    FakeSocket.launch = { epoch: 0, bookmarks: [] };
+    FakeSocket.launch = launched();
     FakeSocket.clockOffsetUs = 5_000_000;
+    if (missed.length)
+      throw new Error(
+        `no recorded step for ${missed.join("; ")}: record it in the Rust scenario, or use another state`,
+      );
   }
 
   /** A session someone else owns and shares, for the client under test to watch. */
@@ -323,18 +239,7 @@ export class FakeSocket {
       this.emit({
         type: "doc",
         docRev: room.docRev,
-        doc: {
-          workspace: {
-            name: null,
-            modified: room.recovered,
-            recovered: room.recovered,
-            epoch: room.epoch,
-            file: null,
-            items: room.items,
-            rows: room.tweakRows(rowsOf(room.items, room.hidden)),
-            bookmarks: room.bookmarks,
-          },
-        },
+        doc: room.shown.doc(seat.owner),
       });
     }
     // Only the owner holds the link.
@@ -346,7 +251,7 @@ export class FakeSocket {
       docRev: room.docRev,
       presenterRev: 0,
       access,
-      can: CAN[access],
+      can: seatAccess()[access],
       mode: seat.view ? "exploring" : "following",
       sharing: room.access ? { access: room.access, link } : undefined,
       view: seat.view ?? room.presenter,
@@ -374,9 +279,8 @@ export class FakeSocket {
         if (message.seq <= seat.viewsDone) return;
         seat.viewsDone = message.seq;
         // A seat that may only watch has its view refused; the number is finished all the same.
-        if (seat.owner) room.presenter = restrict(message.view, room.items, room.hidden);
-        else if (room.access && room.access !== "watch")
-          seat.view = restrict(message.view, room.items, room.hidden);
+        if (seat.owner) room.presenter = message.view;
+        else if (room.access && room.access !== "watch") seat.view = message.view;
         room.share();
         break;
       }
@@ -453,10 +357,7 @@ export class FakeSocket {
           seq,
           outcome: { status: "failed", error: { code: "WorkspaceExists", params: {} } },
         });
-      if (cmd.command.type === "keep" || cmd.command.type === "discard") {
-        room.recovered = false;
-        room.setItems(room.items);
-      }
+      this.change(room, cmd);
     } else {
       const edits = seat.owner || room.access === "edit";
       if (!edits) return refuse();
@@ -472,57 +373,19 @@ export class FakeSocket {
           seq,
           outcome: { status: "failed", error: FakeSocket.failContent },
         });
-      const doc = cmd.command;
-      if (doc.type === "addItems") {
-        // Adding with `open` opens a viewer for the first item that resolved only, as the backend does once the
-        // whole batch has a result: a stream still resolving has none yet.
-        let opens = doc.open;
-        const added = doc.items.map((item, at): ItemState => {
-          const id = String.fromCharCode(97 + room.items.length + at);
-          if (item.type !== "Video")
-            return {
-              id,
-              label: item.label ?? "Live stream",
-              kind: "live",
-              open: false,
-              resolution: { status: "Pending" },
-            };
-          const ready = video(id, opens);
-          opens = false;
-          return ready;
-        });
-        room.setItems([...room.items, ...added]);
-      } else if (doc.type === "addResolved") {
-        const id = String.fromCharCode(97 + room.items.length);
-        room.setItems([
-          ...room.items,
-          {
-            id,
-            label: doc.label ?? "Playlist",
-            kind: "playlist",
-            open: true,
-            resolution: { status: "Pending" },
-          },
-        ]);
-      } else if (doc.type === "setHidden") room.setHidden(doc.target, doc.hidden);
-      else if (doc.type === "remove") room.setItems(room.items.filter(({ id }) => id !== doc.item));
-      else if (doc.type === "renameItem")
-        room.setItems(
-          room.items.map((item) => (item.id === doc.item ? { ...item, label: doc.label } : item)),
-        );
-      else if (
-        doc.type !== "setLaneMatching" &&
-        doc.type !== "renameWorkspace" &&
-        doc.type !== "editItem" &&
-        doc.type !== "editResolved" &&
-        doc.type !== "bookmark"
-      ) {
-        const open = doc.type === "openViewer";
-        room.setItems(room.items.map((item) => (item.id === doc.item ? { ...item, open } : item)));
-      }
+      this.change(room, cmd);
     }
     this.emit({ type: "ack", seq, outcome: { status: "ok" } });
     room.share();
+  }
+
+  /** Moves the room to the state the backend recorded for `cmd`; a command with none is noted, unless exempt. */
+  private change(room: Room, cmd: Extract<SessionCommand, { type: "content" | "workspace" }>) {
+    if (room.shown.step(cmd)) room.docRev += 1;
+    else if (!UNRECORDED.has(nameOf(cmd)))
+      FakeSocket.unrecorded.push(
+        `${JSON.stringify(cmd)} in ${room.shown.scenario.name}/${room.shown.state}`,
+      );
   }
 
   /** Seats the socket by its `Hello`, or closes it with the code the real backend gives. */

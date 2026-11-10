@@ -282,11 +282,12 @@ fn invalid(field: &str, reason: &str) -> UserError {
     UserError::new(ErrorCode::WorkspaceInvalid, reason).at(Location::field(field))
 }
 
-/// The trimmed `entered` text, or `default` when it is none or blank.
+/// The trimmed `entered` text, or the trimmed `default` when it is none or blank: a host stored has no surrounding
+/// white space, typed or defaulted.
 fn text(entered: &Option<String>, default: &str) -> String {
     match entered.as_deref().map(str::trim) {
         Some(entered) if !entered.is_empty() => entered.to_owned(),
-        _ => default.to_owned(),
+        _ => default.trim().to_owned(),
     }
 }
 

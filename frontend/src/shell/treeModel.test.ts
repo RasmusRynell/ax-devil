@@ -1,29 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { ItemState } from "../generated/api";
-import { rowsOf } from "../session/fakeRows";
-import { entry, failed, playlist, video } from "../session/fakeSession";
+import { scenario } from "../session/fakeScenario";
 import { filteredOut, sectionsOf, tipOf, treeOf, visibleRows, type Order } from "./treeModel";
 
-const ITEMS: ItemState[] = [
-  playlist("mot", [entry("mot/A", "A", ["GT"])], false),
-  { ...failed("odd"), kind: "unreadable" },
-  video("v", false),
-  { ...failed("cam"), kind: "live" },
-  video("w", false),
-];
+const KINDS = scenario("tree-kinds");
+const { ids } = KINDS;
+const tree = treeOf(KINDS.doc().workspace);
 
 describe("sections", () => {
-  const rows = rowsOf(ITEMS, [{ entry: "content-w" }]);
-  const tree = treeOf({
-    name: null,
-    modified: false,
-    recovered: false,
-    epoch: 0,
-    file: null,
-    items: ITEMS,
-    rows,
-    bookmarks: [],
-  });
   const ALL = ["live", "videos", "playlists", "other"] as const;
   const sections = sectionsOf(tree, new Set(), ALL, "workspace");
   const section = (id: string) => sections.find((one) => one.id === id);
@@ -32,13 +15,14 @@ describe("sections", () => {
     expect(sections.map(({ title }) => title)).toEqual(["Live", "Videos", "Playlists", "Other"]);
     expect(section("videos")?.rows.map(({ info, level }) => [info.label, level])).toEqual([
       ["v.mp4", 1],
-      ["v.mp4", 2],
+      ["GT", 2],
+      ["bad.mp4", 1],
+      ["wait.mp4", 1],
       ["w.mp4", 1],
-      ["w.mp4", 2],
     ]);
     expect(
       sectionsOf(
-        tree.filter(({ item }) => item === "v"),
+        tree.filter(({ item }) => item === ids.w),
         new Set(),
         ALL,
         "workspace",
@@ -47,16 +31,16 @@ describe("sections", () => {
   });
 
   it("counts an item once whether or not it is hidden, and says how many rows Show hidden would add", () => {
-    expect(section("videos")?.count).toBe(2);
-    expect(filteredOut(section("videos")?.rows ?? [], false, "")).toBe(2);
-    expect(filteredOut(section("videos")?.rows ?? [], true, "")).toBe(0);
-    expect(filteredOut(section("playlists")?.rows ?? [], false, "")).toBe(0);
+    expect(section("playlists")?.count).toBe(1);
+    expect(filteredOut(section("playlists")?.rows ?? [], false, "")).toBe(3);
+    expect(filteredOut(section("playlists")?.rows ?? [], true, "")).toBe(0);
+    expect(filteredOut(section("videos")?.rows ?? [], false, "")).toBe(0);
   });
 
   it("marks Live only while one of its streams is", () => {
     expect(section("live")?.mark).toBe("muted");
     expect(
-      sectionsOf(tree, new Set(["cam"]), ALL, "workspace").find(({ id }) => id === "live")?.mark,
+      sectionsOf(tree, new Set([ids.cam]), ALL, "workspace").find(({ id }) => id === "live")?.mark,
     ).toBe("live");
   });
 
@@ -69,46 +53,16 @@ describe("sections", () => {
 
 describe("hide targets", () => {
   it("lets only a playlist's entries and the lanes of a recording be hidden", () => {
-    const items = [
-      video("v", false),
-      { ...video("cam", false), kind: "live" as const },
-      playlist("mot", [entry("mot/A", "A", ["GT"])], false),
-    ];
-    const tree = treeOf({
-      name: null,
-      modified: false,
-      recovered: false,
-      epoch: 0,
-      file: null,
-      items,
-      rows: rowsOf(items, []),
-      bookmarks: [],
-    });
-    const hideable = tree
-      .filter(({ target }) => target)
-      .map(({ info }) => `${info.item}:${info.kind}`);
-    expect(hideable).toEqual(["v:lane", "mot:entry", "mot:lane"]);
+    const hideable = tree.filter(({ target }) => target).map(({ info }) => info);
+    const kindsOf = (item: string) =>
+      hideable.filter((info) => info.item === item).map(({ kind }) => kind);
+    expect(new Set(hideable.map(({ item }) => item))).toEqual(new Set([ids.v, ids.mot]));
+    expect(kindsOf(ids.v)).toEqual(["lane"]);
+    expect(kindsOf(ids.mot)).toEqual(["entry", "lane", "lane", "entry", "lane"]);
   });
 });
 
 describe("hover text", () => {
-  const items = [
-    playlist("mot", [entry("mot/A", "A", ["GT", "DPM"]), entry("mot/B", "B", ["GT"])], false),
-    video("v", false),
-    failed("bad", "File not found"),
-  ];
-  const tree = treeOf({
-    name: null,
-    modified: false,
-    recovered: false,
-    epoch: 0,
-    file: null,
-    items,
-    rows: rowsOf(items, [{ entry: "mot/B" }]).map((row) =>
-      row.item === "v" ? { ...row, location: "/data/v.mp4" } : row,
-    ),
-    bookmarks: [],
-  });
   const tip = (item: string, kind: string, open = false) =>
     tipOf(
       tree.find(({ info }) => info.item === item && info.kind === kind)!,
@@ -116,17 +70,17 @@ describe("hover text", () => {
     ).split("\n");
 
   it("says what a row is, counting the playlist's hidden entries and numbering the entries", () => {
-    expect(tip("mot", "playlist")).toContain("Playlist · 2 entries, 1 hidden");
+    expect(tip(ids.mot, "playlist")).toContain("Playlist · 2 entries, 1 hidden");
     expect(tree.filter(({ info }) => info.kind === "entry").map(({ facts }) => facts)).toEqual([
       "Entry 1 of 2",
       "Entry 2 of 2",
     ]);
-    expect(tip("v", "item")).toEqual(["v.mp4", "Video · 1 overlay", "/data/v.mp4"]);
-    expect(tip("v", "lane")).toContain("Overlay");
+    expect(tip(ids.v, "item")).toEqual(["v.mp4", "Video · 1 overlay", "/data/v/v.mp4"]);
+    expect(tip(ids.v, "lane")).toContain("Overlay");
   });
 
   it("adds why a row cannot open, that it is hidden, and that a viewer shows it", () => {
-    expect(tip("bad", "item")).toEqual(["bad.mp4", "File not found"]);
+    expect(tip(ids.bad, "item")).toEqual(["bad.mp4", "File not found"]);
     const hidden = tree.find(({ info }) => info.hidden)!;
     expect(tipOf(hidden, true).split("\n").slice(-2)).toEqual([
       "Hidden: skipped in playback",
@@ -136,113 +90,57 @@ describe("hover text", () => {
 });
 
 describe("search", () => {
-  const rows = (items: ItemState[], hidden: { entry: string }[] = []) =>
-    treeOf({
-      name: null,
-      modified: false,
-      recovered: false,
-      epoch: 0,
-      file: null,
-      items,
-      rows: rowsOf(items, hidden),
-      bookmarks: [],
-    });
-  const list = (tree: ReturnType<typeof rows>, query: string, showHidden = false) =>
-    visibleRows(tree, new Set(), showHidden, query).map(({ row }) => row.info.label);
+  const SORT = scenario("tree-sort");
+  const sorted = treeOf(SORT.doc().workspace);
+  const list = (rows: typeof tree, query: string, showHidden = false) =>
+    visibleRows(rows, new Set(), showHidden, query).map(({ row }) => row.info.label);
 
   it("ignores case and surrounding spaces, and keeps what a match is inside and what is inside a match", () => {
-    const tree = rows([
-      playlist("mot", [entry("mot/A", "A", ["GT"]), entry("mot/B", "B", ["DPM"])]),
-    ]);
-    expect(list(tree, "  dpm ")).toEqual(["mot", "B", "DPM"]);
-    expect(list(tree, "B")).toEqual(["mot", "B", "DPM"]);
-    expect(list(tree, "nothing")).toEqual([]);
-    const folded = rows([playlist("Straße", []), playlist("οδος", [])]);
-    expect(list(folded, "STRASSE")).toEqual(["Straße"]);
-    expect(list(folded, "STRAẞE")).toEqual(["Straße"]);
-    expect(list(folded, "οδοσ")).toEqual(["οδος"]);
-    expect(list(folded, "σ")).toEqual(["οδος"]);
-    const dots = rows([playlist("irmak", []), playlist("ırmak", []), playlist("İstanbul", [])]);
-    expect(list(dots, "irmak")).toEqual(["irmak"]);
-    expect(list(dots, "ırmak")).toEqual(["ırmak"]);
-    expect(list(dots, "i̇stanbul")).toEqual(["İstanbul"]);
+    expect(list(sorted, "  y ")).toEqual(["b", "0", "Y"]);
+    expect(list(sorted, "0")).toEqual(["b", "0", "Y"]);
+    expect(list(sorted, "nothing")).toEqual([]);
+    expect(list(sorted, "STRASSE")).toEqual(["Straße", "1"]);
+    expect(list(sorted, "STRAẞE")).toEqual(["Straße", "1"]);
+    expect(list(sorted, "οδοσ")).toEqual(["οδος", "1"]);
+    expect(list(sorted, "σ")).toEqual(["οδος", "1"]);
+    expect(list(sorted, "irmak")).toEqual(["irmak", "1"]);
+    expect(list(sorted, "ırmak")).toEqual(["ırmak", "1"]);
+    expect(list(sorted, "i̇stanbul")).toEqual(["İstanbul", "1"]);
   });
 
   it("matches the detail line that tells same-named rows apart", () => {
-    const items = [video("a", false), video("b", false)];
-    const tree = treeOf({
-      name: null,
-      modified: false,
-      recovered: false,
-      epoch: 0,
-      file: null,
-      items,
-      rows: rowsOf(items, [])
-        .filter(({ kind }) => kind === "item")
-        .map((row, at) => ({ ...row, label: "clip", detail: `site_${at}` })),
-      bookmarks: [],
-    });
-    expect(visibleRows(tree, new Set(), false, "SITE_1").map(({ row }) => row.info.detail)).toEqual(
-      ["site_1"],
-    );
+    const places = treeOf(scenario("tree-locations").doc().workspace);
+    expect(visibleRows(places, new Set(), false, "Q").map(({ row }) => row.info.detail)).toEqual([
+      "q",
+    ]);
   });
 
   it("ends a live stream's detail with its stream's state, which the search matches", () => {
-    const items = [{ ...video("cam", false), kind: "live" as const }, video("clip", false)];
-    const infos = rowsOf(items, []).map((row) =>
-      row.item === "cam" && row.kind === "item" ? { ...row, detail: "10.0.0.5" } : row,
-    );
-    const workspace = {
-      name: null,
-      modified: false,
-      recovered: false,
-      epoch: 0,
-      file: null,
-      bookmarks: [],
-      items,
-      rows: infos,
-    };
-    const states = new Map([["cam", { state: "live", text: "Live", anyLive: true } as const]]);
-    const details = (tree: ReturnType<typeof treeOf>) => tree.map(({ info }) => info.detail);
-    expect(details(treeOf(workspace, states))).toEqual(["10.0.0.5 · Live", "", "", ""]);
-    expect(details(treeOf(workspace))).toEqual(["10.0.0.5", "", "", ""]);
-    expect(treeOf(workspace, states).map(({ stream }) => stream)).toEqual([
-      "live",
-      null,
-      null,
-      null,
-    ]);
+    const { workspace } = KINDS.doc();
+    const states = new Map([[ids.cam, { state: "live", text: "Live", anyLive: true } as const]]);
+    const detail = (rows: typeof tree, item: string) =>
+      rows.find(({ info }) => info.item === item && info.kind === "item")?.info.detail;
+    expect(detail(treeOf(workspace, states), ids.cam)).toBe("10.0.0.5 · Live");
+    expect(detail(treeOf(workspace), ids.cam)).toBe("10.0.0.5");
+    expect(detail(treeOf(workspace, states), ids.dock)).toBe("10.0.0.6");
+    expect(
+      treeOf(workspace, states)
+        .filter(({ stream }) => stream)
+        .map(({ item }) => item),
+    ).toEqual([ids.cam]);
     const found = visibleRows(treeOf(workspace, states), new Set(), false, "· live");
-    expect(new Set(found.map(({ row }) => row.item))).toEqual(new Set(["cam"]));
+    expect(new Set(found.map(({ row }) => row.item))).toEqual(new Set([ids.cam]));
   });
 
   it("leaves hidden matches out and counts them", () => {
-    const tree = rows(
-      [playlist("mot", [entry("mot/A", "A", ["GT"]), entry("mot/B", "B", ["GT"])])],
-      [{ entry: "mot/B" }],
-    );
-    expect(list(tree, "gt")).toEqual(["mot", "A", "GT"]);
+    expect(list(tree, "gt")).toEqual(["mot", "A", "GT", "v.mp4", "GT"]);
     expect(filteredOut(tree, false, "gt")).toBe(2);
-    expect(list(tree, "gt", true)).toEqual(["mot", "A", "GT", "B", "GT"]);
+    expect(list(tree, "gt", true)).toEqual(["mot", "A", "GT", "B", "GT", "v.mp4", "GT"]);
   });
 
   it("sorts top-level rows by name with what is inside them, equal names keeping the saved order", () => {
-    const items = [
-      playlist("b", [entry("b/1", "1", ["Z"]), entry("b/0", "0", ["Y"])]),
-      playlist("a", [entry("a/1", "1", ["X"])]),
-      playlist("B", []),
-      playlist("zebra", []),
-      playlist("éclair", []),
-      playlist("eagle", []),
-      playlist("😀", []),
-      playlist("\uE000", []),
-      playlist("ırmak", []),
-      playlist("irmak", []),
-    ];
     const names = (order: Order) =>
-      sectionsOf(rows(items), new Set(), ["playlists"], order)[0].rows.map(
-        ({ info }) => info.label,
-      );
+      sectionsOf(sorted, new Set(), ["playlists"], order)[0].rows.map(({ info }) => info.label);
     expect(names("workspace")).toEqual([
       "b",
       "1",
@@ -253,13 +151,27 @@ describe("search", () => {
       "1",
       "X",
       "B",
+      "1",
       "zebra",
+      "1",
       "éclair",
+      "1",
       "eagle",
+      "1",
       "😀",
+      "1",
       "\uE000",
+      "1",
       "ırmak",
+      "1",
       "irmak",
+      "1",
+      "İstanbul",
+      "1",
+      "Straße",
+      "1",
+      "οδος",
+      "1",
     ]);
     expect(names("name")).toEqual([
       "a",
@@ -271,37 +183,43 @@ describe("search", () => {
       "0",
       "Y",
       "B",
+      "1",
       "eagle",
+      "1",
       "irmak",
+      "1",
+      "İstanbul",
+      "1",
+      "Straße",
+      "1",
       "zebra",
+      "1",
       "éclair",
+      "1",
       "ırmak",
+      "1",
+      "οδος",
+      "1",
       "\uE000",
+      "1",
       "😀",
+      "1",
     ]);
   });
 
   it("sorts top-level rows by location, ignoring case, with rows that have none last in the saved order", () => {
-    const where: Record<string, string> = {
-      a: "/Videos/b.mp4",
-      b: "/videos/A.mp4",
-      c: "/videos/c.mp4",
-    };
-    const items = ["none", "a", "b", "also-none", "c"].map((id) => video(id, false));
-    const infos = rowsOf(items, []).map((row) => ({ ...row, location: where[row.item] ?? null }));
-    const tree = treeOf({
-      name: null,
-      modified: false,
-      recovered: false,
-      epoch: 0,
-      file: null,
-      bookmarks: [],
-      items,
-      rows: infos,
-    });
-    const order = sectionsOf(tree, new Set(), ["videos"], "location")[0].rows.flatMap(({ info }) =>
-      info.kind === "item" ? [info.item] : [],
+    const places = treeOf(scenario("tree-locations").doc().workspace);
+    const order = sectionsOf(places, new Set(), ["videos"], "location")[0].rows.map(
+      ({ info }) => info.label,
     );
-    expect(order).toEqual(["b", "a", "c", "none", "also-none"]);
+    expect(order).toEqual([
+      "a.mp4",
+      "B.mp4",
+      "c.mp4",
+      "same.mp4",
+      "same.mp4",
+      "none.mp4",
+      "also-none.mp4",
+    ]);
   });
 });

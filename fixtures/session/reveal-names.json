@@ -1,0 +1,289 @@
+{
+  "docs": {
+    "initial": {
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/mot/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000001/mot",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "other",
+              "open": false,
+              "recipe": {
+                "label": "other",
+                "resolver": "other",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "other",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/other/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/other",
+                      "label": "other",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": "v.mp4",
+                "overlays": [
+                  {
+                    "handler": "MOT_FILE",
+                    "label": "GT",
+                    "options": {
+                      "height": 48,
+                      "width": 64
+                    },
+                    "path": "/data/v/GT.txt"
+                  }
+                ],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [
+                      "MOT_FILE"
+                    ],
+                    "id": "00000000-0000-4000-8000-000000000003",
+                    "label": "v.mp4",
+                    "lane_metadata": [
+                      []
+                    ],
+                    "lanes": [
+                      "GT"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000003",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/mot/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/mot",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/mot/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/mot/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/mot/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/mot/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/other/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/other",
+              "kind": "playlist",
+              "label": "other",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/other/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/other/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/other/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/other/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/other/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/other/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000003",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000003",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/v/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "watcher": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      }
+    }
+  },
+  "ids": {
+    "mot": "00000000-0000-4000-8000-000000000001",
+    "mot/A": "00000000-0000-4000-8000-000000000001/mot/A",
+    "mot/mot": "00000000-0000-4000-8000-000000000001/mot",
+    "other": "00000000-0000-4000-8000-000000000002",
+    "other/A": "00000000-0000-4000-8000-000000000002/other/A",
+    "other/other": "00000000-0000-4000-8000-000000000002/other",
+    "v": "00000000-0000-4000-8000-000000000003"
+  },
+  "steps": []
+}
