@@ -13,7 +13,7 @@ const FIELD = [0x0e, 0x0f, 0x10];
 /** How far a decoded black or white may be off 0 or 255. */
 const SLACK = 24;
 
-module.exports.pixels = () =>
+module.exports.run = () =>
   inBackendWindow(["--video", CHECKER], async (window) => {
     const { js, wait } = page(window);
     await wait(`${SHOWN} >= 0`);

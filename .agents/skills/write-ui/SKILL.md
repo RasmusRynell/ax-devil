@@ -74,7 +74,7 @@ A control that handles keys the shortcuts also use (Space, Enter, arrows) wraps 
 ## Verify
 
 Run in isolation per [testing](../../../docs/runbooks/testing.md#desktop-suite-and-screenshots). `make test-desktop`
-writes `artifacts/screenshots/` in both themes; add your surface to `desktop/smoke.cjs` (or the Gallery) and its fit
+writes `artifacts/screenshots/` in both themes; add your surface as a scenario (`desktop/smoke-<name>.cjs`, listed in `desktop/smoke-groups.cjs`) or to the Gallery and its fit
 check at the window minimum and 200%. Open the PNGs: nothing clipped, overlapping or unreadable, and the new UI
 matches its neighbours. Test behaviour and cut-offs, not fonts, colours or paddings. Report
 which screenshots you looked at and what a virtual display cannot show.

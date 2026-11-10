@@ -20,7 +20,7 @@ const {
 
 const THEMES = ["light", "dark"];
 
-module.exports.plugins = async (window) => {
+module.exports.run = async ({ window }) => {
   const { js, wait } = page(window);
   const shoot = async (name) => {
     await frames({ js });

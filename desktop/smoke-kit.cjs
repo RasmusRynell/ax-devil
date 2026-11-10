@@ -8,6 +8,12 @@ const path = require("node:path");
 // Fixtures and screenshots live under the repository, or under `AX_DEVIL_SMOKE_ROOT` when the app is packaged.
 const SMOKE_ROOT = process.env.AX_DEVIL_SMOKE_ROOT || path.resolve(__dirname, "..");
 const SCREENSHOTS = path.join(SMOKE_ROOT, "artifacts/screenshots");
+// How long one scenario may run before the launch fails naming it; a scenario that needs longer exports `timeoutMs`.
+const SCENARIO_TIMEOUT_MS = 90_000;
+// How long the start of every launch (the first page and Quick Setup) may take before the launch fails naming it.
+const START_TIMEOUT_MS = 90_000;
+// AX_DEVIL_SMOKE_SLOWDOWN=4 runs every page's scripts that many times slower, and every limit that much longer.
+const slowdown = () => Math.max(1, Number(process.env.AX_DEVIL_SMOKE_SLOWDOWN) || 1);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -382,7 +388,7 @@ const removeTemp = (folder) =>
 
 // The part of the smoke test running, for a timeout to name, and when it began. `begin` ends it, logging how long it
 // took and the time so far, and starts the next.
-let running = "shell";
+let running = "start";
 let began = Date.now();
 const started = began;
 function begin(next) {
@@ -395,6 +401,10 @@ module.exports = {
   begin,
   removeTemp,
   current: () => running,
+  SCENARIO_TIMEOUT_MS,
+  START_TIMEOUT_MS,
+  saveFailure,
+  slowdown,
   SMOKE_ROOT,
   SCREENSHOTS,
   button,

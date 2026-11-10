@@ -7,7 +7,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { SCREENSHOTS, frames, page, setView } = require("./smoke-kit.cjs");
 
-module.exports.rows = async (window) => {
+module.exports.run = async ({ window }) => {
   const { js, wait } = page(window);
   const theme = nativeTheme.themeSource;
   const shoot = async (name) => {

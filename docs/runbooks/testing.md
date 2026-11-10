@@ -8,9 +8,9 @@ test pyramid and oracle policy are in [09](../rebuild/09-testing.md).
 ```bash
 make test                          # Every suite
 make test-frontend TEST=App        # React component tests (Vitest, jsdom); TEST filters by name or file
-make test-backend TEST=info        # Rust tests, without and with the embedded frontend
+make test-backend CRATE=scene TEST=info  # Rust tests, one crate or all, without and with the embedded frontend
 make test-integration              # Development supervisor (starts the services, stops the whole tree) and the desktop's argument forwarding
-make test-desktop                  # Electron app on a private display; screenshots in artifacts/screenshots/
+make test-desktop SMOKE=media     # Electron app on a private display, SMOKE picks groups or scenarios; screenshots in artifacts/screenshots/
 make bench                         # Rust benchmarks (sample item encode); numbers on stdout, nothing asserted
 make bench-export                  # Export speed through the real render page, SwiftShader and GPU; numbers on stdout
 make check                         # The gate: every static check, then every suite
@@ -65,17 +65,13 @@ set, which makes the skip a failure.
 
 ## Desktop suite and screenshots
 
-`make test-desktop` builds the debug backend, starts Electron with `--smoke-test` and runs `desktop/smoke.cjs` in the
-window: it waits for the app shell, then switches the theme to light and dark and saves
-`artifacts/screenshots/main-<theme>.png`. Screenshots are captured only after the compositor has drawn a frame for
-the current state; capturing earlier fails. It also captures the View menu and Settings dialog at the window
-minimum, at normal zoom and 200%, then adds a fixture video through the Add Video command and asserts the canvas
-shows a picture and that stepping changes it. On that video it opens the export dialog with Ctrl+E and checks that Export asks the native save dialog and
-that the dialog fits the window minimum at 200% zoom in both themes. It adds the fixture MOT Challenge playlist through the Add Playlist
-dialog and asserts, on the real canvas, that every lane draws its boxes on frame 0 and none on the empty frame 5, in
-both themes, at the window minimum and at 200% zoom. It also runs a sharing scenario (an owner, a watcher that joins
-through a link, and a third window that lists the shared Session) and asserts that no page of the app
-reports a Content Security Policy violation. In smoke
+`make test-desktop` builds the debug backend and runs the smoke scenarios in the Electron window. A scenario is
+`desktop/smoke-<name>.cjs` exporting `run(ctx)`, listed once in `desktop/smoke-groups.cjs` (the launcher refuses a
+scenario in no group). A group is one fresh app launch and runs its scenarios in order, each inheriting the state the
+one before left, so add a scenario after the one whose state it needs. `SMOKE=<token>` names a group, which runs whole,
+or a scenario, which runs with the ones before it in its group; without it every group runs. Each scenario has its own
+timeout, shorter than the launch's own deadline, so a hang fails by scenario name. Screenshots are captured only after the compositor has drawn a frame for
+the current state; capturing earlier fails. In smoke
 mode the desktop's listener for other machines takes a free loopback port through the hidden `--share-address`, so
 nothing leaves the machine. `desktop/fit-coverage.test.cjs` fails until each new dialog names the scenario that fit-checks it, or a reason ([DT-02](../parity/app.md#developer-tooling)).
 
@@ -107,18 +103,20 @@ caches; nothing is shared between tests through the filesystem.
 
 ## CI
 
-`make check` is the gate. CI runs exactly it once, on Linux; the per-OS jobs only build and smoke-test the packaged
+`make check` is the gate. CI runs it on Linux split across jobs; the per-OS jobs only build and smoke-test the packaged
 app. `.github/workflows/ci.yml` runs on pull requests to and pushes on `main` and `rewrite`, and on `v*` tags, with
 every job starting at once:
 
-- `check` (Ubuntu 24.04) runs `make check` once: no other job runs a check or a test. It builds
-  and tests against the same pinned FFmpeg the Linux package ships (`FFMPEG_DIR`, shared cache entry), installs clang
-  for the `media` crate's bindings, and uploads the screenshots. The make target fails when its checks leave generated files changed. Only pushes save the Cargo cache;
+- `check` (Ubuntu 24.04) runs `make check SKIP_DESKTOP=1`: every check and suite except the desktop one. It builds
+  and tests against the same pinned FFmpeg the Linux package ships (`FFMPEG_DIR`, shared cache entry) and installs clang
+  for the `media` crate's bindings. The make target fails when its checks leave generated files changed. Only pushes save the Cargo cache;
   pull requests restore it (a copy per pull request ref would pass the repository's 10 GB cache cap).
-- `package` (Linux, Windows, macOS) runs `make package` and `make smoke-packaged` against a pinned shared FFmpeg
+- `Desktop (<group>)`, one per group in `desktop/smoke-groups.cjs`, runs `make test-desktop SMOKE=<group>` and uploads
+  `screenshots-<group>`.
+- `package` (Linux, Windows, macOS) runs `make package` and `make smoke-packaged` (once per group) against a pinned shared FFmpeg
   (downloaded for Linux and Windows, built from source on macOS, both cached). Windows runs make from Git Bash.
-- `version` and `release` run on tags only. `version` runs `make verify-release-version`; `release` waits for all
-  three other jobs and drafts the release from the packages.
+- `version` and `release` run on tags only. `version` runs `make verify-release-version`; `release` waits for the
+  others and drafts the release from the packages.
 
 A newer push to a pull request cancels its superseded run. Versions are pinned once each: Node in `.node-version`,
 pnpm in `packageManager`, Rust in `rust-toolchain.toml`, actions by commit SHA in the workflow.

@@ -16,7 +16,7 @@ const MODES = [
   ["datahub", "Topic Channel"],
 ];
 
-module.exports.live = async (window) => {
+module.exports.run = async ({ window }) => {
   const { js, wait } = page(window);
   const theme = nativeTheme.themeSource;
   const labelled = (text) =>

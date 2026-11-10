@@ -25,4 +25,4 @@ async function handedOff(shell) {
   );
 }
 
-module.exports = { handedOff };
+module.exports = { run: ({ shell }) => handedOff(shell) };
