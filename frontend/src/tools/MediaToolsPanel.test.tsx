@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FileScopeUnavailable } from "../generated/api";
+import { unavailable } from "../playback/fakeFileAnswer";
 import { fullSample } from "../present/fixtures";
 import { FRAME, file, ids, mount, says, search, showFile } from "./panelRig";
 
@@ -312,7 +313,7 @@ describe("File scope", () => {
     [{ state: "TooLarge" }, "The file is too large to list"],
     [{ state: "PlainLane" }, "This lane has no objects"],
     [{ state: "Failed", code: "Internal", params: {}, reason: "Disk full" }, "Disk full"],
-  ])("says why there are no rows: %j", (unavailable, text) => {
+  ])("says why there are no rows: %j", (why, text) => {
     const { files, queries } = mount();
     showFile();
     expect(screen.getByText("Loading…")).toBeTruthy();
@@ -320,7 +321,7 @@ describe("File scope", () => {
       vi.advanceTimersByTime(150);
     });
     const request = (queries().at(-1) as { request: number }).request;
-    act(() => files.receive({ type: "FileScope", lane: 0, request, unavailable }));
+    act(() => files.receive(unavailable(request, why)));
     expect(screen.getByText(text)).toBeTruthy();
     expect(screen.queryByRole("listbox")).toBeNull();
   });
@@ -331,13 +332,13 @@ describe("File scope", () => {
     answer([file("7", 3)]);
     search("car");
     const request = (queries().at(-1) as { request: number }).request;
-    const unavailable = {
+    const why = {
       state: "Failed",
       code: "Internal",
       params: {},
       reason: "Disk full",
     } as const;
-    act(() => files.receive({ type: "FileScope", lane: 0, request, unavailable }));
+    act(() => files.receive(unavailable(request, why)));
     expect(ids()).toEqual(["7"]);
     expect(screen.getByText("Out of date: Disk full")).toBeTruthy();
 

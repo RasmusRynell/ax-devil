@@ -4,6 +4,7 @@ import { vi } from "vite-plus/test";
 import type { EventDetailWire, EventRowWire, FileRowWire, Located } from "../generated/api";
 import type { LaneFrame, Selection } from "../playback/contract";
 import { FRESH_MEMORY } from "../playback/fields";
+import { found } from "../playback/fakeFileAnswer";
 import { LANE_SETTINGS } from "../playback/fakeOpened";
 import { FileScope } from "../playback/fileScope";
 import { FrameFields } from "../playback/frameFields";
@@ -256,20 +257,23 @@ export function mount(
       vi.advanceTimersByTime(150);
     });
     const request = (queries().at(-1) as { request: number }).request;
+    const { data_revision, ...page } = over;
     act(() =>
-      files.receive({
-        type: "FileRows",
-        lane: 0,
-        request,
-        data_revision: 1,
-        policy_revision: 1,
-        total: rows.length,
-        matched: rows.length,
-        offset: 0,
-        rows,
-        located: null,
-        ...over,
-      }),
+      files.receive(
+        found(
+          request,
+          {
+            kind: "Objects",
+            total: rows.length,
+            matched: rows.length,
+            offset: 0,
+            rows,
+            located: null,
+            ...page,
+          },
+          { data_revision },
+        ),
+      ),
     );
   };
   const eventQueries = () =>
@@ -302,38 +306,30 @@ export function mount(
       eventQueries()
         .filter((query) => query.lane === lane)
         .at(-1)?.request ?? 0;
+    const { data_revision, ...page } = over;
     act(() =>
-      files.receive({
-        type: "EventRows",
-        lane,
-        request,
-        rows: {
-          state: "Found",
-          data_revision: 1,
-          policy_revision: 1,
-          total: rows.length,
-          matched: rows.length,
-          offset: 0,
-          rows,
-          located: null,
-          frame_row: null,
-          ...over,
-        },
-      }),
+      files.receive(
+        found(
+          request,
+          {
+            kind: "Events",
+            total: rows.length,
+            matched: rows.length,
+            offset: 0,
+            rows,
+            located: null,
+            frame_row: null,
+            ...page,
+          },
+          { lane, data_revision },
+        ),
+      ),
     );
   };
   /** Answers the newest request for an event with `detail`. */
   const answerEvent = (detail: EventDetailWire | null) => {
     const { request, event } = eventAsks().at(-1) ?? { request: 0, event: 0 };
-    act(() =>
-      files.receive({
-        type: "Event",
-        lane: 0,
-        request,
-        event,
-        detail: { state: "Found", data_revision: 1, policy_revision: 1, detail },
-      }),
-    );
+    act(() => files.receive(found(request, { kind: "Event", event, detail })));
   };
   return {
     source,

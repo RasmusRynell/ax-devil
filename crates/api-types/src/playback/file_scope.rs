@@ -1,10 +1,10 @@
-//! Wire types of File scope queries on the playback socket (`ClientMessage::FileQuery`, `ServerMessage::FileRows`,
-//! `ServerMessage::FileScope`): the objects a whole overlay file holds, as one lane shows them. The query and its
-//! rows are `scene_store`'s own types. `ClientMessage::Appearances` and `ServerMessage::Appearances` ask where one
-//! object is.
+//! Wire types of File scope requests on the playback socket: the objects and events a lane's whole overlay file holds,
+//! as the lane shows them. The requests are `ClientMessage::FileQuery`, `Appearances`, `EventQuery` and `Event`; every
+//! answer is one `ServerMessage::File` holding a [`FileAnswer`], which the client matches to its request by lane and
+//! request id. The query, rows and event types are `scene_store`'s own.
 
 use crate::ErrorWire;
-use scene_store::EventRow;
+use scene_store::{EventDetail, EventRow, Row};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -33,16 +33,50 @@ pub struct Located {
     pub row: Option<u32>,
 }
 
-/// Where one object is on the video, the answer to `ClientMessage::Appearances`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+/// The answer to a File scope request (`FileQuery`, `Appearances`, `EventQuery` or `Event`): what the file holds, or
+/// why it cannot be asked. The client matches it to its request by `ServerMessage::File`'s `lane` and `request`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "state")]
-pub enum FileAppearances {
-    /// The spans were made.
+pub enum FileAnswer {
+    /// The request was answered.
     Found {
-        /// The source revision they were made under; the client drops spans of any other.
+        /// The source revision the answer was made under; the client drops an answer of any other.
         data_revision: u32,
-        /// The lane policy revision they were placed under; the client drops spans of any other.
+        /// The lane policy revision the answer was placed under; the client drops an answer of any other.
         policy_revision: u32,
+        /// What was found; its kind is the request's.
+        body: FileBody,
+    },
+    /// There is no answer, and why.
+    Unavailable {
+        /// Why the file cannot be asked.
+        unavailable: FileScopeUnavailable,
+    },
+}
+
+/// What a found File scope answer holds, by the kind of request it answers.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind")]
+pub enum FileBody {
+    /// Rows of the objects list, the answer to `FileQuery`.
+    Objects {
+        /// How many objects the video shows that the class toggles keep.
+        #[ts(type = "number")]
+        total: u64,
+        /// How many of them the search matches, which is how many rows there are.
+        #[ts(type = "number")]
+        matched: u64,
+        /// The request's `offset`.
+        offset: u32,
+        /// Rows `offset` to `offset + rows.len()` of the list.
+        rows: Vec<Row>,
+        /// Where the request's `locate` object is in the list; `None` when the request named none.
+        located: Option<Located>,
+    },
+    /// Where one object is on the video, the answer to `Appearances`.
+    Appearances {
+        /// The object's id from the request.
+        entity: String,
         /// The frames the video shows the object on, as `[first, last]` spans of consecutive frames, ascending, with a
         /// frame between two. Empty when the file has no such object or no frame shows it.
         #[ts(type = "Array<[number, number]>")]
@@ -54,10 +88,30 @@ pub enum FileAppearances {
         /// Whether the object has more events than are sent: these are its first ones.
         events_truncated: bool,
     },
-    /// There are no spans, and why.
-    Unavailable {
-        /// Why the file cannot be asked.
-        unavailable: FileScopeUnavailable,
+    /// Rows of the event list, the answer to `EventQuery`.
+    Events {
+        /// How many events the video shows.
+        #[ts(type = "number")]
+        total: u64,
+        /// How many of them the search matches, which is how many rows there are.
+        #[ts(type = "number")]
+        matched: u64,
+        /// The request's `offset`.
+        offset: u32,
+        /// Rows `offset` to `offset + rows.len()` of the list, in frame order.
+        rows: Vec<EventRow>,
+        /// The row of the request's `locate` event; `None` when the request named none or the list does not hold it.
+        located: Option<u32>,
+        /// How many rows are on frames at or before the request's `frame`, which is where the line for that frame
+        /// goes; `None` when the request named none.
+        frame_row: Option<u32>,
+    },
+    /// One event, the answer to `Event`.
+    Event {
+        /// The event from the request.
+        event: u32,
+        /// The event; `None` when the file has no such event or the video does not show it.
+        detail: Option<EventDetail>,
     },
 }
 
@@ -65,5 +119,6 @@ pub enum FileAppearances {
 pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<FileScopeUnavailable>();
     types.visit::<Located>();
-    types.visit::<FileAppearances>();
+    types.visit::<FileAnswer>();
+    types.visit::<FileBody>();
 }

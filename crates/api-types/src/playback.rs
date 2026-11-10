@@ -50,7 +50,7 @@ use crate::{
     inspect::{InspectionWire, ObjectItemsWire},
     live::{LiveAction, LiveEventsWire, LiveGapWire, LiveOpenedWire, LiveStatusWire},
 };
-use scene_store::{Row, Search, Sort};
+use scene_store::{Search, Sort};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -162,9 +162,8 @@ pub enum ClientMessage {
         job: u32,
     },
     /// Asks for rows of a lane's File scope list: the objects its whole file holds that the video shows under the
-    /// lane's matching, kept by the class toggles and the search, sorted and paged. The answer is `FileRows` or
-    /// `FileScope`. One request runs per lane; a newer `request` replaces the older, which is never answered. Owners
-    /// only. A `limit` outside 1 to 200 or `bins` above 256 is a `LaneProblem`.
+    /// lane's matching, kept by the class toggles and the search, sorted and paged. The answer is `File`. One request
+    /// runs per lane; a newer `request` replaces the older, which is never answered. Owners only. A `limit` outside 1 to 200 or `bins` above 256 is a `LaneProblem`.
     FileQuery {
         /// The lane's position in `Opened.lanes`.
         lane: u16,
@@ -198,7 +197,7 @@ pub enum ClientMessage {
         /// What to do.
         action: LiveAction,
     },
-    /// Asks where one object of a lane's file is on the video: the answer is `Appearances`. Independent of the lane's
+    /// Asks where one object of a lane's file is on the video: the answer is `File`. Independent of the lane's
     /// File scope list, which it does not cancel; a newer `request` for the lane stops an older one still running,
     /// which is then not answered. The lane's class toggles do not matter. Owners only.
     Appearances {
@@ -209,9 +208,9 @@ pub enum ClientMessage {
         /// The object's id.
         entity: String,
     },
-    /// Asks for rows of a lane's event list; the answer is `EventRows`.
+    /// Asks for rows of a lane's event list; the answer is `File`.
     EventQuery(EventQueryWire),
-    /// Asks for one event of a lane's file; the answer is `Event`.
+    /// Asks for one event of a lane's file; the answer is `File`.
     Event(EventAskWire),
     /// Ends the session and releases the source.
     Close,
@@ -362,38 +361,14 @@ pub enum ServerMessage {
         /// Where it stands.
         state: ExportStateWire,
     },
-    /// Rows of a lane's File scope list, the answer to a `FileQuery` that could be answered. Not held back for a
-    /// frame.
-    FileRows {
+    /// The answer to a File scope request that was not replaced; not held back for a frame.
+    File {
         /// The lane's position in `Opened.lanes`.
         lane: u16,
         /// The request answered.
         request: u32,
-        /// The source revision the rows were listed under; the client drops rows of any other.
-        data_revision: u32,
-        /// The lane policy revision the presence was placed under; the client drops rows of any other.
-        policy_revision: u32,
-        /// How many objects the video shows that the class toggles keep.
-        #[ts(type = "number")]
-        total: u64,
-        /// How many of them the search matches, which is how many rows there are.
-        #[ts(type = "number")]
-        matched: u64,
-        /// The request's `offset`.
-        offset: u32,
-        /// Rows `offset` to `offset + rows.len()` of the list.
-        rows: Vec<Row>,
-        /// Where the request's `locate` object is in the list; `None` when the request named none.
-        located: Option<Located>,
-    },
-    /// The answer to a `FileQuery` that cannot be answered, and why. Not held back for a frame.
-    FileScope {
-        /// The lane's position in `Opened.lanes`.
-        lane: u16,
-        /// The request answered.
-        request: u32,
-        /// Why there are no rows.
-        unavailable: FileScopeUnavailable,
+        /// What the file holds, or why it cannot be asked.
+        answer: FileAnswer,
     },
     /// A live stream is open: the first message of its socket, instead of `Opened`. See [`crate::live`].
     LiveOpened(LiveOpenedWire),
@@ -403,22 +378,6 @@ pub enum ServerMessage {
     LiveEvents(LiveEventsWire),
     /// Samples a live lane lost, for the Events list.
     LiveGap(LiveGapWire),
-    /// Where one object is on the video, the answer to an `Appearances` that was not replaced. Not held back for a
-    /// frame.
-    Appearances {
-        /// The lane's position in `Opened.lanes`.
-        lane: u16,
-        /// The request answered.
-        request: u32,
-        /// The object's id from the request.
-        entity: String,
-        /// The spans, or why there are none.
-        appearances: FileAppearances,
-    },
-    /// Rows of a lane's event list. Not held back for a frame.
-    EventRows(EventRowsWire),
-    /// One event of a lane's file. Not held back for a frame.
-    Event(EventWire),
     /// The session cannot go on and ends.
     Error(ErrorWire),
 }

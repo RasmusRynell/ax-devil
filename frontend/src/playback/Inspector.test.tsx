@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { act, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { InspectionView, Summary } from "./contract";
+import { found } from "./fakeFileAnswer";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { FRESH_MEMORY } from "./fields";
 import { FileScope } from "./fileScope";
@@ -388,22 +389,20 @@ describe("inspector", () => {
     expect(ask).toMatchObject({ lane: 0, entity: "7" });
     const answer = (spans: [number, number][], over = {}) =>
       act(() =>
-        files.receive({
-          type: "Appearances",
-          lane: 0,
-          request: (ask as { request: number }).request,
-          entity: "7",
-          appearances: {
-            state: "Found",
-            data_revision: 1,
-            policy_revision: 1,
-            spans,
-            truncated: false,
-            events: [],
-            events_truncated: false,
-            ...over,
-          },
-        }),
+        files.receive(
+          found(
+            (ask as { request: number }).request,
+            {
+              kind: "Appearances",
+              entity: "7",
+              spans,
+              truncated: false,
+              events: [],
+              events_truncated: false,
+            },
+            over,
+          ),
+        ),
       );
     // An answer made under another source revision is not the object's.
     answer([[10, 20]], { data_revision: 2 });

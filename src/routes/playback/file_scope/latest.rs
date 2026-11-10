@@ -2,14 +2,10 @@
 //! ended, and none waits for another kind of request. `Appearances` and the event requests run this way beside the
 //! lane's objects list.
 
-use super::{Cache, Reply, Stop};
-use api_types::{
-    Audience,
-    playback::{FileScopeUnavailable, ServerMessage},
-    project,
-};
+use super::{Cache, Reply, Stop, input};
+use api_types::{Audience, playback::FileAnswer};
 use foundation::CancelToken;
-use overlays::{FileScopeBlocked, FileScopeInput, ViewerOverlays};
+use overlays::{FileScopeInput, ViewerOverlays};
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
@@ -37,30 +33,20 @@ impl Latest {
     }
 
     /// Takes request `request` of `lane`, replacing the lane's older one. `own` says whether the viewer chooses its
-    /// own frames; if not, or if the lane has no file to ask, the answer is `unavailable` at once. Otherwise `answer`
-    /// runs on a blocking thread.
+    /// own frames; if not, or if the lane has no file to ask, the answer is that it is unavailable at once. Otherwise
+    /// `answer` runs on a blocking thread.
     pub(super) fn ask(
         &mut self,
         overlays: &ViewerOverlays,
         cache: &Arc<Cache>,
         own: bool,
         (lane, request): (u16, u32),
-        unavailable: impl Fn(FileScopeUnavailable) -> ServerMessage + Send + 'static,
-        answer: impl FnOnce(
-            &FileScopeInput,
-            &Cache,
-            &CancelToken,
-            Audience,
-        ) -> Result<ServerMessage, Stop>
+        answer: impl FnOnce(&FileScopeInput, &Cache, &CancelToken, Audience) -> Result<FileAnswer, Stop>
         + Send
         + 'static,
     ) {
         self.release(lane);
-        if !own {
-            self.say(lane, request, unavailable(FileScopeUnavailable::Following));
-            return;
-        }
-        match overlays.file_scope(lane) {
+        match input(overlays, own, lane, self.audience) {
             Ok(input) => {
                 cache.open(lane);
                 let (cache, audience) = (Arc::clone(cache), self.audience);
@@ -68,40 +54,19 @@ impl Latest {
                 let token = cancel.clone();
                 self.tasks
                     .spawn_blocking(move || match answer(&input, &cache, &token, audience) {
-                        Ok(message) => Some(Reply {
-                            lane,
-                            request,
-                            message,
-                        }),
+                        Ok(answer) => Some(Reply::file(lane, request, answer)),
                         Err(Stop::Cancelled) => None,
-                        Err(Stop::Unavailable(why)) => Some(Reply {
-                            lane,
-                            request,
-                            message: unavailable(why),
-                        }),
+                        Err(Stop::Unavailable(why)) => Some(Reply::unavailable(lane, request, why)),
                     });
                 self.running.insert(lane, (request, cancel));
             }
-            Err(blocked) => {
-                let why = match blocked {
-                    FileScopeBlocked::Plain => FileScopeUnavailable::PlainLane,
-                    FileScopeBlocked::Reading => FileScopeUnavailable::Reading,
-                    FileScopeBlocked::Failed(error) => {
-                        FileScopeUnavailable::Failed(project(&error, self.audience))
-                    }
-                };
-                self.say(lane, request, unavailable(why));
-            }
+            Err(why) => self.say(Reply::unavailable(lane, request, why)),
         }
     }
 
-    /// Queues `message` as the answer to request `request` of `lane`.
-    pub(super) fn say(&mut self, lane: u16, request: u32, message: ServerMessage) {
-        self.ready.push_back(Reply {
-            lane,
-            request,
-            message,
-        });
+    /// Queues `reply` as the answer to its request.
+    pub(super) fn say(&mut self, reply: Reply) {
+        self.ready.push_back(reply);
     }
 
     /// The lane's request is no longer wanted: it stops without an answer.
