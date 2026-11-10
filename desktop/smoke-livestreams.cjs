@@ -51,7 +51,7 @@ const WORKSPACE = {
   reviewed: [],
 };
 
-module.exports.liveStreams = async () => {
+module.exports.run = async () => {
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), "ax-devil-streams-"));
   const file = path.join(folder, "streams.ax-devil.workspace");
   await fs.writeFile(file, JSON.stringify(WORKSPACE));

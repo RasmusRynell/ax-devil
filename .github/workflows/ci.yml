@@ -1,6 +1,7 @@
 name: CI
 
-# make check is the gate and runs once, on Linux. The per-OS jobs only build and smoke-test the packaged app.
+# make check is the gate, split across parallel Linux jobs: `check` runs everything but the desktop suite, and one
+# `desktop` job per smoke group runs that group. The per-OS jobs only build and smoke-test the packaged app.
 # A pushed version tag then turns a green run into a draft release.
 on:
   push:
@@ -29,62 +30,17 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-
-      # Only pushes save this cache (the last step of the job): a copy per pull request ref would pass the repository's
-      # 10 GB cap and evict the one every run restores.
-      - id: cargo-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            .tools
-            target
-          # target holds outputs linked against one FFmpeg, so the restore prefix names it.
-          key: cargo-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg-fetch.sh') }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'Makefile') }}
-          restore-keys: cargo-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg-fetch.sh') }}-
-
-      # The media crate generates its FFmpeg bindings with clang.
-      - name: Install the private display and clang
-        timeout-minutes: 5
-        run: |
-          # The Azure mirror stalls; retries and timeouts make update and install fail fast or recover.
-          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99ci-retries
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xauth xvfb clang libclang-dev
-
-      # The pinned FFmpeg the Linux package ships; the loader path is for the test binaries and the app.
-      - name: Choose the FFmpeg folder
-        run: |
-          echo "FFMPEG_DIR=$RUNNER_TEMP/ffmpeg" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/ffmpeg/lib" >> "$GITHUB_ENV"
-
-      # The same key as the Linux package job, so the two share one entry.
-      - name: Restore FFmpeg
-        id: ffmpeg
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ${{ env.FFMPEG_DIR }}
-          key: ffmpeg-linux--${{ hashFiles('scripts/ffmpeg-fetch.sh') }}
-
-      - name: Get FFmpeg
-        if: steps.ffmpeg.outputs.cache-hit != 'true'
-        run: scripts/ffmpeg-fetch.sh linux "$FFMPEG_DIR"
-
-      # Ubuntu 24.04 blocks the unprivileged user namespaces Electron's sandbox needs.
-      - name: Allow Electron's sandbox
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - id: setup
+        uses: ./.github/actions/setup-linux
 
       - name: Check
-        run: make check
+        run: make check SKIP_DESKTOP=1
 
-      - if: ${{ github.event_name == 'push' && steps.cargo-cache.outputs.cache-hit != 'true' }}
+      # Puts the binary the Desktop jobs build into the cache.
+      - if: ${{ github.event_name == 'push' && steps.setup.outputs.cargo-cache-hit != 'true' }}
+        run: scripts/cargo build --locked --bin ax-devil
+
+      - if: ${{ github.event_name == 'push' && steps.setup.outputs.cargo-cache-hit != 'true' }}
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
@@ -94,17 +50,53 @@ jobs:
             target
           key: cargo-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg-fetch.sh') }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'Makefile') }}
 
+  # The groups come from the file the launcher reads, so a group cannot be missing here.
+  desktop-groups:
+    name: Desktop groups
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      groups: ${{ steps.groups.outputs.groups }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .node-version
+
+      - id: groups
+        run: echo "groups=$(node -p 'JSON.stringify(Object.keys(require("./desktop/smoke-groups.cjs")))')" >> "$GITHUB_OUTPUT"
+
+  desktop:
+    name: Desktop (${{ matrix.group }})
+    needs: desktop-groups
+    runs-on: ubuntu-24.04
+    # The largest deadline (media, 15.5 min) plus setup and a cold debug build on a cache miss.
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        group: ${{ fromJSON(needs.desktop-groups.outputs.groups) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/setup-linux
+
+      - name: Desktop suite
+        run: make test-desktop SMOKE=${{ matrix.group }}
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: screenshots
+          name: screenshots-${{ matrix.group }}
           path: artifacts/screenshots/
           if-no-files-found: ignore
 
   package:
     name: Package (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    # Tool installs and a cold release build, the 50-minute packaged smoke cap, and the uploads.
+    timeout-minutes: 80
     defaults:
       run:
         shell: bash
@@ -193,9 +185,12 @@ jobs:
       - name: Build and package
         run: make package OS=${{ matrix.name }}
 
-      # The script ends the app after three minutes and prints its logs; this ends the script should it hang itself.
+      # The script runs every smoke group on its own launch, waits as long as the launcher's deadline for each, and prints
+      # the logs. This cap ends a script that hangs itself, so it sits above the 44-minute sum of the deadlines
+      # (node scripts/smoke-desktop.cjs --plan ''), which are above every scenario's own timeout: a hung scenario is
+      # always named first. It must grow with the groups file.
       - name: Smoke-test the package
-        timeout-minutes: 8
+        timeout-minutes: 50
         run: make smoke-packaged OS=${{ matrix.name }}
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -236,7 +231,7 @@ jobs:
   release:
     name: Draft the release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [check, package, version]
+    needs: [check, desktop, package, version]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

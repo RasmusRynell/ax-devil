@@ -85,7 +85,7 @@ async function shoot(window, banner, name) {
   }
 }
 
-module.exports.reload = async () => {
+module.exports.run = async () => {
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), "ax-devil-reload-"));
   const overlay = path.join(folder, "frames.xml");
   await fs.copyFile(OVERLAY, overlay);

@@ -18,7 +18,7 @@ const INVOLVED = `${EVENT_PAGE} [role=listbox][aria-label="Objects involved"]`;
 const OBJECT_EVENTS = `${OBJECT_PAGE} section[aria-label=Events]`;
 const SEARCH = `${PANEL} input[aria-label="Search events"]`;
 
-module.exports.events = () =>
+module.exports.run = () =>
   inBackendWindow(
     [
       "--video",

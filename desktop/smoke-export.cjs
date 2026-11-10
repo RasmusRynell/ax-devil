@@ -8,7 +8,7 @@ const path = require("node:path");
 const fit = require("./fit.cjs");
 const { SCREENSHOTS, frames, page, setView, until } = require("./smoke-kit.cjs");
 
-module.exports.exportDialog = async (window) => {
+module.exports.run = async ({ window }) => {
   const { js, wait } = page(window);
   const theme = nativeTheme.themeSource;
   await setView(window, [1100, 720], 1);

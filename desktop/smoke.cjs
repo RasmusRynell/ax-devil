@@ -1,50 +1,36 @@
-// Desktop smoke test and screenshot harness, run by `make test-desktop` on a private display.
-const { dialog, nativeTheme } = require("electron");
+// Desktop smoke test and screenshot harness, run by `make test-desktop` on a private display. One launch is one group of
+// scenarios (`smoke-groups.cjs`): the launcher names them in `AX_DEVIL_SMOKE_RUN`, and they run in that order after the
+// start every launch begins with.
+const { nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
-const os = require("node:os");
 const path = require("node:path");
 const fit = require("./fit.cjs");
 const {
+  SCENARIO_TIMEOUT_MS,
+  START_TIMEOUT_MS,
   SCREENSHOTS,
   SMOKE_ROOT,
   begin,
-  button,
-  frames,
-  isolatedState,
+  current,
   page,
   reload,
+  saveFailure,
   setView,
+  slowdown,
   until,
   watchCsp,
 } = require("./smoke-kit.cjs");
-const { fitChecker } = require("./smoke-fit.cjs");
-const { gallery } = require("./smoke-gallery.cjs");
-const { items } = require("./smoke-items.cjs");
-const { rows } = require("./smoke-rows.cjs");
-const { sidebar } = require("./smoke-sidebar.cjs");
-const { playlist } = require("./smoke-playlist.cjs");
-const { split } = require("./smoke-split.cjs");
-const { plugins } = require("./smoke-plugins.cjs");
-const { bookmarks } = require("./smoke-bookmarks.cjs");
-const { exportDialog } = require("./smoke-export.cjs");
-const { live } = require("./smoke-live.cjs");
-const { liveStreams } = require("./smoke-livestreams.cjs");
-const { remote } = require("./smoke-remote.cjs");
-const { handedOff } = require("./smoke-handoff.cjs");
-const { sharing } = require("./smoke-sharing.cjs");
-const { reload: reloadOffer } = require("./smoke-reload.cjs");
-const { pixels } = require("./smoke-pixels.cjs");
-const { video } = require("./smoke-video.cjs");
 
-module.exports = async (window, shell) => {
+// The first page of a first run, which every scenario starts from: it breaks no Content Security Policy rule, and Quick
+// Setup fits the smallest window until Done closes it.
+async function start({ window, ownerCsp }) {
   const { js, wait } = page(window);
   await wait("document.querySelector('h1')?.textContent === 'ax-devil'");
   assert.equal(await js("document.querySelector('[role=alert]')"), null);
 
   // No page of the app may break its Content Security Policy. A reload covers the load itself; a request the
   // policy forbids shows the collector sees violations at all.
-  const ownerCsp = watchCsp(window);
   await reload(window);
   await wait("document.querySelector('h1')?.textContent === 'ax-devil'");
   await js("fetch('https://example.invalid/').catch(() => {})");
@@ -104,304 +90,54 @@ module.exports = async (window, shell) => {
   );
   await wait("!document.querySelector('dialog')");
   window.setSize(...size);
+}
 
-  // The start panel of a fresh page, with no dialog over it, has Open Workspace as its default: a real Enter asks
-  // the native Open dialog.
-  await reload(window);
-  await wait("document.querySelector('h1')?.textContent === 'ax-devil'");
-  // Enter reaches the shell's default only once the start panel shows its enabled Open Workspace, nothing has the
-  // focus but the page, no dialog is open and the window has the keyboard; a frame later the shell's key handler,
-  // which follows the render, is in place.
-  await wait(
-    `document.querySelector('[data-cursor-id="sidebar:open-workspace"]:not(:disabled)') &&
-      document.activeElement === document.body && !document.querySelector('dialog[open]') && document.hasFocus()`,
-  );
-  await frames({ js });
-  const showOpenDialog = dialog.showOpenDialog.bind(dialog);
-  let asked = false;
-  dialog.showOpenDialog = async () => {
-    asked = true;
-    return { canceled: true, filePaths: [] };
-  };
-  for (const type of ["keyDown", "char", "keyUp"])
-    window.webContents.sendInputEvent({ type, keyCode: type === "char" ? "\r" : "Enter" });
-  await until(() => asked, "Enter to open the Open Workspace dialog");
-  dialog.showOpenDialog = showOpenDialog;
-
-  const backgrounds = {};
-  for (const theme of ["light", "dark"]) {
-    nativeTheme.themeSource = theme;
-    await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
-    backgrounds[theme] = await js("getComputedStyle(document.body).backgroundColor");
-    // Capturing before the compositor has produced a frame for the new theme fails.
-    await js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
-    const image = await window.webContents.capturePage();
-    await fs.writeFile(path.join(SCREENSHOTS, `main-${theme}.png`), image.toPNG());
+// Runs `work` for at most `limit` ms (longer under AX_DEVIL_SMOKE_SLOWDOWN); a scenario that hangs fails the launch
+// naming itself and the step it was in, instead of leaving the launch to its outer deadline. Expiry settles the outcome
+// at once; the window's picture is taken afterwards, so a scenario that finishes meanwhile cannot undo the failure.
+async function within(window, name, limit, work) {
+  let timer;
+  let expiry;
+  const expired = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const seconds = (limit * slowdown()) / 1000;
+      expiry = new Error(
+        `Smoke scenario "${name}" timed out after ${seconds} s, in "${current()}"`,
+      );
+      reject(expiry);
+    }, limit * slowdown());
+  });
+  const running = work();
+  // The abandoned scenario may still fail later, after the launch has reported.
+  running.catch(() => undefined);
+  try {
+    await Promise.race([running, expired]);
+  } catch (error) {
+    if (error === expiry) error.message = `${error.message}\n${await saveFailure(window)}`;
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
-  assert.notEqual(backgrounds.light, backgrounds.dark, "The window must follow the theme");
+}
 
-  // The workspace is named from its title: typing is sent as it goes, Escape takes the text back, Enter keeps it.
-  const title = "document.querySelector('[aria-label=Sidebar] h2')";
-  const editTitle = async (text) => {
-    await js(`${title}.querySelector('button').click()`);
-    await wait(`document.activeElement === ${title}.querySelector('input')`);
-    for (const letter of text) window.webContents.insertText(letter);
-    await wait(`${title}.querySelector('input').value === ${JSON.stringify(text)}`);
-  };
-  const press = (keyCode) =>
-    ["keyDown", "keyUp"].forEach((type) => window.webContents.sendInputEvent({ type, keyCode }));
-  await editTitle("Review");
-  await wait("document.title.startsWith('● ')");
-  press("Escape");
-  await wait(`${title}.textContent === 'Untitled' && document.title === 'Untitled — ax-devil'`);
-  assert.equal(await js("document.querySelector('[aria-label=\"Unsaved changes\"]')"), null);
-  await editTitle("Review");
-  press("Enter");
-  await wait("document.title === '● Review — ax-devil'");
-  for (const theme of ["light", "dark"]) {
-    nativeTheme.themeSource = theme;
-    await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
-    await shoot(`workspace-name-${theme}.png`);
-  }
-  await editTitle("Untitled");
-  press("Enter");
-  await wait("document.title === 'Untitled — ax-devil'");
-
-  // The title bar has the window controls, and Ctrl+= and Ctrl+0 zoom the page. A window that fills a small screen
-  // counts as maximized, and then its second control is Restore.
-  for (const selector of [
-    "[aria-label=Minimize]",
-    "[aria-label=Maximize], [aria-label=Restore]",
-    "[aria-label=Close]",
-  ])
-    assert.ok(await js(`document.querySelector("${selector}") !== null`), selector);
-  const zoomKey = (keyCode) =>
-    window.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers: ["control"] });
-  const density = await js("window.devicePixelRatio");
-  zoomKey("=");
-  await wait(`window.devicePixelRatio > ${density}`);
-  zoomKey("0");
-  await wait(`window.devicePixelRatio === ${density}`);
-
-  // The smallest window, at normal zoom and at 200%: the View menu, then the Settings and Keyboard Shortcuts dialogs, in both themes.
-  const openShortcuts = async () => {
-    await js(
-      "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
-    );
-    await js(
-      "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'File').click()",
-    );
-    await wait("document.querySelector('[role=menu]')");
-    await js(
-      "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent.startsWith('Keyboard Shortcuts')).click()",
-    );
-  };
-  // A recent workspace in a deep folder, as a long state folder gives: the start panel still has to fit.
-  const state = isolatedState();
-  const deep = path.join(
-    os.tmpdir(),
-    "ax-devil-smoke-recents",
-    "a-folder-whose-name-is-far-too-long-for-the-narrow-sidebar",
-    "and-another-one-below-it",
-    "Quarterly review.ax-devil.workspace",
+module.exports = async (window, shell) => {
+  const names = (process.env.AX_DEVIL_SMOKE_RUN ?? "").split(",").filter(Boolean);
+  assert.ok(
+    names.length > 0,
+    "Smoke runs go through `make test-desktop [SMOKE=<groups or scenarios>]`",
   );
-  const recents = path.join(state, "ax-devil", "recent-workspaces.json");
-  // The title edits above left a recovery copy that the backend takes off the recents a moment after the title reads
-  // Untitled again; a copy recorded after the fixture is written would be listed ahead of it.
-  await until(async () => {
-    try {
-      return !JSON.parse(await fs.readFile(recents, "utf8")).some((recent) =>
-        recent.path.replaceAll("\\", "/").includes("/unsaved-workspaces/"),
-      );
-    } catch (error) {
-      return error.code === "ENOENT";
-    }
-  }, "the recovery copy off the recent workspaces");
-  await fs.mkdir(path.dirname(recents), { recursive: true });
-  await fs.writeFile(recents, JSON.stringify([{ path: deep, used_ms: Date.now() }]));
-  await reload(window);
-  await wait("document.querySelector('h1')?.textContent === 'ax-devil'");
-  await wait("document.querySelector('[data-cursor-id^=\"row:recent:\"]')");
-  await fitChecker(window);
-  // At 640x480 the name, the end of the folder and the date each stay whole and inside the row, and the folder's
-  // tooltip holds all of it.
-  await setView(window, [640, 480], 1);
-  const recent = await js(`(() => {
-    const row = document.querySelector('[data-cursor-id^="row:recent:"]');
-    const box = row.getBoundingClientRect();
-    const inside = (element) => {
-      const rect = element.getBoundingClientRect();
-      return rect.width > 0 && rect.left >= box.left - 1 && rect.right <= box.right + 1;
-    };
-    const folder = row.querySelector("span[title]");
-    return {
-      name: inside(row.querySelector(".truncate")),
-      suffix: inside(folder.lastElementChild) && folder.lastElementChild.scrollWidth <= folder.lastElementChild.clientWidth + 1,
-      date: inside(row.lastElementChild) && row.lastElementChild.textContent === "today",
-      folder: folder.title,
-    };
-  })()`);
-  assert.deepEqual(
-    [recent.name, recent.suffix, recent.date],
-    [true, true, true],
-    "name, folder suffix and date stay whole in the row",
-  );
-  assert.equal(recent.folder.replaceAll("\\", "/"), path.dirname(deep).replaceAll("\\", "/"));
-  for (const [theme, zoom] of [
-    ["light", 1],
-    ["dark", 1],
-    ["light", 2],
-    ["dark", 2],
-  ]) {
-    await setView(window, [640, 480], zoom);
-    const suffix = zoom === 1 ? "" : "-200";
-    nativeTheme.themeSource = theme;
-    await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
-    // Nothing is open: the page must fit the window, and every control must be reachable.
-    await js(
-      "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
-    );
-    await frame();
-    // With the sidebar open, then closed (the welcome area shows).
-    for (const sidebar of ["open", "closed"]) {
-      assert.deepEqual(
-        await js(`(${fit.page.toString()})()`),
-        [],
-        `The page must fit the 640x480 window at ${zoom * 100}% zoom, sidebar ${sidebar}`,
-      );
-      if (zoom === 2 || sidebar === "open") await shoot(`layout-${sidebar}-${theme}${suffix}.png`);
-      await js("document.querySelector('[aria-label=Workspace]').click()");
-      await frame();
-    }
-    await js("document.querySelector('[aria-label=Sessions]').click()");
-    await wait(button("Start sharing"));
-    assert.deepEqual(
-      await js(`(${fit.page.toString()})()`),
-      [],
-      `The Sessions view must fit the 640x480 window at ${zoom * 100}% zoom`,
-    );
-    // The Connect dialog with its password field, which a typed server address brings in.
-    await js(`${button("Connect to server")}.click()`);
-    await wait("document.querySelector('dialog[open] input')");
-    window.webContents.insertText("http://192.168.100.200:7340");
-    await wait("document.querySelector('dialog[open] input[type=password]')");
-    assert.deepEqual(
-      await js(`(${fit.page.toString()})()`),
-      [],
-      `The Connect dialog must fit the 640x480 window at ${zoom * 100}% zoom`,
-    );
-    await shoot(`connect-${theme}${suffix}.png`);
-    await js(
-      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Cancel').click()",
-    );
-    await wait("!document.querySelector('dialog')");
-    // At 200% an owner's own session is the tallest the Sessions view gets.
-    if (zoom === 2) {
-      await js(`${button("Start sharing")}.click()`);
-      await wait("document.querySelector('aside input[aria-label=\"Join link\"]')");
-      assert.deepEqual(
-        await js(`(${fit.page.toString()})()`),
-        [],
-        "An owner's Sessions view must fit the 640x480 window at 200% zoom",
-      );
-      await shoot(`session-owner-${theme}${suffix}.png`);
-      await js(`${button("Stop sharing")}.click()`);
-      await wait(button("Start sharing"));
-    }
-    await js("document.querySelector('[aria-label=Workspace]').click()");
-    await js(
-      "!document.querySelector('[role=menu]') && [...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'View').click()",
-    );
-    await wait("document.querySelector('[role=menu]')");
-    await shoot(`menu-${theme}${suffix}.png`);
-    for (const { name, open, close = "Cancel" } of [
-      {
-        name: "settings",
-        open: () => js("document.querySelector('[aria-label=Settings]').click()"),
-      },
-      ...[
-        ["settings-playback", "Playback"],
-        ["settings-stream", "Stream defaults"],
-        ["settings-analytics", "Analytics"],
-        ["settings-scan", "Network scan"],
-        ["settings-storage", "Storage"],
-        ["settings-advanced", "Advanced"],
-      ].map(([name, tab]) => ({
-        name,
-        open: async () => {
-          await js("document.querySelector('[aria-label=Settings]').click()");
-          await wait("document.querySelector('dialog[open]')");
-          await js(
-            `[...document.querySelectorAll('[role=tab]')].find((b) => b.textContent === '${tab}').click()`,
-          );
-        },
-      })),
-      { name: "shortcuts", open: openShortcuts },
-      {
-        name: "about",
-        open: async () => {
-          await js(
-            "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'Help').click()",
-          );
-          await wait("document.querySelector('[role=menu]')");
-          await js(
-            "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent === 'About').click()",
-          );
-        },
-        close: "OK",
-      },
-      {
-        name: "error",
-        // An error nobody catches, with its details open.
-        open: async () => {
-          await js("setTimeout(() => { throw new Error('Smoke test failure'); })");
-          await wait("document.querySelector('dialog details')");
-          await js("document.querySelector('dialog details').open = true");
-        },
-        close: "Continue",
-      },
-    ]) {
-      await js(
-        "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
-      );
-      await open();
-      await wait("document.querySelector('dialog[open]')");
-      assert.deepEqual(
-        await js(`(${fit.dialog.toString()})()`),
-        [],
-        `The ${name} dialog must fit the 640x480 window at ${zoom * 100}% zoom`,
-      );
-      await shoot(`${name}-${theme}${suffix}.png`);
-      await js(
-        `[...document.querySelectorAll('dialog button')].find((b) => b.textContent === '${close}').click()`,
-      );
-      await wait("!document.querySelector('dialog')");
-    }
-  }
-
-  const scenarios = [
-    ["live", () => live(window)],
-    ["kit gallery", () => gallery(window)],
-    ["video", () => video(window)],
-    ["pixels", () => pixels()],
-    ["export", () => exportDialog(window)],
-    ["bookmarks", () => bookmarks(window)],
-    ["playlist", () => playlist(window)],
-    ["split", () => split(window)],
-    ["reload offer", () => reloadOffer()],
-    ["live streams", () => liveStreams()],
-    ["plugins", () => plugins(window)],
-    ["items", () => items(window)],
-    ["tree rows", () => rows(window)],
-    ["sidebar", () => sidebar(window)],
-    ["sharing", () => sharing(window, shell, ownerCsp)],
-    ["remote", () => remote(window, shell)],
-    ["second launch", () => handedOff(shell)],
-  ];
-  for (const [name, run] of scenarios) {
+  const ownerCsp = watchCsp(window);
+  const ctx = { window, shell, ownerCsp };
+  await within(window, "start", START_TIMEOUT_MS, () => start(ctx));
+  for (const name of names) {
     begin(name);
-    await run();
+    console.log(`smoke: running ${name}`);
+    const scenario = require(`./smoke-${name}.cjs`);
+    await within(window, name, scenario.timeoutMs ?? SCENARIO_TIMEOUT_MS, () => scenario.run(ctx));
   }
   begin("end");
-  console.log(`PASS: app shell loaded; screenshots in ${path.relative(SMOKE_ROOT, SCREENSHOTS)}`);
+  assert.deepEqual(ownerCsp, [], "The app must break no CSP rule");
+  console.log(
+    `PASS: ${names.join(", ")}; screenshots in ${path.relative(SMOKE_ROOT, SCREENSHOTS)}`,
+  );
 };

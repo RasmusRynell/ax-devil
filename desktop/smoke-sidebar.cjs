@@ -21,7 +21,7 @@ const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
 const DIVIDER = "document.querySelector('[role=separator][aria-label=\"Resize sidebar\"]')";
 const SIDEBAR = "document.querySelector('aside[aria-label=Sidebar]')";
 
-module.exports.sidebar = async (window) => {
+module.exports.run = async ({ window }) => {
   const { js, wait } = page(window);
   const shoot = async (name) => {
     await frames({ js });

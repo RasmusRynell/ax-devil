@@ -26,7 +26,7 @@ const PANEL = 'aside[aria-label="Media tools"]';
 // The object's page in the media tools.
 const INSPECTOR = `${PANEL} section[aria-label="Object page"]`;
 
-module.exports.fields = () =>
+module.exports.run = () =>
   inBackendWindow(
     [
       "--video",

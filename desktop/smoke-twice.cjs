@@ -65,7 +65,7 @@ async function inBackendWindow(args, scenario, { command = "local", env = {} } =
 module.exports.inBackendWindow = inBackendWindow;
 module.exports.VIDEO = VIDEO;
 
-module.exports.twice = () =>
+module.exports.run = () =>
   inBackendWindow(
     [
       "--video",

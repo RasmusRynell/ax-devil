@@ -9,9 +9,6 @@ const { objects } = require("./smoke-objects.cjs");
 const { multiplaylist } = require("./smoke-multiplaylist.cjs");
 const { overlays } = require("./smoke-overlays.cjs");
 const { panels } = require("./smoke-panels.cjs");
-const { events } = require("./smoke-events.cjs");
-const { fields } = require("./smoke-fields.cjs");
-const { twice } = require("./smoke-twice.cjs");
 const kit = require("./smoke-kit.cjs");
 const { pauseAtStart } = require("./smoke-video.cjs");
 const {
@@ -35,7 +32,10 @@ const THEMES_AND_ZOOMS = [
   ["dark", 2],
 ];
 
-module.exports.playlist = async (window) => {
+/** The playlist scenario runs its four parts in one go, so it gets longer than a scenario usually may. */
+module.exports.timeoutMs = 240_000;
+
+module.exports.run = async ({ window }) => {
   const { js, wait } = page(window);
   const shoot = async (name) => {
     await frames({ js });
@@ -312,14 +312,4 @@ module.exports.playlist = async (window) => {
   // A resolver that returns two playlists: the dialog's states and the tree they make.
   begin("playlist: multiplaylist");
   await multiplaylist(window);
-
-  // One overlay file given twice is two lanes, in a window of its own on another backend.
-  begin("playlist: twice");
-  await twice();
-  // Two ADF files on a video: the object page of an object with colours, a motion state and a picture.
-  begin("playlist: fields");
-  await fields();
-  // An ADF file with events on a video: the Events list, an event's page and its objects' pages.
-  begin("playlist: events");
-  await events();
 };
