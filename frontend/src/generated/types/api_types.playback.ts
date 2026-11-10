@@ -4,13 +4,13 @@ import type { CatalogInfoWire } from "./api_types.catalogs";
 import type { ErrorParams, ErrorWire } from "./api_types.error";
 import type { InspectionWire, ObjectItemsWire } from "./api_types.inspect";
 import type { LiveAction, LiveEventsWire, LiveGapWire, LiveOpenedWire, LiveStatusWire } from "./api_types.live";
-import type { EventAskWire, EventQueryWire, EventRowsWire, EventWire } from "./api_types.playback.events";
+import type { EventAskWire, EventQueryWire } from "./api_types.playback.events";
 import type { ExportFormatWire, ExportLaneWire, ExportStateWire } from "./api_types.playback.export";
-import type { FileAppearances, FileScopeUnavailable, Located } from "./api_types.playback.file_scope";
+import type { FileAnswer } from "./api_types.playback.file_scope";
 import type { LaneDefaultsWire, LaneInfo, LanePolicyWire, LaneStatusWire } from "./api_types.playback.lane";
 import type { CadenceWire, VideoPtsWire, Want } from "./api_types.playback.want";
 import type { ErrorCode } from "./foundation.error";
-import type { FileRowWire, FileSortWire, SearchWire } from "./scene_store.query";
+import type { FileSortWire, SearchWire } from "./scene_store.query";
 
 /**
  * What the frontend sends.
@@ -365,7 +365,7 @@ job: number,
 /**
  * Where it stands.
  */
-state: ExportStateWire, } | { "type": "FileRows", 
+state: ExportStateWire, } | { "type": "File", 
 /**
  * The lane's position in `Opened.lanes`.
  */
@@ -375,67 +375,15 @@ lane: number,
  */
 request: number, 
 /**
- * The source revision the rows were listed under; the client drops rows of any other.
+ * What the file holds, or why it cannot be asked.
  */
-data_revision: number, 
-/**
- * The lane policy revision the presence was placed under; the client drops rows of any other.
- */
-policy_revision: number, 
-/**
- * How many objects the video shows that the class toggles keep.
- */
-total: number, 
-/**
- * How many of them the search matches, which is how many rows there are.
- */
-matched: number, 
-/**
- * The request's `offset`.
- */
-offset: number, 
-/**
- * Rows `offset` to `offset + rows.len()` of the list.
- */
-rows: Array<FileRowWire>, 
-/**
- * Where the request's `locate` object is in the list; `None` when the request named none.
- */
-located: Located | null, } | { "type": "FileScope", 
-/**
- * The lane's position in `Opened.lanes`.
- */
-lane: number, 
-/**
- * The request answered.
- */
-request: number, 
-/**
- * Why there are no rows.
- */
-unavailable: FileScopeUnavailable, } | { "type": "LiveOpened" } & LiveOpenedWire | { "type": "LiveStatus" } & LiveStatusWire | { "type": "LiveEvents" } & LiveEventsWire | { "type": "LiveGap" } & LiveGapWire | { "type": "Appearances", 
-/**
- * The lane's position in `Opened.lanes`.
- */
-lane: number, 
-/**
- * The request answered.
- */
-request: number, 
-/**
- * The object's id from the request.
- */
-entity: string, 
-/**
- * The spans, or why there are none.
- */
-appearances: FileAppearances, } | { "type": "EventRows" } & EventRowsWire | { "type": "Event" } & EventWire | { "type": "Error" } & ErrorWire;
+answer: FileAnswer, } | { "type": "LiveOpened" } & LiveOpenedWire | { "type": "LiveStatus" } & LiveStatusWire | { "type": "LiveEvents" } & LiveEventsWire | { "type": "LiveGap" } & LiveGapWire | { "type": "Error" } & ErrorWire;
 
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read, or a message is added
  * that an older backend would reject.
  */
-export const PLAYBACK_PROTOCOL = 11;
+export const PLAYBACK_PROTOCOL = 12;
 
 /**
  * "AXDV" read as a little-endian u32.

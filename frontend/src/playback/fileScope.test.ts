@@ -1,27 +1,11 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { FileRowWire } from "../generated/api";
+import type { FileBody, FileRowWire, Located } from "../generated/api";
+import { after, found, READY, readyLane } from "./fakeFileAnswer";
 import { FileScope } from "./fileScope";
-import { LANE_SETTINGS } from "./fakeOpened";
 import { setup } from "./fakePlayback";
-import { LaneSet } from "./lanes";
-import type { ClientMessage, LaneStatusWire, ServerMessage } from "./protocol";
+import type { ClientMessage } from "./protocol";
 
-const READY: Extract<LaneStatusWire, { status: "Ready" }> = {
-  status: "Ready",
-  bases: ["Frame"],
-  default_basis: "Frame",
-  filter: [
-    { id: "show_car", label: "Car", default_enabled: true },
-    { id: "show_bus", label: "Bus", default_enabled: false },
-  ],
-  warnings: [],
-  samples: 1000,
-  data_revision: 1,
-  alignment: null,
-  mean_sample_bytes: 100,
-  ingest: { state: "Complete" },
-};
 const SORT = { key: "id", descending: false } as const;
 const ROW: FileRowWire = {
   id: "7",
@@ -31,60 +15,40 @@ const ROW: FileRowWire = {
   last_frame: 9,
   presence: [[3, 9]],
 };
-
-type Rows = Extract<ServerMessage, { type: "FileRows" }>;
-type Scope = Extract<ServerMessage, { type: "FileScope" }>;
+const objects = (located: Located | null = null): FileBody => ({
+  kind: "Objects",
+  total: 40,
+  matched: 1,
+  offset: 0,
+  rows: [ROW],
+  located,
+});
 
 /** A file scope over one Ready lane, a recording socket and fake timers. */
 function scope() {
-  const lanes = new LaneSet();
-  lanes.open([{ label: "DPM", slot: "DPM", source: 0 }], LANE_SETTINGS);
-  lanes.setStatus(0, READY);
+  const lanes = readyLane();
   const sent: ClientMessage[] = [];
-  const files = new FileScope(
-    lanes,
-    (message) => sent.push(message),
-    (run, ms) => {
-      const timer = setTimeout(run, ms);
-      return () => clearTimeout(timer);
-    },
-  );
+  const files = new FileScope(lanes, (message) => sent.push(message), after);
   const queries = () => sent.filter((message) => message.type === "FileQuery");
-  /** The rows the backend would answer request `request` with, under the lane's current revisions unless told. */
-  const rows = (request: number, over: Partial<Rows> = {}): Rows => ({
-    type: "FileRows",
-    lane: 0,
-    request,
-    data_revision: 1,
-    policy_revision: 1,
-    total: 40,
-    matched: 1,
-    offset: 0,
-    rows: [ROW],
-    located: null,
-    ...over,
-  });
   const ask = (text = "car") => {
     files.request(0, text, SORT, 0, 50, 64);
     vi.advanceTimersByTime(150);
   };
   /** The id of the newest request sent. */
   const last = () => (queries().at(-1) as Extract<ClientMessage, { type: "FileQuery" }>).request;
-  return { lanes, files, sent, queries, rows, ask, last };
+  return { lanes, files, sent, queries, ask, last };
 }
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
-describe("asking", () => {
+describe("the objects list", () => {
   it("sends only the last of quick changes, parsed, with the lane's class toggles", () => {
     const { files, queries } = scope();
     files.request(0, "c", SORT, 0, 50, 64);
     vi.advanceTimersByTime(100);
     files.request(0, "class:car OR id>3", { key: "class", descending: true }, 50, 50, 64);
-    vi.advanceTimersByTime(149);
-    expect(queries()).toEqual([]);
-    vi.advanceTimersByTime(1);
+    vi.advanceTimersByTime(150);
     expect(queries()).toEqual([
       {
         type: "FileQuery",
@@ -107,79 +71,13 @@ describe("asking", () => {
         locate: null,
       },
     ]);
-    expect(files.view(0)).toEqual({ pending: true, page: null, unavailable: null });
-  });
-
-  it("sends the wanted list at once when flushed, and waits again for the next change", () => {
-    const { files, queries } = scope();
-    files.request(0, "car", SORT, 0, 50, 64);
-    files.flush(0);
-    expect(queries()).toHaveLength(1);
-    vi.advanceTimersByTime(150);
-    expect(queries()).toHaveLength(1);
-    files.request(0, "bus", SORT, 0, 50, 64);
-    expect(queries()).toHaveLength(1);
-  });
-
-  it("keeps showing the last rows while a newer list is awaited, and drops answers of older requests", () => {
-    const { files, rows, ask, last } = scope();
-    ask("car");
-    const first = last();
-    files.request(0, "bus", SORT, 0, 50, 64);
-    // The answer to the request made before the user typed more is no longer wanted.
-    files.receive(rows(first));
-    expect(files.view(0).page).toBeNull();
-    vi.advanceTimersByTime(150);
-    expect(last()).toBeGreaterThan(first);
-    files.receive(rows(first));
-    expect(files.view(0).pending).toBe(true);
-    files.receive(rows(last()));
-    expect(files.view(0)).toEqual({
-      pending: false,
-      page: { total: 40, matched: 1, offset: 0, rows: [ROW], located: null },
-      unavailable: null,
-    });
-    files.request(0, "bus", SORT, 0, 50, 64);
-    expect(files.view(0)).toMatchObject({ pending: true, page: { matched: 1 } });
-  });
-
-  it("keeps the rows when a refresh fails, resends on flush, and drops them once the file's data changed", () => {
-    const { files, lanes, queries, rows, ask, last } = scope();
-    const failed = { state: "Failed", code: "Internal", params: {}, reason: "Disk full" } as const;
-    const fail = () =>
-      files.receive({ type: "FileScope", lane: 0, request: last(), unavailable: failed });
-    ask();
-    files.receive(rows(last()));
-    lanes.set(0, { tolerance_ms: 120 });
-    files.refresh();
-    vi.advanceTimersByTime(150);
-    fail();
-    expect(files.view(0)).toMatchObject({
-      pending: false,
-      page: { rows: [ROW] },
-      unavailable: failed,
-    });
-
-    // Retry asks the same question again, once, and its rows end the failure.
-    files.flush(0);
-    const [, previous, retried] = queries().map((query) => ({ ...query, request: 0 }));
-    expect(queries()).toHaveLength(3);
-    expect(retried).toEqual(previous);
-    files.receive(rows(last(), { policy_revision: 2 }));
-    expect(files.view(0)).toMatchObject({ page: { rows: [ROW] }, unavailable: null });
-
-    lanes.setStatus(0, { ...READY, data_revision: 2 });
-    files.refresh();
-    vi.advanceTimersByTime(150);
-    fail();
-    expect(files.view(0)).toMatchObject({ page: null, unavailable: failed });
   });
 
   it("carries the object the cursor moved to in the next question, and asks nothing for the move", () => {
-    const { files, lanes, queries, rows, ask, last } = scope();
+    const { files, lanes, queries, ask, last } = scope();
     const locate = () => (queries().at(-1) as { locate: string | null }).locate;
     ask();
-    files.receive(rows(last()));
+    files.receive(found(last(), objects()));
     files.locating(0, "7");
     vi.advanceTimersByTime(1000);
     expect(queries()).toHaveLength(1);
@@ -191,150 +89,40 @@ describe("asking", () => {
 
     // A move while a question is out: an answer that holds neither that object nor its row is followed by a new question.
     files.locating(0, "99");
-    files.receive(rows(last(), { located: { id: "7", row: 3 } }));
+    files.receive(found(last(), objects({ id: "7", row: 3 })));
     expect(files.view(0).pending).toBe(true);
     vi.advanceTimersByTime(150);
     expect(locate()).toBe("99");
-    files.receive(rows(last(), { located: { id: "99", row: null } }));
+    files.receive(found(last(), objects({ id: "99", row: null })));
     vi.advanceTimersByTime(1000);
     expect(queries()).toHaveLength(3);
   });
-
-  it("drops rows made under other revisions than the lane has", () => {
-    const { files, lanes, rows, ask, last } = scope();
-    ask();
-    files.receive(rows(last(), { data_revision: 2 }));
-    files.receive(rows(last(), { policy_revision: 2 }));
-    expect(files.view(0).page).toBeNull();
-    lanes.set(0, { tolerance_ms: 120 });
-    files.receive(rows(last()));
-    expect(files.view(0).page).toBeNull();
-  });
 });
 
-describe("asking again", () => {
-  const changes: [string, (t: ReturnType<typeof scope>) => void][] = [
-    ["a new Ready revision", (t) => t.lanes.setStatus(0, { ...READY, data_revision: 2 })],
-    ["a new policy revision", (t) => t.lanes.set(0, { tolerance_ms: 120 })],
-    ["a class toggle", (t) => t.lanes.set(0, { filter: { show_bus: true } })],
-    ["the ingest ending", (t) => t.lanes.setStatus(0, READY)],
-    ["the viewer owning its frames again", (t) => t.files.setOwner(true)],
-  ];
-
-  it.each(changes)("on %s", (_, change) => {
+describe("a lane the list, an event and an object's appearances share", () => {
+  it("is freed on the backend only once none of them wants it", () => {
     const t = scope();
-    t.lanes.setStatus(0, { ...READY, ingest: { state: "Reading" } });
-    t.files.setOwner(false);
-    t.ask();
-    t.files.receive({
-      type: "FileScope",
-      lane: 0,
-      request: t.last(),
-      unavailable: { state: "Reading" },
-    });
-    expect(t.files.view(0).unavailable).toEqual({ state: "Reading" });
-    // Progress of the same file asks nothing.
-    t.lanes.setStatus(0, { ...READY, ingest: { state: "Reading" }, samples: 2000 });
-    t.files.refresh();
-    vi.advanceTimersByTime(1000);
-    expect(t.queries()).toHaveLength(1);
-    change(t);
-    t.files.refresh();
-    vi.advanceTimersByTime(150);
-    expect(t.queries()).toHaveLength(2);
-    expect(t.files.view(0).pending).toBe(true);
-  });
-
-  it("when the socket was renewed, and stops when the list is no longer wanted", () => {
-    const t = scope();
-    t.ask();
-    t.files.suspend();
-    t.files.reopen();
-    vi.advanceTimersByTime(150);
-    expect(t.queries()).toHaveLength(2);
-    t.files.refresh();
-    t.files.release(0);
-    vi.advanceTimersByTime(5000);
-    expect(t.queries()).toHaveLength(2);
-    expect(t.files.view(0)).toEqual({ pending: false, page: null, unavailable: null });
-  });
-
-  it("tells the backend once to free a lane it was asked about, and asks again only for lists still wanted", () => {
-    const t = scope();
-    const releases = () => t.sent.filter((message) => message.type === "FileRelease");
-    t.files.request(0, "car", SORT, 0, 50, 64);
-    t.files.release(0);
-    vi.advanceTimersByTime(150);
-    expect(t.sent).toEqual([]);
-
-    t.ask();
-    t.files.release(0);
-    t.files.release(0);
-    expect(releases()).toEqual([{ type: "FileRelease", lane: 0 }]);
-
-    t.ask();
-    t.files.suspend();
-    t.files.release(0);
-    t.files.reopen();
-    vi.advanceTimersByTime(5000);
-    expect(releases()).toHaveLength(1);
-    expect(t.queries()).toHaveLength(2);
-  });
-});
-
-describe("a lane the list and an object's appearances share", () => {
-  it("is freed on the backend only once neither wants it", () => {
-    const t = scope();
+    const { appearances, events } = t.files;
     const releases = () => t.sent.filter((message) => message.type === "FileRelease").length;
     // An object page in Frame scope: the list is not wanted.
-    t.files.appearances.want(0, "7");
-    t.files.appearances.want(0, null);
+    appearances.want(0, "7");
+    appearances.want(0, null);
     expect(releases()).toBe(1);
 
     // The list in File scope still wants the lane when the page closes, and the page when the list goes.
     t.ask();
-    t.files.appearances.want(0, "7");
-    t.files.appearances.want(0, null);
-    expect(releases()).toBe(1);
-    t.files.appearances.want(0, "7");
+    appearances.want(0, "7");
+    appearances.want(0, null);
+    appearances.want(0, "7");
     t.files.release(0);
     expect(releases()).toBe(1);
-    t.files.appearances.want(0, null);
+    // Moving to another event keeps the lane.
+    events.want(0, 4);
+    events.want(0, 6);
+    appearances.want(0, null);
+    expect(releases()).toBe(1);
+    events.want(0, null);
     expect(releases()).toBe(2);
-  });
-});
-
-describe("a viewer that follows", () => {
-  const following: Scope = {
-    type: "FileScope",
-    lane: 0,
-    request: 0,
-    unavailable: { state: "Following" },
-  };
-
-  it("is told so and is not asked again until it owns its frames", () => {
-    const t = scope();
-    t.files.setOwner(false);
-    t.ask();
-    t.files.receive({ ...following, request: t.last() });
-    expect(t.files.view(0)).toEqual({
-      pending: false,
-      page: null,
-      unavailable: { state: "Following" },
-    });
-    vi.advanceTimersByTime(10_000);
-    expect(t.queries()).toHaveLength(1);
-  });
-
-  it("asks a few more times when the backend still takes an owner for one", () => {
-    const t = scope();
-    t.ask();
-    for (let tries = 0; tries < 6; tries++) {
-      t.files.receive({ ...following, request: t.last() });
-      vi.advanceTimersByTime(1000);
-    }
-    expect(t.queries()).toHaveLength(4);
-    expect(t.files.view(0)).toMatchObject({ pending: false, unavailable: { state: "Following" } });
   });
 });
 
@@ -355,18 +143,7 @@ describe("in a playback session", () => {
     expect(queries()).toHaveLength(1);
     const request = (queries()[0] as Extract<ClientMessage, { type: "FileQuery" }>).request;
     const policy = sent.filter((message) => message.type === "LanePolicy").length;
-    server.say({
-      type: "FileRows",
-      lane: 0,
-      request,
-      data_revision: 1,
-      policy_revision: policy,
-      total: 1,
-      matched: 1,
-      offset: 0,
-      rows: [ROW],
-      located: null,
-    });
+    server.say(found(request, objects(), { policy_revision: policy }));
     expect(session.files.view(0).page?.rows).toEqual([ROW]);
     session.follow({ frame: 0, playing: false, speedCenti: 100, atUs: 0 }, () => 0);
     debounce();

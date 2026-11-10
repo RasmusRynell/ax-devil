@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import type { EventRowWire } from "../generated/api";
+import { found } from "./fakeFileAnswer";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { FRESH_MEMORY } from "./fields";
 import { FileScope } from "./fileScope";
@@ -62,22 +63,17 @@ it("marks the object's events on its strip, lists them under its fields and open
     );
     const ask = sent.find((message) => message.type === "Appearances") as { request: number };
     act(() =>
-      files.receive({
-        type: "Appearances",
-        lane: 0,
-        request: ask.request,
-        entity: "7",
-        appearances: {
-          state: "Found",
-          data_revision: 1,
-          policy_revision: 1,
+      files.receive(
+        found(ask.request, {
+          kind: "Appearances",
+          entity: "7",
           spans: [[10, 30]],
           truncated: false,
           // Two events share a frame.
           events: [event(3, 10), event(4, 20), event(5, 20)],
           events_truncated: truncated,
-        },
-      }),
+        }),
+      ),
     );
     const strip = screen.getByRole("img", { name: "Presence" });
     expect(

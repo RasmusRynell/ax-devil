@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { EventDetailWire } from "../generated/api";
+import { unavailable } from "../playback/fakeFileAnswer";
 import { FRAME, fileEvent, mount, says, showEvents } from "./panelRig";
 
 beforeEach(() => vi.stubGlobal("ResizeObserver", undefined));
@@ -134,14 +135,7 @@ describe("Events list", () => {
     expect(screen.getByText("Loading…")).toBeTruthy();
     act(() => void vi.advanceTimersByTime(250));
     const request = eventQueries().at(-1)?.request ?? 0;
-    act(() =>
-      files.receive({
-        type: "EventRows",
-        lane: 0,
-        request,
-        rows: { state: "Unavailable", unavailable: { state: "PlainLane" } },
-      }),
-    );
+    act(() => files.receive(unavailable(request, { state: "PlainLane" })));
     expect(screen.getByText("This lane has no events")).toBeTruthy();
   });
 });
