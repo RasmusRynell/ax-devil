@@ -12,17 +12,17 @@ const CHECKED = {
   "export/ExportDialog.tsx": "smoke-export.cjs",
   "kit/Gallery.tsx": "smoke-gallery.cjs",
   "playback/LaneCatalogActions.tsx": "smoke-panels.cjs",
-  "shell/AboutDialog.tsx": "smoke.cjs",
+  "shell/AboutDialog.tsx": "smoke-shell.cjs",
   "shell/AddLiveStreamDialog.tsx": "smoke-live.cjs",
   "shell/AddPlaylistDialog.tsx": "smoke-playlist.cjs",
   "shell/AddVideoDialog.tsx": "smoke-remote.cjs",
-  "shell/ConnectDialog.tsx": "smoke.cjs",
+  "shell/ConnectDialog.tsx": "smoke-shell.cjs",
   "shell/QuickSetupDialog.tsx": "smoke.cjs",
-  "shell/SettingsDialog.tsx": "smoke.cjs",
+  "shell/SettingsDialog.tsx": "smoke-shell.cjs",
   // The questions it asks are short sentences in the choice dialog the gallery checks.
   "shell/Shell.tsx": "smoke-gallery.cjs",
-  "shell/ShortcutsDialog.tsx": "smoke.cjs",
-  "shell/UncaughtErrors.tsx": "smoke.cjs",
+  "shell/ShortcutsDialog.tsx": "smoke-shell.cjs",
+  "shell/UncaughtErrors.tsx": "smoke-shell.cjs",
 };
 
 /** File under `frontend/src` -> why no smoke scenario checks it. */

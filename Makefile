@@ -6,6 +6,8 @@ ISOLATED := scripts/isolated
 PORT ?= 7330
 UI_PORT ?= 7331
 TEST ?=
+SMOKE ?=
+CRATE ?=
 ROOT_FILES := desktop/*.cjs scripts/*.cjs vite.config.ts package.json pnpm-workspace.yaml
 # The loader paths of a FFmpeg outside the system's (package builds): Linux, macOS and Windows each read one of them.
 FFMPEG_LOADER := $(if $(FFMPEG_DIR),LD_LIBRARY_PATH="$(FFMPEG_DIR)/lib$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" DYLD_LIBRARY_PATH="$(FFMPEG_DIR)/lib$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}" PATH="$$(cygpath -u '$(FFMPEG_DIR)/bin' 2>/dev/null || echo '$(FFMPEG_DIR)/bin'):$$PATH")
@@ -41,8 +43,9 @@ help:
 	  '  test-frontend     React component tests' \
 	  '  test-backend      Rust tests, with and without the embedded frontend' \
 	  '  test-integration  Development supervisor lifecycle' \
-	  '  test-desktop      Electron app on a private display, screenshots in artifacts/screenshots' \
+	  '  test-desktop      Electron app on a private display, screenshots in artifacts/screenshots; SMOKE=<groups or scenarios> runs only those (a scenario brings the ones before it in its group): make test-desktop SMOKE=media' \
 	  '  Filter frontend/backend tests: make test-frontend TEST=App' \
+	  '  One backend crate: make test-backend CRATE=scene' \
 	  '' \
 	  'Dependencies, including Rust when missing, install on first use; there is no setup step.' \
 	  'Optional ports: make web PORT=7330 UI_PORT=7331'
@@ -122,13 +125,20 @@ test-frontend: node_modules/.installed
 # dev-dependencies enable features of shared crates (tokio-rustls); without it the dependencies build twice.
 NO_DEFAULT_PACKAGES := -p ax-devil -p camera
 
+# The crates whose tests need the built frontend and Electron: grep their tests for frontend/dist or
+# AX_DEVIL_REQUIRE_ELECTRON. Both variables stay exported for every CRATE: AX_DEVIL_REQUIRE_ELECTRON is read only by
+# ax-devil's tests, and AX_DEVIL_REQUIRE_PYTHON by the tests of ax-devil and plugins, where it turns a missing python3
+# into a failure; other crates ignore them.
+FRONTEND_TEST_CRATES := ax-devil
 # The real-Electron export tests and the Python plugin tests skip on a machine without Electron, the render page or
 # python3; here they are all provided, so a skip must fail.
 test-backend: export AX_DEVIL_REQUIRE_ELECTRON = 1
 test-backend: export AX_DEVIL_REQUIRE_PYTHON = 1
-test-backend: _frontend-build desktop/node_modules/.electron-ready
-	$(ISOLATED) $(CARGO) test --workspace --locked $(TEST)
-	$(ISOLATED) $(CARGO) test $(NO_DEFAULT_PACKAGES) --no-default-features --locked $(TEST)
+test-backend: $(if $(or $(filter $(CRATE),$(FRONTEND_TEST_CRATES)),$(if $(CRATE),,x)),_frontend-build desktop/node_modules/.electron-ready)
+	$(ISOLATED) $(CARGO) test $(if $(CRATE),-p $(CRATE),--workspace) --locked $(TEST)
+# The second pass compiles the code and tests that the embedded frontend turns off (src/tests.rs, tests/it/access.rs):
+# the development backend of `make web` and `make desktop` (scripts/dev-backend runs _dev-rust). Other crates have no default features, so CRATE=<them> skips it.
+	$(if $(or $(filter ax-devil,$(CRATE)),$(if $(CRATE),,x)),$(ISOLATED) $(CARGO) test $(if $(CRATE),-p ax-devil,$(NO_DEFAULT_PACKAGES)) --no-default-features --locked $(TEST))
 
 test-integration: _dev _dev-rust
 	$(ISOLATED) node --test scripts/dev.test.cjs desktop/args.test.cjs desktop/links.test.cjs desktop/remote.test.cjs desktop/window-state.test.cjs desktop/backend.test.cjs desktop/uncaught.test.cjs desktop/workspace-dialogs.test.cjs desktop/fit-coverage.test.cjs scripts/check-architecture.test.cjs
@@ -137,13 +147,13 @@ test-integration: _dev _dev-rust
 test-desktop: export AX_DEVIL_BACKEND = $(CURDIR)/target/debug/ax-devil$(if $(filter Windows_NT,$(OS)),.exe)
 test-desktop: _frontend-build desktop/node_modules/.electron-ready
 	$(CARGO) build --locked --bin ax-devil
-	timeout 360s $(ISOLATED) --display pnpm --dir desktop exec electron . --ozone-platform=x11 --smoke-test
+	node scripts/smoke-desktop.cjs '$(SMOKE)'
 
 # Needs a real camera, so it is not part of `test` or `check`; each test skips itself when AX_DEVIL_TARGET_ADDR is unset.
 test-camera:
 	$(ISOLATED) $(CARGO) test --locked -p camera --test it real_camera:: -- --ignored --test-threads=1
 
-test: test-frontend test-backend test-integration test-desktop
+test: test-frontend test-backend test-integration $(if $(SKIP_DESKTOP),,test-desktop)
 
 # Timed with std::time::Instant; numbers go to stdout, nothing is asserted.
 bench:

@@ -20,7 +20,7 @@ const {
 
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
 
-module.exports.items = async (window) => {
+module.exports.run = async ({ window }) => {
   const { js, wait } = page(window);
   const shoot = async (name) => {
     await frames({ js });
