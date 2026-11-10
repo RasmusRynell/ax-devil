@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { GrantsContext } from "../access";
+import { AccessContext } from "../access";
 import type { PluginInfo, PluginsInfo } from "../generated/api";
 import { PluginsView } from "./PluginsView";
 
@@ -82,9 +82,9 @@ afterEach(() => {
 
 const view = () =>
   render(
-    <GrantsContext value={["preferences", "files"]}>
+    <AccessContext value={{ owner: true, fullAccess: true }}>
       <PluginsView />
-    </GrantsContext>,
+    </AccessContext>,
   );
 
 describe("plugins view", () => {

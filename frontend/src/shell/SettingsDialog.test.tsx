@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { useState } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { GrantsContext } from "../access";
+import { AccessContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { SettingsContext, type SettingsApi } from "../settings";
 import { SettingsDialog } from "./SettingsDialog";
@@ -112,11 +112,11 @@ describe("settings dialog", () => {
     };
     const state = { ...DEFAULT_SETTINGS, values } as never;
     render(
-      <GrantsContext.Provider value={["configuration"]}>
+      <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
         <FakeSettings state={state} save={save}>
           <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
         </FakeSettings>
-      </GrantsContext.Provider>,
+      </AccessContext.Provider>,
     );
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "General",
@@ -185,7 +185,7 @@ describe("settings dialog", () => {
     }));
     const save = vi.fn(async () => null);
     render(
-      <GrantsContext.Provider value={["configuration"]}>
+      <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
         <FakeSettings
           state={
             {
@@ -197,7 +197,7 @@ describe("settings dialog", () => {
         >
           <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
         </FakeSettings>
-      </GrantsContext.Provider>,
+      </AccessContext.Provider>,
     );
     fireEvent.click(screen.getByRole("tab", { name: "Network" }));
     const field = screen.getByLabelText("Decoder") as HTMLInputElement;
@@ -240,11 +240,11 @@ describe("settings dialog", () => {
     const save = vi.fn(async () => null);
     const values = { ...DEFAULT_SETTINGS.values, "t.dir": "" };
     render(
-      <GrantsContext.Provider value={["configuration"]}>
+      <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
         <FakeSettings state={{ ...DEFAULT_SETTINGS, values } as never} save={save}>
           <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
         </FakeSettings>
-      </GrantsContext.Provider>,
+      </AccessContext.Provider>,
     );
     fireEvent.click(screen.getByRole("tab", { name: "Network" }));
     fireEvent.click(screen.getByRole("button", { name: "Choose Dir" }));
@@ -260,11 +260,11 @@ describe("settings dialog", () => {
     const open = (save: () => Promise<null>, onClose = () => {}) => {
       const values = { ...DEFAULT_SETTINGS.values, "scan.logins": logins };
       render(
-        <GrantsContext.Provider value={["configuration"]}>
+        <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
           <FakeSettings state={{ ...DEFAULT_SETTINGS, values } as never} save={save}>
             <SettingsDialog onClose={onClose} onRestartNeeded={() => {}} />
           </FakeSettings>
-        </GrantsContext.Provider>,
+        </AccessContext.Provider>,
       );
       fireEvent.click(screen.getByRole("tab", { name: "Network" }));
     };

@@ -358,16 +358,10 @@ impl<C: Clone + Send + 'static> Service<C> {
             .map(|live| live.tx.subscribe())
     }
 
-    /// Starts a session for a new window. Its owner's seat is the returned handle; nothing is shared. With `files`
-    /// the owner may run commands that read the host's files; with `expands` its items' references read the
-    /// environment. Refused with [`Refusal::Full`] at [`MAX_SESSIONS`], counted under the same lock that inserts, so
+    /// Starts a session for a new window. Its owner's seat is the returned handle; nothing is shared. With `expands`
+    /// its items' references read the environment. Refused with [`Refusal::Full`] at [`MAX_SESSIONS`], counted under the same lock that inserts, so
     /// sessions in their grace period hold a place.
-    pub fn create(
-        &self,
-        files: bool,
-        expands: bool,
-        cursors: CursorOptions,
-    ) -> Result<Handle<C>, Refusal> {
+    pub fn create(&self, expands: bool, cursors: CursorOptions) -> Result<Handle<C>, Refusal> {
         let mut sessions = common::locked(&self.inner.sessions);
         if sessions.len() >= MAX_SESSIONS {
             return Err(Refusal::Full);
@@ -378,7 +372,7 @@ impl<C: Clone + Send + 'static> Service<C> {
                 break id;
             }
         };
-        let state = Arc::new(SessionState::new(id, OwnerId::generate(), files, expands));
+        let state = Arc::new(SessionState::new(id, OwnerId::generate(), expands));
         let mut live = Live {
             tx: watch::channel(Arc::clone(&state)).0,
             state,

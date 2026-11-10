@@ -212,7 +212,7 @@ impl Backend {
         let owner = self
             .state
             .sessions
-            .create(true, true, CursorOptions::default())
+            .create(true, CursorOptions::default())
             .unwrap();
         let id = item.id;
         let added = DocCommand::AddItems {

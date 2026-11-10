@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { GrantsContext } from "../access";
+import { AccessContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { SettingsDialog } from "./SettingsDialog";
 
@@ -16,11 +16,11 @@ afterAll(() => vi.restoreAllMocks());
 
 const open = () =>
   render(
-    <GrantsContext.Provider value={["configuration"]}>
+    <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
       <FakeSettings state={DEFAULT_SETTINGS}>
         <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
       </FakeSettings>
-    </GrantsContext.Provider>,
+    </AccessContext.Provider>,
   );
 
 describe("settings dialog, real table", () => {

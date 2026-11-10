@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { useGrants } from "../access";
+import { useAccess } from "../access";
 import { SETTINGS } from "../generated/settings";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
@@ -32,9 +32,9 @@ export function SettingsDialog({
   onRestartNeeded: () => void;
 }) {
   const { values, shortcuts, file } = useSettings();
-  const configures = useGrants().includes("configuration");
-  const shown = PAGED.filter((row) => configures || row.scope === "personal");
-  // Where the settings are kept, for whoever may see this machine's files.
+  // A page that holds only a join link keeps just its Personal settings, in its browser.
+  const { owner, fullAccess } = useAccess();
+  const shown = PAGED.filter((row) => owner || row.scope === "personal");
   const pages = [...new Set(shown.flatMap((row) => row.page ?? [])), ...(file ? ["Advanced"] : [])];
   const [draft, setDraft] = useState(values);
   const [page, setPage] = useState(pages[0] ?? "");
@@ -92,23 +92,25 @@ export function SettingsDialog({
                       title={row.description ?? row.key}
                       className="flex flex-col gap-xs"
                     >
-                      <SettingField
-                        row={row}
-                        value={draft[row.key]}
-                        describedBy={warning ? note : undefined}
-                        decoders={decoders}
-                        onChange={(value) => setDraft({ ...draft, [row.key]: value })}
-                        label={
-                          <span className="flex items-center gap-s">
-                            {row.label}
-                            {!row.live && (
-                              <span title="Applies after a restart" className="text-muted">
-                                <Icon name="rotate-cw" />
-                              </span>
-                            )}
-                          </span>
-                        }
-                      />
+                      <fieldset disabled={row.full_access && !fullAccess} className="contents">
+                        <SettingField
+                          row={row}
+                          value={draft[row.key]}
+                          describedBy={warning ? note : undefined}
+                          decoders={decoders}
+                          onChange={(value) => setDraft({ ...draft, [row.key]: value })}
+                          label={
+                            <span className="flex items-center gap-s">
+                              {row.label}
+                              {!row.live && (
+                                <span title="Applies after a restart" className="text-muted">
+                                  <Icon name="rotate-cw" />
+                                </span>
+                              )}
+                            </span>
+                          }
+                        />
+                      </fieldset>
                       {warning && <PlainTextNote id={note} reference={row.env} />}
                       {refusal?.location === row.key && <Refusal reason={refusal.reason} />}
                     </div>

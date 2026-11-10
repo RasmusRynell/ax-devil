@@ -1,5 +1,5 @@
 import { useEffect, useState, type ButtonHTMLAttributes } from "react";
-import { useGrants } from "../access";
+import { useAccess } from "../access";
 import type { ControlCommand, SessionSummary } from "../generated/api";
 import { apiFetch } from "../api";
 import { Button } from "../kit/Button";
@@ -130,7 +130,7 @@ export function SessionsView() {
   const { state, session, sharing, watch, leave } = useSession();
   const command = useCommand();
   const { you, participants } = useParticipants();
-  const granted = useGrants().includes("sessions");
+  const granted = useAccess().owner;
   const owner = state === "owner";
   const unshared = state === "none";
   const shared = useSharedSessions(granted && !owner).filter((other) => other.id !== session?.id);

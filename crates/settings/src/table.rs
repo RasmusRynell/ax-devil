@@ -39,6 +39,8 @@ pub struct Setting {
     pub env: bool,
     /// Whether the value is a credential: the dialog masks a literal.
     pub secret: bool,
+    /// Whether only a caller with Full access may change it: it reaches outside ax-devil.
+    pub full_access: bool,
     /// Whether Quick Setup asks for it.
     pub quick_setup: bool,
     /// Who the setting belongs to.
@@ -65,6 +67,7 @@ const BASE: Setting = Setting {
     live: true,
     env: true,
     secret: false,
+    full_access: false,
     quick_setup: false,
     scope: Scope::Server,
 };
@@ -521,6 +524,7 @@ pub const TABLE: &[Setting] = &[
         page: Some("Storage"),
         section: "Folders",
         live: false,
+        full_access: true,
         scope: Scope::Server,
         ..BASE
     },
@@ -532,6 +536,22 @@ pub const TABLE: &[Setting] = &[
         page: Some("Storage"),
         section: "Folders",
         live: false,
+        full_access: true,
+        scope: Scope::Server,
+        ..BASE
+    },
+    Setting {
+        key: "server.password_full_access",
+        // Read on every request and socket hello. A Session keeps the Full access it was created with.
+        kind: Kind::Bool { default: false },
+        label: "Full access with password",
+        description: Some(
+            "Anyone with the server password can install plugins and read this machine's environment.",
+        ),
+        page: Some("Storage"),
+        section: "Folders",
+        env: false,
+        full_access: true,
         scope: Scope::Server,
         ..BASE
     },

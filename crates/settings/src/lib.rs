@@ -8,6 +8,7 @@
 //!
 //! A change reaches subscribers as the new state, replaced whole; a subscriber that is busy sees only the newest.
 
+mod access;
 mod env;
 mod expand;
 mod file;
@@ -43,6 +44,8 @@ pub struct Error {
     pub reason: String,
     /// Whether the user's input is at fault (as opposed to the disk).
     pub invalid: bool,
+    /// Whether the caller lacks the Full access the change needs.
+    pub forbidden: bool,
 }
 
 impl fmt::Display for Error {
@@ -60,9 +63,9 @@ type Lookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 /// only what differs from the defaults.
 #[derive(Clone, Debug)]
 pub struct Change {
-    /// Every setting in the changed scopes by dotted key, references unresolved. A masked secret keeps its value.
+    /// Every setting by dotted key, references unresolved. A masked secret keeps its value.
     pub values: BTreeMap<String, Value>,
-    /// The key of every command, `None` when unbound; empty unless [`Scope::Personal`] is changed.
+    /// The key of every command, `None` when unbound.
     pub shortcuts: BTreeMap<String, Option<String>>,
 }
 
@@ -99,6 +102,7 @@ impl State {
             location: location.to_owned(),
             reason: reason.to_owned(),
             invalid: true,
+            forbidden: false,
         };
         let object = |name: &str| match rest.get(name) {
             None => Ok(Map::new()),
@@ -196,13 +200,12 @@ impl State {
         found
     }
 
-    /// The settings in `scopes` by dotted key, such as `ui.theme`, with the default when the file has none, as shown
+    /// Every setting by dotted key, such as `ui.theme`, with the default when the file has none, as shown
     /// to a person: a `$NAME` reference as written, a literal secret masked. See [`resolved`](Self::resolved) for
     /// the value as it is used.
-    pub fn values(&self, scopes: &[Scope]) -> BTreeMap<String, Value> {
+    pub fn values(&self) -> BTreeMap<String, Value> {
         self.table
             .iter()
-            .filter(|setting| scopes.contains(&setting.scope))
             .filter_map(|setting| {
                 let value = self.values.get(setting.key)?;
                 Some((setting.key.to_owned(), setting.shown(value)))
@@ -302,19 +305,17 @@ impl Settings {
         self.state.subscribe()
     }
 
-    /// Replaces every setting in `scopes`, and the shortcuts when `scopes` holds [`Scope::Personal`], with `change`,
-    /// which must hold exactly those settings and only known commands; a masked secret keeps its stored value.
+    /// Replaces every setting and shortcut with `change`, which must hold every setting and only known commands; a masked secret keeps its stored value.
     /// Validates all, writes the file atomically with only what differs from the defaults (and keeps what this
-    /// version does not know and the settings of other scopes), then swaps the state; on any failure nothing changes.
-    pub fn replace(&self, scopes: &[Scope], change: &Change) -> Result<Arc<State>, Error> {
-        self.replace_if(scopes, change, |_| Ok(()))
+    /// version does not know), then swaps the state; on any failure nothing changes.
+    pub fn replace(&self, change: &Change) -> Result<Arc<State>, Error> {
+        self.replace_if(change, |_| Ok(()))
     }
 
     /// As [`replace`](Self::replace), but `allow` first sees the stored state under the lock that orders every
     /// change, so a check that depends on the stored values and on what other writers do holds when the write happens.
     pub fn replace_if(
         &self,
-        scopes: &[Scope],
         change: &Change,
         allow: impl FnOnce(&State) -> Result<(), Error>,
     ) -> Result<Arc<State>, Error> {
@@ -325,22 +326,18 @@ impl Settings {
             location: location.to_owned(),
             reason: reason.to_owned(),
             invalid: true,
+            forbidden: false,
         };
-        let chosen = || {
-            current
+        if let Some(key) = change.values.keys().find(|key| {
+            !current
                 .table
                 .iter()
-                .filter(|setting| scopes.contains(&setting.scope))
-        };
-        if let Some(key) = change
-            .values
-            .keys()
-            .find(|key| !chosen().any(|setting| setting.key == key.as_str()))
-        {
+                .any(|setting| setting.key == key.as_str())
+        }) {
             return Err(invalid(key, "unknown setting"));
         }
         let mut values = current.values.clone();
-        for setting in chosen() {
+        for setting in current.table {
             let value = change
                 .values
                 .get(setting.key)
@@ -353,13 +350,7 @@ impl Settings {
                 .map_err(|reason| invalid(setting.key, &reason))?;
             values.insert(setting.key.to_owned(), kept);
         }
-        let overrides = if scopes.contains(&Scope::Personal) {
-            shortcuts::overrides_from(&change.shortcuts)?
-        } else if let Some(id) = change.shortcuts.keys().next() {
-            return Err(invalid(&format!("shortcuts.{id}"), "not yours to change"));
-        } else {
-            current.overrides.clone()
-        };
+        let overrides = shortcuts::overrides_from(&change.shortcuts)?;
         self.write(&current, values, overrides)
     }
 
@@ -379,6 +370,7 @@ impl Settings {
             location: location.to_owned(),
             reason: reason.to_owned(),
             invalid: true,
+            forbidden: false,
         };
         let Some(stored) = current.values.get(key) else {
             return Err(invalid(key, "unknown setting"));

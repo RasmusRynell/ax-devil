@@ -24,21 +24,21 @@ const dark: SettingsState = {
   values: { ...DEFAULT_SETTINGS.values, "ui.theme": "dark" },
 };
 
-const info = (grants = ["preferences", "configuration", "sessions"]) => ({
+const info = (access = { owner: true, fullAccess: true }) => ({
   app: "ax-devil",
   api: 2,
-  grants,
+  ...access,
 });
 
 /** A backend with the given settings; a PUT replaces them, as the real one does, or is refused with `refuse`. */
 function backend(
   settings = dark,
   refuse?: { reason: string; location: string },
-  grants?: string[],
+  access?: { owner: boolean; fullAccess: boolean },
 ) {
   let current = settings;
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === "/api/info") return { ok: true, json: async () => info(grants) };
+    if (url === "/api/info") return { ok: true, json: async () => info(access) };
     if (init?.method === "PUT") {
       if (refuse) return { ok: false, status: 422, json: async () => refuse };
       const change = JSON.parse(init.body as string) as SettingsChange;
@@ -176,11 +176,11 @@ describe("access", () => {
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toBeUndefined();
   });
 
-  it("keeps the theme and shortcuts of a viewer without the preferences grant in the browser, not on the server", async () => {
+  it("keeps the theme and shortcuts of a page that is not the Owner in the browser, not on the server", async () => {
     const fetchMock = vi.fn(async (url: string) => ({
       ok: url === "/api/info",
       status: 401,
-      json: async () => info(["sessions"]),
+      json: async () => info({ owner: false, fullAccess: false }),
     }));
     vi.stubGlobal("fetch", fetchMock);
     window.localStorage.setItem(
@@ -202,8 +202,8 @@ describe("access", () => {
     expect(fetchMock.mock.calls.every(([url]) => url !== "/api/settings")).toBe(true);
   });
 
-  it("sends a server-password holder's Server settings to the server and keeps the theme in the browser", async () => {
-    const fetchMock = backend(DEFAULT_SETTINGS, undefined, ["configuration", "sessions"]);
+  it("sends every setting of a server-password holder to the server and keeps nothing in the browser", async () => {
+    const fetchMock = backend(DEFAULT_SETTINGS, undefined, { owner: true, fullAccess: false });
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
     fireEvent.change(await screen.findByLabelText("Theme"), { target: { value: "light" } });
@@ -213,14 +213,7 @@ describe("access", () => {
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
     const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
     const sent = JSON.parse(put?.[1]?.body as string) as SettingsChange;
-    expect(sent.values).toMatchObject({
-      "playback.video_cache": "auto",
-      "storage.cache_dir": "/var/cache",
-      "storage.catalog_dir": "",
-    });
-    expect(Object.keys(sent.values)).not.toContain("ui.theme");
-    expect(JSON.parse(window.localStorage.getItem("ax-devil.preferences") ?? "{}")).toMatchObject({
-      values: { "ui.theme": "light" },
-    });
+    expect(sent.values).toMatchObject({ "ui.theme": "light", "storage.cache_dir": "/var/cache" });
+    expect(window.localStorage.getItem("ax-devil.preferences")).toBeNull();
   });
 });

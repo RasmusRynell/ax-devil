@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useGrants } from "../access";
+import { useAccess } from "../access";
 import { scopeOf } from "../commands";
 import type { SidebarView, WorkspaceCommand } from "../generated/api";
 import { COMMANDS } from "../generated/settings";
@@ -35,7 +35,7 @@ import { LISTED_VIEWS, Sidebar } from "./Sidebar";
 import { Welcome } from "./Welcome";
 import { WorkspaceFileDialog } from "./WorkspaceFileDialog";
 import type { ActivityItem } from "./views";
-import { toggleAppFullscreen, useAppFullscreen, useServerKind } from "../windowBridge";
+import { toggleAppFullscreen, nativeBridge, useAppFullscreen } from "../windowBridge";
 
 const TEXT_INPUTS = new Set(["text", "search", "number", "email", "url", "tel", "password"]);
 
@@ -88,19 +88,17 @@ export function Shell({ version }: { version: string }) {
   const [refused, setRefused] = useState<{ title: string; message: string } | null>(null);
   const [viewerActions, setViewerActions] = useState<ViewerActions>(NO_ACTIONS);
   const { values, shortcuts, save } = useSettings();
-  // Quick Setup configures the server, so only someone who may configure it is offered it.
-  const configures = useGrants().includes("configuration");
+  const { owner } = useAccess();
   // Settings arrive before the shell renders, so a first run is known here.
   const [dialog, setDialog] = useState<Dialog | null>(
-    configures && values["ui.quick_setup_done"] === false ? "quick-setup" : null,
+    owner && values["ui.quick_setup_done"] === false ? "quick-setup" : null,
   );
   // A late close of one dialog cannot dismiss another that has opened since.
   const [addSeed, setAddSeed] = useState<AddSeed>({});
   const closer = (which: Dialog) => () => setDialog((now) => (now === which ? null : now));
 
   // Only the local backend's window may browse this machine's files; any other asks for a path on the server.
-  const local = useServerKind() === "local";
-  const bridge = local ? window.axDevilWindow : undefined;
+  const bridge = nativeBridge();
   const fail = (error: unknown) =>
     setNotice(error instanceof Error ? error.message : String(error));
   // A refused or failed workspace command shows why, as any other command does.
@@ -149,7 +147,7 @@ export function Shell({ version }: { version: string }) {
     settings: () => setDialog("settings"),
     plugins: () => setSidebar({ view: "plugins", open: true }),
     "keyboard-shortcuts": () => setDialog("shortcuts"),
-    ...(configures && { "quick-setup": () => setDialog("quick-setup") }),
+    ...(owner && { "quick-setup": () => setDialog("quick-setup") }),
     about: () => setDialog("about"),
     "add-video": () => setDialog("add-video"),
     "new-workspace": () => void ask({ type: "new" }),

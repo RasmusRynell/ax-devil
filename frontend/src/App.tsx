@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { GrantsContext } from "./access";
+import { AccessContext } from "./access";
 import { apiFetch } from "./api";
 import type { AppInfo } from "./generated/api";
 import { SessionProvider } from "./session/session";
@@ -33,7 +33,7 @@ export function App() {
   }, []);
   if (backend.state === "ready")
     return (
-      <GrantsContext value={backend.info.grants}>
+      <AccessContext value={{ owner: backend.info.owner, fullAccess: backend.info.fullAccess }}>
         <SettingsProvider>
           <SessionProvider>
             <SeekProvider>
@@ -41,7 +41,7 @@ export function App() {
             </SeekProvider>
           </SessionProvider>
         </SettingsProvider>
-      </GrantsContext>
+      </AccessContext>
     );
   return (
     <main

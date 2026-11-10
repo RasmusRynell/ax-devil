@@ -89,7 +89,7 @@ async fn a_hostless_or_opaque_url_is_never_shown_with_its_password() {
     let (_alive, state) = app(|_| {});
     let owner = state
         .sessions
-        .create(true, true, CursorOptions::default())
+        .create(true, CursorOptions::default())
         .unwrap();
     for (seq, url) in (1..).zip([
         "rtsp:////root:SECRET@cam.local/s",
@@ -125,7 +125,7 @@ async fn an_anonymous_stream_changes_route_but_one_with_a_login_is_asked_for_it_
     });
     let owner = state
         .sessions
-        .create(true, true, CursorOptions::default())
+        .create(true, CursorOptions::default())
         .unwrap();
     let add = |fields: serde_json::Value| {
         let mut item = json!({"type": "Live", "host": "cam.local", "overlay": {"mode": "none"},
@@ -195,7 +195,7 @@ async fn scenario(saved_url: &str, shown: &str, spellings: &[&str]) {
     let (_alive, state) = app(|_| {});
     let owner = state
         .sessions
-        .create(true, true, CursorOptions::default())
+        .create(true, CursorOptions::default())
         .unwrap();
     let add = command(json!({"type": "addItems", "open": false, "items": [
         {"type": "Live", "host": "cam.local", "url": saved_url, "overlay": {"mode": "none"},
@@ -272,7 +272,7 @@ async fn an_unusable_saved_url_survives_a_rename_and_is_replaced_by_a_good_one_w
     let (_alive, state) = app(|_| {});
     let owner = state
         .sessions
-        .create(true, true, CursorOptions::default())
+        .create(true, CursorOptions::default())
         .unwrap();
     let hostless = format!("rtsp:////root:{PASSWORD}@cam.local/s");
     let add = command(json!({"type": "addItems", "open": false, "items": [

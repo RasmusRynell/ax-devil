@@ -80,10 +80,7 @@ async fn a_ticket_opens_one_stream_once_and_only_for_the_seat_and_key_it_was_iss
 #[tokio::test(start_paused = true)]
 async fn a_seat_holds_eight_streams_and_a_session_sixty_four() {
     let rig = Rig::new();
-    let owner = rig
-        .service
-        .create(true, true, CursorOptions::default())
-        .unwrap();
+    let owner = rig.service.create(true, CursorOptions::default()).unwrap();
     owner
         .command(Command::Control(Control::Share {
             access: Access::Watch,
@@ -269,10 +266,7 @@ async fn a_presenter_view_change_keeps_the_stored_clock_and_a_new_intent_is_stam
 #[tokio::test(start_paused = true)]
 async fn a_result_that_arrives_late_or_for_a_session_that_is_gone_is_dropped() {
     let rig = Rig::new();
-    let owner = rig
-        .service
-        .create(true, true, CursorOptions::default())
-        .unwrap();
+    let owner = rig.service.create(true, CursorOptions::default()).unwrap();
     let item = rig.video("a.mp4");
     let id = item.id;
     let add = |item: &workspace::WorkspaceItem| {
@@ -349,10 +343,7 @@ fn the_view_lane_keeps_the_latest_view_and_applies_at_most_sixty_a_second() {
 #[tokio::test(start_paused = true)]
 async fn a_session_of_one_works_without_sharing() {
     let rig = Rig::new();
-    let owner = rig
-        .service
-        .create(true, true, CursorOptions::default())
-        .unwrap();
+    let owner = rig.service.create(true, CursorOptions::default()).unwrap();
     assert!(owner.state().sharing.is_none());
     assert!(
         rig.service.list().is_empty(),
@@ -447,10 +438,7 @@ async fn a_live_stream_is_named_by_its_content_and_stops_when_its_viewer_closes(
 #[tokio::test(start_paused = true)]
 async fn editing_an_item_keeps_its_pane_pinned_and_on_the_entry_it_shows() {
     let rig = Rig::new();
-    let owner = rig
-        .service
-        .create(true, true, CursorOptions::default())
-        .unwrap();
+    let owner = rig.service.create(true, CursorOptions::default()).unwrap();
     let (item, before) = rig.open(&owner, playlist_in(rig.dir.path(), &["a", "b"]));
     let second = entry_key(&owner.state(), item, 1).entry;
     owner

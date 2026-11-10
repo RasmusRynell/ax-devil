@@ -15,7 +15,7 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `src/prepare.rs`, `src/routes/playback/prepare.rs` | Readying the next playlist entry's frame indexes and overlay artifacts in the cache folder while a viewer plays the entry before it: one background preparation for the backend, started from the entry a playback socket names (looked up in its own lease's Content) while `playback.prepare_next_video` is on, replaced by the next and ended with its socket |
 | `src/disk_cache.rs` | Which files under the cache folder are ax-devil's own, found and removed for `clear-cache` |
 | `src/thumbnails.rs` | The first-picture JPEGs of videos kept in the cache folder, keyed by the file's identity so a changed video is a new picture; the thumbnail route serves them |
-| `src/access.rs` | Principals and grants, the Local guard, security headers, socket admission limits |
+| `src/access.rs` | Principals, route gates, the Local guard, security headers, socket admission limits |
 | `src/share.rs` | Where other machines reach the backend: join-link base, the desktop's listener for them while a session is shared, the development-build refusal |
 | `src/session/` | The Session socket's adapter: admission, liveness and close codes (`socket`, `exit`), the three lanes (`reader`), what each seat is sent (`writer`), wire-to-service conversion (`wire`), the launch queue, the session list, and `project.rs`, the only constructor of the Doc's wire form, which decides what each audience learns of it |
 | `crates/<name>/` | One owning concept per crate (Scene model, catalog compiler, workspace, sources, ...), with its layer declared |
@@ -50,7 +50,7 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `frontend/src/resolvers/` | The resolver settings form, generated from the schema the backend sends, and the cancellable scan |
 | `frontend/src/session/` | The session client: the socket and its store (the Doc, each seat's view, commands), cursors and presence |
 | `frontend/src/shell/` | The window: title and activity bars, sidebar, the split area of viewer panes, and the sharing UI (`SessionsView`, `ShareControl`, `ConnectDialog`) |
-| `frontend/src/access.ts`, `api.ts` | The credential this page holds and its grants; `fetch` for its own backend |
+| `frontend/src/access.ts`, `api.ts` | The credential this page holds and its role; `fetch` for its own backend |
 | `desktop/start.cjs`, `main.cjs` | The Electron entry (the shell, or the hidden renderer with `--render-host`) and the shell's lifecycle: which windows exist and how they move between local and remote |
 | `desktop/args.cjs`, `backend.cjs`, `window.cjs`, `links.cjs`, `remote.cjs` | The command line (what opens a server, what the backend gets), the local backend process, windows with their trusted origin and IPC, launch links and the single instance, another server's address and its checks |
 | `desktop/smoke*.cjs` | The smoke test and screenshot harness: `smoke-groups.cjs` lists the scenarios by group, `smoke.cjs` runs them, `smoke-kit.cjs` holds the page helpers, and one file per scenario |

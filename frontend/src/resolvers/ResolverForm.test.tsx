@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { GrantsContext } from "../access";
 import type { DecoderInfo, ResolverInfo } from "../generated/api";
 import type { WindowBridge } from "../windowBridge";
 import { ResolverForm, useResolverForm } from "./ResolverForm";
@@ -271,11 +270,7 @@ describe("resolver form", () => {
   it("scans at once when a folder is picked", async () => {
     const scans = stubScans();
     window.axDevilWindow = { pickFolder: () => Promise.resolve("/picked") } as WindowBridge;
-    render(
-      <GrantsContext.Provider value={["preferences"]}>
-        <Harness />
-      </GrantsContext.Provider>,
-    );
+    render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: "Browse Dataset folder" }));
     await waitFor(() => expect(scans).toHaveLength(1));
     expect(scans[0].body.settings).toEqual({ root: "/picked" });
@@ -283,7 +278,10 @@ describe("resolver form", () => {
   });
 
   it("offers Browse only in the backend's own window, not in a window on another machine's server", () => {
-    window.axDevilWindow = { pickFolder: () => Promise.resolve("/picked") } as WindowBridge;
+    window.axDevilWindow = {
+      remote: true,
+      pickFolder: () => Promise.resolve("/picked"),
+    } as WindowBridge;
     render(<Harness />);
     expect(screen.queryByRole("button", { name: "Browse Dataset folder" })).toBeNull();
   });

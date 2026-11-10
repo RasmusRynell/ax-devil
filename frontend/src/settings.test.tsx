@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { GrantsContext } from "./access";
+import { AccessContext } from "./access";
 import { DEFAULT_SETTINGS } from "./fakeSettings";
 import { SettingsProvider, useSettings } from "./settings";
 
@@ -83,11 +83,11 @@ describe("settings", () => {
       return <button onClick={() => void reload()}>{values["ui.theme"] as string}</button>;
     }
     render(
-      <GrantsContext.Provider value={["configuration"]}>
+      <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
         <SettingsProvider>
           <Reload />
         </SettingsProvider>
-      </GrantsContext.Provider>,
+      </AccessContext.Provider>,
     );
     fireEvent.click(await screen.findByRole("button"));
     await waitFor(() => expect(answers).toHaveLength(0));
@@ -129,11 +129,11 @@ describe("settings", () => {
       );
     }
     render(
-      <GrantsContext.Provider value={["configuration"]}>
+      <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
         <SettingsProvider>
           <Folder />
         </SettingsProvider>
-      </GrantsContext.Provider>,
+      </AccessContext.Provider>,
     );
     fireEvent.click(await screen.findByRole("button", { name: "Reload" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));

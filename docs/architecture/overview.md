@@ -31,16 +31,14 @@ This section describes today's code; [access](access.md) is the model new code f
 
 | Listener | Reached by | Admits |
 |----------|------------|--------|
-| Local: `127.0.0.1`, for the desktop and development | The person at this machine | Everything; a Host guard and an Origin guard (scheme, host and port in full) keep other websites off |
-| `serve`: another machine's server | Anyone who can reach it | The server password, join links and resume secrets |
+| Local: `127.0.0.1`, for the desktop and development | The person at this machine: the Owner, with Full access | Everything; a Host guard and an Origin guard (scheme, host and port in full) keep other websites off |
+| `serve`: another machine's server | Anyone who can reach it | The server password (the Owner without Full access), join links and resume secrets |
 | Desktop LAN: opened when a session starts sharing, closed once none is shared | Anyone who can reach it | Join links, resume secrets and playback tickets only; serves the frontend, `/api/info`, `/api/client-errors` (a page reports an uncaught error to the log), the session socket and the playback socket, nothing else |
 
-Each request resolves to a principal with grants: Local has `preferences`, `configuration`, `sessions` and `files`;
-Server (the password) has `configuration`, `sessions` and `files`; anyone else has none. A join link or resume
-secret admits one seat of one Session and is checked by the Session socket, not by a grant, and a playback ticket
-admits one stream and is checked by the playback socket. Only a principal with `files` can add videos from this
-machine's files or list its handlers and scan its folders (`Who::Files`), and a watcher never learns a host path. The table in `src/routes/mod.rs` is the only place a
-route is mounted: method, path, the listeners that serve it and who may call it. A method it does not list answers
+Each request resolves to an Owner (with or without Full access) or to no credential; [access](access.md) says who may do
+what. A join link or resume secret admits one seat of one Session and is checked by the Session socket, and a playback
+ticket admits one stream and is checked by the playback socket. A watcher never learns a host path. The table in
+`src/routes/mod.rs` is the only place a route is mounted: method, path, the listeners that serve it and who may call it. A method it does not list answers
 405, and a conformance test calls every row as every kind of caller. The rules are in
 [13](../rebuild/13-security-packaging-ops.md#sharing-must).
 

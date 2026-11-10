@@ -168,3 +168,47 @@ async fn catalogs_are_polled_in_the_background_so_a_file_that_appears_is_listed(
             .any(|info| info.id.to_string() == "user:night.json")
     );
 }
+
+#[test]
+fn a_save_is_judged_against_the_state_it_is_written_under_so_a_revocation_in_between_counts() {
+    let folder = tempfile::tempdir().unwrap();
+    let settings =
+        Arc::new(settings::Settings::load(&folder.path().join("settings.json")).unwrap());
+    let policy = Policy::Shared {
+        password: Some(sessions::Secret::chosen("pw".into()).unwrap()),
+        settings: Arc::clone(&settings),
+    };
+    let toggle = |on| {
+        settings
+            .update("server.password_full_access", |_| Some(on))
+            .unwrap()
+    };
+    let (on, off) = (toggle(true.into()), toggle(false.into()));
+    let mut change = settings::Change {
+        values: off.values().into_iter().collect(),
+        shortcuts: off
+            .shortcuts()
+            .into_iter()
+            .map(|(id, key)| (id.to_owned(), key))
+            .collect(),
+    };
+    change
+        .values
+        .insert("storage.cache_dir".into(), "/tmp/other".into());
+
+    assert!(admit_save(&policy, Some("pw"), &on, &change).is_ok());
+    let refused = admit_save(&policy, Some("pw"), &off, &change).unwrap_err();
+    assert_eq!(refused.location, "storage.cache_dir");
+
+    // The reply to a save that revokes Full access is projected by the saved state: no `resolved`.
+    toggle(true.into());
+    let with_reference = settings
+        .update("scan.range", |_| Some("$RANGE".into()))
+        .unwrap();
+    let reply = |state: &settings::State| snapshot(&settings, None, state, &policy, Some("pw"));
+    assert!(reply(&with_reference).resolved.is_some());
+    change.values.insert("scan.range".into(), "$RANGE".into());
+    change.values.insert("storage.cache_dir".into(), "".into());
+    let saved = settings.replace(&change).unwrap();
+    assert!(reply(&saved).resolved.is_none());
+}

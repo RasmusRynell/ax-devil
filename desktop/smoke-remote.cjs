@@ -89,9 +89,9 @@ async function remote(local, shell) {
     }
 
     // The window may not browse this machine's files, so Add Video asks for a path on the server instead. The
-    // server's first-run Quick Setup comes first.
+    // server's first-run Quick Setup comes first when its settings have not seen it.
     await js(
-      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Done').click()",
+      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Done')?.click()",
     );
     await wait("!document.querySelector('dialog')");
     await js(

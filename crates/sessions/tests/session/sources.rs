@@ -42,10 +42,7 @@ fn changed(owner: &Handle<u8>, item: ItemId) -> Option<u32> {
 #[tokio::test(start_paused = true)]
 async fn an_open_viewer_keeps_its_stream_when_its_files_change_until_the_item_resolves_again() {
     let rig = Rig::new();
-    let owner = rig
-        .service
-        .create(true, true, CursorOptions::default())
-        .unwrap();
+    let owner = rig.service.create(true, CursorOptions::default()).unwrap();
     let (item, overlay) = with_overlay(rig.dir.path());
     let id = item.id;
     let handlers = Handlers::built_in();
@@ -87,10 +84,7 @@ async fn an_open_viewer_keeps_its_stream_when_its_files_change_until_the_item_re
 #[tokio::test(start_paused = true)]
 async fn what_a_superseded_job_read_is_never_recorded_for_the_item() {
     let rig = Rig::new();
-    let owner = rig
-        .service
-        .create(true, true, CursorOptions::default())
-        .unwrap();
+    let owner = rig.service.create(true, CursorOptions::default()).unwrap();
     let (item, overlay) = with_overlay(rig.dir.path());
     let id = item.id;
     let add = |item: &WorkspaceItem| {
@@ -141,9 +135,7 @@ async fn resolving_records_the_files_and_each_window_with_the_item_is_told() {
     // The same saved workspace open in two windows: one item id in two sessions.
     let owners: Vec<Handle<u8>> = (0..2)
         .map(|_| {
-            let owner = service
-                .create(true, true, CursorOptions::default())
-                .unwrap();
+            let owner = service.create(true, CursorOptions::default()).unwrap();
             owner
                 .command(Command::Content(DocCommand::AddItems {
                     items: vec![item.clone()],
@@ -176,10 +168,7 @@ async fn resolving_records_the_files_and_each_window_with_the_item_is_told() {
 #[tokio::test(start_paused = true)]
 async fn a_read_replaces_the_files_an_item_was_recorded_from_even_with_none() {
     let rig = Rig::new();
-    let owner = rig
-        .service
-        .create(true, true, CursorOptions::default())
-        .unwrap();
+    let owner = rig.service.create(true, CursorOptions::default()).unwrap();
     let (dir_a, dir_b) = (rig.dir.path().join("a"), rig.dir.path().join("b"));
     fs::create_dir_all(&dir_a).unwrap();
     fs::create_dir_all(&dir_b).unwrap();
@@ -261,9 +250,7 @@ async fn a_reference_is_read_for_a_local_owner_and_kept_literal_for_a_remote_one
             },
         };
         let id = item.id;
-        let owner = service
-            .create(true, expands, CursorOptions::default())
-            .unwrap();
+        let owner = service.create(expands, CursorOptions::default()).unwrap();
         owner
             .command(Command::Content(DocCommand::AddItems {
                 items: vec![item],

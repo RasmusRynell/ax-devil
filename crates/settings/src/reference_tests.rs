@@ -15,6 +15,7 @@ const fn row(key: &'static str, kind: Kind, secret: bool) -> Setting {
         live: false,
         env: true,
         secret,
+        full_access: false,
         quick_setup: false,
         scope: Scope::Server,
     }
@@ -89,12 +90,12 @@ fn a_reference_is_stored_as_written_and_a_text_or_choice_is_read_only_when_used(
     let (_folder, path, settings) = open();
     // A choice is not checked on save; used, what is not an option gives the default.
     let state = settings
-        .replace(&Scope::ALL, &edit(&[("net.mode", json!("$MODE"))]))
+        .replace(&edit(&[("net.mode", json!("$MODE"))]))
         .unwrap();
-    assert_eq!(state.values(&Scope::ALL)["net.mode"], "$MODE");
+    assert_eq!(state.values()["net.mode"], "$MODE");
     assert_eq!(state.resolved("net.mode"), Some(json!("a")));
     let state = settings
-        .replace(&Scope::ALL, &edit(&[("net.address", json!("$UNSET"))]))
+        .replace(&edit(&[("net.address", json!("$UNSET"))]))
         .unwrap();
     assert_eq!(
         state.resolved("net.address"),
@@ -103,7 +104,7 @@ fn a_reference_is_stored_as_written_and_a_text_or_choice_is_read_only_when_used(
     );
 
     let state = settings
-        .replace(&Scope::ALL, &edit(&[("net.address", json!("$ADDRESS"))]))
+        .replace(&edit(&[("net.address", json!("$ADDRESS"))]))
         .unwrap();
     let stored: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(
@@ -118,17 +119,15 @@ fn a_number_may_be_a_reference_that_resolves_to_a_whole_number_in_range() {
     let (_folder, path, settings) = open();
     let port = |value: Value| edit(&[("net.port", value)]);
 
-    let state = settings
-        .replace(&Scope::ALL, &port(json!("$PORT")))
-        .unwrap();
+    let state = settings.replace(&port(json!("$PORT"))).unwrap();
     assert_eq!(
-        state.values(&Scope::ALL)["net.port"],
+        state.values()["net.port"],
         "$PORT",
         "the reference stays as written for the editor and the file"
     );
     assert_eq!(state.resolved("net.port"), Some(json!(8554)));
     assert_eq!(
-        state.references(&Scope::ALL),
+        state.references(),
         BTreeMap::from([("net.port".to_owned(), json!(8554))]),
         "a form that starts from the value is given it; a secret is never listed"
     );
@@ -154,15 +153,13 @@ fn a_number_may_be_a_reference_that_resolves_to_a_whole_number_in_range() {
         Some(&json!(9000)),
         "an update refreshes it"
     );
-    let state = settings.replace(&Scope::ALL, &port(json!(7000))).unwrap();
+    let state = settings.replace(&port(json!(7000))).unwrap();
     assert_eq!(
         state.stored("net.port"),
         Some(&json!(7000)),
         "a literal replaces it"
     );
-    let state = settings
-        .replace(&Scope::ALL, &port(json!("$PORT")))
-        .unwrap();
+    let state = settings.replace(&port(json!("$PORT"))).unwrap();
     assert_eq!(state.stored("net.port"), Some(&json!(8554)));
 
     for rejected in [
@@ -172,7 +169,7 @@ fn a_number_may_be_a_reference_that_resolves_to_a_whole_number_in_range() {
         json!("8554"),
         json!("port"),
     ] {
-        let error = settings.replace(&Scope::ALL, &port(rejected)).unwrap_err();
+        let error = settings.replace(&port(rejected)).unwrap_err();
         assert_eq!(error.location, "net.port");
         assert!(error.invalid);
     }
@@ -193,7 +190,7 @@ fn a_folder_is_a_reference_or_a_home_relative_or_absolute_path_that_need_not_exi
         json!("~me/x"),
         json!(7),
     ] {
-        let error = settings.replace(&Scope::ALL, &dir(rejected)).unwrap_err();
+        let error = settings.replace(&dir(rejected)).unwrap_err();
         assert_eq!(error.location, "net.dir");
     }
     for (stored, used) in [
@@ -202,11 +199,11 @@ fn a_folder_is_a_reference_or_a_home_relative_or_absolute_path_that_need_not_exi
         (json!("~"), "/home/me"),
         (json!("~/cache"), "/home/me/cache"),
     ] {
-        let state = settings.replace(&Scope::ALL, &dir(stored.clone())).unwrap();
-        assert_eq!(state.values(&Scope::ALL)["net.dir"], stored);
+        let state = settings.replace(&dir(stored.clone())).unwrap();
+        assert_eq!(state.values()["net.dir"], stored);
         assert_eq!(resolved(&settings), Some(PathBuf::from(used)));
     }
-    settings.replace(&Scope::ALL, &dir(json!(""))).unwrap();
+    settings.replace(&dir(json!(""))).unwrap();
     assert_eq!(resolved(&settings), None);
 }
 
@@ -222,11 +219,7 @@ fn a_saved_reference_that_does_not_resolve_loads_and_falls_back_but_is_refused_o
     let settings = Settings::open(&path, NET, &[], Arc::new(lookup)).unwrap();
 
     let state = settings.state();
-    assert_eq!(
-        state.values(&Scope::ALL)["net.port"],
-        "$UNSET",
-        "kept as written"
-    );
+    assert_eq!(state.values()["net.port"], "$UNSET", "kept as written");
     assert_eq!(
         state.resolved("net.port"),
         Some(json!(554)),
@@ -241,11 +234,11 @@ fn a_saved_reference_that_does_not_resolve_loads_and_falls_back_but_is_refused_o
     );
     assert_eq!(state.folder("net.dir"), None, "the standard folder is used");
 
-    let kept = settings.replace(&Scope::ALL, &edit(&[("net.port", json!("$UNSET"))]));
+    let kept = settings.replace(&edit(&[("net.port", json!("$UNSET"))]));
     assert_eq!(kept.unwrap_err().location, "net.port");
     let other = settings.update("net.address", |_| Some(json!("literal")));
     assert!(other.is_ok(), "another setting can still be changed");
     let fixed = edit(&[("net.port", json!(8554))]);
-    let state = settings.replace(&Scope::ALL, &fixed).unwrap();
+    let state = settings.replace(&fixed).unwrap();
     assert_eq!(state.resolved("net.port"), Some(json!(8554)));
 }

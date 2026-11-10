@@ -448,6 +448,7 @@ async fn serve(
     let state = services
         .state(Policy::Shared {
             password: Some(password),
+            settings: Arc::clone(&services.settings),
         })
         .with_limits(limits)
         .with_hosting(Hosting::Server(base));

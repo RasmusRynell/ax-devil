@@ -29,12 +29,13 @@ Every access or settings decision reads exactly one of these. Never derive one f
 
 - A local connection always has it. A Server Password holder has it only while the Server setting
   `server.password_full_access` is on; it is off by default.
-- It is needed for exactly these: installing, updating or removing a plugin; writing a `$NAME` reference; seeing
-  what a reference resolves to; changing a settings row marked `full_access`.
+- It is needed for exactly these: installing, updating or removing a plugin; resolving a `$NAME` reference or using a
+  login configured on the server; changing a settings row marked `full_access`; changing any setting to a `$NAME`
+  reference.
+- Without it an Owner supplies their own logins, and a `$NAME` in their Session is text. A Session reads the server's
+  environment only if it was created with Full access; it keeps that when the setting changes.
 - The test for anything new: it needs Full access if it can run code on the server's machine, read its
   environment, or change where ax-devil reads or writes files. Otherwise Owner is enough.
-- A stored reference resolves on the server for every Owner's work. A value written without Full access that is a
-  whole `$NAME` is refused, never stored as text.
 
 ## Routes
 
@@ -111,10 +112,8 @@ Each row is removed by the change that makes it true; this section is deleted wi
 
 | Model | Today |
 |-------|-------|
-| Roles are Owner and Guest | Principals are `Local` and `Server` with four grants; the frontend guesses a remote window from a missing grant; the glossary calls a Guest a Watcher |
-| Full access is a Server setting | It does not exist. A Server Password holder never installs plugins or manages render catalogs (those routes need the `preferences` grant, which only Local has), but can write `$NAME` into a Server row and change the two folder settings; a Session carries `files` and `expands` flags taken from whoever created it, and only a Local Owner's Sessions expand references |
+| Roles are Owner and Guest | The frontend and the glossary still call a Guest a Watcher |
 | Saves are per key and pushed | A save replaces the whole set; clients reload by hand |
-| Personal settings are the same on every device | A Server Password holder keeps them in browser storage |
 | Device scope | Theme and text size are Personal; shortcuts are stored outside the table |
 | Secrets are write-only | A masked value is sent to the client and matched back on save |
 | Any number of Owner seats share the Presenter View | The Owner is the seat that created the Session; a Server Password holder who opens an existing Session gets a Guest seat; an Edit sharing level exists that no UI offers |

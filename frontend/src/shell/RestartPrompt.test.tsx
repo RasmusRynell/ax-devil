@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { GrantsContext } from "../access";
+import { AccessContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
-import type { ApiError, Grant } from "../generated/api";
+import type { ApiError } from "../generated/api";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { Shell } from "./Shell";
@@ -17,15 +17,15 @@ afterEach(() => {
   delete window.axDevilWindow;
 });
 
-async function showShell(grants: Grant[], save?: () => Promise<ApiError | null>) {
+async function showShell(save?: () => Promise<ApiError | null>) {
   render(
-    <GrantsContext.Provider value={grants}>
+    <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
       <FakeSettings state={DEFAULT_SETTINGS} save={save}>
         <SessionProvider>
           <Shell version="1.2.3" />
         </SessionProvider>
       </FakeSettings>
-    </GrantsContext.Provider>,
+    </AccessContext.Provider>,
   );
   await screen.findByRole("heading", { name: "ax-devil" });
 }
@@ -46,7 +46,7 @@ describe("restart prompt", () => {
       onMaximizedChange: () => () => undefined,
       onFullScreenChange: () => () => undefined,
     } as unknown as WindowBridge;
-    await showShell(["configuration", "preferences"]);
+    await showShell();
     saveSetting("General", "Theme", "dark");
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull());
     expect(screen.queryByRole("dialog", { name: "Restart ax-devil?" })).toBeNull();
@@ -68,7 +68,7 @@ describe("restart prompt", () => {
       onMaximizedChange: () => () => undefined,
       onFullScreenChange: () => () => undefined,
     } as unknown as WindowBridge;
-    await showShell(["configuration"]);
+    await showShell();
     saveSetting("Storage", "Cache folder", "/elsewhere");
     await screen.findByRole("dialog", { name: "Restart ax-devil?" });
     expect(screen.queryByRole("button", { name: "Restart Now" })).toBeNull();
@@ -78,14 +78,14 @@ describe("restart prompt", () => {
 
   it("does not follow a refused save, or a save whose dialog was cancelled meanwhile", async () => {
     const refused = { reason: "full", location: "" };
-    await showShell(["configuration"], () => Promise.resolve(refused));
+    await showShell(() => Promise.resolve(refused));
     saveSetting("Storage", "Cache folder", "/elsewhere");
     await screen.findByText("full");
     expect(screen.queryByRole("dialog", { name: "Restart ax-devil?" })).toBeNull();
     cleanup();
 
     let finish: (outcome: ApiError | null) => void = () => undefined;
-    await showShell(["configuration"], () => new Promise((resolve) => (finish = resolve)));
+    await showShell(() => new Promise((resolve) => (finish = resolve)));
     saveSetting("Storage", "Cache folder", "/elsewhere");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     finish(null);

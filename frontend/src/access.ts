@@ -1,5 +1,4 @@
 import { createContext, useContext } from "react";
-import type { Grant } from "./generated/api";
 
 /** What this page presents to its backend: the server password, or the join link of one session. */
 export type Credential =
@@ -55,10 +54,16 @@ export function credential(): Credential | null {
   return stored ? (JSON.parse(stored) as Credential) : null;
 }
 
-/** What the backend lets this page do, from `GET /api/info`; empty until the backend has answered. */
-export const GrantsContext = createContext<readonly Grant[]>([]);
+/** What this page is on its backend, from `GET /api/info`: the Owner, and whether that Owner has Full access. */
+export interface Access {
+  owner: boolean;
+  fullAccess: boolean;
+}
 
-/** The grants of this page on its backend. */
-export function useGrants(): readonly Grant[] {
-  return useContext(GrantsContext);
+/** Nothing until the backend has answered, and for a page that holds only a join link. */
+export const AccessContext = createContext<Access>({ owner: false, fullAccess: false });
+
+/** What this page is on its backend. */
+export function useAccess(): Access {
+  return useContext(AccessContext);
 }

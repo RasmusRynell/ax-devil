@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { useGrants } from "../access";
+import { useAccess } from "../access";
+import { nativeBridge } from "../windowBridge";
 import { reasonOf } from "../errors";
 import type {
   HandlerKind,
@@ -187,13 +188,13 @@ export function PluginsView() {
   useEffect(() => {
     if (info) reportFailedPlugins(failedIn(info));
   }, [info]);
-  // Installing and removing change this machine's files: only the person at it may.
-  const mayChange = useGrants().includes("preferences");
+  // Installing and removing run code on the server's machine: only Full access may.
+  const mayChange = useAccess().fullAccess;
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   // Why the last install or remove failed; a list reload never clears it.
   const [refused, setRefused] = useState<string | null>(null);
-  const bridge = window.axDevilWindow;
+  const bridge = nativeBridge();
 
   const change = async (url: string, body: InstallRequest | RemoveRequest | UpdateRequest) => {
     setBusy(true);

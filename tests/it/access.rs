@@ -32,14 +32,15 @@ use tower::ServiceExt;
 /// What a state needs to stay alive: its folder, and the stop signal that would end its long-lived connections.
 type Keep = (tempfile::TempDir, watch::Sender<bool>);
 
-fn state(policy: Policy) -> (AppState, Keep) {
+fn state(policy: impl FnOnce(&Arc<settings::Settings>) -> Policy) -> (AppState, Keep) {
     let folder = tempfile::tempdir().unwrap();
-    let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
+    let settings = Arc::new(settings::Settings::load(&folder.path().join("default.json")).unwrap());
     let cache = folder.path().join("cache");
     let videos = video_cache::start(&settings, &cache);
     let (stop, stopping) = watch::channel(false);
+    let policy = policy(&settings);
     let state = AppState::new(
-        Arc::new(settings),
+        settings,
         policy,
         videos,
         stopping,
@@ -49,14 +50,16 @@ fn state(policy: Policy) -> (AppState, Keep) {
     (state, (folder, stop))
 }
 
-fn router(policy: Policy) -> (Router, Keep) {
+fn router(policy: impl FnOnce(&Arc<settings::Settings>) -> Policy) -> (Router, Keep) {
     let (state, keep) = state(policy);
     (app(state), keep)
 }
 
-fn shared(password: &str) -> Policy {
-    Policy::Shared {
-        password: Some(Secret::chosen(password.into()).unwrap()),
+fn shared(password: &str) -> impl FnOnce(&Arc<settings::Settings>) -> Policy {
+    let password = Secret::chosen(password.into()).unwrap();
+    move |settings| Policy::Shared {
+        password: Some(password),
+        settings: Arc::clone(settings),
     }
 }
 
@@ -99,7 +102,7 @@ async fn send(
 
 #[tokio::test]
 async fn the_local_listener_answers_only_pages_it_served_and_every_response_forbids_framing() {
-    let (app, _folder) = router(Policy::Local);
+    let (app, _folder) = router(|_| Policy::Local);
     for host in ["127.0.0.1:7330", "localhost", "[::1]:1"] {
         let origin = format!("http://{host}");
         for headers in [
@@ -109,8 +112,8 @@ async fn the_local_listener_answers_only_pages_it_served_and_every_response_forb
             let (status, info) = send(&app, "GET", "/api/info", &headers, "").await;
             assert_eq!(status, StatusCode::OK, "{headers:?}");
             assert_eq!(
-                info["grants"],
-                json!(["preferences", "configuration", "sessions", "files"])
+                (&info["owner"], &info["fullAccess"]),
+                (&json!(true), &json!(true))
             );
         }
     }
@@ -152,19 +155,33 @@ async fn the_local_listener_answers_only_pages_it_served_and_every_response_forb
 
 #[tokio::test]
 async fn a_server_answers_settings_and_sessions_only_to_the_password() {
-    let (app, _folder) = router(shared("secret"));
+    let (state, _folder) = state(shared("secret"));
+    let settings = Arc::clone(&state.settings);
+    let app = app(state);
     let none: [(&str, &str); 0] = [];
     let wrong = [("authorization", "Bearer guess")];
     let right = [("authorization", "Bearer secret")];
 
     let (_, info) = send(&app, "GET", "/api/info", &none, "").await;
-    assert_eq!(info["grants"], json!([]));
+    assert_eq!(
+        (&info["owner"], &info["fullAccess"]),
+        (&json!(false), &json!(false))
+    );
     assert_eq!(info["shell"], api_types::SHELL_API);
     let (_, info) = send(&app, "GET", "/api/info", &right, "").await;
     assert_eq!(
-        info["grants"],
-        json!(["configuration", "sessions", "files"])
+        (&info["owner"], &info["fullAccess"]),
+        (&json!(true), &json!(false))
     );
+    // Turning the setting on gives the holder Full access at once, with no restart.
+    settings
+        .update("server.password_full_access", |_| Some(json!(true)))
+        .unwrap();
+    let (_, info) = send(&app, "GET", "/api/info", &right, "").await;
+    assert_eq!(info["fullAccess"], json!(true));
+    settings
+        .update("server.password_full_access", |_| Some(json!(false)))
+        .unwrap();
 
     for headers in [&none[..], &wrong[..]] {
         for (method, path) in [
@@ -183,63 +200,28 @@ async fn a_server_answers_settings_and_sessions_only_to_the_password() {
     for path in ["/api/sessions", "/api/handlers", "/api/plugins"] {
         assert_eq!(send(&app, "GET", path, &right, "").await.0, StatusCode::OK);
     }
-    // The password holder sees and replaces the Server settings, and may touch neither a Personal setting nor a
-    // shortcut.
+    // The password holder reads and replaces every setting and shortcut, Personal ones too.
     let (status, settings) = send(&app, "GET", "/api/settings", &right, "").await;
     assert_eq!(status, StatusCode::OK);
-    let server = settings["values"].clone();
-    assert_eq!(server["storage.cache_dir"], "");
-    // The default references are set, but what they give is the machine's environment: not for a remote holder.
+    let mut values = settings["values"].clone();
+    assert_eq!(values["storage.cache_dir"], "");
+    // The default references are set, but what they give is the machine's environment: only Full access sees it.
     assert!(settings.get("resolved").is_none());
-    assert!(server.get("ui.theme").is_none() && server.get("overlays.default_catalog").is_none());
-    assert_eq!(&settings["shortcuts"], &json!({}));
-    let change = |values: serde_json::Value, shortcuts: serde_json::Value| {
-        json!({"values": values, "shortcuts": shortcuts}).to_string()
-    };
-    assert_eq!(
-        send(
-            &app,
-            "PUT",
-            "/api/settings",
-            &right,
-            &change(server.clone(), json!({}))
-        )
-        .await
-        .0,
-        StatusCode::OK
-    );
-    let mut with_theme = server.clone();
-    with_theme["ui.theme"] = json!("dark");
-    let (status, error) = send(
-        &app,
-        "PUT",
-        "/api/settings",
-        &right,
-        &change(with_theme, json!({})),
-    )
-    .await;
-    assert_eq!(
-        (status, &error["location"]),
-        (StatusCode::FORBIDDEN, &json!("ui.theme"))
-    );
-    let (status, error) = send(
-        &app,
-        "PUT",
-        "/api/settings",
-        &right,
-        &change(server, json!({"exit": null})),
-    )
-    .await;
-    assert_eq!(
-        (status, &error["location"]),
-        (StatusCode::FORBIDDEN, &json!("shortcuts.exit"))
-    );
+    values["ui.theme"] = json!("dark");
+    let body = json!({"values": values, "shortcuts": {"exit": null}}).to_string();
+    let (status, saved) = send(&app, "PUT", "/api/settings", &right, &body).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["values"]["ui.theme"], "dark");
+    assert_eq!(saved["shortcuts"]["exit"], json!(null));
 }
 
 #[tokio::test]
 async fn the_listener_for_other_machines_serves_the_sockets_but_neither_settings_nor_the_session_list_nor_the_files()
  {
-    let (state, _keep) = state(Policy::Shared { password: None });
+    let (state, _keep) = state(|settings| Policy::Shared {
+        password: None,
+        settings: Arc::clone(settings),
+    });
     let lan = lan_app(state);
     let host = [("host", "192.168.1.20:7340")];
     for path in [

@@ -230,7 +230,6 @@ fn seat_access() -> BTreeMap<String, sessions::session::Can> {
     let owner = SessionState::new(
         sessions::SessionId::generate(),
         sessions::OwnerId::generate(),
-        true,
         false,
     );
     let mut rights = BTreeMap::new();

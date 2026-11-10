@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { GrantsContext } from "../access";
+import { AccessContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
@@ -27,13 +27,13 @@ async function show(answer: object) {
     return { ok: true, status: 200, json: async () => ({ decoders: [], resolvers: [] }) };
   });
   render(
-    <GrantsContext value={["preferences"]}>
+    <AccessContext value={{ owner: true, fullAccess: true }}>
       <FakeSettings state={REFERENCES}>
         <SessionProvider>
           <AddLiveStreamDialog onClose={() => {}} />
         </SessionProvider>
       </FakeSettings>
-    </GrantsContext>,
+    </AccessContext>,
   );
   return asked;
 }

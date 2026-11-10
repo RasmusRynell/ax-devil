@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { credential, useGrants } from "../access";
+import { credential, useAccess } from "../access";
 import { Icon } from "../kit/Icon";
 import { QUIET } from "../kit/look";
 import { Menu, type MenuEntry } from "../kit/Menu";
@@ -31,7 +31,7 @@ export function ShareControl({ onStartSharing }: { onStartSharing: () => void })
   const { state, session, mode, cursorOptions, setCursorOptions, leave, follow } = useSession();
   const command = useCommand();
   const { participants } = useParticipants();
-  const sessions = useGrants().includes("sessions");
+  const sessions = useAccess().owner;
   const [open, setOpen] = useState(false);
   const boundary = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
