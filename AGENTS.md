@@ -166,4 +166,6 @@ Each fact has one home; link to it instead of repeating it. When a fact moves la
 
 Read what the task needs: `docs/architecture/module-map.md` (where code belongs), the `docs/domain/invariants.md`
 sections for the area you change and `CONTEXT.md` (terms); `docs/architecture/overview.md` for seams and data flow;
+`docs/architecture/access.md` (who may do what, where a setting lives; read before adding a route, a setting or a
+session field);
 `docs/runbooks/testing.md` to run or write tests; the `port-module` skill for a rewrite parity row.
