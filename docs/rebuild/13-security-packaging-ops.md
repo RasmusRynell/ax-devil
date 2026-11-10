@@ -55,6 +55,8 @@ Owns who may reach a backend and the limits that keep one peer or crowd from usi
   it targets the shared port, never the Local port, and the server is told its public address (`--public-url`).
 - Join links need the release build: a development build serves no frontend, so `serve` refuses to start and the
   desktop opens no listener.
+- Every new feature extends SH-01 to SH-04: decide what follows the presenter, what stays private, and how removal or
+  a permission change revokes access.
 
 | Limit | Value |
 |-------|-------|

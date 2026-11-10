@@ -7,7 +7,7 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
 ## Settings model
 
 - **SHOULD** declare every setting once in a table: key, type, default, scope (Personal or Server,
-  [invariants](../domain/invariants.md#settings-and-shortcuts)), live or restart, validation, label, page.
+  [invariants](../domain/app-invariants.md#settings-and-shortcuts)), live or restart, validation, label, page.
   Defaults, config parsing, dialog rows, the restart marker and View-menu toggles are generated from it.
   *Current:* `DEFAULT_CONFIG`, enums with `from_config`, `GlobalSettings` properties and hand-built dialog rows.
 - **MUST** keep one immutable settings state replaced whole; consumers subscribe, never poll.
@@ -65,5 +65,5 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
 | Normal | INFO logging by default |
 | Headless | `serve`: no window; the frontend is served to browsers on other machines |
 | Developer | One command runs from source with DEBUG logging |
-| Isolated (agents, CI) | [09](09-testing.md#isolation-must) |
+| Isolated (agents, CI) | [testing](../runbooks/testing.md#tests-never-touch-the-users-files-or-session) |
 | Restart | Relaunch with the same global options |

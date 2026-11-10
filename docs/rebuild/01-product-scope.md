@@ -50,7 +50,7 @@ object and frame by frame, and for comparing results side by side. Take the pitc
 | ID | Feature | P | Source |
 |----|---------|---|--------|
 | AC-01 | Add Video with any number of overlays; decoder picked by extension | M | `docs/architecture/overview.md#workspace-items-and-intake` |
-| AC-02 | Drop video files on the window (dropped by the owner) | M | [parity deviations](../parity-deviations.md) |
+| AC-02 | Drop video files on the window (dropped by the owner) | M | [workspace deviations](../parity/workspace-deviations.md) |
 | AC-03 | Add Live Stream with analytics discovery | M | `workspace/ui/add_content/`, `docs/usage.md#live-cameras` |
 | AC-04 | Add Playlist through a resolver form | M | `docs/architecture/workspace.md#playlist-resolver-contract` |
 | AC-05 | One intake validation for dialogs and the CLI | M | `docs/domain/invariants.md#content-model` |
@@ -87,7 +87,7 @@ with different annotation coverage stay aligned when playing, seeking and steppi
 video, and switching playlist entries changes their shared video. Each lane keeps its own catalog, filter and theme,
 also when two lanes show one overlay source (D24); zoom and pan are the viewer's (D31). OF-08 separately accepts export with that timing.
 Synchronized comparison of different recordings from the reference is a recorded reduction, not satisfied by
-independent viewers (see the OF-02 deviation in the new-tree `docs/parity-deviations.md`).
+independent viewers (see the OF-02 [deviation](../parity/viewer-deviations.md)).
 
 ### Inspection and display
 
@@ -159,7 +159,7 @@ These are additions beyond Python. Their security and deployment contract is in
 
 | ID | Tool | P | Source |
 |----|------|---|--------|
-| DT-01 | Isolated GUI test environment for agents and CI | M | [09](09-testing.md#isolation-must) |
+| DT-01 | Isolated GUI test environment for agents and CI | M | [testing](../runbooks/testing.md#tests-never-touch-the-users-files-or-session) |
 | DT-02 | UI screenshot harness | M | `tools/ui_screenshots.py` |
 | DT-03 | Rendering benchmarks with A/B against a ref | S | tools/bench (`tools/bench/README.md`) |
 | DT-04 | Timestamp alignment report | S | `tools/README.md` |

@@ -1,10 +1,8 @@
 # 04 Domain Rules
 
-- **MUST** port `CONTEXT.md` as the new glossary, keeping terms and the "Avoid" column; reword rows that name current
-  classes (Viewer Widget's class name).
-- **MUST** port `docs/domain/invariants.md` as the new invariants file. Rules carry over in meaning; rewrite every
-  mechanism they name (classes, signals, threads, Qt, Python, pools) using the tables below, and audit the ported
-  text for any left. Scene types: `scene/model.py`, `scene/model_values.py`.
+`CONTEXT.md` and `docs/domain/invariants.md` were ported from the reference with the tables below, which stay as the
+record of what changed from the reference wording. Scene types at the reference: `scene/model.py`,
+`scene/model_values.py`.
 
 ## Translate
 
@@ -41,12 +39,6 @@
 | Settings access | Domain code takes values; no global settings | Testability ([02](02-architecture.md#seams-to-redraw)) |
 | Resolver settings | Declared schema, not a plugin widget (D4) | Plugins become UI-toolkit independent |
 
-## Neutral types to fix early
-
-- Media Time and frame identity are `foundation::MediaTime` and `FrameId`; the offline rules are in the invariants.
-  Live frames take device capture time (LV-04, [14](14-build-order.md#stack-criteria)).
-- Scene: one serialization schema from M2 on ([05](05-formats-and-extensions.md#scene-serialization)).
-
 ## Rules implied by the code but not stated as invariants
 
 Confirm with the owner before treating as MUST.
@@ -56,9 +48,3 @@ Confirm with the owner before treating as MUST.
 - Hover picks the smallest box containing the cursor; routing uses the latest observation's primary classification;
   entities without observations are skipped; relation recipes need both endpoints in the filtered Scene
   (`scene/rendering/README.md#how-it-runs`).
-
-## Porting procedure
-
-1. Rewrite each rule using the tables above.
-2. Delete rules the new type system or validation enforces by itself.
-3. Link each remaining rule to the test that guards it; a rule without one is a test gap.

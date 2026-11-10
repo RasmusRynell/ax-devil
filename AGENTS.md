@@ -26,6 +26,7 @@ shipped with ax-devil is development.
 
 Task-specific instructions for any agent live in `.agents/skills/<name>/SKILL.md`; read the matching one before doing
 that task. `.claude/skills` links to the same folder for Claude Code.
+Add no `CLAUDE.md` or agent definitions: this file is the one entry point.
 When writing or editing a skill or this file, the `writing-for-agents` and `write-a-skill` skills help if your agent
 has them; they are optional and not part of this repository.
 
@@ -113,7 +114,7 @@ entry points, and keep reusable build and test steps in the Makefile.
 - UI changes: screenshots in both themes from the harness (`make test-desktop`), and, once the fit test exists, at
   200% zoom with the fit test updated (write-ui skill).
 - Rendering changes: oracle canonical rows (`fixtures/oracle`) and in-stack goldens reviewed; a benchmark when on the hot path.
-- A parity row: its line in [docs/parity.md](docs/parity.md) updated with the test that proves it.
+- A parity row: its [parity](docs/parity.md) area-file line updated with its proving test.
 
 ## Project Guidance
 
@@ -163,10 +164,6 @@ Each fact has one home; link to it instead of repeating it. When a fact moves la
 
 ### Read Next
 
-- Where code belongs: `docs/architecture/module-map.md`
-- Rules for the area you change: `docs/domain/invariants.md`
-- Terms: `CONTEXT.md`
-- Architecture and runtime: `docs/architecture/overview.md`
-- Testing workflow and isolation: `docs/runbooks/testing.md`
-- While the rewrite is in progress: `docs/rebuild/README.md` (what to build and how it must behave) and
-  `docs/parity.md` (what is done)
+Read what the task needs: `docs/architecture/module-map.md` (where code belongs), the `docs/domain/invariants.md`
+sections for the area you change and `CONTEXT.md` (terms); `docs/architecture/overview.md` for seams and data flow;
+`docs/runbooks/testing.md` to run or write tests; the `port-module` skill for a rewrite parity row.

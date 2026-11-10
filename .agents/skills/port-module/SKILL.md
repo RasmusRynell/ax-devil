@@ -29,12 +29,13 @@ Port behavior, not code: the reference docs hold the rules, the Python holds Pyt
 5. **Test, then implement.** Write the tests, see them fail, implement until they pass. Wire time, scheduling and
    cancellation through their injected services.
 6. **Place the rules.** Move each rule the module now enforces from `docs/rebuild/` to its new home
-   ([11](../../../docs/rebuild/11-docs-structure.md#retiring-docsrebuild)): a module README for rules only it keeps,
+   ([Files](../../../docs/rebuild/README.md#files)): a module README for rules only it keeps,
    the invariants for rules other modules must keep, nothing when a type or test enforces it.
 7. **Verify.** Run the focused suite. For UI, run the [verify-headless](../verify-headless/SKILL.md) loop and look
    at the screenshots.
-8. **Record.** Update each row's line in `docs/parity.md`: status, the test that proves it, and any intentional
-   deviation from the reference with its reason.
+8. **Record.** Update each row's line in its area file under `docs/parity/`: status and the test that proves it
+   ([row format](../../../docs/parity.md#row-format)); record any intentional deviation, with its reason, in that
+   area's deviations file.
 
 ## Report
 

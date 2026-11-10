@@ -1,7 +1,6 @@
 # 05 Formats and Extensions
 
-Owns: file formats of the new app, versioning, atomic writes, extension points and the plugin contract. What to carry
-over by hand from the old tree is in [migration.md](migration.md).
+Owns: file formats of the new app, versioning, atomic writes, extension points and the plugin contract.
 
 ## Format policy
 
@@ -11,7 +10,7 @@ The new app defines its own formats ([README](README.md#delivery)). One format i
   (`scene/rendering/catalog_definitions/`). Reason: the frontend compiles and evaluates catalogs per lane (D22), so
   styles, frame filters and draw order share one language. The language is the main agent-facing extension surface;
   the six built-ins are rewritten as complete v4 documents, and the JSON Schema and reference are generated from the
-  TypeScript definitions ([10](10-quality-gates.md#gates-must)).
+  TypeScript definitions (`make check` fails on a stale one).
 
 Rules for every format the new app owns (MUST):
 
@@ -44,7 +43,7 @@ Use the current definitions as design references, not compatibility targets.
 
 ## Scene serialization
 
-- **MUST** define one versioned Scene serialization schema in M2. It serves as the plugin wire format, the golden
+- **MUST** define one versioned Scene serialization schema. It serves as the plugin wire format, the golden
   fixture format ([09](09-testing.md#oracle-policy)) and the cache artifact payload.
 - **MUST** follow the Scene version rules in `docs/domain/invariants.md#scene-model`. A decoder loads when its major
   equals the host's and its minor is not newer (`plugin_system/decoder_plugins.py`, `validate_registration`). The

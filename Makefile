@@ -183,6 +183,7 @@ _static: node_modules/.installed _types
 	git diff --check "$$(git hash-object -t tree /dev/null)"
 	node scripts/check-file-tokens.cjs $(CHANGED)
 	$(CARGO) metadata --locked --format-version 1 | node scripts/check-architecture.cjs
+	node scripts/check-docs.cjs
 	pnpm exec vp fmt --check $(ROOT_FILES)
 	pnpm exec vp lint --deny-warnings desktop scripts
 	pnpm --dir frontend exec vp check

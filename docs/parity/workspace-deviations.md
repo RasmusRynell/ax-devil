@@ -1,7 +1,6 @@
-# Parity deviations: workspace, sidebar and live
+# Parity deviations: workspace, adding content and live
 
-Where the workspace, sidebar and live [parity](parity.md) rows differ from the reference. The rest are in
-[parity deviations](parity-deviations.md).
+Where the [workspace](workspace.md) rows differ from the reference.
 
 | Row | Deviation | Reason |
 |-----|-----------|--------|
@@ -37,3 +36,6 @@ Where the workspace, sidebar and live [parity](parity.md) rows differ from the r
 | LOB-006 | [AI] A scan that breaks says `The scan stopped unexpectedly.` and logs the detail; the reference showed the exception text on hover | A panic message is for developers, and the detail can name paths |
 | LOB-008 | [AI] The Live footer leaves out the sign-in box and the logins below 20rem of window height, and a login's user and password sit one over the other at the sidebar's width, so about two logins show before the list scrolls (five where the Settings dialog has room); the reference kept the controls and showed five side by side | Settings edits the same two; a `$NAME` reference needs 24ch to show whole, which two fields do not leave in a sidebar |
 | WS-07, WSC-012, WSC-A001 | [AI] A resolver's metadata shows in Information for playlists, entries and lanes (the reference's video metadata is the entry's); a nested object reads `key: value, …` | Python's dict `repr` is not the user's spelling |
+| AC-02 | Dropping video files on the window does nothing; the reference added them. [human] "the file drop (if it means draging in files into the app) can be completally dropped in all ways" | Owner decision |
+| CHR-009, ADD-001 | [human] Dialogs size to their content, within the window, and cannot be resized by the user; the reference's could be | Owner decision: "dialogs auto-size only" |
+| ADD-019 | [AI] The Add Playlist dialog is the Add Live Stream form's width (72ch) on every page, and the pages of the sources not chosen are drawn out of sight, as filled in so far (folders and decoder options included), to size the dialog; the reference sized to its widest page up to its opening cap. Choosing a source keeps the size while the dialog's own messages (`Finding playlists…`, a refusal such as `No sequences selected.`) are unchanged; those messages, shown under the pages and not sized by them, and a longer page (scan results, decoder options just chosen) still grow the dialog, as the reference's refit did | A fixed width keeps the one long introduction from widening every page, and the drawn pages keep the dialog from resizing when a source is chosen |

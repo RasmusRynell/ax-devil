@@ -1,14 +1,8 @@
 # 09 Testing
 
-Owns: test philosophy, pyramid, isolation, the oracle policy and reliability rules. Sources:
-`.agents/skills/write-tests/SKILL.md`, `docs/runbooks/testing.md`, `.agents/skills/review/SKILL.md#4-merge-tests-that-protect-behavior`.
-Port the write-tests skill and the runbook into the new tree with the new stack's specifics.
-
-## Philosophy (MUST)
-
-Port the write-tests skill as written: delete tests of removed code first; test deep modules and user-consequential
-rules once, at the owner; assert outcomes, not wiring; derive expectations from the requirement; fake external
-devices and processes at their boundary.
+Owns: the test pyramid, with the reference's tests as examples, and the oracle policy. How to write, isolate and run
+tests is in the [write-tests skill](../../.agents/skills/write-tests/SKILL.md) and the
+[testing runbook](../runbooks/testing.md).
 
 ## Pyramid
 
@@ -26,17 +20,6 @@ devices and processes at their boundary.
 | CLI | Few | Commands build the right items; headless catalog commands' exit codes | `tests/core/` |
 | Installation | Separate target | Real install and plugin lifecycle in isolated storage | `make test-integration` |
 | Performance and soak | Scheduled | Benchmarks against a ref (DT-03), with the presentation benches run in Node (no retained growth over hundreds of frames, minor-GC pause time within budget, an order-of-magnitude ceiling) and GPU numbers measured by hand on real GPUs; playback memory; hours of synthetic live input with bursts: bounded memory, no stall | `tools/bench`, `docs/runbooks/testing.md#playback-memory` |
-
-## Isolation (MUST)
-
-- Each run gets its own temporary home and data folders before app code loads. The suite records the user's real
-  config, catalogs and plugin data and fails if they changed (`docs/runbooks/testing.md#tests-never-touch-the-users-files`).
-- GUI tests never use the user's session. They run on the stack's offscreen renderer or a private virtual display,
-  one per parallel worker so windows never compete for focus. A missing environment fails the run.
-  *Current:* Xvfb with Mesa software GL on Linux, started by `scripts/isolated --display`.
-- On CI machines without a user session (Windows, macOS runners) the native platform is acceptable, run serially.
-- Only built-in plugins load; regular tests are offline and mock RTSP, MQTT and device APIs.
-- What the virtual display cannot verify (physical GPU, compositor, window manager) is reported as unrun.
 
 ## Oracle policy
 
@@ -56,31 +39,3 @@ devices and processes at their boundary.
   renderer-specific tolerances.
 - When new and old output differ: decide which is right against the requirement, record the decision as a
   deviation, update the fixture. A known old bug is never frozen into a fixture.
-
-## Fixtures
-
-- Tiny generated videos from a factory keyed by duration, FPS and codec, including variable frame rate; each test
-  owns its readers and caches.
-- An immutable small catalog for management tests; each test gets its own empty user catalog store.
-- Small real sample files per built-in decoder, with their license noted.
-
-## Reliability (MUST)
-
-- Time and scheduling are injected ([03](03-runtime.md#time-and-scheduling-must)); policy tests use a virtual clock
-  and a controllable executor instead of sleeps, inline execution only where scheduling is irrelevant.
-- Wait for observable state with bounded waits; never assert elapsed time as proof. A cache hit is shown by retained
-  frames and no extra decode.
-- A flaky test either protects a real requirement (find the cause, product or synchronization) or is deleted. Never
-  raise timeouts, relax comparisons or retry.
-
-## UI verification
-
-1. The screenshot harness (DT-02) renders the main surfaces in both themes, at normal zoom and 200%, wide and narrow.
-2. Fit measured at the window minimum and at 200% zoom.
-3. Every window joins the fit test; a guard test fails until it is listed or exempted with a reason
-   (`.agents/skills/write-ui/SKILL.md#verify`).
-
-## CI
-
-One workflow, `.github/workflows/ci.yml` (`docs/runbooks/testing.md#ci`): `make check` once on Linux, a packaged-app
-build and smoke test per supported OS (D2), the release check on tags (DT-05). Lowest allowed dependencies are not set up.

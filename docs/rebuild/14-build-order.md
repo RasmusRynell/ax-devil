@@ -1,26 +1,9 @@
 # 14 Build Order and Decisions
 
-Delivery framing is in the [README](README.md#delivery). This file holds the stack criteria, D0, milestones and the
-decisions taken; the open ones are in [15](15-open-decisions.md).
-
-## Stack criteria
-
-| Criterion | Ref |
-|-----------|-----|
-| Frame-accurate decode and seek, long-GOP H.264/H.265, 4K; Media Time from container timestamps, variable frame rate | [04](04-domain-rules.md#neutral-types-to-fix-early) |
-| RTSP client exposing per-frame device capture time for video and metadata tracks (*current:* ONVIF replay extension; generic: RTCP sender-report NTP mapping); MQTT; WebSocket with Digest | LV-04, D14 |
-| GPU video plus custom overlay drawing in one surface, and the same semantics offscreen at native size | [06](06-ui-ux.md#overlay-drawing) |
-| Concurrency with a UI-thread hand-off and executor-bound destruction | [03](03-runtime.md#concurrency-guarantees-must) |
-| Live theme changes, fractional HiDPI, accessibility API | [06](06-ui-ux.md) |
-| Offscreen or private-display rendering, toolkit-level test input, window capture | [09](09-testing.md#isolation-must) |
-| Strict typing, formatter, linter, dependency-rule checker | [10](10-quality-gates.md) |
-| A plugin story compatible with D1 and D6 (settled by D29) | [05](05-formats-and-extensions.md#plugin-runtime) |
+Delivery framing is in the [README](README.md#delivery). This file holds D0, the decisions taken and what is left; the
+open ones are in [15](15-open-decisions.md).
 
 ## D0: stack choice
-
-Run throwaway spikes against the criteria: decode and seek, RTSP/ONVIF capture time,
-offscreen rendering of video plus overlays, and the D4 schema
-against both built-in resolvers. The owner signs D0 on the results; spike code is not committed.
 
 **Taken at the start of the rewrite: the stack of the owner's Rust prototype**: a Rust backend (axum on tokio)
 holding all state and work; a React and TypeScript frontend built, linted, formatted and tested with Vite+ (Vitest,
@@ -47,7 +30,7 @@ prototype-matching option; the owner can revisit each.
 
 | Decision | Reason |
 |----------|--------|
-| Make targets keep the prototype's verbs plus `check-fast` and `format` ([10](10-quality-gates.md#gates-must)). No `sync`; `run`/`run-dev` are `desktop`/`web` | One set of verbs, no setup step |
+| Make targets keep the prototype's verbs plus `check-fast` and `format`. No `sync`; `run`/`run-dev` are `desktop`/`web` | One set of verbs, no setup step |
 | `scripts/cargo` runs cargo through the user's rustup, or installs a checkout-local one into `.cargo-cache/`; a cargo without rustup is ignored because it would not honor the pinned `rust-toolchain.toml` | A clean clone builds with no setup step |
 | The logging gate is lints (Clippy `print_stdout`, `print_stderr`, `dbg_macro`; Oxlint `no-console`, off for `scripts/` and `desktop/`), not a script | The tools already enforce it |
 | `scripts/` and `desktop/` JavaScript is linted with type-aware rules and formatted, not type-checked | Type-checking CommonJS needs Node and Electron types and a second TypeScript config; add them when it grows |
@@ -58,17 +41,17 @@ prototype-matching option; the owner can revisit each.
 | No pre-commit hooks; `make check-fast` locally and CI enforce the gates | Hooks need a setup step per clone |
 | Every suite runs through `scripts/isolated`; it guards the `ax-devil` folders under the XDG config, data, cache and state homes (and the prototype's `~/.ax_devil`). Electron's data goes to `ax-devil-chromium` in the cache home, outside the guard | Every path the app uses resolves in `src/paths.rs` to one of those folders; whoever adds one updates both |
 | Custom window frame (D7): a frameless Electron window whose in-page top bar is the title bar (menus, drag region, window controls through a minimal preload; absent in a browser) | The owner's window manager draws no title bar, so a native frame could not move or close |
-| D10: accessibility target is WCAG 2.x AA contrast (4.5:1 text, 3:1 large text and boundaries), every action reachable by keyboard, accessible names on icon-only controls | The tokens are contrast-checked in both themes at M0, the write-ui skill states the rule; the accessibility-tree pass is M8 |
+| D10: accessibility target is WCAG 2.x AA contrast (4.5:1 text, 3:1 large text and boundaries), every action reachable by keyboard, accessible names on icon-only controls | The tokens are contrast-checked in both themes when built, the write-ui skill states the rule; the accessibility-tree pass comes with polish |
 | Zoom is the browser's. Electron zooms with Ctrl+=, Ctrl+- and Ctrl+0, remembered per host; layouts must fit the window minimum and zoom up to 200% | A web app inherits zoom. `ui.text_size` (System to Larger) stays by owner decision, a separate choice that leaves zoom alone |
-| No root `ARCHITECTURE.md`; the prototype's content lives in `docs/architecture/overview.md` | One home ([11](11-docs-structure.md#docs-map)) |
+| No root `ARCHITECTURE.md`; the prototype's content lives in `docs/architecture/overview.md` | One home |
 | Development ports 7330 (backend) and 7331 (frontend); the API version has one source in `crates/api-types`; the shell reads it from the generated `desktop/generated/api.json` | Distinct from the prototype's ports, so both run; one version source |
 | One `ci.yml`: `make check` once on Ubuntu, and a package-and-smoke job per OS. No test runs on macOS or Windows; no lowest-dependency job (Cargo needs nightly) | The gate runs once; the other systems only prove the packaged app starts |
 
 ## Decisions taken for offline video
 
-M1 took these with the owner, who can revisit each. The rules they led to live with their modules
+These were taken with the owner when offline video was built, who can revisit each. The rules they led to live with their modules
 (`crates/media/README.md`, `crates/playback/README.md`, `docs/domain/invariants.md#offline-delivery`); the other
-deviations from the reference are in `docs/parity.md`.
+deviations from the reference are listed by [parity](../parity.md).
 
 | Decision | Reason |
 |----------|--------|
@@ -83,7 +66,7 @@ deviations from the reference are in `docs/parity.md`.
 
 ## Decisions taken for the overlay pipeline
 
-The owner approved D22–D30 together and D31–D36 with S4 and S5 ([slices](#next-delivery-priorities)). Rules:
+The owner approved D22–D30 together, then D31–D36. Rules:
 `docs/domain/invariants.md`; shape: `docs/architecture/overview.md#overlays`.
 
 | Decision | Reason |
@@ -106,34 +89,8 @@ The owner approved D22–D30 together and D31–D36 with S4 and S5 ([slices](#ne
 
 ## Milestones
 
-Each exit is a commit on the rebuild branch with green CI and an updated `docs/parity.md`; the owner reviews the
-diff since the previous exit and signs it. Milestones schedule work; S rows enter an exit criterion only when the
-owner selects them.
-
-| M | Slice | Exit |
-|---|-------|------|
-| M0 | Day-one scaffold ([11](11-docs-structure.md#day-one-scaffold), done by the foundation); tokens; light/dark/auto; component kit seed; screenshot harness; fit-test guard | Empty window screenshots in both themes from CI; fit test passes |
-| M1 | Skeleton: `local --video` through minimal item, Content, shared intake and resolution contracts into an in-memory Untitled workspace; clock-following playback, steps, seek; decoded-frame cache and its allowance (OF-06); settings service; logging | Frame identity test; frame-cache and playback protocol tests; live theme switch passes the fit test |
-| M2 | Overlay path: Scene model and serialization schema, decoder contract, one built-in decoder, overlay lookup and matching, catalogs with Standard and their presentation (D22), `catalog check/render` | Canonical comparison passes for Standard's sheets ([09](09-testing.md#oracle-policy)) |
-| M3 | Workspace persistence, recovery copy, store, row projection, Workspace view, split view, `open` | Lifecycle tests and recovery-copy crash safety, toolkit-free |
-| M4 | Offline depth: lanes (several overlays on one video; playlist entries switch the video), playlists, both resolvers, hide, cache marks, sticky, diagnostics, media tools, bookmarks, export | OF-02 parity case; alignment TSVs match the oracle; cache-build crash safety |
-| M5 | Live: RTSP, ONVIF metadata, MQTT, DataHub, sync, status, scan, Live view | Fake-transport and burst tests; no camera session, owner waived ([deviations](../parity-deviations.md)) |
-| M6 | Catalogs complete: six built-ins, manager, selection scopes, visibility, catalog window | Canonical comparison for all built-ins; catalog conformance suite ([09](09-testing.md#pyramid)) |
-| M7 | Plugin runtime, all built-in decoders, install/update/remove with live reload, Plugins view | The write-plugin example installs and decodes in a fresh process |
-| M8 | Settings dialog, Quick Setup, Shortcuts dialog, accessibility pass, polish | Fit test for every window at the window minimum and at 200% zoom |
-| M9 | Packaging and release; owner-selected S rows (benchmarks, release check, soak) | Every M row done or dropped by the owner in writing |
-
-## Next delivery priorities
-
-Status follows `docs/parity.md`, not milestone order. Next, close the intake/playback gaps and establish
-durable workspace recovery; then complete inspection, bookmarks, diagnostics and safe export. Feed the ADF
-decoders live payloads when live sources land. Packaging feasibility needs a decision before its consumers.
-
-The overlay pipeline (D22–D36) goes first among overlay work: S0 the evaluator spike, S1 the data wire and switch, S2
-the remaining built-ins and `catalog check`, S3 deleting the Rust render path, S4 lane presentation and user catalogs
-S5 picking and the inspector, S6 export, S7 plugins and S8 file-scope queries are built; S9 live follows.
-
-Every new slice extends SH-01–04: decide what follows the presenter, what stays private, and how removal or
-permission changes revoke access. Replacement acceptance covers user workflows; existing S capabilities need an
-explicit disposition before claiming all Python use cases are restored. Installing and upgrading the release
-artifact are release gates though the reusable DT-05 tooling is S.
+M0 to M8 scheduled the work and are built; status is in [parity](../parity.md), not milestone order. Left: M9,
+packaging and release with the S rows the owner selects (benchmarks, release check, soak). The rewrite merges when
+every M row is done or dropped by the owner in writing. Installing and upgrading the release artifact are release
+gates though the reusable DT-05 tooling is S, and every S capability needs an explicit disposition before the
+rewrite claims all Python use cases.
