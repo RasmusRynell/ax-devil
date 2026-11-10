@@ -449,6 +449,7 @@ fn a_replace_is_checked_against_the_stored_state_and_a_refusal_changes_nothing()
                 location: "ui.theme".into(),
                 reason: "no".into(),
                 invalid: true,
+                forbidden: false,
             })
         })
         .unwrap_err();
@@ -508,4 +509,32 @@ fn subscribers_see_each_saved_change_and_nothing_for_a_rejected_one() {
     settings.replace(&change("dark")).unwrap();
     assert!(changes.has_changed().unwrap());
     assert_eq!(changes.borrow_and_update().values()["ui.theme"], "dark");
+}
+
+#[test]
+fn without_full_access_a_save_cannot_change_a_full_access_row_or_add_a_reference_but_can_resend_the_stored()
+ {
+    let folder = tempfile::tempdir().unwrap();
+    let settings = Settings::load(&folder.path().join("settings.json")).unwrap();
+    let mut edit = change("light");
+    settings.replace(&edit).unwrap();
+    let refuse = |edit: &Change| settings.state().refuse_without_full_access(edit);
+    assert!(
+        refuse(&edit).is_ok(),
+        "the stored values, references included"
+    );
+
+    edit.values
+        .insert("storage.cache_dir".into(), json!("/tmp/other"));
+    assert_eq!(refuse(&edit).unwrap_err().location, "storage.cache_dir");
+
+    let mut edit = change("light");
+    edit.values.insert("scan.range".into(), json!("$RANGE"));
+    let refused = refuse(&edit).unwrap_err();
+    assert!((refused.location.as_str(), refused.forbidden) == ("scan.range", true));
+
+    let mut edit = change("light");
+    edit.values
+        .insert("scan.logins".into(), json!([["admin", "$SECRET"]]));
+    assert_eq!(refuse(&edit).unwrap_err().location, "scan.logins");
 }

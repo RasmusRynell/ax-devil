@@ -14,6 +14,7 @@ pub(crate) fn fail(path: &Path, reason: impl Into<String>) -> Error {
         location: path.display().to_string(),
         reason: reason.into(),
         invalid: false,
+        forbidden: false,
     }
 }
 

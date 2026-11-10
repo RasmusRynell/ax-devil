@@ -32,14 +32,15 @@ use tower::ServiceExt;
 /// What a state needs to stay alive: its folder, and the stop signal that would end its long-lived connections.
 type Keep = (tempfile::TempDir, watch::Sender<bool>);
 
-fn state(policy: Policy) -> (AppState, Keep) {
+fn state(policy: impl FnOnce(&Arc<settings::Settings>) -> Policy) -> (AppState, Keep) {
     let folder = tempfile::tempdir().unwrap();
-    let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
+    let settings = Arc::new(settings::Settings::load(&folder.path().join("default.json")).unwrap());
     let cache = folder.path().join("cache");
     let videos = video_cache::start(&settings, &cache);
     let (stop, stopping) = watch::channel(false);
+    let policy = policy(&settings);
     let state = AppState::new(
-        Arc::new(settings),
+        settings,
         policy,
         videos,
         stopping,
@@ -49,14 +50,16 @@ fn state(policy: Policy) -> (AppState, Keep) {
     (state, (folder, stop))
 }
 
-fn router(policy: Policy) -> (Router, Keep) {
+fn router(policy: impl FnOnce(&Arc<settings::Settings>) -> Policy) -> (Router, Keep) {
     let (state, keep) = state(policy);
     (app(state), keep)
 }
 
-fn shared(password: &str) -> Policy {
-    Policy::Shared {
-        password: Some(Secret::chosen(password.into()).unwrap()),
+fn shared(password: &str) -> impl FnOnce(&Arc<settings::Settings>) -> Policy {
+    let password = Secret::chosen(password.into()).unwrap();
+    move |settings| Policy::Shared {
+        password: Some(password),
+        settings: Arc::clone(settings),
     }
 }
 
@@ -99,7 +102,7 @@ async fn send(
 
 #[tokio::test]
 async fn the_local_listener_answers_only_pages_it_served_and_every_response_forbids_framing() {
-    let (app, _folder) = router(Policy::Local);
+    let (app, _folder) = router(|_| Policy::Local);
     for host in ["127.0.0.1:7330", "localhost", "[::1]:1"] {
         let origin = format!("http://{host}");
         for headers in [
@@ -152,7 +155,9 @@ async fn the_local_listener_answers_only_pages_it_served_and_every_response_forb
 
 #[tokio::test]
 async fn a_server_answers_settings_and_sessions_only_to_the_password() {
-    let (app, _folder) = router(shared("secret"));
+    let (state, _folder) = state(shared("secret"));
+    let settings = Arc::clone(&state.settings);
+    let app = app(state);
     let none: [(&str, &str); 0] = [];
     let wrong = [("authorization", "Bearer guess")];
     let right = [("authorization", "Bearer secret")];
@@ -168,6 +173,15 @@ async fn a_server_answers_settings_and_sessions_only_to_the_password() {
         (&info["owner"], &info["fullAccess"]),
         (&json!(true), &json!(false))
     );
+    // Turning the setting on gives the holder Full access at once, with no restart.
+    settings
+        .update("server.password_full_access", |_| Some(json!(true)))
+        .unwrap();
+    let (_, info) = send(&app, "GET", "/api/info", &right, "").await;
+    assert_eq!(info["fullAccess"], json!(true));
+    settings
+        .update("server.password_full_access", |_| Some(json!(false)))
+        .unwrap();
 
     for headers in [&none[..], &wrong[..]] {
         for (method, path) in [
@@ -204,7 +218,10 @@ async fn a_server_answers_settings_and_sessions_only_to_the_password() {
 #[tokio::test]
 async fn the_listener_for_other_machines_serves_the_sockets_but_neither_settings_nor_the_session_list_nor_the_files()
  {
-    let (state, _keep) = state(Policy::Shared { password: None });
+    let (state, _keep) = state(|settings| Policy::Shared {
+        password: None,
+        settings: Arc::clone(settings),
+    });
     let lan = lan_app(state);
     let host = [("host", "192.168.1.20:7340")];
     for path in [

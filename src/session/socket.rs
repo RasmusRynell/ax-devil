@@ -128,8 +128,8 @@ async fn hello(
                 .map_err(|error| refuse(error, ENDED))?;
             if let Some(rx) = sessions.subscribe(handle.session()) {
                 state.files.attach(handle.session(), rx);
-                // Only the first session with Full access starts from what the command line asked for.
-                if principal.full_access()
+                // Only the first session of the Local listener starts from what the command line asked for.
+                if state.policy.is_local()
                     && let Some(launch) = state.launch.take()
                 {
                     state.files.launch(&handle, launch).await;

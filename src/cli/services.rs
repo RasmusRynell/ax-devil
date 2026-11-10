@@ -156,7 +156,7 @@ const EXIT_ON_STDIN_CLOSE_VARIABLE: &str = "AX_DEVIL_EXIT_ON_STDIN_CLOSE";
 
 /// What both backends start from: the services their routes are adapters over, and the stop signal.
 pub(super) struct Services {
-    settings: Arc<settings::Settings>,
+    pub(super) settings: Arc<settings::Settings>,
     catalogs: Library,
     launch: Arc<LaunchQueue>,
     files: Arc<WorkspaceFiles>,

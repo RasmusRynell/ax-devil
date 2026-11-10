@@ -30,6 +30,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": true,
     "scope": "personal"
   },
@@ -69,6 +70,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": true,
     "scope": "personal"
   },
@@ -85,6 +87,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "personal"
   },
@@ -101,6 +104,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "personal"
   },
@@ -117,6 +121,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "personal"
   },
@@ -133,6 +138,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "personal"
   },
@@ -151,6 +157,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "personal"
   },
@@ -171,6 +178,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "personal"
   },
@@ -200,6 +208,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "personal"
   },
@@ -217,6 +226,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -233,6 +243,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -260,6 +271,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": true,
     "scope": "server"
   },
@@ -276,6 +288,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -292,6 +305,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -308,6 +322,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": true,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -326,6 +341,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -353,6 +369,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -371,6 +388,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -389,6 +407,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -405,6 +424,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -440,6 +460,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -456,6 +477,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -472,6 +494,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -490,6 +513,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -506,6 +530,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -522,6 +547,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": true,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -538,6 +564,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -554,6 +581,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -570,6 +598,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -588,6 +617,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -604,6 +634,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -620,6 +651,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -636,6 +668,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -652,6 +685,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": false,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -677,6 +711,7 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": true,
+    "full_access": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -692,6 +727,7 @@ export const SETTINGS = [
     "live": false,
     "env": true,
     "secret": false,
+    "full_access": true,
     "quick_setup": false,
     "scope": "server"
   },
@@ -707,6 +743,24 @@ export const SETTINGS = [
     "live": false,
     "env": true,
     "secret": false,
+    "full_access": true,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "server.password_full_access",
+    "kind": {
+      "type": "bool",
+      "default": false
+    },
+    "label": "Full access with password",
+    "description": "Anyone with the server password can install plugins and read this machine's environment.",
+    "page": "Storage",
+    "section": "Folders",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "full_access": true,
     "quick_setup": false,
     "scope": "server"
   }

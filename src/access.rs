@@ -11,7 +11,9 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use serde_json::Value;
 use sessions::Secret;
+use settings::Settings;
 use std::{
     collections::HashMap,
     convert::Infallible,
@@ -30,6 +32,9 @@ pub enum Policy {
     Shared {
         /// The server password; without one nobody is an Owner here.
         password: Option<Secret>,
+        /// Read on every request for `server.password_full_access`, which decides whether a holder of the password has
+        /// Full access. A Session keeps the `expands` it was created with when the setting changes.
+        settings: Arc<Settings>,
     },
 }
 
@@ -68,11 +73,19 @@ impl Policy {
             Self::Local => Principal::Owner { full: true },
             Self::Shared {
                 password: Some(secret),
-            } if password.is_some_and(|candidate| secret.matches(candidate)) => {
-                Principal::Owner { full: false }
-            }
+                settings,
+            } if password.is_some_and(|candidate| secret.matches(candidate)) => Principal::Owner {
+                full: settings.state().resolved("server.password_full_access")
+                    == Some(Value::Bool(true)),
+            },
             Self::Shared { .. } => Principal::None,
         }
+    }
+
+    /// Whether this is the Local listener, whose Owner is the person at this machine. Only the command-line launch
+    /// hand-off asks; permissions are always the [`Principal`].
+    pub fn is_local(&self) -> bool {
+        matches!(self, Self::Local)
     }
 }
 

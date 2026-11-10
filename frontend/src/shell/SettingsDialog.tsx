@@ -33,7 +33,7 @@ export function SettingsDialog({
 }) {
   const { values, shortcuts, file } = useSettings();
   // A page that holds only a join link keeps just its Personal settings, in its browser.
-  const { owner } = useAccess();
+  const { owner, fullAccess } = useAccess();
   const shown = PAGED.filter((row) => owner || row.scope === "personal");
   const pages = [...new Set(shown.flatMap((row) => row.page ?? [])), ...(file ? ["Advanced"] : [])];
   const [draft, setDraft] = useState(values);
@@ -92,23 +92,25 @@ export function SettingsDialog({
                       title={row.description ?? row.key}
                       className="flex flex-col gap-xs"
                     >
-                      <SettingField
-                        row={row}
-                        value={draft[row.key]}
-                        describedBy={warning ? note : undefined}
-                        decoders={decoders}
-                        onChange={(value) => setDraft({ ...draft, [row.key]: value })}
-                        label={
-                          <span className="flex items-center gap-s">
-                            {row.label}
-                            {!row.live && (
-                              <span title="Applies after a restart" className="text-muted">
-                                <Icon name="rotate-cw" />
-                              </span>
-                            )}
-                          </span>
-                        }
-                      />
+                      <fieldset disabled={row.full_access && !fullAccess} className="contents">
+                        <SettingField
+                          row={row}
+                          value={draft[row.key]}
+                          describedBy={warning ? note : undefined}
+                          decoders={decoders}
+                          onChange={(value) => setDraft({ ...draft, [row.key]: value })}
+                          label={
+                            <span className="flex items-center gap-s">
+                              {row.label}
+                              {!row.live && (
+                                <span title="Applies after a restart" className="text-muted">
+                                  <Icon name="rotate-cw" />
+                                </span>
+                              )}
+                            </span>
+                          }
+                        />
+                      </fieldset>
                       {warning && <PlainTextNote id={note} reference={row.env} />}
                       {refusal?.location === row.key && <Refusal reason={refusal.reason} />}
                     </div>

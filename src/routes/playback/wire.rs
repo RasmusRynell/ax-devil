@@ -113,7 +113,12 @@ mod tests {
     #[tokio::test]
     async fn viewers_on_other_machines_share_one_jpeg_of_a_frame_and_one_here_gets_its_planes() {
         let frame = frame();
-        let remote = Wire::of(&Policy::Shared { password: None });
+        let folder = tempfile::tempdir().unwrap();
+        let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
+        let remote = Wire::of(&Policy::Shared {
+            password: None,
+            settings: std::sync::Arc::new(settings),
+        });
         let (first, second) = (sent(remote, &frame).await, sent(remote, &frame).await);
         assert_eq!(first[36], LAYOUT_JPEG);
         assert_eq!(first.as_ptr(), second.as_ptr(), "the JPEG is made once");

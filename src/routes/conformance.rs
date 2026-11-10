@@ -65,19 +65,23 @@ fn callers() -> [Caller; 4] {
 
 fn router(listener: Listener) -> (Router, tempfile::TempDir, tokio::sync::watch::Sender<bool>) {
     let folder = tempfile::tempdir().unwrap();
-    let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
+    let settings = Arc::new(settings::Settings::load(&folder.path().join("default.json")).unwrap());
     let cache = folder.path().join("cache");
     let videos = crate::video_cache::start(&settings, &cache);
     let (stop, stopping) = tokio::sync::watch::channel(false);
     let policy = match listener {
         Listener::Local => Policy::Local,
-        Listener::Lan => Policy::Shared { password: None },
+        Listener::Lan => Policy::Shared {
+            password: None,
+            settings: Arc::clone(&settings),
+        },
         Listener::Server => Policy::Shared {
             password: Some(Secret::chosen(PASSWORD.into()).unwrap()),
+            settings: Arc::clone(&settings),
         },
     };
     let state = AppState::new(
-        Arc::new(settings),
+        settings,
         policy,
         videos,
         stopping,

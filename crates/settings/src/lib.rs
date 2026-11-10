@@ -8,6 +8,7 @@
 //!
 //! A change reaches subscribers as the new state, replaced whole; a subscriber that is busy sees only the newest.
 
+mod access;
 mod env;
 mod expand;
 mod file;
@@ -43,6 +44,8 @@ pub struct Error {
     pub reason: String,
     /// Whether the user's input is at fault (as opposed to the disk).
     pub invalid: bool,
+    /// Whether the caller lacks the Full access the change needs.
+    pub forbidden: bool,
 }
 
 impl fmt::Display for Error {
@@ -99,6 +102,7 @@ impl State {
             location: location.to_owned(),
             reason: reason.to_owned(),
             invalid: true,
+            forbidden: false,
         };
         let object = |name: &str| match rest.get(name) {
             None => Ok(Map::new()),
@@ -322,6 +326,7 @@ impl Settings {
             location: location.to_owned(),
             reason: reason.to_owned(),
             invalid: true,
+            forbidden: false,
         };
         if let Some(key) = change.values.keys().find(|key| {
             !current
@@ -365,6 +370,7 @@ impl Settings {
             location: location.to_owned(),
             reason: reason.to_owned(),
             invalid: true,
+            forbidden: false,
         };
         let Some(stored) = current.values.get(key) else {
             return Err(invalid(key, "unknown setting"));

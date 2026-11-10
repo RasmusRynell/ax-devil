@@ -8,6 +8,7 @@ use ax_devil::{
     AppState,
     access::Policy,
     app,
+    session::{Launch, LaunchQueue},
     share::{Hosting, LinkBase},
 };
 use serde_json::{Value, json};
@@ -19,6 +20,11 @@ const PASSWORD: &str = "pw";
 
 /// A server with a password, whose links point at itself, like `serve`. Returns its address.
 async fn serve(folder: &Path) -> String {
+    serve_with(folder, None).await
+}
+
+/// As [`serve`], with `launch` waiting for the first Local session.
+async fn serve_with(folder: &Path, launch: Option<Launch>) -> String {
     let settings = settings::Settings::load(&folder.join("default.json")).unwrap();
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
@@ -28,17 +34,20 @@ async fn serve(folder: &Path) -> String {
     let videos = ax_devil::video_cache::start(&settings, &cache);
     // Kept by the server task, so the backend never sees its stop signal.
     let (stop, stopping) = tokio::sync::watch::channel(false);
+    let settings = Arc::new(settings);
     let policy = Policy::Shared {
         password: Some(Secret::chosen(PASSWORD.into()).unwrap()),
+        settings: Arc::clone(&settings),
     };
     let state = AppState::new(
-        Arc::new(settings),
+        settings,
         policy,
         videos,
         stopping,
         ax_devil::plugins::Plugins::fixed(handlers::Handlers::built_in()),
         &cache,
     )
+    .with_launch(Arc::new(LaunchQueue::new(launch)))
     .with_hosting(Hosting::Server(LinkBase::for_listener(None, address)));
     tokio::spawn(async move {
         let service = app(state).into_make_service_with_connect_info::<SocketAddr>();
@@ -373,4 +382,20 @@ async fn a_watcher_whose_network_is_cut_takes_its_seat_back_but_not_after_the_sh
         .await;
     let mut late = resumed(proxy.address(), &again).await;
     assert_eq!(late.closed().await, 4404);
+}
+
+#[tokio::test]
+async fn a_password_holder_with_full_access_does_not_take_the_launch_meant_for_the_local_listener()
+{
+    let folder = tempfile::tempdir().unwrap();
+    let video = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/video/cfr_h264_gop10_bf2.mp4");
+    let item = workspace::intake::video(&video, &[], &handlers::Handlers::built_in()).unwrap();
+    let on =
+        json!({"version": settings::VERSION, "settings": {"server.password_full_access": true}});
+    std::fs::write(folder.path().join("default.json"), on.to_string()).unwrap();
+    let address = serve_with(folder.path(), Some(Launch::Items(vec![item]))).await;
+
+    let mut owner = Socket::own(&address, Some(PASSWORD)).await;
+    let doc = owner.until(of_type("doc")).await;
+    assert_eq!(doc["doc"]["workspace"]["items"], json!([]));
 }

@@ -371,18 +371,23 @@ pub(crate) async fn put_settings(
         values: body.values,
         shortcuts: body.shortcuts,
     };
+    let full_access = principal.full_access();
     // The file write blocks, so it stays off the async workers.
     let saved = tokio::task::spawn_blocking(move || {
         // The default catalog is checked under the lock that writes it, against the value stored by then, so a
         // catalog deleted meanwhile (which resets the default under the same lock) is not stored again.
         settings
             .replace_if(&change, |current| {
+                if !full_access {
+                    current.refuse_without_full_access(&change)?;
+                }
                 let stored = current.resolved(catalogs::DEFAULT_SETTING);
                 match routes::catalogs::default_refusal(&library, stored.as_ref(), &change.values) {
                     Some(reason) => Err(settings::Error {
                         location: catalogs::DEFAULT_SETTING.to_owned(),
                         reason,
                         invalid: true,
+                        forbidden: false,
                     }),
                     None => Ok(()),
                 }
@@ -398,7 +403,9 @@ pub(crate) async fn put_settings(
         )
     })?;
     saved.map(Json).map_err(|error| {
-        let status = if error.invalid {
+        let status = if error.forbidden {
+            StatusCode::FORBIDDEN
+        } else if error.invalid {
             StatusCode::UNPROCESSABLE_ENTITY
         } else {
             tracing::error!("Cannot save settings: {error}");

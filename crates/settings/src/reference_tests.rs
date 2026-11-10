@@ -15,6 +15,7 @@ const fn row(key: &'static str, kind: Kind, secret: bool) -> Setting {
         live: false,
         env: true,
         secret,
+        full_access: false,
         quick_setup: false,
         scope: Scope::Server,
     }

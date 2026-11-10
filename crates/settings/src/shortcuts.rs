@@ -400,6 +400,7 @@ pub fn overrides_from(
         location: format!("shortcuts.{id}"),
         reason,
         invalid: true,
+        forbidden: false,
     };
     if let Some(id) = effective
         .keys()

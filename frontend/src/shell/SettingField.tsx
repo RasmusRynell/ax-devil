@@ -42,6 +42,8 @@ export interface Row {
   readonly live: boolean;
   readonly env: boolean;
   readonly secret: boolean;
+  /** Whether only an Owner with Full access may change it. */
+  readonly full_access: boolean;
   readonly quick_setup: boolean;
 }
 

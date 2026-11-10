@@ -168,7 +168,10 @@ impl ShareListener {
     pub fn new(address: SocketAddr, local: &AppState) -> Arc<Self> {
         Arc::new(Self {
             address,
-            state: local.shared_with(Policy::Shared { password: None }),
+            state: local.shared_with(Policy::Shared {
+                password: None,
+                settings: Arc::clone(&local.settings),
+            }),
             open: Mutex::new(None),
             changing: AsyncMutex::new(()),
             problem: Mutex::new(None),

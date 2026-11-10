@@ -27,6 +27,7 @@ const MIXED: &[Setting] = &[
         live: true,
         env: false,
         secret: false,
+        full_access: false,
         quick_setup: false,
         scope: Scope::Personal,
     },
@@ -40,6 +41,7 @@ const MIXED: &[Setting] = &[
         live: true,
         env: true,
         secret: true,
+        full_access: false,
         quick_setup: false,
         scope: Scope::Server,
     },
@@ -87,6 +89,7 @@ const LOGINS: &[Setting] = &[Setting {
     live: true,
     env: true,
     secret: true,
+    full_access: false,
     quick_setup: false,
     scope: Scope::Server,
 }];
