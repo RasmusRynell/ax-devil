@@ -355,7 +355,7 @@ mod tests {
     }
 
     fn observation(time: impl Into<ObservationTime>, x: f64) -> Observation {
-        let bounds = BoundingBox::new(x, 0.0, x + 0.1, 0.1).expect("a box");
+        let bounds = BoundingBox::new_outside(x, 0.0, x + 0.1, 0.1).expect("a box");
         Observation::new(time, Geometry::Box(bounds))
     }
 

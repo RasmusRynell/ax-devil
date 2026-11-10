@@ -6,6 +6,7 @@ import { useSettings } from "../client/settings";
 import { effectiveDefault, judgedRevision, type LaneSettings, type LaneState } from "./lanes";
 import { DEFAULT_CATALOG, LaneCatalogActions, USER_PREFIX } from "./LaneCatalogActions";
 import { Group } from "./LaneMenuFields";
+import { SECTION_HELP } from "./sectionHelp";
 
 /** What the user reads for each feature, and what it controls. */
 const FEATURE_TEXT: Record<(typeof FEATURES)[number], { label: string; description: string }> = {
@@ -69,7 +70,7 @@ export function LaneMenuLook({
   return (
     <>
       <Select
-        label="Catalog"
+        label={<span title={SECTION_HELP.catalog}>Catalog</span>}
         value={settings.catalog}
         options={entries.map(({ id, label }): [string, string] => [
           id,
@@ -97,7 +98,7 @@ export function LaneMenuLook({
           onChange={(theme) => onChange({ theme: theme === "" ? null : theme })}
         />
       )}
-      <Group label="Features">
+      <Group label="Features" help={SECTION_HELP.details}>
         <div className="grid grid-cols-[repeat(auto-fit,minmax(18ch,1fr))] gap-x-xl gap-y-s">
           {FEATURES.map((feature, bit) => {
             const supported = look !== undefined && (look.features & (1 << bit)) !== 0;

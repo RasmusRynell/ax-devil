@@ -13,7 +13,7 @@
       "id": "python-tracks",
       "name": "Python tracks (CSV)",
       "input": "path",
-      "scene_version": "4.0",
+      "scene_version": "4.2",
       "extensions": [".tracks.csv"],
       "options": [
         { "key": "camera", "label": "Camera name", "kind": "text", "required": false, "default": "front" },

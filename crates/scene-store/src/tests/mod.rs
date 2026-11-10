@@ -122,7 +122,9 @@ fn entities(time: SceneTime, boxes: usize) -> Scene {
             let mut entity = Entity::new(EntityId::from(n as u64));
             let mut observation = Observation::new(
                 time,
-                Geometry::Box(BoundingBox::new(left, 0.25, left + 0.125, 0.5).expect("a box")),
+                Geometry::Box(
+                    BoundingBox::new_outside(left, 0.25, left + 0.125, 0.5).expect("a box"),
+                ),
             );
             observation.classifications = vec![Classification {
                 attributes: vec![

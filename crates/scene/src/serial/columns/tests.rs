@@ -1,3 +1,4 @@
+use crate::Geometry;
 use std::{collections::HashSet, fs, path::PathBuf};
 
 use super::*;
@@ -416,4 +417,35 @@ fn scenes_in(folder: &str) -> Vec<(String, Scene)> {
             (stem, scenes(&file).remove(0))
         })
         .collect()
+}
+
+#[test]
+fn custom_shapes_present_the_same_columns_as_equivalent_builtin_geometry() {
+    let polygon = crate::Polygon::new(vec![
+        crate::Point::new_outside(-0.1, 0.0).unwrap(),
+        crate::Point::new(0.7, 0.0).unwrap(),
+        crate::Point::new(0.3, 0.8).unwrap(),
+    ])
+    .unwrap();
+    for geometry in [
+        Geometry::Polygon(polygon),
+        Geometry::Box(BoundingBox::new(0.1, 0.1, 0.2, 0.2).unwrap()),
+    ] {
+        let custom = Geometry::Shape {
+            bounds: geometry.bounds(),
+            outline: geometry
+                .polygon_points()
+                .map(|points| crate::Polygon::new(points.to_vec()).unwrap()),
+        };
+        let encode = |geometry| {
+            let mut entity = Entity::new(EntityId::new("custom").unwrap());
+            entity.push_observation(Observation::new(SceneTime::Frame(0), geometry));
+            encode_sample_item(&scene_of(vec![entity]), &policy()).unwrap()
+        };
+        assert_eq!(
+            encode(custom),
+            encode(geometry),
+            "catalogs, picking and export receive identical geometry"
+        );
+    }
 }

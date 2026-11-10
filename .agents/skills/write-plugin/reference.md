@@ -187,7 +187,10 @@ parts may be left out.
 ```
 
 - The Scene's key is `time.start`. Emit Scenes as the file gives them, one per object or per frame; the host joins equal keys.
-- Geometry is `{"box": [left, top, right, bottom]}` or `{"polygon": [[x, y], ...]}`.
+- Geometry is `{"box": [left, top, right, bottom]}` or `{"polygon": [[x, y], ...]}`; Scene 4.2 also accepts
+  `{"shape": {"bounds": [left, top, right, bottom], "outline": [[x, y], ...]}}` for custom geometry, with
+  `outline: null` when absent. Coordinates are normalized, finite and may extend outside the frame; bounds must
+  be ordered and an outline needs at least three points. Custom bounds are independent of outline extrema.
 - `type` is any string; `score` and `confidence` are separate finite numbers or `null`. Never derive one from the other.
 - `motion_state`: `moving`, `stationary`, `unknown` or `null`. `end_reason`: text or `null`.
 - `measurements` (all optional): `image_velocity {vx, vy}`, `world_velocity {pitch, speed, yaw}`,

@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use scene::{Fields, Geometry, Scene, Value};
+use scene::{Fields, Scene, Value};
 
 /// Least recently used values by sample index, kept under a byte budget.
 pub(crate) struct Lru<V> {
@@ -100,8 +100,8 @@ pub(crate) fn footprint(scene: &Scene) -> usize {
             bytes += size_of::<scene::Observation>()
                 + fields(observation.source_data())
                 + fields(observation.debug());
-            if let Geometry::Polygon(polygon) = &observation.geometry {
-                bytes += size_of_val(polygon.points());
+            if let Some(points) = observation.geometry.polygon_points() {
+                bytes += size_of_val(points);
             }
             if observation.measurements.is_some() {
                 bytes += size_of::<scene::Measurements>();

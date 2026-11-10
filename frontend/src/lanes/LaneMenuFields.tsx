@@ -71,10 +71,20 @@ export function NumberField({
 }
 
 /** A set of related controls under a name. */
-export function Group({ label, children }: { label: string; children: ReactNode }) {
+export function Group({
+  label,
+  help,
+  children,
+}: {
+  label: string;
+  help?: string;
+  children: ReactNode;
+}) {
   return (
     <div
       role="group"
+      title={help}
+      aria-description={help}
       aria-label={label}
       className="flex flex-col gap-s border-t border-line pt-m first:border-t-0 first:pt-0"
     >

@@ -80,7 +80,9 @@ fn scene_of(step: &Step) -> Scene {
             let mut entity = Entity::new(EntityId::from(id));
             entity.push_observation(Observation::new(
                 step.time,
-                Geometry::Box(BoundingBox::new(left, 0.25, left + 0.1, 0.5).expect("a box")),
+                Geometry::Box(
+                    BoundingBox::new_outside(left, 0.25, left + 0.1, 0.5).expect("a box"),
+                ),
             ));
             entity
         })

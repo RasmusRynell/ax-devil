@@ -8,6 +8,7 @@ import { changedControls, LaneMenuFilter } from "./LaneMenuFilter";
 import { LaneMenuLook } from "./LaneMenuLook";
 import { LaneMenuTiming } from "./LaneMenuTiming";
 import type { CadenceWire } from "../stream/protocol";
+import { SECTION_HELP } from "./sectionHelp";
 
 const TABS = ["Look", "Filter", "Timing"] as const;
 
@@ -54,6 +55,7 @@ export function LaneMenu({
       <Tabs
         label="Lane settings"
         tabs={names}
+        help={{ [names[1]]: SECTION_HELP.filter }}
         value={names[TABS.indexOf(tab)]}
         onChange={(name) => setTab(TABS[names.indexOf(name)])}
         panelId={panel}

@@ -99,12 +99,12 @@ impl FrameAcc {
 fn geometry(drawn: Drawn, width: f64, height: f64) -> Result<Geometry, SceneError> {
     match drawn {
         Drawn::Box([left, top, right, bottom]) => {
-            BoundingBox::new(left / width, top / height, right / width, bottom / height)
+            BoundingBox::new_outside(left / width, top / height, right / width, bottom / height)
                 .map(Geometry::Box)
         }
         Drawn::Polygon(points) => points
             .into_iter()
-            .map(|[x, y]| Point::new(x / width, y / height))
+            .map(|[x, y]| Point::new_outside(x / width, y / height))
             .collect::<Result<Vec<_>, _>>()
             .and_then(Polygon::new)
             .map(Geometry::Polygon),

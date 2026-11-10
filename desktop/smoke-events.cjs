@@ -164,6 +164,12 @@ module.exports.run = () =>
       await js("document.querySelector('[aria-label=Workspace]').click()");
       await setView(window, [640, 480], 2);
       await fits("The Events list must fit the 640x480 window at 200% zoom");
+      assert.equal(
+        await js(`[...document.querySelectorAll('${PANEL} [role=tab]')].every(tab =>
+          tab.title.length > 0 && tab.getAttribute('aria-description') === tab.title)`),
+        true,
+        "Section help survives the text-size change on both media tabs",
+      );
       await inBothThemes("events-200");
       await js(`document.querySelector('${LIST} [role=option]').click()`);
       await wait(`document.querySelector('${EVENT_PAGE} [aria-label="Same moment"]')`);

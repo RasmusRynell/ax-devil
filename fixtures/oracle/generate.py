@@ -22,7 +22,7 @@ HERE = Path(__file__).resolve().parent
 REFERENCE_COMMIT = "e31a7453"
 TARGET = (1280, 720)
 DECIMALS = 5
-SCENE_VERSION = "4.1"
+SCENE_VERSION = "4.2"
 
 # (catalog file, sheets to dump). Standard and Tracking get every sheet; the others a smoke subset to stay small.
 ALL_SHEETS = None

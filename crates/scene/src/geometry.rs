@@ -1,6 +1,6 @@
 use crate::SceneError;
 
-/// A point in coordinates normalized to the frame (0 to 1); values outside are kept.
+/// A point in coordinates normalized to the frame (0 to 1); outside values require an explicit opt-in.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Point {
     x: f64,
@@ -8,8 +8,17 @@ pub struct Point {
 }
 
 impl Point {
-    /// The point at `x`, `y`; both must be finite.
+    /// The point at `x`, `y`, both in the inclusive range 0 to 1.
     pub fn new(x: f64, y: f64) -> Result<Self, SceneError> {
+        let point = Self::new_outside(x, y)?;
+        if !(0.0..=1.0).contains(&x) || !(0.0..=1.0).contains(&y) {
+            return Err(SceneError::OutsidePoint { x, y });
+        }
+        Ok(point)
+    }
+
+    /// An explicitly unclipped point; both coordinates must still be finite.
+    pub fn new_outside(x: f64, y: f64) -> Result<Self, SceneError> {
         for (what, value) in [("coordinate", x), ("coordinate", y)] {
             if !value.is_finite() {
                 return Err(SceneError::NonFinite { what, value });
@@ -37,9 +46,19 @@ pub struct BoundingBox {
 }
 
 impl BoundingBox {
-    /// The box with these edges; all must be finite, `right` not below `left` and `bottom` not above `top`.
+    /// An ordered box whose edges are in the inclusive range 0 to 1.
     pub fn new(left: f64, top: f64, right: f64, bottom: f64) -> Result<Self, SceneError> {
-        let (top_left, bottom_right) = (Point::new(left, top)?, Point::new(right, bottom)?);
+        Point::new(left, top)?;
+        Point::new(right, bottom)?;
+        Self::new_outside(left, top, right, bottom)
+    }
+
+    /// An ordered box that may extend beyond the frame; coordinates must be finite.
+    pub fn new_outside(left: f64, top: f64, right: f64, bottom: f64) -> Result<Self, SceneError> {
+        let (top_left, bottom_right) = (
+            Point::new_outside(left, top)?,
+            Point::new_outside(right, bottom)?,
+        );
         if right < left || bottom < top {
             return Err(SceneError::InvertedBox);
         }
@@ -111,13 +130,33 @@ pub enum Geometry {
     Box(BoundingBox),
     /// A closed outline.
     Polygon(Polygon),
+    /// A decoder-defined shape, materialized as bounds and an optional outline.
+    Shape {
+        /// Bounds supplied by the decoder, independently of its outline.
+        bounds: BoundingBox,
+        /// Explicit outline, when the shape provides one.
+        outline: Option<Polygon>,
+    },
 }
 
 impl Geometry {
-    /// The smallest box that holds the geometry.
+    /// Explicit polygon points, including those supplied by custom geometry.
+    pub fn polygon_points(&self) -> Option<&[Point]> {
+        match self {
+            Self::Box(_) => None,
+            Self::Polygon(polygon)
+            | Self::Shape {
+                outline: Some(polygon),
+                ..
+            } => Some(polygon.points()),
+            Self::Shape { outline: None, .. } => None,
+        }
+    }
+
+    /// The geometry's bounds: extrema for a polygon, decoder-supplied for a custom shape.
     pub fn bounds(&self) -> BoundingBox {
         match self {
-            Self::Box(bounds) => *bounds,
+            Self::Box(bounds) | Self::Shape { bounds, .. } => *bounds,
             Self::Polygon(polygon) => {
                 let first = polygon.0[0];
                 let (mut top_left, mut bottom_right) = (first, first);
@@ -143,9 +182,13 @@ mod tests {
     #[test]
     fn boxes_are_finite_and_ordered_and_polygons_have_three_points() {
         assert!(
-            BoundingBox::new(-0.1, 0.0, 1.2, 0.0).is_ok(),
+            BoundingBox::new_outside(-0.1, 0.0, 1.2, 0.0).is_ok(),
             "outside 0..1 and flat boxes are kept"
         );
+        assert!(BoundingBox::new(-0.1, 0.0, 1.2, 0.0).is_err());
+        assert!(Point::new(1.1, 0.0).is_err());
+        assert!(Point::new_outside(1.1, 0.0).is_ok());
+        assert!(Point::new_outside(f64::INFINITY, 0.0).is_err());
         assert_eq!(
             BoundingBox::new(0.5, 0.0, 0.4, 1.0),
             Err(SceneError::InvertedBox)

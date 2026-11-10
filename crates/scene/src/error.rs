@@ -19,6 +19,13 @@ pub enum SceneError {
         /// The number.
         value: f64,
     },
+    /// Coordinates outside the frame without opting in.
+    OutsidePoint {
+        /// Horizontal coordinate.
+        x: f64,
+        /// Vertical coordinate.
+        y: f64,
+    },
     /// A box's right edge is left of its left edge, or its bottom edge is above its top edge.
     InvertedBox,
     /// A polygon had fewer than three points; carries how many it had.
@@ -48,6 +55,9 @@ impl fmt::Display for SceneError {
             Self::EmptyClassType => f.write_str("class type cannot be empty"),
             Self::EmptyRelationType => f.write_str("relation type cannot be empty"),
             Self::NonFinite { what, value } => write!(f, "{what} must be finite, got {value}"),
+            Self::OutsidePoint { x, y } => {
+                write!(f, "point must have x and y in [0, 1], got ({x}, {y})")
+            }
             Self::InvertedBox => f.write_str("box maxima must not be below minima"),
             Self::TooFewPolygonPoints(count) => {
                 write!(f, "polygon needs at least 3 points, got {count}")

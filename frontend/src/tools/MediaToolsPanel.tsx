@@ -14,6 +14,7 @@ import { Tabs } from "../kit/Tabs";
 import type { EventLog } from "../live/eventLog";
 import type { InspectorMemory } from "../inspect/fields";
 import { Inspector, reachOf } from "../playback/Inspector";
+import { SECTION_HELP } from "../playback/sectionHelp";
 import type { PlaybackView } from "../playback/view";
 import { EventPageBody } from "./EventPageBody";
 import { EventsList } from "./EventsList";
@@ -250,6 +251,7 @@ export function MediaToolsPanel({
     <Tabs
       label="Media tools"
       tabs={TABS}
+      help={SECTION_HELP}
       value={TAB[pages.root]}
       onChange={(name) => go(showRoot(pages, ROOT_OF[name]))}
       panelId={panel}

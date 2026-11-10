@@ -14,8 +14,7 @@ use leaf::{datetime_leaf, number_leaf};
 pub use query::{Budget, KeyTooLong, OverBudget, path_names, query_leaves};
 
 use crate::{
-    Classification, ColorEntry, Entity, Geometry, MotionState, Name, Observation, Rgb, Value,
-    WorldVelocity,
+    Classification, ColorEntry, Entity, MotionState, Name, Observation, Rgb, Value, WorldVelocity,
 };
 
 /// The most fields an inspection lists.
@@ -354,8 +353,8 @@ impl<S: Sink> Walk<'_, S> {
         self.number_at(place, "y", bounds.top());
         self.number_at(place, "width", bounds.width());
         self.number_at(place, "height", bounds.height());
-        if let Geometry::Polygon(polygon) = &observation.geometry {
-            self.count_at(place, "points", polygon.points().len() as u64);
+        if let Some(points) = observation.geometry.polygon_points() {
+            self.count_at(place, "points", points.len() as u64);
         }
         let measured = observation.measurements.as_deref();
         if let Some(geographic) = measured.and_then(|measured| measured.geographic) {

@@ -13,6 +13,7 @@ import {
   type LaneState,
 } from "./lanes";
 import { Group, MakeDefault, NumberField } from "./LaneMenuFields";
+import { SECTION_HELP } from "./sectionHelp";
 
 /** The longest a sample may match back or stay kept, which the backend enforces. */
 const MAX_MS = 100_000;
@@ -118,7 +119,7 @@ export function LaneMenuTiming({
     <>
       {ready && !live && <Alignment cadence={cadence} alignment={ready.alignment} />}
       {(bases.length > 1 || basis === "Time") && (
-        <Group label="Sync">
+        <Group label="Sync" help={SECTION_HELP.sync}>
           {bases.length > 1 && (
             <Select<BasisWire>
               label="Match by"
@@ -161,7 +162,7 @@ export function LaneMenuTiming({
           )}
         </Group>
       )}
-      <Group label="Sticky">
+      <Group label="Sticky" help={SECTION_HELP.sticky}>
         <Switch
           label="Sticky"
           checked={sticky.enabled}
