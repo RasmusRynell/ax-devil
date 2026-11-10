@@ -27,6 +27,8 @@ How offline playback divides its work between them is in the [invariants](../dom
 
 ### Listeners and principals
 
+This section describes today's code; [access](access.md) is the model new code follows.
+
 | Listener | Reached by | Admits |
 |----------|------------|--------|
 | Local: `127.0.0.1`, for the desktop and development | The person at this machine | Everything; a Host guard and an Origin guard (scheme, host and port in full) keep other websites off |
