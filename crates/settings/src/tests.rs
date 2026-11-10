@@ -517,24 +517,40 @@ fn without_full_access_a_save_cannot_change_a_full_access_row_or_add_a_reference
     let folder = tempfile::tempdir().unwrap();
     let settings = Settings::load(&folder.path().join("settings.json")).unwrap();
     let mut edit = change("light");
+    let login = |user: &str, password: &str| json!({"user": user, "password": password});
+    edit.values.insert(
+        "scan.logins".into(),
+        json!([login("$U", "secret"), login("a", "$P")]),
+    );
     settings.replace(&edit).unwrap();
     let refuse = |edit: &Change| settings.state().refuse_without_full_access(edit);
+    let with = |key: &str, value: Value| {
+        let mut edit = edit.clone();
+        edit.values.insert(key.into(), value);
+        edit
+    };
     assert!(
         refuse(&edit).is_ok(),
         "the stored values, references included"
     );
+    let masked = json!([login("a", "$P"), login("$U", MASK)]);
+    assert!(
+        refuse(&with("scan.logins", masked)).is_ok(),
+        "reordered, one password masked"
+    );
 
-    edit.values
-        .insert("storage.cache_dir".into(), json!("/tmp/other"));
-    assert_eq!(refuse(&edit).unwrap_err().location, "storage.cache_dir");
-
-    let mut edit = change("light");
-    edit.values.insert("scan.range".into(), json!("$RANGE"));
-    let refused = refuse(&edit).unwrap_err();
-    assert!((refused.location.as_str(), refused.forbidden) == ("scan.range", true));
-
-    let mut edit = change("light");
-    edit.values
-        .insert("scan.logins".into(), json!([["admin", "$SECRET"]]));
-    assert_eq!(refuse(&edit).unwrap_err().location, "scan.logins");
+    for (key, value) in [
+        ("storage.cache_dir", json!("/tmp/other")),
+        ("scan.range", json!("$RANGE")),
+        ("ui.theme", json!("$THEME")),
+        ("scan.logins", json!([login("$U", "$NEW")])),
+        ("scan.logins", json!([login("$NEW", MASK)])),
+        ("scan.logins", json!([login("$P", MASK)])),
+    ] {
+        let refused = refuse(&with(key, value)).unwrap_err();
+        assert!(
+            (refused.location.as_str(), refused.forbidden) == (key, true),
+            "{key}"
+        );
+    }
 }

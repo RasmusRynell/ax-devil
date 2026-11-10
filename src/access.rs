@@ -13,7 +13,7 @@ use axum::{
 };
 use serde_json::Value;
 use sessions::Secret;
-use settings::Settings;
+use settings::{Settings, State as SettingsState};
 use std::{
     collections::HashMap,
     convert::Infallible,
@@ -71,12 +71,20 @@ impl Policy {
     pub fn principal_for(&self, password: Option<&str>) -> Principal {
         match self {
             Self::Local => Principal::Owner { full: true },
+            Self::Shared { settings, .. } => self.principal_in(password, &settings.state()),
+        }
+    }
+
+    /// Who holds `password` as judged against `state`, one snapshot of the settings. A save asks with the state it
+    /// holds under the write lock, so a revocation that lands meanwhile counts.
+    pub fn principal_in(&self, password: Option<&str>, state: &SettingsState) -> Principal {
+        match self {
+            Self::Local => Principal::Owner { full: true },
             Self::Shared {
                 password: Some(secret),
-                settings,
+                ..
             } if password.is_some_and(|candidate| secret.matches(candidate)) => Principal::Owner {
-                full: settings.state().resolved("server.password_full_access")
-                    == Some(Value::Bool(true)),
+                full: state.resolved("server.password_full_access") == Some(Value::Bool(true)),
             },
             Self::Shared { .. } => Principal::None,
         }
@@ -89,7 +97,7 @@ impl Policy {
     }
 }
 
-fn bearer(headers: &HeaderMap) -> Option<&str> {
+pub(crate) fn bearer(headers: &HeaderMap) -> Option<&str> {
     let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     let (scheme, token) = value.split_once(' ')?;
     scheme.eq_ignore_ascii_case("bearer").then_some(token)

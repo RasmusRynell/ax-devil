@@ -22,7 +22,7 @@ mod thumbnails;
 pub mod video_cache;
 pub mod video_sources;
 
-use access::{Admission, Limits, Policy, Principal};
+use access::{Admission, Limits, Policy, Principal, bearer};
 use api_types::{
     API_VERSION, ApiError, AppInfo, SHELL_API, SettingsChange, SettingsFile, SettingsState,
 };
@@ -341,9 +341,10 @@ pub(crate) async fn get_settings(
 /// Replaces every setting and shortcut; a rejected or unsaved change leaves the stored state
 /// as it was.
 pub(crate) async fn put_settings(
-    principal: Principal,
+    headers: axum::http::HeaderMap,
     State(AppState {
         settings,
+        policy,
         catalogs: library,
         log_file,
         ..
@@ -371,16 +372,14 @@ pub(crate) async fn put_settings(
         values: body.values,
         shortcuts: body.shortcuts,
     };
-    let full_access = principal.full_access();
     // The file write blocks, so it stays off the async workers.
     let saved = tokio::task::spawn_blocking(move || {
         // The default catalog is checked under the lock that writes it, against the value stored by then, so a
         // catalog deleted meanwhile (which resets the default under the same lock) is not stored again.
+        let mut principal = Principal::None;
         settings
             .replace_if(&change, |current| {
-                if !full_access {
-                    current.refuse_without_full_access(&change)?;
-                }
+                principal = save_principal(&policy, bearer(&headers), current, &change)?;
                 let stored = current.resolved(catalogs::DEFAULT_SETTING);
                 match routes::catalogs::default_refusal(&library, stored.as_ref(), &change.values) {
                     Some(reason) => Err(settings::Error {
@@ -413,6 +412,21 @@ pub(crate) async fn put_settings(
         };
         failure(status, &error.location, error.reason)
     })
+}
+
+/// Who is saving, judged against `current`, the stored state under the write lock, and refused if the change needs
+/// Full access that this caller does not have in that state.
+fn save_principal(
+    policy: &Policy,
+    credential: Option<&str>,
+    current: &settings::State,
+    change: &settings::Change,
+) -> Result<Principal, settings::Error> {
+    let principal = policy.principal_in(credential, current);
+    if !principal.full_access() {
+        current.refuse_without_full_access(change)?;
+    }
+    Ok(principal)
 }
 
 pub(crate) fn failure(
