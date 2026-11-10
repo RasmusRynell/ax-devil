@@ -279,6 +279,24 @@ const laneCells = (window) =>
     }));
   })()`);
 
+// The lane cells once their name tags read `labels`. A tag says "Parsing overlay data (n/m): name" while the backend
+// reads the lane's file, which takes longer on a slow runner, so the labels are waited for rather than read at once.
+async function laneCellsLabelled(window, labels) {
+  let seen = [];
+  try {
+    return await until(
+      async () => {
+        const cells = await laneCells(window);
+        seen = cells.map((cell) => cell.label);
+        return JSON.stringify(seen) === JSON.stringify(labels) && cells;
+      },
+      `lanes labelled ${JSON.stringify(labels)}`,
+    );
+  } catch (error) {
+    throw new Error(`${error.message}; the tags read ${JSON.stringify(seen)}`);
+  }
+}
+
 // How many pixels of a lane cell carry colour.
 async function colourCount(window, cell) {
   const shot = await capture(window);
@@ -392,6 +410,7 @@ module.exports = {
   hideChrome,
   isolatedState,
   laneCells,
+  laneCellsLabelled,
   moveTo,
   openAddVideo,
   page,

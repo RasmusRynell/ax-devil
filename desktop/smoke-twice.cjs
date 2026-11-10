@@ -13,9 +13,8 @@ const {
   colourCount,
   delay,
   goToFrame,
-  laneCells,
+  laneCellsLabelled,
   page,
-  until,
 } = require("./smoke-kit.cjs");
 
 const VIDEO = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
@@ -85,14 +84,7 @@ module.exports.twice = () =>
       // The video the command line added is open at once; its two lanes are one file under two names.
       await wait(`${SHOWN} >= 0`);
       await goToFrame(window, 0);
-      const cells = await until(async () => {
-        const found = await laneCells(window);
-        return found.length === 2 && found;
-      }, "two lanes");
-      assert.deepEqual(
-        cells.map((cell) => cell.label),
-        ["frames", "frames (2)"],
-      );
+      const cells = await laneCellsLabelled(window, ["frames", "frames (2)"]);
       // Both lanes show their boxes of frame 0.
       for (const cell of cells) {
         const deadline = Date.now() + 5000;
