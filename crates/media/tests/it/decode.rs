@@ -397,3 +397,27 @@ fn ten_bit_444_with_an_odd_width_converts_to_rgba_with_the_streams_bt709_matrix(
 fn raw_rgb24_converts_to_rgba_exactly() {
     assert_all_pixels("rgb24_w16.nut", (16, 16), [0x40, 0x80, 0xC0, 0xFF], 0);
 }
+
+#[test]
+fn duplicate_pts_preserve_every_image_when_reading_and_seeking() {
+    let path = fixture("duplicate_pts.mkv");
+    let index = index_of(&path);
+    assert_eq!(index.scan(), Some(ScanKind::Decode));
+    assert_eq!(index.timeline().len(), 8);
+    let mut decoder = open(&path, &index, 1);
+    for target in [0, 1, 6, 7, 2, 3, 0] {
+        let key = index.keyframes().at_or_before(target);
+        decoder.seek_to_keyframe(key).unwrap();
+        loop {
+            let frame = decoder.next_frame().unwrap().unwrap();
+            assert_eq!(flat_luma(&frame), expected_luma(frame.id().sequence_id));
+            assert_eq!(
+                frame.id().timestamp.as_us(),
+                (frame.id().sequence_id / 2) as i64 * 100_000
+            );
+            if frame.id().sequence_id == target {
+                break;
+            }
+        }
+    }
+}

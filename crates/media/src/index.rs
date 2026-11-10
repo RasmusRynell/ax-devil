@@ -272,14 +272,16 @@ impl FrameIndex {
         }
     }
 
-    /// The sequence id of the frame with this pts.
-    pub(crate) fn sequence_id(&self, pts: i64) -> Option<u64> {
+    /// Matches the expected ordinal first, so repeated PTS retain their presentation identities.
+    pub(crate) fn sequence_id(&self, pts: i64, next: u64) -> Option<u64> {
         match &self.origin {
-            Origin::Packets(stored) => stored
-                .pts
-                .binary_search(&pts)
-                .ok()
-                .map(|index| index as u64),
+            Origin::Packets(stored) => {
+                if self.pts(next) == Some(pts) {
+                    return Some(next);
+                }
+                let first = stored.pts.partition_point(|value| *value < pts);
+                (stored.pts.get(first) == Some(&pts)).then_some(first as u64)
+            }
             Origin::Images { .. } => u64::try_from(pts)
                 .ok()
                 .filter(|sequence_id| *sequence_id < self.timeline.len()),
@@ -331,15 +333,15 @@ impl FrameIndex {
     }
 }
 
-/// The timeline and keyframes a stored index describes, or what makes them unusable: frame times must strictly
-/// increase, start at 0 and fit, which fails for two frames that share a timestamp.
+/// The timeline and keyframes a stored index describes, or what makes them unusable: frame times must not
+/// decrease, must start at 0 and fit.
 fn times_of(stored: &Stored) -> Result<(Timeline, Keyframes), String> {
     if stored.pts.first() != Some(&stored.first_pts) {
         return Err("the first timestamp is wrong".to_string());
     }
-    if let Some(position) = stored.pts.windows(2).position(|pair| pair[1] <= pair[0]) {
+    if let Some(position) = stored.pts.windows(2).position(|pair| pair[1] < pair[0]) {
         return Err(format!(
-            "frames {position} and {} share a timestamp or are out of order",
+            "frames {position} and {} are out of order",
             position + 1
         ));
     }
@@ -354,7 +356,20 @@ fn times_of(stored: &Stored) -> Result<(Timeline, Keyframes), String> {
         .collect::<Option<Vec<_>>>()
         .ok_or("a frame time does not fit")?;
     let timeline = Timeline::new(times).map_err(|e| format!("{e:?}"))?;
-    let keyframes =
-        Keyframes::new(stored.keyframes.clone(), timeline.len()).map_err(|e| format!("{e:?}"))?;
+    // A timestamp seek cannot select a particular occurrence of a repeated PTS.
+    let keyframes = Keyframes::new(
+        stored
+            .keyframes
+            .iter()
+            .copied()
+            .filter(|&k| {
+                k == 0
+                    || (stored.pts.get(k as usize - 1) != stored.pts.get(k as usize)
+                        && stored.pts.get(k as usize + 1) != stored.pts.get(k as usize))
+            })
+            .collect(),
+        timeline.len(),
+    )
+    .map_err(|e| format!("{e:?}"))?;
     Ok((timeline, keyframes))
 }

@@ -1,3 +1,4 @@
+import { useAccess } from "../access";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { choicesOf } from "../export/lanes";
 import type { Hidden } from "../viewer/hidden";
@@ -90,6 +91,7 @@ export function LaneGrid({
 }) {
   const [box, size] = useSize();
   const { lanes } = view;
+  const { owner } = useAccess();
   const shown = useMemo(() => shownLanes(lanes, hidden, entry), [lanes, hidden, entry]);
   const cells = useMemo(
     () =>
@@ -167,7 +169,7 @@ export function LaneGrid({
                 onChange={(change) => stream.setLane(index, change)}
                 onApplyAll={
                   lanes.filter((lane) => lane.source !== null).length > 1
-                    ? () => stream.applyToAll(index)
+                    ? () => void stream.applyToAll(index, owner)
                     : undefined
                 }
                 onReload={() => stream.reloadCatalog(index)}

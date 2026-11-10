@@ -1,10 +1,12 @@
 // @vitest-environment node
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { SampleView } from "../present";
 import { catalogDocument, EMPTY, NONE } from "../stream/fakeData";
 import { LANE_SETTINGS } from "../lanes/fakeOpened";
 import { flush, opened, setup, type OpenedMessage } from "./fakePlayback";
 import type { ClientMessage, LaneInfo, LaneStatusWire } from "../stream/protocol";
+
+afterEach(() => vi.unstubAllGlobals());
 
 const READY: LaneStatusWire = {
   status: "Ready",
@@ -191,7 +193,34 @@ describe("lanes", () => {
     stream.setLane(1, { visible: false });
     stream.setLane(0, { sticky: { enabled: true, timeout_ms: 500, opacity: 0.5 }, theme: "dusk" });
     const before = policies(sent).length;
-    stream.applyToAll(0);
+    vi.stubGlobal("window", { sessionStorage: { getItem: () => null } });
+    const unchanged = stream.laneSettings();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ revision: 2, document: "{}" })),
+    );
+    await stream.applyToAll(0);
+    expect(stream.laneSettings()).toEqual(unchanged);
+    let finish!: (value: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    );
+    const pending = stream.applyToAll(0);
+    stream.setLane(1, { theme: "newer" });
+    finish(Response.json({ revision: 3, document: catalogDocument() }));
+    await pending;
+    expect(stream.laneSettings()[1].theme).toBe("newer");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ revision: 3, document: catalogDocument() })),
+    );
+    await stream.applyToAll(0);
     expect(policies(sent).slice(before)).toMatchObject([
       { lane: 1, subscribed: false, policy: { sticky: { enabled: true, timeout_ms: 500 } } },
     ]);

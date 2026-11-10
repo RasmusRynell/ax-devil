@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import catalogDocument from "../../../assets/catalogs/standard.v4.json?raw";
 import { DEFAULT_SETTINGS } from "../client/fakeSettings";
 import type { CatalogInfoWire } from "../generated/api";
 import { LANE_SETTINGS } from "./fakeOpened";
@@ -114,8 +115,21 @@ describe("lane menu", () => {
       const { save, show } = setup({
         settings: { ...LANE_SETTINGS, catalog: "built-in:tracking" },
       });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => Response.json({ revision: 2, document: "{}" })),
+      );
       fireEvent.click(screen.getByRole("button", { name: "Use as default" }));
+      await screen.findByText(/Error:/);
+      expect(save).not.toHaveBeenCalled();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => Response.json({ revision: 1, document: catalogDocument })),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Use as default" }));
+      await waitFor(() => expect(save).toHaveBeenCalled());
       expect(save).toHaveBeenCalledWith({
+        catalogRevision: 1,
         set: { "overlays.default_catalog": "built-in:tracking" },
       });
       show({ catalogProblem: "/layers: unknown" });

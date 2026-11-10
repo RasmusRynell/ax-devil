@@ -1,3 +1,4 @@
+import { freshCatalog } from "./freshCatalog";
 /** What a viewer holds of its lanes' data: Sample Items, Frame Maps and catalogs, and what each lane draws from them. */
 
 import { Catalogs } from "../lanes/catalogs";
@@ -28,6 +29,7 @@ type Opened = Extract<ServerMessage, { type: "Opened" }>;
 const NOT_READY = -1;
 
 export class ViewerData {
+  #applyRequest = 0;
   readonly #lanes: LaneSet;
   readonly #send: (message: ClientMessage) => void;
   readonly #after: (callback: () => void, ms: number) => () => void;
@@ -73,6 +75,33 @@ export class ViewerData {
     this.inspections = new Inspections(send);
     this.fields = new FrameFields(send, after);
     this.next = new NextEntry(send);
+  }
+
+  /** Validates before copying; newer choices survive the pending read. Watchers use the shared compiled document. */
+  async applyToAll(lane: number, reread: boolean): Promise<ClientMessage[]> {
+    const before = this.#lanes.states.map((state) => state.settings);
+    const source = before[lane];
+    if (!source) return [];
+    const request = ++this.#applyRequest;
+    try {
+      if (reread) {
+        await freshCatalog(source.catalog, ({ revision, document }) => {
+          this.catalogs.get(source.catalog);
+          this.catalogs.receive(source.catalog, revision, document);
+        });
+      } else {
+        const held = this.catalogs.get(source.catalog);
+        if (held.state !== "ready" || !held.catalog || held.problem) return [];
+      }
+      if (request !== this.#applyRequest || this.#lanes.states[lane]?.settings !== source)
+        return [];
+      this.#lanes.setProblem(lane, undefined);
+      return this.#lanes.copyFrom(lane, before);
+    } catch (error) {
+      if (request === this.#applyRequest && this.#lanes.states[lane]?.settings === source)
+        this.#lanes.setProblem(lane, String(error));
+      return [];
+    }
   }
 
   get draw(): LaneData | undefined {

@@ -108,7 +108,7 @@ export interface LaneControl {
 /** What the lane grid and its canvas ask of a viewer's stream: a playback stream and a live session both implement it. */
 export interface LaneDisplay extends LaneControl {
   /** Gives every other lane of the viewer the settings of `lane`, but its visibility. */
-  applyToAll(lane: number): void;
+  applyToAll(lane: number, reread: boolean): void | Promise<void>;
   /** Asks the backend for the catalog `lane` chose again and compiles what it answers. */
   reloadCatalog(lane: number): void;
   /** How `lane` matched a sample to the frame on screen. */

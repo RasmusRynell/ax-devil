@@ -365,7 +365,7 @@ pub(crate) async fn patch_settings(
                 let full_access = policy.principal_in(bearer(&headers), current).full_access();
                 refuse_unscannable_range(&patch, full_access)?;
                 let stored = current.resolved(catalogs::DEFAULT_SETTING);
-                match routes::catalogs::default_refusal(&library, stored.as_ref(), &patch.set) {
+                match routes::catalogs::default_refusal(&library, stored.as_ref(), &patch.set, body.catalog_revision) {
                     Some(reason) => Err(settings::Error {
                         location: catalogs::DEFAULT_SETTING.to_owned(),
                         reason,

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { freshCatalog } from "./freshCatalog";
 import { useAccess } from "../client/access";
 import { reasonOf } from "../client/errors";
 import type {
@@ -57,7 +58,7 @@ export function LaneCatalogActions({
   /** Asks the backend for the catalog again; without it there is no Reload. */
   onReload?: () => void;
 }) {
-  const { values, set } = useSettings();
+  const { values, apply } = useSettings();
   const mayChange = useAccess().owner;
   const [naming, setNaming] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -121,8 +122,23 @@ export function LaneCatalogActions({
     row.current.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
   });
 
-  const setDefault = (id: string) =>
-    set(DEFAULT_CATALOG, id).then((refused) => setRefusal(refused ? reasonOf(refused) : null));
+  const setDefault = async (id: string) => {
+    setBusy(true);
+    const asked = selection.current;
+    try {
+      const checked = mayChange ? await freshCatalog(id) : revision;
+      if (asked !== selection.current) return;
+      const refused = await apply({
+        set: { [DEFAULT_CATALOG]: id },
+        catalogRevision: checked,
+      });
+      setRefusal(refused ? reasonOf(refused) : null);
+    } catch (error) {
+      setRefusal(String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const finish = (failed: string | undefined, what: string) => {
     refocus.current = true;
@@ -183,7 +199,7 @@ export function LaneCatalogActions({
       {naming === null && (
         <div ref={row} className="flex flex-wrap items-start gap-s">
           <Button
-            disabled={revision === undefined || savedAsDefault}
+            disabled={revision === undefined || savedAsDefault || busy}
             onClick={() => void setDefault(catalog)}
           >
             Use as default

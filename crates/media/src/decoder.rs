@@ -134,6 +134,20 @@ impl Decoder {
             .ok()
             .and_then(|_| self.index.pts(keyframe))
             .ok_or_else(|| self.error(format!("Frame {keyframe} is not a keyframe")))?;
+        // A timestamp seek cannot distinguish the first two frames when they share PTS.
+        if keyframe == 0 && self.index.pts(1) == Some(pts) {
+            *self = Self::open(
+                &VideoInput::File(self.path.clone()),
+                Arc::clone(&self.index),
+                0,
+                self.cancel.clone(),
+            )
+            .map_err(|error| match error {
+                Interrupt::Failed(error) => error,
+                Interrupt::Cancelled => self.error("Opening the video was cancelled".into()),
+            })?;
+            return Ok(());
+        }
         self.reader
             .seek(keyframe, pts)
             .map_err(|e| self.error(format!("The video cannot seek to frame {keyframe}: {e}")))?;
@@ -188,8 +202,9 @@ impl Decoder {
             let mut frame = Video::empty();
             match self.codec.receive_frame(&mut frame) {
                 Ok(()) => {
-                    if let Some(sequence_id) =
-                        frame.pts().and_then(|pts| self.index.sequence_id(pts))
+                    if let Some(sequence_id) = frame
+                        .pts()
+                        .and_then(|pts| self.index.sequence_id(pts, self.position.unwrap_or(0)))
                     {
                         return Some((sequence_id, frame));
                     }

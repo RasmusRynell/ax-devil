@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { AccessContext } from "../client/access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import type { CatalogInfoWire } from "../generated/api";
+import catalogDocument from "../../../assets/catalogs/standard.v4.json?raw";
 import { LaneCatalogActions } from "./LaneCatalogActions";
 
 afterEach(() => {
@@ -234,7 +235,8 @@ describe("catalog copy and delete", () => {
     expect(refused.onChange).not.toHaveBeenCalled();
   });
 
-  it("lets Standard be saved as the default while the stored one names a catalog that is gone", () => {
+  it("lets Standard be saved as the default while the stored one names a catalog that is gone", async () => {
+    routes({ ok: true, body: { revision: 1, document: catalogDocument } });
     const { save } = setup(
       "built-in:standard",
       "built-in:standard",
@@ -242,6 +244,10 @@ describe("catalog copy and delete", () => {
       "user:gone.json",
     );
     fireEvent.click(screen.getByRole("button", { name: "Use as default" }));
-    expect(save).toHaveBeenCalledWith({ set: { "overlays.default_catalog": "built-in:standard" } });
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save).toHaveBeenCalledWith({
+      catalogRevision: 1,
+      set: { "overlays.default_catalog": "built-in:standard" },
+    });
   });
 });

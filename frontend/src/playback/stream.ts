@@ -195,9 +195,9 @@ export class PlaybackStream implements LaneControl {
     this.#changed();
   }
 
-  /** Gives every other lane of this viewer the settings of `lane`, but its visibility. */
-  applyToAll(lane: number): void {
-    this.#lanes.copyFrom(lane).forEach((message) => this.#link.send(message));
+  /** Applies a validated lane to the others. */
+  async applyToAll(lane: number, reread = true): Promise<void> {
+    (await this.#data.applyToAll(lane, reread)).forEach((message) => this.#link.send(message));
     this.#data.refresh();
     this.represent();
     this.#changed();

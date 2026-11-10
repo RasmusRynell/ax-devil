@@ -154,6 +154,10 @@ pub struct SettingsFile {
 #[derive(Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsPatch {
+    /// The freshly compiled revision when changing the default catalog.
+    #[serde(default)]
+    #[ts(optional)]
+    pub catalog_revision: Option<u32>,
     /// The settings to set by dotted key.
     #[serde(default)]
     #[ts(
