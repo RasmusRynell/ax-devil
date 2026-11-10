@@ -7,6 +7,7 @@
 // oxfmt-ignore
 module.exports = {
   chrome: [
+    "appearance",
     "shell",
     "live",
     "gallery",

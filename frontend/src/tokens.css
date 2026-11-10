@@ -153,6 +153,7 @@
   --spacing-field-wide: 42ch; /* a field that holds a `$NAME` reference */
   --spacing-form: 72ch; /* the form of the Add Live Stream dialog */
   --spacing-panel: 48ch;
+  --spacing-setup: calc(var(--text-size-larger) * 26); /* room for all five text-size tiles */
   --spacing-preview: calc(var(--text-size-system) * 6.4); /* the miniature window on a theme tile */
   --spacing-sample: calc(
     var(--text-size-larger) * 2

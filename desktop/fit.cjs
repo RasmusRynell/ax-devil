@@ -185,7 +185,12 @@ function dialog() {
       problems.push(
         `outside the dialog: "${(element.ariaLabel || element.textContent).trim().slice(0, 30)}"`,
       );
-    if (element.clientWidth > 2 && element.scrollWidth > element.clientWidth + 1)
+    // Text inputs scroll their values; their outer bounds were checked above.
+    if (
+      element.localName !== "input" &&
+      element.clientWidth > 2 &&
+      element.scrollWidth > element.clientWidth + 1
+    )
       problems.push(`cut off: "${element.textContent.trim().slice(0, 30)}"`);
   }
 

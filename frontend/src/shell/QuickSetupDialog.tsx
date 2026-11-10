@@ -2,9 +2,9 @@ import { useState, type ReactNode } from "react";
 import { reasonOf } from "../client/errors";
 import { SETTINGS, type SettingKey } from "../generated/settings";
 import { SegmentedControl, TileChoice } from "../kit/Chips";
-import { Dialog } from "../kit/Dialog";
+import { Dialog, DialogBody } from "../kit/Dialog";
 import { SectionCaption } from "../kit/SectionCaption";
-import { applyAppearance, settingsPatch, useAppearance, useSettings } from "../client/settings";
+import { useAppearance, useSettings } from "../client/settings";
 import { textOf, type Row } from "./SettingField";
 import { useSaveDialog } from "./useSaveDialog";
 
@@ -51,10 +51,7 @@ function MiniWindow({ theme, className = "" }: { theme: keyof typeof WINDOW; cla
 /** The System theme shows both windows, the dark one below the diagonal. */
 function ThemePreview({ theme }: { theme: string }) {
   return (
-    <span
-      aria-hidden="true"
-      className="relative block aspect-8/5 w-preview [@media(max-height:20rem)]:hidden"
-    >
+    <span aria-hidden="true" className="relative block aspect-8/5 w-preview">
       {theme !== "dark" && <MiniWindow theme="light" />}
       {theme !== "light" && (
         <MiniWindow theme="dark" className={theme === "auto" ? "clip-diagonal" : ""} />
@@ -76,7 +73,7 @@ function TextPreview({ size }: { size: string }) {
   return (
     <span
       aria-hidden="true"
-      className={`flex aspect-5/4 w-sample items-end justify-center font-semibold [@media(max-height:20rem)]:hidden ${SAMPLE_SIZE[size] ?? ""}`}
+      className={`flex aspect-5/4 w-sample items-end justify-center font-semibold ${SAMPLE_SIZE[size] ?? ""}`}
     >
       Aa
     </span>
@@ -92,7 +89,7 @@ const PREVIEWS: Partial<Record<SettingKey, (value: string) => ReactNode>> = {
 /**
  * The first-run choices, built from the settings table. Theme and text size apply as they are picked; Done, or any
  * other way of closing, stores the choices and marks Quick Setup done so it is not offered again. A refused write
- * restores the stored theme and text size, closes the dialog and goes to `onNotice`, which the shell shows as a dialog, without marking it done.
+ * keeps the live theme and text size preview, closes the dialog and goes to `onNotice`, which the shell shows as a dialog, without marking it done.
  */
 export function QuickSetupDialog({
   onClose,
@@ -101,50 +98,51 @@ export function QuickSetupDialog({
   onClose: () => void;
   onNotice: (message: string) => void;
 }) {
-  const { values } = useSettings();
-  const [base] = useState(values);
-  const [draft, setDraft] = useState(base);
+  const { values, shortcuts, previewAppearance } = useSettings();
+  const [draft, setDraft] = useState(values);
   useAppearance(textOf(draft["ui.theme"]), textOf(draft["ui.text_size"]));
   const { saving, submit } = useSaveDialog(onClose);
   const changed =
-    !base["ui.quick_setup_done"] || ROWS.some((row) => draft[row.key] !== base[row.key]);
+    !values["ui.quick_setup_done"] || ROWS.some((row) => draft[row.key] !== values[row.key]);
   const done = async () => {
     if (!changed) return onClose();
-    const outcome = await submit(settingsPatch(base, { ...draft, "ui.quick_setup_done": true }));
+    const outcome = await submit({ values: { ...draft, "ui.quick_setup_done": true }, shortcuts });
     if (outcome.kind === "refused") {
-      // The preview showed choices that were not stored, so the app goes back to the stored ones.
-      applyAppearance(textOf(values["ui.theme"]), textOf(values["ui.text_size"]));
+      // Python keeps the runtime preview even though persistence and completion were refused.
+      previewAppearance(textOf(draft["ui.theme"]), textOf(draft["ui.text_size"]));
       onNotice(`Could not save these choices: ${reasonOf(outcome.refusal)}`);
       onClose();
     }
   };
   return (
     <Dialog title="Quick Setup" okLabel="Done" onOk={() => void done()} busy={saving}>
-      <fieldset
-        disabled={saving}
-        className="m-0 flex min-w-0 flex-col gap-m border-0 p-0 [@media(max-height:20rem)]:gap-0"
-      >
-        {ROWS.map((row) => {
-          const choice = {
-            label: row.label,
-            options: row.kind.options ?? [],
-            value: textOf(draft[row.key]),
-            onChange: (value: string) => setDraft({ ...draft, [row.key]: value }),
-          };
-          const preview = PREVIEWS[row.key];
-          return (
-            <section key={row.key} className="flex flex-col gap-s">
-              <SectionCaption heading={row.label} plain />
-              {preview ? (
-                <TileChoice {...choice} preview={preview} />
-              ) : (
-                <SegmentedControl {...choice} wide />
-              )}
-            </section>
-          );
-        })}
-      </fieldset>
-      <p className="m-0 text-small text-muted">You can change these later in File → Settings.</p>
+      <DialogBody>
+        <fieldset
+          disabled={saving}
+          className="relative m-0 flex w-setup max-w-full shrink-0 min-w-0 flex-col gap-m border-0 p-0 [@media(max-height:20rem)]:gap-0 [&_[role=radiogroup]]:flex [&_[role=radiogroup]]:flex-wrap"
+        >
+          {ROWS.map((row) => {
+            const choice = {
+              label: row.label,
+              options: row.kind.options ?? [],
+              value: textOf(draft[row.key]),
+              onChange: (value: string) => setDraft({ ...draft, [row.key]: value }),
+            };
+            const preview = PREVIEWS[row.key];
+            return (
+              <section key={row.key} className="flex flex-col gap-s">
+                <SectionCaption heading={row.label} plain />
+                {preview ? (
+                  <TileChoice {...choice} preview={preview} />
+                ) : (
+                  <SegmentedControl {...choice} wide />
+                )}
+              </section>
+            );
+          })}
+        </fieldset>
+        <p className="m-0 text-small text-muted">You can change these later in File → Settings.</p>
+      </DialogBody>
     </Dialog>
   );
 }

@@ -47,11 +47,11 @@ export function DialogFrame({
       data-cursor-region="popup"
       onCancel={onCancel}
       onClose={onClose}
-      className="m-auto max-h-full min-h-[min(12.5rem,100%)] min-w-[min(20rem,100%)] max-w-full overflow-auto rounded-popup border border-line-strong bg-popup p-0 text-fg backdrop:bg-scrim"
+      className="m-auto open:flex open:flex-col max-h-full min-h-[min(12.5rem,100%)] min-w-[min(20rem,100%)] max-w-full overflow-auto rounded-popup border border-line-strong bg-popup p-0 text-fg backdrop:bg-scrim"
     >
       <form
         onSubmit={onSubmit}
-        className="flex max-h-[calc(100vh-var(--spacing-s))] flex-col gap-l p-xl [@media(max-height:20rem)]:gap-s [@media(max-height:20rem)]:p-m"
+        className="flex min-h-0 max-h-[calc(100vh-var(--spacing-s))] flex-col gap-l p-xl [@media(max-height:20rem)]:gap-s [@media(max-height:20rem)]:p-m"
       >
         <h2 id={titleId} className="m-0 text-heading font-semibold">
           {title}
