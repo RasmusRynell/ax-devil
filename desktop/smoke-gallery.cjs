@@ -162,4 +162,4 @@ async function gallery(window) {
   await frames({ js });
 }
 
-module.exports = { gallery };
+module.exports = { run: ({ window }) => gallery(window) };

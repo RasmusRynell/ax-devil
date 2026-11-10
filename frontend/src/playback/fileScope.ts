@@ -1,22 +1,30 @@
 /**
  * File scope as the client asks for it: the objects a lane's whole overlay file holds, listed by the backend. A viewer
- * says what list it wants per lane (`request`) and reads the latest answer (`view`); this keeps the backend asked for
- * exactly that list. It asks again when the answer would change: a new Ready revision, a new policy revision, the
- * class toggles, the file's ingest ending and the viewer becoming the owner of its frames again, for the backend
- * announces none of these. Answers of an older request, or made under other revisions, are dropped. The backend frees
- * what it kept for a lane when the list and the object's appearances have both been let go of. Where one object
- * appears is asked and kept the same way, by `appearances`, which shares the lane's revisions, owner and socket but
- * not its class toggles.
+ * says what list it wants per lane (`request`) and reads the latest answer (`view`); the rules of asking, and of asking
+ * again, are those of `FileRequests`, and the list also asks again when the lane's class toggles change. This owns the
+ * one request sequence, the owner flag and the listeners that the objects list, the object's appearances and the
+ * events share, and tells the backend to free what it kept for a lane when none of them wants it any more.
  */
 
-import type { FileRowWire, FileScopeUnavailable, FileSortWire, Located } from "../generated/api";
+import type { FileRowWire, FileSortWire, Located } from "../generated/api";
 import { Appearances } from "./appearances";
 import { FileEvents } from "./fileEvents";
-import { basisOf, FOLLOWING_RETRIES, FOLLOWING_RETRY_MS, readyOf } from "./fileBasis";
+import {
+  basisOf,
+  DEBOUNCE_MS,
+  FileRequests,
+  readyOf,
+  type Basis,
+  type FileMessage,
+  type FileRequestSpec,
+  type FileRequestsHost,
+  type FileView,
+  type LaneRequests,
+} from "./fileRequests";
 import { styleOf } from "./laneStyle";
 import { parseSearch } from "../search/query";
 import type { LaneSet } from "./lanes";
-import type { ClientMessage, ServerMessage } from "./protocol";
+import type { ClientMessage } from "./protocol";
 
 /** The lane's class toggles as the bitmask words a query sends: bit `i` of word `i >> 5` is class `i`. */
 function classesOf(lanes: LaneSet, lane: number): number[] {
@@ -29,13 +37,6 @@ function classesOf(lanes: LaneSet, lane: number): number[] {
   return Array.from(words);
 }
 
-/** What the list's answer depends on: the lane's basis and its class toggles. */
-function listBasis(lanes: LaneSet, lane: number, owner: boolean) {
-  return { ...basisOf(lanes, lane, owner), classes: classesOf(lanes, lane) };
-}
-
-/** How long a change to the wanted list waits for another before it is sent. */
-const DEBOUNCE_MS = 150;
 /** One page of a lane's list. */
 export type FilePage = {
   /** How many objects the video shows that the class toggles keep. */
@@ -49,23 +50,8 @@ export type FilePage = {
   located: Located | null;
 };
 
-/**
- * What a lane's list shows now. Replaced, never mutated, when it changes. The page is out of date when both it and
- * `unavailable` are set: a refresh failed and the rows are those of the last answer, which the next one replaces.
- */
-export type FileScopeView = {
-  /** An answer is awaited, or the question is about to be asked again. */
-  pending: boolean;
-  /**
-   * The last page accepted; kept while a newer one is awaited and when a refresh of it failed, `null` when the backend
-   * has no rows to give.
-   */
-  page: FilePage | null;
-  /** Why the backend has no rows; `null` otherwise. */
-  unavailable: FileScopeUnavailable | null;
-};
-
-const IDLE: FileScopeView = { pending: false, page: null, unavailable: null };
+/** What a lane's list shows now. */
+export type FileScopeView = FileView<FilePage>;
 
 /** What a lane's list is wanted to be. */
 type Wanted = {
@@ -77,30 +63,43 @@ type Wanted = {
   locate: string | null;
 };
 
-type Slot = {
-  wanted: Wanted;
-  view: FileScopeView;
-  /** The data revision of the page the view holds; a page of another revision is not kept through a failure. */
-  pageData: number | null;
-  /** The request the answer awaited belongs to; `null` when none is awaited. */
-  asked: number | null;
-  /** What the last request was made under, as JSON; `null` when none stands. */
-  basis: string | null;
-  retries: number;
-  cancel: (() => void) | null;
+const OBJECTS: FileRequestSpec<"Objects", Wanted, Basis & { classes: number[] }, FilePage> = {
+  kind: "Objects",
+  shape: "list",
+  basis: (lanes, lane, owner) => ({
+    ...basisOf(lanes, lane, owner),
+    classes: classesOf(lanes, lane),
+  }),
+  message: (lane, request, { query, sort, offset, limit, bins, locate }, { classes }) => ({
+    type: "FileQuery",
+    lane,
+    request,
+    query,
+    classes,
+    sort,
+    offset,
+    limit,
+    bins,
+    locate,
+  }),
+  page: ({ total, matched, offset, rows, located }) => ({ total, matched, offset, rows, located }),
+  // The cursor moved to an object this page neither locates nor holds while the question was out.
+  again: ({ rows, located }, _, { locate }) =>
+    locate !== null && located?.id !== locate && !rows.some(({ id }) => id === locate)
+      ? { ms: DEBOUNCE_MS, pending: true }
+      : null,
 };
 
 export class FileScope {
-  readonly #lanes: LaneSet;
   readonly #send: (message: ClientMessage) => void;
-  readonly #after: (callback: () => void, ms: number) => () => void;
-  readonly #slots = new Map<number, Slot>();
   readonly #listeners = new Set<() => void>();
+  readonly #objects: FileRequests<"Objects", Wanted, Basis & { classes: number[] }, FilePage>;
+  readonly #requests: LaneRequests[];
   /** Where the object a lane's page is about appears. */
   readonly appearances: Appearances;
   /** The events the lane's file holds. */
   readonly events: FileEvents;
-  #requests = 0;
+  #ids = 0;
   #owner = true;
 
   /** `send` writes to the playback socket; `after` calls back once after some milliseconds and returns how to cancel. */
@@ -109,25 +108,20 @@ export class FileScope {
     send: (message: ClientMessage) => void,
     after: (callback: () => void, ms: number) => () => void,
   ) {
-    this.#lanes = lanes;
     this.#send = send;
-    this.#after = after;
-    this.appearances = new Appearances(
+    const host: FileRequestsHost = {
       lanes,
       send,
       after,
-      () => this.#owner,
-      () => this.#changed(),
-      (lane) => this.#freed(lane),
-    );
-    this.events = new FileEvents(
-      lanes,
-      send,
-      after,
-      () => this.#owner,
-      () => this.#changed(),
-      (lane) => this.#freed(lane),
-    );
+      owner: () => this.#owner,
+      request: () => ++this.#ids,
+      changed: () => this.#listeners.forEach((listener) => listener()),
+      released: (lane) => this.#freed(lane),
+    };
+    this.#objects = new FileRequests(OBJECTS, host);
+    this.appearances = new Appearances(host);
+    this.events = new FileEvents(host);
+    this.#requests = [this.#objects, this.appearances.requests, this.events.list, this.events.one];
   }
 
   /** Calls `listener` whenever a lane's view changes; returns how to stop. */
@@ -138,7 +132,7 @@ export class FileScope {
 
   /** What the lane's list shows now; the same object until it changes. */
   view(lane: number): FileScopeView {
-    return this.#slots.get(lane)?.view ?? IDLE;
+    return this.#objects.view(lane);
   }
 
   /**
@@ -155,33 +149,12 @@ export class FileScope {
     bins: number,
     locate: string | null = null,
   ): void {
-    const wanted = { query: parseSearch(text).wire, sort, offset, limit, bins, locate };
-    let slot = this.#slots.get(lane);
-    if (slot) Object.assign(slot, { wanted, asked: null, retries: 0 });
-    else
-      slot = {
-        wanted,
-        view: IDLE,
-        pageData: null,
-        asked: null,
-        basis: null,
-        retries: 0,
-        cancel: null,
-      };
-    this.#slots.set(lane, slot);
-    this.#schedule(lane, slot, DEBOUNCE_MS);
-    this.#replace(lane, slot, { ...slot.view, pending: true });
+    this.#objects.want(lane, { query: parseSearch(text).wire, sort, offset, limit, bins, locate });
   }
 
   /** Asks for the wanted list now, instead of when the pause for more changes ends, and again if it was asked already. */
   flush(lane: number): void {
-    const slot = this.#slots.get(lane);
-    if (!slot) return;
-    slot.cancel?.();
-    slot.cancel = null;
-    slot.retries = 0;
-    this.#ask(lane, slot);
-    this.#replace(lane, slot, { ...slot.view, pending: true });
+    this.#objects.flush(lane);
   }
 
   /**
@@ -190,23 +163,18 @@ export class FileScope {
    * another object and does not hold this one, it is asked again once that answer is in.
    */
   locating(lane: number, locate: string | null): void {
-    const slot = this.#slots.get(lane);
-    if (slot) slot.wanted.locate = locate;
+    const wanted = this.#objects.wanted(lane);
+    if (wanted) this.#objects.amend(lane, { ...wanted, locate }, null);
   }
 
   /** What the lane's list membership depends on (class toggles, data and policy revision); a list asked under another differs. */
   basis(lane: number): string {
-    return this.#basisKey(lane);
+    return this.#objects.basis(lane);
   }
 
   /** Stops wanting the lane's list, as when it is not shown, and tells the backend if it was ever asked on this socket. */
   release(lane: number): void {
-    const slot = this.#slots.get(lane);
-    if (!slot) return;
-    slot.cancel?.();
-    this.#slots.delete(lane);
-    if (slot.basis !== null) this.#freed(lane);
-    this.#changed();
+    this.#objects.release(lane);
   }
 
   /** Says whether the viewer chooses its own frames, which alone reaches the whole file. */
@@ -218,16 +186,7 @@ export class FileScope {
 
   /** The lanes changed: ask again for each list whose answer would differ. */
   refresh(): void {
-    this.appearances.refresh();
-    this.events.refresh();
-    for (const [lane, slot] of this.#slots) {
-      if (slot.cancel === null && this.#basisKey(lane) !== slot.basis) {
-        slot.retries = 0;
-        slot.asked = null;
-        this.#schedule(lane, slot, DEBOUNCE_MS);
-        this.#replace(lane, slot, { ...slot.view, pending: true });
-      }
-    }
+    for (const requests of this.#requests) requests.refresh();
   }
 
   /** The backend opened the entry on a new socket: nothing asked before was heard, so every list is asked for again. */
@@ -238,120 +197,17 @@ export class FileScope {
 
   /** The socket is gone: stop sending and forget what was awaited. The lists wanted stay wanted. */
   suspend(): void {
-    this.appearances.suspend();
-    this.events.suspend();
-    for (const slot of this.#slots.values()) {
-      slot.cancel?.();
-      slot.cancel = null;
-      slot.asked = null;
-      slot.basis = null;
-    }
+    for (const requests of this.#requests) requests.suspend();
   }
 
   /** Takes the backend's answer to a request, unless a newer request or other revisions have made it stale. */
-  receive(
-    message: Extract<
-      ServerMessage,
-      { type: "FileRows" | "FileScope" | "Appearances" | "EventRows" | "Event" }
-    >,
-  ): void {
-    if (message.type === "Appearances") {
-      this.appearances.receive(message);
-      return;
-    }
-    if (message.type === "EventRows" || message.type === "Event") {
-      this.events.receive(message);
-      return;
-    }
-    const slot = this.#slots.get(message.lane);
-    if (!slot || slot.asked !== message.request) return;
-    if (message.type === "FileRows") {
-      const state = this.#lanes.states[message.lane];
-      if (
-        readyOf(state)?.data_revision !== message.data_revision ||
-        state.policyRevision !== message.policy_revision
-      )
-        return;
-      const { total, matched, offset, rows, located } = message;
-      slot.asked = null;
-      slot.pageData = message.data_revision;
-      // The cursor moved to an object this page neither locates nor holds while the question was out.
-      const key = slot.wanted.locate;
-      const lost = key !== null && located?.id !== key && !rows.some(({ id }) => id === key);
-      if (lost) this.#schedule(message.lane, slot, DEBOUNCE_MS);
-      this.#replace(message.lane, slot, {
-        pending: lost,
-        page: { total, matched, offset, rows, located },
-        unavailable: null,
-      });
-      return;
-    }
-    slot.asked = null;
-    const unavailable = message.unavailable;
-    // The backend may not yet know the viewer owns its frames again; nothing tells this client when it does.
-    const retry =
-      unavailable.state === "Following" && this.#owner && slot.retries < FOLLOWING_RETRIES;
-    if (retry) {
-      slot.retries++;
-      this.#schedule(message.lane, slot, FOLLOWING_RETRY_MS);
-    }
-    // A page that could not be refreshed stays, flagged by `unavailable`, as long as the file's data is what it showed.
-    const keep =
-      unavailable.state === "Failed" &&
-      slot.pageData === readyOf(this.#lanes.states[message.lane])?.data_revision;
-    this.#replace(message.lane, slot, {
-      pending: retry,
-      page: keep ? slot.view.page : null,
-      unavailable,
-    });
+  receive(message: FileMessage): void {
+    for (const requests of this.#requests) requests.receive(message);
   }
 
   /** Tells the backend to free what it kept for the lane, when nothing of it is wanted any more. */
   #freed(lane: number): void {
-    if (!this.#slots.has(lane) && !this.appearances.wants(lane) && !this.events.wants(lane))
+    if (!this.#requests.some((requests) => requests.wants(lane)))
       this.#send({ type: "FileRelease", lane });
-  }
-
-  #basisKey(lane: number): string {
-    return JSON.stringify(listBasis(this.#lanes, lane, this.#owner));
-  }
-
-  #schedule(lane: number, slot: Slot, ms: number): void {
-    slot.cancel?.();
-    slot.cancel = this.#after(() => {
-      slot.cancel = null;
-      this.#ask(lane, slot);
-    }, ms);
-  }
-
-  #ask(lane: number, slot: Slot): void {
-    if (this.#slots.get(lane) !== slot) return;
-    const basis = listBasis(this.#lanes, lane, this.#owner);
-    slot.basis = JSON.stringify(basis);
-    slot.asked = ++this.#requests;
-    const { query, sort, offset, limit, bins, locate } = slot.wanted;
-    const classes = basis.classes;
-    this.#send({
-      type: "FileQuery",
-      lane,
-      request: slot.asked,
-      query,
-      classes,
-      sort,
-      offset,
-      limit,
-      bins,
-      locate,
-    });
-  }
-
-  #replace(lane: number, slot: Slot, view: FileScopeView): void {
-    if (this.#slots.get(lane) !== slot) return;
-    slot.view = view;
-    this.#changed();
-  }
-
-  #changed(): void {
-    this.#listeners.forEach((listener) => listener());
   }
 }

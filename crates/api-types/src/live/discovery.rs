@@ -1,11 +1,12 @@
 //! What the live form asks a camera and the network scan answers: the connection a question is about, the sizes,
 //! sources and topics a camera offers, why a question failed, and the cameras the scan found.
 
-use super::{LiveProtocol, LiveReason, WireSecret};
+use super::{LiveReason, WireSecret};
 use crate::ErrorWire;
 use foundation::ItemId;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use workspace::Protocol;
 
 /// What an Axis camera said about itself without a login.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -47,7 +48,7 @@ pub struct NetworkRow {
     /// Its IPv4 address.
     pub address: String,
     /// The web protocol that answered.
-    pub scheme: LiveProtocol,
+    pub scheme: Protocol,
     /// The web port that answered.
     pub port: u16,
     /// What it said about itself.
@@ -109,7 +110,7 @@ pub struct LiveConnection {
     /// The camera password or a reference.
     pub password: Option<WireSecret>,
     /// The web interface's protocol.
-    pub protocol: Option<LiveProtocol>,
+    pub protocol: Option<Protocol>,
     /// The web interface's port, 0 to 65535; 0 or absent is the standard one.
     #[ts(type = "number", optional)]
     pub port: Option<i64>,

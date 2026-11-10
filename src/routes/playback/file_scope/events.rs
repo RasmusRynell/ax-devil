@@ -3,13 +3,10 @@
 //! neither waits for the lane's objects list or for the other; they share its kept history and placement, and the
 //! event placement kept with them.
 
-use super::{Cache, MAX_BINS, MAX_LIMIT, Reply, Stop, latest::Latest, read};
+use super::{Cache, MAX_BINS, MAX_LIMIT, Reply, Stop, found, latest::Latest, read};
 use api_types::{
     Audience,
-    playback::{
-        EventAskWire, EventQueryWire, EventRowsWire, EventWire, FileEvent, FileEvents,
-        ServerMessage,
-    },
+    playback::{EventAskWire, EventQueryWire, FileAnswer, FileBody},
 };
 use foundation::CancelToken;
 use overlays::{FileScopeInput, ViewerOverlays};
@@ -68,27 +65,18 @@ impl Events {
                             "An event query asks for 1 to {MAX_LIMIT} rows, not {}",
                             wire.limit
                         );
-                        let problem = ServerMessage::LaneProblem { lane, reason };
-                        self.list.say(lane, request, problem);
+                        self.list.say(Reply::problem(lane, request, reason));
                     }
                     return;
                 }
-                let unavailable = move |unavailable| {
-                    ServerMessage::EventRows(EventRowsWire {
-                        lane,
-                        request,
-                        rows: FileEvents::Unavailable { unavailable },
-                    })
-                };
                 let answer =
                     move |input: &FileScopeInput, cache: &Cache, cancel: &CancelToken, audience| {
                         list(&wire, input, cache, cancel, audience)
                     };
-                self.list
-                    .ask(overlays, cache, own, (lane, request), unavailable, answer);
+                self.list.ask(overlays, cache, own, (lane, request), answer);
             }
             Ask::Detail(wire) => {
-                let (lane, request, event) = (wire.lane, wire.request, wire.event);
+                let (lane, request) = (wire.lane, wire.request);
                 if wire.bins > MAX_BINS {
                     self.detail.release(lane);
                     if self.audience.host_details {
@@ -96,25 +84,16 @@ impl Events {
                             "An event request asks for 0 to {MAX_BINS} spans, not {}",
                             wire.bins
                         );
-                        let problem = ServerMessage::LaneProblem { lane, reason };
-                        self.detail.say(lane, request, problem);
+                        self.detail.say(Reply::problem(lane, request, reason));
                     }
                     return;
                 }
-                let unavailable = move |unavailable| {
-                    ServerMessage::Event(EventWire {
-                        lane,
-                        request,
-                        event,
-                        detail: FileEvent::Unavailable { unavailable },
-                    })
-                };
                 let answer =
                     move |input: &FileScopeInput, cache: &Cache, cancel: &CancelToken, audience| {
                         detail(&wire, input, cache, cancel, audience)
                     };
                 self.detail
-                    .ask(overlays, cache, own, (lane, request), unavailable, answer);
+                    .ask(overlays, cache, own, (lane, request), answer);
             }
         }
     }
@@ -141,7 +120,7 @@ fn list(
     cache: &Cache,
     cancel: &CancelToken,
     audience: Audience,
-) -> Result<ServerMessage, Stop> {
+) -> Result<FileAnswer, Stop> {
     let lane = ask.lane;
     let cached = cache.prepared(lane, input, || read(input, cancel, audience))?;
     let revisions = (cached.data_revision, cached.policy_revision);
@@ -161,12 +140,9 @@ fn list(
         events: &cached.events,
         placement: &cached.placement,
     };
-    let message = ServerMessage::EventRows(EventRowsWire {
-        lane,
-        request: ask.request,
-        rows: FileEvents::Found {
-            data_revision: cached.data_revision,
-            policy_revision: cached.policy_revision,
+    let answer = found(
+        &cached,
+        FileBody::Events {
             total: matches.total(),
             matched: matches.matched(),
             offset: ask.offset,
@@ -176,12 +152,12 @@ fn list(
                 .frame
                 .map(|frame| matches.frame_row(&cached.events, frame)),
         },
-    });
+    );
     let search = ask.query.clone();
     cache.update(lane, revisions, |kept| {
         kept.event_listing = Some((search, matches));
     });
-    Ok(message)
+    Ok(answer)
 }
 
 /// The event asked for.
@@ -191,7 +167,7 @@ fn detail(
     cache: &Cache,
     cancel: &CancelToken,
     audience: Audience,
-) -> Result<ServerMessage, Stop> {
+) -> Result<FileAnswer, Stop> {
     let lane = ask.lane;
     let cached = cache.prepared(lane, input, || read(input, cancel, audience))?;
     let view = EventView {
@@ -199,14 +175,9 @@ fn detail(
         events: &cached.events,
         placement: &cached.placement,
     };
-    Ok(ServerMessage::Event(EventWire {
-        lane,
-        request: ask.request,
+    let body = FileBody::Event {
         event: ask.event,
-        detail: FileEvent::Found {
-            data_revision: cached.data_revision,
-            policy_revision: cached.policy_revision,
-            detail: view.detail(ask.event, ask.bins, MAX_LIMIT as usize),
-        },
-    }))
+        detail: view.detail(ask.event, ask.bins, MAX_LIMIT as usize),
+    };
+    Ok(found(&cached, body))
 }

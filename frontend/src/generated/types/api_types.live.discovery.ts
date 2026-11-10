@@ -1,8 +1,9 @@
 // Generated from api_types::live::discovery by make; do not edit.
 
 import type { ErrorWire } from "./api_types.error";
-import type { LiveProtocol, LiveReason } from "./api_types.live";
+import type { LiveReason } from "./api_types.live";
 import type { WireSecret } from "./api_types.live.new_live";
+import type { LiveProtocol } from "./workspace.live";
 
 /**
  * The camera a question is about. Anything left out takes the configured default, and text may be a `$NAME`

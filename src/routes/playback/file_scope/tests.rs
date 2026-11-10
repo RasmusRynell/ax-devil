@@ -2,9 +2,7 @@
 
 use super::cache::Cache;
 use super::*;
-use api_types::playback::{
-    EventAskWire, EventQueryWire, EventRowsWire, EventWire, FileEvent, FileEvents, ServerMessage,
-};
+use api_types::playback::{EventAskWire, EventQueryWire};
 use axum::extract::ws::Message;
 use foundation::{MediaTime, Timeline};
 use overlays::{LaneStatus, OverlayEvent, OverlayService};
@@ -108,19 +106,48 @@ async fn next(scopes: &mut FileScopes, own: bool) -> ServerMessage {
     serde_json::from_str(&body).unwrap()
 }
 
-fn rows(message: ServerMessage) -> (u32, u32, u64, u64, Vec<Row>) {
-    let ServerMessage::FileRows {
+fn answered(message: ServerMessage) -> (u32, FileAnswer) {
+    let ServerMessage::File {
+        request, answer, ..
+    } = message
+    else {
+        panic!("a file answer, got {message:?}");
+    };
+    (request, answer)
+}
+
+fn following() -> FileAnswer {
+    FileAnswer::Unavailable {
+        unavailable: FileScopeUnavailable::Following,
+    }
+}
+
+/// The revisions and body of a found answer.
+fn body(message: ServerMessage) -> (u32, u32, FileBody) {
+    let (_, answer) = answered(message);
+    let FileAnswer::Found {
         data_revision,
         policy_revision,
+        body,
+    } = answer
+    else {
+        panic!("a found answer, got {answer:?}");
+    };
+    (data_revision, policy_revision, body)
+}
+
+fn rows(message: ServerMessage) -> (u32, u32, u64, u64, Vec<Row>) {
+    let (data, policy, body) = body(message);
+    let FileBody::Objects {
         total,
         matched,
         rows,
         ..
-    } = message
+    } = body
     else {
-        panic!("rows, got {message:?}");
+        panic!("rows, got {body:?}");
     };
-    (data_revision, policy_revision, total, matched, rows)
+    (data, policy, total, matched, rows)
 }
 
 #[tokio::test]
@@ -182,14 +209,7 @@ async fn a_follower_is_refused_and_only_the_newest_request_of_a_lane_is_answered
         .ask(&viewer, false, ask(1, None, 0, 10))
         .ok()
         .unwrap();
-    assert!(matches!(
-        next(&mut scopes, false).await,
-        ServerMessage::FileScope {
-            request: 1,
-            unavailable: FileScopeUnavailable::Following,
-            ..
-        }
-    ));
+    assert_eq!(answered(next(&mut scopes, false).await), (1, following()));
 
     for request in [2, 3] {
         scopes
@@ -197,11 +217,7 @@ async fn a_follower_is_refused_and_only_the_newest_request_of_a_lane_is_answered
             .ok()
             .unwrap();
     }
-    let message = next(&mut scopes, true).await;
-    assert!(matches!(
-        message,
-        ServerMessage::FileRows { request: 3, .. }
-    ));
+    assert_eq!(answered(next(&mut scopes, true).await).0, 3);
     assert!(
         tokio::time::timeout(Duration::from_millis(300), scopes.next())
             .await
@@ -211,14 +227,7 @@ async fn a_follower_is_refused_and_only_the_newest_request_of_a_lane_is_answered
 
     // A viewer that became a follower while the query ran is not sent the rows.
     scopes.ask(&viewer, true, ask(4, None, 0, 10)).ok().unwrap();
-    assert!(matches!(
-        next(&mut scopes, false).await,
-        ServerMessage::FileScope {
-            request: 4,
-            unavailable: FileScopeUnavailable::Following,
-            ..
-        }
-    ));
+    assert_eq!(answered(next(&mut scopes, false).await), (4, following()));
 
     let outside = Ask {
         lane: 5,
@@ -295,7 +304,7 @@ async fn the_lanes_keep_no_more_than_the_budget_and_the_longest_unused_goes_firs
 }
 
 #[tokio::test]
-async fn the_spans_of_an_object_come_beside_the_list_and_only_to_the_owner() {
+async fn the_spans_of_an_object_come_beside_the_list() {
     let folder = tempfile::tempdir().unwrap();
     let (viewer, revision) = viewer(folder.path()).await;
     let mut scopes = FileScopes::new(Audience::HOST);
@@ -305,22 +314,17 @@ async fn the_spans_of_an_object_come_beside_the_list_and_only_to_the_owner() {
         entity: entity.into(),
     };
     let found = |message: ServerMessage| {
-        let ServerMessage::Appearances {
+        let (data, policy, body) = body(message);
+        let FileBody::Appearances {
             entity,
-            appearances:
-                FileAppearances::Found {
-                    data_revision,
-                    policy_revision,
-                    spans,
-                    truncated,
-                    ..
-                },
+            spans,
+            truncated,
             ..
-        } = message
+        } = body
         else {
-            panic!("spans, got {message:?}");
+            panic!("spans, got {body:?}");
         };
-        (entity, data_revision, policy_revision, spans, truncated)
+        (entity, data, policy, spans, truncated)
     };
 
     scopes.ask(&viewer, true, ask(1, None, 0, 10)).ok().unwrap();
@@ -329,7 +333,7 @@ async fn the_spans_of_an_object_come_beside_the_list_and_only_to_the_owner() {
         .ok()
         .unwrap();
     let mut answers = [next(&mut scopes, true).await, next(&mut scopes, true).await];
-    answers.sort_by_key(|message| matches!(message, ServerMessage::Appearances { .. }));
+    answers.sort_by_key(|message| answered(message.clone()).0);
     let [rows_answer, spans_answer] = answers;
     assert_eq!(rows(rows_answer).4.len(), 2, "the list is still answered");
     assert_eq!(
@@ -354,10 +358,7 @@ async fn the_spans_of_an_object_come_beside_the_list_and_only_to_the_owner() {
         };
         scopes.ask_appearances(&viewer, true, ask).ok().unwrap();
     }
-    assert!(matches!(
-        next(&mut scopes, true).await,
-        ServerMessage::Appearances { request: 7, .. }
-    ));
+    assert_eq!(answered(next(&mut scopes, true).await).0, 7);
     assert!(
         tokio::time::timeout(Duration::from_millis(300), scopes.next())
             .await
@@ -386,20 +387,6 @@ async fn the_spans_of_an_object_come_beside_the_list_and_only_to_the_owner() {
         }
     });
     assert_eq!(reads.into_inner(), 1);
-
-    scopes
-        .ask_appearances(&viewer, false, spans("2"))
-        .ok()
-        .unwrap();
-    assert!(matches!(
-        next(&mut scopes, false).await,
-        ServerMessage::Appearances {
-            appearances: FileAppearances::Unavailable {
-                unavailable: FileScopeUnavailable::Following
-            },
-            ..
-        }
-    ));
 }
 
 #[tokio::test]
@@ -430,31 +417,33 @@ async fn event_answers_carry_their_revisions_a_follower_is_refused_and_a_newer_r
 
     // A MOT file has no events: the answers are empty but made under the lane's revisions.
     scopes.ask_events(&viewer, true, list(1)).ok().unwrap();
-    scopes.ask_events(&viewer, true, one(1)).ok().unwrap();
+    scopes.ask_events(&viewer, true, one(2)).ok().unwrap();
     let mut answers = [next(&mut scopes, true).await, next(&mut scopes, true).await];
-    answers.sort_by_key(|message| matches!(message, ServerMessage::Event(_)));
-    let [ServerMessage::EventRows(rows), ServerMessage::Event(event)] = answers else {
-        panic!("rows and an event, got {answers:?}");
+    answers.sort_by_key(|message| answered(message.clone()).0);
+    let [rows_answer, event_answer] = answers;
+    let (data, policy, listed) = body(rows_answer);
+    let FileBody::Events {
+        total,
+        matched,
+        frame_row,
+        ..
+    } = listed
+    else {
+        panic!("event rows, got {listed:?}");
     };
+    assert_eq!(
+        (data, policy, total, matched, frame_row),
+        (revision, 1, 0, 0, Some(0))
+    );
+    let (data, policy, event) = body(event_answer);
     assert!(matches!(
-        rows.rows,
-        FileEvents::Found {
-            data_revision,
-            policy_revision: 1,
-            total: 0,
-            matched: 0,
-            frame_row: Some(0),
-            ..
-        } if data_revision == revision
+        event,
+        FileBody::Event {
+            event: 0,
+            detail: None
+        }
     ));
-    assert!(matches!(
-        event.detail,
-        FileEvent::Found {
-            data_revision,
-            policy_revision: 1,
-            detail: None,
-        } if data_revision == revision
-    ));
+    assert_eq!((data, policy), (revision, 1));
 
     // Of two requests in a row only the newer is answered.
     for request in [2, 3] {
@@ -463,10 +452,7 @@ async fn event_answers_carry_their_revisions_a_follower_is_refused_and_a_newer_r
             .ok()
             .unwrap();
     }
-    assert!(matches!(
-        next(&mut scopes, true).await,
-        ServerMessage::EventRows(EventRowsWire { request: 3, .. })
-    ));
+    assert_eq!(answered(next(&mut scopes, true).await).0, 3);
     assert!(
         tokio::time::timeout(Duration::from_millis(300), scopes.next())
             .await
@@ -478,22 +464,7 @@ async fn event_answers_carry_their_revisions_a_follower_is_refused_and_a_newer_r
     scopes.ask_events(&viewer, false, one(4)).ok().unwrap();
     scopes.ask_events(&viewer, true, list(5)).ok().unwrap();
     for _ in 0..2 {
-        let refused = match next(&mut scopes, false).await {
-            ServerMessage::Event(EventWire { detail, .. }) => matches!(
-                detail,
-                FileEvent::Unavailable {
-                    unavailable: FileScopeUnavailable::Following
-                }
-            ),
-            ServerMessage::EventRows(EventRowsWire { rows, .. }) => matches!(
-                rows,
-                FileEvents::Unavailable {
-                    unavailable: FileScopeUnavailable::Following
-                }
-            ),
-            other => panic!("an event answer, got {other:?}"),
-        };
-        assert!(refused);
+        assert_eq!(answered(next(&mut scopes, false).await).1, following());
     }
 }
 

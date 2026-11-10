@@ -11,7 +11,7 @@ import type { FileRowWire, SearchWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { SegmentedControl } from "../kit/Chips";
 import type { LaneFrame } from "../playback/contract";
-import { readyOf } from "../playback/fileBasis";
+import { readyOf } from "../playback/fileRequests";
 import type { FileEvents } from "../playback/fileEvents";
 import type { FileScope } from "../playback/fileScope";
 import type { FrameFields } from "../playback/frameFields";

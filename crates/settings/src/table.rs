@@ -3,7 +3,7 @@
 use crate::kind::{Kind, NoFilter, StickyValue, SyncValue};
 use serde::Serialize;
 
-/// Where a setting is grouped: how one person likes to work, or what the server works with.
+/// Who a setting belongs to, which decides who may read and change it on a backend that several people use.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Scope {
@@ -11,6 +11,11 @@ pub enum Scope {
     Personal,
     /// What the server works with: device and broker defaults, folders, cache.
     Server,
+}
+
+impl Scope {
+    /// Every scope, for the person who owns the backend.
+    pub const ALL: [Self; 2] = [Self::Personal, Self::Server];
 }
 
 /// One declared setting.
@@ -49,6 +54,24 @@ pub const OBJECT_DETAILS_DESCRIPTION: &str =
 pub const LANE_NAMES_DESCRIPTION: &str =
     "Name each video lane; names hide while frame info is shown.";
 
+/// What an entry in [`TABLE`] gets for the fields it does not state. Only the common values are here: every entry
+/// states its own `key`, `kind`, `label`, `page`, `section` and `scope`. The placeholders for those are never read;
+/// `scope` is the stricter one, so an entry that forgot it would not open a setting to every person.
+const BASE: Setting = Setting {
+    key: "",
+    kind: Kind::Bool { default: false },
+    label: "",
+    description: None,
+    page: None,
+    section: "",
+    live: true,
+    env: true,
+    secret: false,
+    full_access: false,
+    quick_setup: false,
+    scope: Scope::Server,
+};
+
 /// Every setting the app has.
 pub const TABLE: &[Setting] = &[
     Setting {
@@ -59,15 +82,12 @@ pub const TABLE: &[Setting] = &[
             default: "auto",
         },
         label: "Theme",
-        description: None,
         page: Some("General"),
         section: "Appearance",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
         quick_setup: true,
         scope: Scope::Personal,
+        ..BASE
     },
     Setting {
         key: "ui.text_size",
@@ -83,29 +103,22 @@ pub const TABLE: &[Setting] = &[
             default: "system",
         },
         label: "Text size",
-        description: None,
         page: Some("General"),
         section: "Appearance",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
         quick_setup: true,
         scope: Scope::Personal,
+        ..BASE
     },
     Setting {
         key: "ui.quick_setup_done",
         kind: Kind::Bool { default: false },
         label: "Quick Setup done",
-        description: None,
         page: None,
         section: "",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Personal,
+        ..BASE
     },
     Setting {
         key: "overlays.object_details",
@@ -114,12 +127,9 @@ pub const TABLE: &[Setting] = &[
         description: Some(OBJECT_DETAILS_DESCRIPTION),
         page: Some("General"),
         section: "Video overlays",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Personal,
+        ..BASE
     },
     Setting {
         key: "overlays.lane_names",
@@ -128,27 +138,20 @@ pub const TABLE: &[Setting] = &[
         description: Some(LANE_NAMES_DESCRIPTION),
         page: Some("General"),
         section: "Video overlays",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Personal,
+        ..BASE
     },
     Setting {
         key: "overlays.default_catalog",
         // A catalog id such as `built-in:standard`; empty is the built-in default. Chosen from a lane's menu.
         kind: Kind::Text { default: "" },
         label: "Default catalog",
-        description: None,
         page: None,
         section: "",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Personal,
+        ..BASE
     },
     Setting {
         key: "overlays.default_sync",
@@ -159,15 +162,11 @@ pub const TABLE: &[Setting] = &[
             },
         },
         label: "Default overlay sync",
-        description: None,
         page: None,
         section: "",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Personal,
+        ..BASE
     },
     Setting {
         key: "overlays.default_sticky",
@@ -180,30 +179,22 @@ pub const TABLE: &[Setting] = &[
             },
         },
         label: "Default sticky overlays",
-        description: None,
         page: None,
         section: "",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Personal,
+        ..BASE
     },
     Setting {
         key: "overlays.default_object_filter",
         // What a new viewer or lane starts with; set from a lane's menu.
         kind: Kind::ObjectFilter { default: NoFilter },
         label: "Default object filter",
-        description: None,
         page: None,
         section: "",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Personal,
+        ..BASE
     },
     Setting {
         key: "playback.video_cache",
@@ -213,30 +204,22 @@ pub const TABLE: &[Setting] = &[
             max: 1024 * 1024,
         },
         label: "Memory for video caching (MiB)",
-        description: None,
         page: Some("Playback"),
         section: "Memory",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "playback.prepare_next_video",
         // Read by every open playlist stream as it ticks, so a change applies at once.
         kind: Kind::Bool { default: false },
         label: "Prepare the next video in the background",
-        description: None,
         page: Some("Playback"),
         section: "Playlists",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "camera.protocol",
@@ -246,15 +229,12 @@ pub const TABLE: &[Setting] = &[
             default: "https",
         },
         label: "Camera protocol",
-        description: None,
         page: Some("Stream defaults"),
         section: "Device",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
         quick_setup: true,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "camera.host",
@@ -263,15 +243,10 @@ pub const TABLE: &[Setting] = &[
             default: "$AX_DEVIL_TARGET_ADDR",
         },
         label: "Host",
-        description: None,
         page: Some("Stream defaults"),
         section: "Device",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "camera.user",
@@ -279,15 +254,10 @@ pub const TABLE: &[Setting] = &[
             default: "$AX_DEVIL_TARGET_USER",
         },
         label: "Username",
-        description: None,
         page: Some("Stream defaults"),
         section: "Device",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "camera.password",
@@ -295,15 +265,11 @@ pub const TABLE: &[Setting] = &[
             default: "$AX_DEVIL_TARGET_PASS",
         },
         label: "Password",
-        description: None,
         page: Some("Stream defaults"),
         section: "Device",
-        live: true,
-        env: true,
         secret: true,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "camera.rtsp_port",
@@ -313,15 +279,10 @@ pub const TABLE: &[Setting] = &[
             default: 554,
         },
         label: "RTSP port",
-        description: None,
         page: Some("Stream defaults"),
         section: "Device",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "camera.rtsp_route",
@@ -331,15 +292,11 @@ pub const TABLE: &[Setting] = &[
             default: "direct",
         },
         label: "RTSP route",
-        description: None,
         page: Some("Stream defaults"),
         section: "Device",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "camera.timeout",
@@ -350,15 +307,10 @@ pub const TABLE: &[Setting] = &[
             default: 10,
         },
         label: "Connection timeout (seconds)",
-        description: None,
         page: Some("Stream defaults"),
         section: "Device",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "camera.head",
@@ -368,30 +320,21 @@ pub const TABLE: &[Setting] = &[
             default: 1,
         },
         label: "Camera head",
-        description: None,
         page: Some("Stream defaults"),
         section: "Video and overlay",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "camera.resolution",
         // Empty is the camera's own resolution.
         kind: Kind::Text { default: "" },
         label: "Resolution",
-        description: None,
         page: None,
         section: "",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "camera.overlay",
@@ -406,15 +349,10 @@ pub const TABLE: &[Setting] = &[
             default: "datahub",
         },
         label: "Overlay mode",
-        description: None,
         page: Some("Stream defaults"),
         section: "Video and overlay",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "camera.rtsp_handler",
@@ -422,15 +360,10 @@ pub const TABLE: &[Setting] = &[
             default: "ONVIF_XML",
         },
         label: "RTSP decoder",
-        description: None,
         page: Some("Stream defaults"),
         section: "Video and overlay",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "broker.host",
@@ -438,15 +371,10 @@ pub const TABLE: &[Setting] = &[
             default: "$AX_DEVIL_MQTT_BROKER_ADDR",
         },
         label: "Broker host",
-        description: None,
         page: Some("Analytics"),
         section: "MQTT analytics",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "broker.port",
@@ -456,15 +384,10 @@ pub const TABLE: &[Setting] = &[
             default: 1883,
         },
         label: "Broker port",
-        description: None,
         page: Some("Analytics"),
         section: "MQTT analytics",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "broker.user",
@@ -472,15 +395,10 @@ pub const TABLE: &[Setting] = &[
             default: "$AX_DEVIL_MQTT_BROKER_USER",
         },
         label: "Broker username",
-        description: None,
         page: Some("Analytics"),
         section: "MQTT analytics",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "broker.password",
@@ -488,15 +406,11 @@ pub const TABLE: &[Setting] = &[
             default: "$AX_DEVIL_MQTT_BROKER_PASS",
         },
         label: "Broker password",
-        description: None,
         page: Some("Analytics"),
         section: "MQTT analytics",
-        live: true,
-        env: true,
         secret: true,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "broker.source_key",
@@ -504,15 +418,10 @@ pub const TABLE: &[Setting] = &[
             default: "com.axis.scene.frame.v1#1",
         },
         label: "Data source",
-        description: None,
         page: Some("Analytics"),
         section: "MQTT analytics",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "broker.handler",
@@ -520,15 +429,10 @@ pub const TABLE: &[Setting] = &[
             default: "ADF_V1_FRAME",
         },
         label: "Decoder",
-        description: None,
         page: Some("Analytics"),
         section: "MQTT analytics",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "datahub.topic",
@@ -536,15 +440,10 @@ pub const TABLE: &[Setting] = &[
             default: "com.axis.scene.frame.v1",
         },
         label: "Topic",
-        description: None,
         page: Some("Analytics"),
         section: "DataHub WebSocket analytics",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "datahub.channel",
@@ -554,15 +453,10 @@ pub const TABLE: &[Setting] = &[
             default: 1,
         },
         label: "Topic channel",
-        description: None,
         page: Some("Analytics"),
         section: "DataHub WebSocket analytics",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "datahub.handler",
@@ -570,29 +464,20 @@ pub const TABLE: &[Setting] = &[
             default: "ADF_V1_FRAME",
         },
         label: "Decoder",
-        description: None,
         page: Some("Analytics"),
         section: "DataHub WebSocket analytics",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "scan.on_startup",
         kind: Kind::Bool { default: true },
         label: "Scan for cameras on startup",
-        description: None,
         page: Some("Network scan"),
         section: "Discovery",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "scan.sign_in",
@@ -600,15 +485,11 @@ pub const TABLE: &[Setting] = &[
         // never does.
         kind: Kind::Bool { default: true },
         label: "Try to sign in to found cameras by default",
-        description: None,
         page: Some("Network scan"),
         section: "Discovery",
-        live: true,
         env: false,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "scan.range",
@@ -616,15 +497,10 @@ pub const TABLE: &[Setting] = &[
             default: "192.168.1.0/24",
         },
         label: "Default IP range",
-        description: None,
         page: Some("Network scan"),
         section: "Network scan",
-        live: true,
-        env: true,
-        secret: false,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "scan.logins",
@@ -634,45 +510,35 @@ pub const TABLE: &[Setting] = &[
             default: &[&["$AX_DEVIL_TARGET_USER", "$AX_DEVIL_TARGET_PASS"]],
         },
         label: "Scan logins",
-        description: None,
         page: Some("Network scan"),
         section: "Sign-in logins",
-        live: true,
-        env: true,
         secret: true,
-        full_access: false,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "storage.cache_dir",
         // Empty is the standard XDG cache folder. `--cache-dir` wins over the setting.
         kind: Kind::Folder,
         label: "Cache folder",
-        description: None,
         page: Some("Storage"),
         section: "Folders",
         live: false,
-        env: true,
-        secret: false,
         full_access: true,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "storage.catalog_dir",
         // Empty is the standard XDG data folder's `ax-devil/catalogs`.
         kind: Kind::Folder,
         label: "Render catalog folder",
-        description: None,
         page: Some("Storage"),
         section: "Folders",
         live: false,
-        env: true,
-        secret: false,
         full_access: true,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
     Setting {
         key: "server.password_full_access",
@@ -684,11 +550,9 @@ pub const TABLE: &[Setting] = &[
         ),
         page: Some("Storage"),
         section: "Folders",
-        live: true,
         env: false,
-        secret: false,
         full_access: true,
-        quick_setup: false,
         scope: Scope::Server,
+        ..BASE
     },
 ];

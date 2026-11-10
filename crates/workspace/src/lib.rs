@@ -29,9 +29,15 @@ pub use item::{
 };
 pub use live::{
     DataHubSettings, KeptTransports, LIVE_SLOT, LiveOverlay, LiveRecipe, LiveVideoContent, Login,
-    MqttSettings, Protocol, ResolvedCamera, RtspRoute, url_password_dropped, url_without_password,
+    MqttSettings, Protocol, ResolvedCamera, RtspRoute, StreamUrl, url_password_dropped,
+    url_without_password,
 };
 pub use metadata::metadata_fields;
 pub use references::{Connection, Previews, Shown, preview};
 pub use sources::{Snapshot, Watch};
 pub use workspace::Workspace;
+
+/// Visits every type this crate sends to the frontend, for `export-types`.
+pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    live::visit_api_types(types);
+}

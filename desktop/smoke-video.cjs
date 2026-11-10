@@ -226,7 +226,7 @@ async function loadingShots(window) {
   }
 }
 
-module.exports.video = async (window) => {
+module.exports.run = async ({ window }) => {
   const { js, wait } = page(window);
   window.setSize(1100, 720);
   window.webContents.setZoomFactor(1);
@@ -273,20 +273,39 @@ module.exports.video = async (window) => {
       `(() => { const r = document.querySelector('${selector}').getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; })()`,
     );
   await module.exports.pauseAtStart(window);
-  const canvas = await box("canvas");
-  const middle = { x: (canvas.left + canvas.right) / 2, y: (canvas.top + canvas.bottom) / 2 };
+  let canvas = await box("canvas");
+  const centre = () => ({
+    x: (canvas.left + canvas.right) / 2,
+    y: (canvas.top + canvas.bottom) / 2,
+  });
+  let middle = centre();
   const black = brightness(await snap(), middle.x, middle.y);
   for (let step = 1; step <= 12; step++) {
     await js("document.querySelector('[aria-label=\"Forward 1 frame\"]').click()");
     await wait(`${SHOWN} === ${step}`);
   }
-  const shot = await snap();
+  // The split area can still be taking back a scroll bar's width from the 200% view above, so the picture is read
+  // from a screenshot the canvas and the pointer anchor hold still across.
+  const placed = () =>
+    Promise.all([box("canvas"), box('[data-cursor-id^="frame:"]')]).then(JSON.stringify);
+  let shot;
+  let anchor;
+  for (let tries = 0; ; tries++) {
+    const before = await placed();
+    shot = await snap();
+    const after = await placed();
+    if (after === before) {
+      [canvas, anchor] = JSON.parse(after);
+      middle = centre();
+      break;
+    }
+    assert.ok(tries < 20, "The video pane kept changing its layout");
+  }
   const grey = brightness(shot, middle.x, middle.y);
   assert.ok(black < 16, `Frame 0 of the video is black, got ${black}`);
   assert.ok(grey > 40, `Frame 12 must be a visible grey, got ${grey}: the canvas is still black`);
 
   // The pointer anchor lies over the picture itself, not over the bars the canvas keeps around it.
-  const anchor = await box('[data-cursor-id^="frame:"]');
   const edge = (from, to, at) => {
     const lit = (value) => brightness(shot, ...at(value)) > LIT;
     let value = from;

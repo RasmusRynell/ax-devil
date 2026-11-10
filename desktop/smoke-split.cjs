@@ -14,7 +14,7 @@ const { SCREENSHOTS, delay, frames, moveTo, page, setView } = require("./smoke-k
 const PANES = "[...document.querySelectorAll('[role=group][data-cursor-id^=\"pane:\"]')]";
 const BOXES = `${PANES}.map((pane) => { const r = pane.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; })`;
 
-module.exports.split = async (window) => {
+module.exports.run = async ({ window }) => {
   const { js, wait } = page(window);
   const theme = nativeTheme.themeSource;
   const setTheme = async (shown) => {

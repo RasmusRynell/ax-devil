@@ -44,6 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     scene::visit_api_types(&mut registry);
     scene_store::visit_api_types(&mut registry);
     sessions::visit_api_types(&mut registry);
+    workspace::visit_api_types(&mut registry);
     let constants = constants();
     let found = scan::scan(std::path::Path::new(&repo_path("crates"))).map_err(Failed)?;
     let problems = registry.problems(&found, &constants);

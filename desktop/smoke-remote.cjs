@@ -270,4 +270,4 @@ async function remote(local, shell) {
   }
 }
 
-module.exports = { remote };
+module.exports = { run: ({ window, shell }) => remote(window, shell) };

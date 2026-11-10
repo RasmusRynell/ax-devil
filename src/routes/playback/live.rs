@@ -24,9 +24,8 @@ use api_types::{
     Audience,
     live::{LiveEventWire, LiveEventsWire, LiveGapWire, LiveOpenedWire, LiveSampleEventsWire},
     playback::{
-        ClientMessage, EventAskWire, EventQueryWire, EventRowsWire, EventWire, FileAppearances,
-        FileEvent, FileEvents, FileScopeUnavailable, LaneInfo, PLAYBACK_PROTOCOL, ServerMessage,
-        envelope,
+        ClientMessage, EventAskWire, EventQueryWire, FileAnswer, FileScopeUnavailable, LaneInfo,
+        PLAYBACK_PROTOCOL, ServerMessage, envelope,
     },
 };
 use axum::extract::ws::Message;
@@ -242,46 +241,18 @@ impl<I: Incoming> Live<'_, I> {
                     .ask_fields_target(source, data_revision, sample, paths, target);
                 Ok(())
             }
-            Some(Ok(ClientMessage::FileQuery { lane, request, .. })) => {
-                self.notify(&ServerMessage::FileScope {
-                    lane,
-                    request,
-                    unavailable: FileScopeUnavailable::PlainLane,
-                })
-            }
-            Some(Ok(ClientMessage::Appearances {
+            Some(Ok(
+                ClientMessage::FileQuery { lane, request, .. }
+                | ClientMessage::Appearances { lane, request, .. }
+                | ClientMessage::EventQuery(EventQueryWire { lane, request, .. })
+                | ClientMessage::Event(EventAskWire { lane, request, .. }),
+            )) => self.notify(&ServerMessage::File {
                 lane,
                 request,
-                entity,
-            })) => self.notify(&ServerMessage::Appearances {
-                lane,
-                request,
-                entity,
-                appearances: FileAppearances::Unavailable {
+                answer: FileAnswer::Unavailable {
                     unavailable: FileScopeUnavailable::PlainLane,
                 },
             }),
-            Some(Ok(ClientMessage::EventQuery(EventQueryWire { lane, request, .. }))) => self
-                .notify(&ServerMessage::EventRows(EventRowsWire {
-                    lane,
-                    request,
-                    rows: FileEvents::Unavailable {
-                        unavailable: FileScopeUnavailable::PlainLane,
-                    },
-                })),
-            Some(Ok(ClientMessage::Event(EventAskWire {
-                lane,
-                request,
-                event,
-                ..
-            }))) => self.notify(&ServerMessage::Event(EventWire {
-                lane,
-                request,
-                event,
-                detail: FileEvent::Unavailable {
-                    unavailable: FileScopeUnavailable::PlainLane,
-                },
-            })),
             Some(Ok(ClientMessage::Open { .. })) => Err(violation("The video is already open")),
             Some(Ok(
                 ClientMessage::Want(_)

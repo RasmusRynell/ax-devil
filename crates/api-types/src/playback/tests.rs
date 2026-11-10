@@ -4,7 +4,7 @@ use scene::{
     OperationKind,
     inspection::{FieldGroup, FieldOrigin, Leaf},
 };
-use scene_store::{EventObject, EventRow, Op, SortKey};
+use scene_store::{EventObject, EventRow, Op, Row, SortKey};
 use serde_json::json;
 
 #[test]
@@ -469,20 +469,43 @@ fn file_scope_messages_use_the_names_the_frontend_parses() {
         ClientMessage::FileRelease { lane: 1 }
     ));
 
-    let refused = ServerMessage::FileScope {
+    assert!(matches!(
+        serde_json::from_value(json!({
+            "type": "Appearances", "lane": 1, "request": 8, "entity": "4"
+        }))
+        .unwrap(),
+        ClientMessage::Appearances {
+            lane: 1,
+            request: 8,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn file_answers_are_one_message_tagged_by_state_and_kind() {
+    let refused = ServerMessage::File {
         lane: 1,
         request: 7,
-        unavailable: FileScopeUnavailable::Following,
+        answer: FileAnswer::Unavailable {
+            unavailable: FileScopeUnavailable::Following,
+        },
     };
     assert_eq!(
         serde_json::to_value(&refused).unwrap(),
-        json!({"type": "FileScope", "lane": 1, "request": 7, "unavailable": {"state": "Following"}})
+        json!({"type": "File", "lane": 1, "request": 7,
+            "answer": {"state": "Unavailable", "unavailable": {"state": "Following"}}})
     );
-    let rows = ServerMessage::FileRows {
+    let found = |body| ServerMessage::File {
         lane: 1,
         request: 7,
-        data_revision: 2,
-        policy_revision: 3,
+        answer: FileAnswer::Found {
+            data_revision: 2,
+            policy_revision: 3,
+            body,
+        },
+    };
+    let rows = found(FileBody::Objects {
         total: 9,
         matched: 1,
         offset: 0,
@@ -498,46 +521,39 @@ fn file_scope_messages_use_the_names_the_frontend_parses() {
             id: "4".into(),
             row: None,
         }),
-    };
+    });
     let json = serde_json::to_value(&rows).unwrap();
-    assert_eq!(json["rows"][0]["events"], json!(["merge"]));
-    assert_eq!(json["rows"][0]["presence"], json!([[3, 5], [7, 8]]));
-    assert_eq!(json["located"], json!({"id": "4", "row": null}));
-
-    assert!(matches!(
-        serde_json::from_value(json!({
-            "type": "Appearances", "lane": 1, "request": 8, "entity": "4"
-        }))
-        .unwrap(),
-        ClientMessage::Appearances {
-            lane: 1,
-            request: 8,
-            ..
-        }
-    ));
-    let spans = ServerMessage::Appearances {
-        lane: 1,
-        request: 8,
-        entity: "4".into(),
-        appearances: FileAppearances::Found {
-            data_revision: 2,
-            policy_revision: 3,
-            spans: vec![[3, 5], [7, 8]],
-            truncated: false,
-            events: Vec::new(),
-            events_truncated: false,
-        },
-    };
+    assert_eq!(json["answer"]["state"], "Found");
+    assert_eq!(json["answer"]["data_revision"], 2);
+    assert_eq!(json["answer"]["body"]["kind"], "Objects");
     assert_eq!(
-        serde_json::to_value(&spans).unwrap(),
-        json!({
-            "type": "Appearances", "lane": 1, "request": 8, "entity": "4",
-            "appearances": {
-                "state": "Found", "data_revision": 2, "policy_revision": 3,
-                "spans": [[3, 5], [7, 8]], "truncated": false, "events": [], "events_truncated": false
-            }
-        })
+        json["answer"]["body"]["rows"][0]["events"],
+        json!(["merge"])
     );
+    assert_eq!(
+        json["answer"]["body"]["located"],
+        json!({"id": "4", "row": null})
+    );
+    let events = found(FileBody::Events {
+        total: 9,
+        matched: 1,
+        offset: 0,
+        rows: vec![EventRow {
+            event: 7,
+            frame: 12,
+            kind: OperationKind::Merge,
+            label: "Merge 1, 2 → 3".into(),
+            objects: vec![EventObject {
+                id: "1".into(),
+                class: None,
+            }],
+        }],
+        located: Some(0),
+        frame_row: None,
+    });
+    let json = serde_json::to_value(&events).unwrap();
+    assert_eq!(json["answer"]["body"]["kind"], "Events");
+    assert_eq!(json["answer"]["body"]["rows"][0]["kind"], "merge");
 }
 
 #[test]
@@ -556,33 +572,4 @@ fn event_messages_use_the_names_the_frontend_parses() {
             ..
         })
     ));
-
-    let rows = ServerMessage::EventRows(EventRowsWire {
-        lane: 1,
-        request: 4,
-        rows: FileEvents::Found {
-            data_revision: 2,
-            policy_revision: 3,
-            total: 9,
-            matched: 1,
-            offset: 0,
-            rows: vec![EventRow {
-                event: 7,
-                frame: 12,
-                kind: OperationKind::Merge,
-                label: "Merge 1, 2 → 3".into(),
-                objects: vec![EventObject {
-                    id: "1".into(),
-                    class: None,
-                }],
-            }],
-            located: Some(0),
-            frame_row: None,
-        },
-    });
-    let json = serde_json::to_value(&rows).unwrap();
-    assert_eq!(json["type"], "EventRows");
-    assert_eq!(json["rows"]["state"], "Found");
-    assert_eq!(json["rows"]["rows"][0]["kind"], "merge");
-    assert_eq!(json["rows"]["rows"][0]["objects"][0]["class"], json!(null));
 }

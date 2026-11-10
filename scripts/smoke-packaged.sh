@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Runs the desktop smoke test of the app that `make package` left in desktop/dist, on a private home
-# (and, on Linux, a private X display), against this checkout's fixtures. Screenshots go to artifacts/screenshots.
+# Runs the desktop smoke test of the app that `make package` left in desktop/dist, one launch per scenario group (the
+# plan comes from scripts/smoke-desktop.cjs), each on a fresh private home (and, on Linux, a private X display), against
+# this checkout's fixtures. Screenshots go to artifacts/screenshots.
 #
 # The app is a GUI program: on Windows it may not write to a pipe at all, and its exit code is not reliable. So it runs
 # in the background with its output in files, and the verdict is the file named by AX_DEVIL_SMOKE_RESULT, which the
-# app's smoke mode writes: PASS, or FAIL: and the reason. Everything lands in artifacts/smoke-logs.
+# app's smoke mode writes: PASS, or FAIL: and the reason. Everything lands in artifacts/smoke-logs, per group.
 #
 #   make smoke-packaged OS=linux|win|mac
 set -euo pipefail
@@ -23,10 +24,8 @@ export AX_DEVIL_SMOKE_ROOT="$PWD"
 
 # A path for the app and its tools: C:/... on Windows, unchanged elsewhere.
 native() { if [[ $os == win ]]; then cygpath -m "$1"; else echo "$1"; fi; }
-result="$logs/result.txt"
 export AX_DEVIL_SMOKE_RESULT
-AX_DEVIL_SMOKE_RESULT="$(native "$result")"
-flags=(--smoke-test --enable-logging "--log-file=$(native "$logs/electron.log")")
+flags=(--smoke-test --enable-logging)
 
 case "$os" in
 linux)
@@ -47,8 +46,11 @@ win)
   exit 2
   ;;
 esac
-if [[ $os != linux ]]; then
-  # A private profile; Windows programs take theirs from these variables, not from HOME.
+# A private profile for one launch; Windows programs take theirs from these variables, not from HOME. On Linux
+# scripts/isolated gives every launch its own.
+fresh_home() {
+  [[ $os != linux ]] || return 0
+  local home
   home="$(mktemp -d)"
   mkdir -p "$home"/{config,data,cache,state}
   export HOME="$home" XDG_CONFIG_HOME="$home/config" XDG_DATA_HOME="$home/data" XDG_CACHE_HOME="$home/cache"
@@ -60,7 +62,7 @@ if [[ $os != linux ]]; then
     LOCALAPPDATA="$USERPROFILE\\AppData\\Local"
     mkdir -p "$home/AppData/Roaming" "$home/AppData/Local"
   fi
-fi
+}
 
 echo "launching $exe"
 ls -l "$exe"
@@ -79,7 +81,7 @@ scheme_declared() {
   esac
 }
 if ! scheme_declared; then
-  echo "FAIL: the package does not declare the ax-devil:// scheme" | tee "$result"
+  echo "FAIL: the package does not declare the ax-devil:// scheme" | tee "$logs/result-scheme.txt"
   exit 1
 fi
 
@@ -95,37 +97,76 @@ kill_tree() {
 }
 alive() { kill -0 "$pid" 2>/dev/null; }
 
-# Job control gives the app its own process group, which kill_tree ends as a whole.
-set -m
-"${run[@]}" "${flags[@]}" </dev/null >"$logs/app.log" 2>&1 &
-pid=$!
-set +m
+# One launch of the app for one group: its scenarios in order, a fresh home, its own logs. Returns the verdict. The app
+# fails a hung scenario by name, with its screenshot, well before the plan's deadline; the kill is only for an app that
+# cannot report. The CI step that runs this script has its own, longer cap (see ci.yml).
+run_group() {
+  local group="$1" names="$2" deadline="$3" seconds=0 expired=0 log
+  local result="$logs/result-$group.txt"
+  AX_DEVIL_SMOKE_RESULT="$(native "$result")"
+  export AX_DEVIL_SMOKE_RUN="$names"
+  fresh_home
+  # Job control gives the app its own process group, which kill_tree ends as a whole.
+  set -m
+  "${run[@]}" "${flags[@]}" "--log-file=$(native "$logs/electron-$group.log")" </dev/null >"$logs/app-$group.log" 2>&1 &
+  pid=$!
+  set +m
 
-seconds=0
-until [[ -s $result ]] || ((seconds >= 360)); do
-  # An app that ended without a verdict gets one more second for the file to appear.
-  if ! alive; then
+  until [[ -s $result ]] || ((seconds >= deadline)); do
+    # An app that ended without a verdict gets one more second for the file to appear.
+    if ! alive; then
+      sleep 1
+      break
+    fi
     sleep 1
-    break
-  fi
-  sleep 1
-  seconds=$((seconds + 1))
-done
-# After the verdict the app quits by itself; what is left is ended.
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  alive || break
-  sleep 1
-done
-kill_tree
+    seconds=$((seconds + 1))
+  done
+  # A launch still without a verdict at its deadline has failed for good: a PASS written while it is ended does not count.
+  if [[ ! -s $result ]] && ((seconds >= deadline)); then expired=1; fi
+  # After the verdict the app quits by itself; what is left is ended.
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    alive || break
+    sleep 1
+  done
+  kill_tree
 
-for log in app.log electron.log; do
-  echo "--- $log"
-  cat "$logs/$log" 2>/dev/null || echo "(none)"
+  for log in "app-$group.log" "electron-$group.log"; do
+    echo "--- $log"
+    cat "$logs/$log" 2>/dev/null || echo "(none)"
+  done
+  echo "--- result $group"
+  if ((expired)); then
+    echo "FAIL: no result after $seconds seconds" | tee "$result"
+  elif [[ -s $result ]]; then
+    cat "$result"
+  else
+    echo "FAIL: no result after $seconds seconds" | tee "$result"
+  fi
+  ((!expired)) && [[ $(head -n 1 "$result") == PASS ]]
+}
+
+# Every group runs, each on a fresh launch, even after one fails; the launcher owns the groups.
+failed=0
+summary=()
+# The plan is one row per launch: group, scenarios and the launcher's own deadline in seconds for it; the launcher owns the names.
+# Every row is checked before anything launches, so a stray line in the plan fails the smoke instead of becoming a launch.
+plan="$(node scripts/smoke-desktop.cjs --plan '')" || { echo "FAIL: could not plan the smoke groups" >&2; exit 1; }
+plan="${plan//$'\r'/}" # node prints CRLF on Windows
+[[ -n $plan ]] || { echo "FAIL: no smoke groups" >&2; exit 1; }
+rows=()
+while IFS= read -r row; do
+  [[ $row =~ ^[^[:space:]]+[[:space:]][^[:space:]]+[[:space:]][0-9]+$ ]] || { echo "FAIL: malformed smoke plan row: $row" >&2; exit 1; }
+  rows+=("$row")
+done <<<"$plan"
+for row in "${rows[@]}"; do
+  read -r group names deadline <<<"$row"
+  echo "=== $group: $names (deadline ${deadline}s)"
+  if run_group "$group" "$names" "$deadline"; then
+    summary+=("PASS $group")
+  else
+    summary+=("FAIL $group")
+    failed=1
+  fi
 done
-echo "--- result"
-if [[ -s $result ]]; then
-  cat "$result"
-else
-  echo "FAIL: no result after $seconds seconds" | tee "$result"
-fi
-[[ $(head -n 1 "$result") == PASS ]]
+printf '%s\n' "${summary[@]}"
+exit "$failed"

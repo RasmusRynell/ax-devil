@@ -1,10 +1,11 @@
-//! Answers to `FileQuery`: the objects a lane's whole overlay file holds, as the lane shows them. The query runs here,
-//! over the file's history and its placement on the video under the lane's matching, so the viewer is sent one page.
+//! Answers to the File scope requests, each one `ServerMessage::File`. `FileQuery` asks for the objects a lane's whole
+//! overlay file holds, as the lane shows them: the query runs here, over the file's history and its placement on the
+//! video under the lane's matching, so the viewer is sent one page.
 //!
 //! One query runs per lane and at most one waits behind it: a newer request cancels the running one, which is never
 //! answered, and replaces the waiting one, so a burst of requests never runs more than one blocking job per lane. A
-//! query that is refused or cannot be answered is answered at once. Answers name the revisions they were made under and no frame, so the gate
-//! never holds them back; only the viewer's own authority reaches the whole file, so a follower is refused when it asks
+//! query that is refused or cannot be answered is answered at once. Answers name the revisions they were made under and
+//! no frame, so the gate never holds them back; only the viewer's own authority reaches the whole file, so a follower is refused when it asks
 //! and again if it became one while the query ran. The history, placement and listing of the last query of each lane are
 //! kept within a byte budget so paging and typing a search do not read them again; a lane the viewer releases keeps
 //! nothing.
@@ -14,17 +15,14 @@
 //! of its kind replaces its older one ([`latest`], [`appearances`], [`events`]).
 
 pub(super) use self::appearances::Ask as AppearancesAsk;
-use self::appearances::Spans;
 use self::cache::{CACHE_BYTES, Cache, Cached};
 pub(super) use self::events::Ask as EventsAsk;
 use self::events::Events;
+use self::latest::Latest;
 use super::{End, Flow, Outgoing, text};
 use api_types::{
     Audience,
-    playback::{
-        EventRowsWire, EventWire, FileAppearances, FileEvent, FileEvents, FileScopeUnavailable,
-        Located, ServerMessage,
-    },
+    playback::{FileAnswer, FileBody, FileScopeUnavailable, Located, ServerMessage},
     project,
 };
 use foundation::{CancelToken, Cancelled, ErrorCode, UserError};
@@ -62,57 +60,75 @@ pub(super) struct Reply {
 }
 
 impl Reply {
-    /// The message to send. Rows go only to a viewer that still has the authority over the whole file; the rest is told
-    /// that it follows.
-    pub(super) fn outgoing(self, own: bool) -> Outgoing {
-        let Self {
+    /// The answer `answer` to request `request` of `lane`.
+    fn file(lane: u16, request: u32, answer: FileAnswer) -> Self {
+        Self {
             lane,
             request,
-            message,
-        } = self;
-        let message = match message {
-            ServerMessage::FileRows { .. } if !own => ServerMessage::FileScope {
+            message: ServerMessage::File {
                 lane,
                 request,
-                unavailable: FileScopeUnavailable::Following,
+                answer,
             },
-            ServerMessage::Appearances {
-                entity,
-                appearances: FileAppearances::Found { .. },
-                ..
-            } if !own => ServerMessage::Appearances {
+        }
+    }
+
+    /// The answer that request `request` of `lane` has no answer, and why `why`.
+    fn unavailable(lane: u16, request: u32, why: FileScopeUnavailable) -> Self {
+        Self::file(lane, request, FileAnswer::Unavailable { unavailable: why })
+    }
+
+    /// Tells the owner what request `request` of `lane` got wrong, in `reason`.
+    fn problem(lane: u16, request: u32, reason: String) -> Self {
+        Self {
+            lane,
+            request,
+            message: ServerMessage::LaneProblem { lane, reason },
+        }
+    }
+
+    /// The message to send. An answer goes only to a viewer that still has the authority over the whole file; the rest
+    /// is told that it follows.
+    pub(super) fn outgoing(self, own: bool) -> Outgoing {
+        let message = match self.message {
+            ServerMessage::File {
                 lane,
                 request,
-                entity,
-                appearances: FileAppearances::Unavailable {
-                    unavailable: FileScopeUnavailable::Following,
-                },
-            },
-            ServerMessage::EventRows(EventRowsWire {
-                rows: FileEvents::Found { .. },
-                ..
-            }) if !own => ServerMessage::EventRows(EventRowsWire {
-                lane,
-                request,
-                rows: FileEvents::Unavailable {
-                    unavailable: FileScopeUnavailable::Following,
-                },
-            }),
-            ServerMessage::Event(EventWire {
-                event,
-                detail: FileEvent::Found { .. },
-                ..
-            }) if !own => ServerMessage::Event(EventWire {
-                lane,
-                request,
-                event,
-                detail: FileEvent::Unavailable {
-                    unavailable: FileScopeUnavailable::Following,
-                },
-            }),
+                answer: FileAnswer::Found { .. },
+            } if !own => {
+                let why = FileScopeUnavailable::Following;
+                return text(&Self::unavailable(lane, request, why).message).into();
+            }
             other => other,
         };
         text(&message).into()
+    }
+}
+
+/// What a lane's file can be asked, or why not: a follower is refused, as is a lane with no file or one still being
+/// read or failed.
+fn input(
+    overlays: &ViewerOverlays,
+    own: bool,
+    lane: u16,
+    audience: Audience,
+) -> Result<FileScopeInput, FileScopeUnavailable> {
+    if !own {
+        return Err(FileScopeUnavailable::Following);
+    }
+    overlays.file_scope(lane).map_err(|blocked| match blocked {
+        FileScopeBlocked::Plain => FileScopeUnavailable::PlainLane,
+        FileScopeBlocked::Reading => FileScopeUnavailable::Reading,
+        FileScopeBlocked::Failed(error) => FileScopeUnavailable::Failed(project(&error, audience)),
+    })
+}
+
+/// A found answer made under the revisions `cached` holds.
+fn found(cached: &Cached, body: FileBody) -> FileAnswer {
+    FileAnswer::Found {
+        data_revision: cached.data_revision,
+        policy_revision: cached.policy_revision,
+        body,
     }
 }
 
@@ -147,7 +163,7 @@ pub(super) struct FileScopes {
     /// Answers already known, in the order asked.
     ready: VecDeque<Reply>,
     cache: Arc<Cache>,
-    spans: Spans,
+    appearances: Latest,
     events: Events,
 }
 
@@ -162,7 +178,7 @@ impl FileScopes {
             tasks: JoinSet::new(),
             ready: VecDeque::new(),
             cache: Arc::new(Cache::new(CACHE_BYTES)),
-            spans: Spans::new(audience),
+            appearances: Latest::new(audience),
             events: Events::new(audience),
         }
     }
@@ -176,7 +192,16 @@ impl FileScopes {
         ask: AppearancesAsk,
     ) -> Flow<()> {
         check_lane(overlays, ask.lane)?;
-        self.spans.ask(overlays, &self.cache, own, ask);
+        let (lane, request) = (ask.lane, ask.request);
+        self.appearances.ask(
+            overlays,
+            &self.cache,
+            own,
+            (lane, request),
+            move |input, cache, cancel, audience| {
+                appearances::answer(&ask, input, cache, cancel, audience)
+            },
+        );
         Ok(())
     }
 
@@ -199,38 +224,18 @@ impl FileScopes {
         let lane = ask.lane;
         self.drop_requests(overlays, lane)?;
         let request = ask.request;
-        let unavailable = |unavailable| Reply {
-            lane,
-            request,
-            message: ServerMessage::FileScope {
-                lane,
-                request,
-                unavailable,
-            },
-        };
         if ask.limit == 0 || ask.limit > MAX_LIMIT || ask.bins > MAX_BINS {
             // Only a client that is wrong asks this, and the owner is told what it got wrong.
             if self.audience.host_details {
-                self.ready.push_back(Reply {
-                    lane,
-                    request,
-                    message: ServerMessage::LaneProblem {
-                        lane,
-                        reason: format!(
-                            "A file query asks for 1 to {MAX_LIMIT} rows and 0 to {MAX_BINS} spans, not {} and {}",
-                            ask.limit, ask.bins
-                        ),
-                    },
-                });
+                let reason = format!(
+                    "A file query asks for 1 to {MAX_LIMIT} rows and 0 to {MAX_BINS} spans, not {} and {}",
+                    ask.limit, ask.bins
+                );
+                self.ready.push_back(Reply::problem(lane, request, reason));
             }
             return Ok(());
         }
-        if !own {
-            self.ready
-                .push_back(unavailable(FileScopeUnavailable::Following));
-            return Ok(());
-        }
-        match overlays.file_scope(lane) {
+        match input(overlays, own, lane, self.audience) {
             Ok(input) => {
                 self.cache.open(lane);
                 let job = Job { ask, input };
@@ -240,16 +245,7 @@ impl FileScopes {
                     self.start(job);
                 }
             }
-            Err(blocked) => {
-                let reason = match blocked {
-                    FileScopeBlocked::Plain => FileScopeUnavailable::PlainLane,
-                    FileScopeBlocked::Reading => FileScopeUnavailable::Reading,
-                    FileScopeBlocked::Failed(error) => {
-                        FileScopeUnavailable::Failed(project(&error, self.audience))
-                    }
-                };
-                self.ready.push_back(unavailable(reason));
-            }
+            Err(why) => self.ready.push_back(Reply::unavailable(lane, request, why)),
         }
         Ok(())
     }
@@ -258,7 +254,7 @@ impl FileScopes {
     /// and what was kept for it is freed. A lane the video does not have ends the session.
     pub(super) fn release(&mut self, overlays: &ViewerOverlays, lane: u16) -> Flow<()> {
         self.drop_requests(overlays, lane)?;
-        self.spans.release(lane);
+        self.appearances.release(lane);
         self.events.release(lane);
         self.cache.release(lane);
         Ok(())
@@ -282,20 +278,11 @@ impl FileScopes {
         let cancel = CancelToken::new();
         let (cache, audience, token) = (Arc::clone(&self.cache), self.audience, cancel.clone());
         let task = self.tasks.spawn_blocking(move || {
-            let message = match answer(&ask, &input, &cache, &token, audience) {
-                Ok(message) => message,
-                Err(Stop::Cancelled) => return None,
-                Err(Stop::Unavailable(unavailable)) => ServerMessage::FileScope {
-                    lane,
-                    request,
-                    unavailable,
-                },
-            };
-            Some(Reply {
-                lane,
-                request,
-                message,
-            })
+            match answer(&ask, &input, &cache, &token, audience) {
+                Ok(answer) => Some(Reply::file(lane, request, answer)),
+                Err(Stop::Cancelled) => None,
+                Err(Stop::Unavailable(why)) => Some(Reply::unavailable(lane, request, why)),
+            }
         });
         self.lanes.insert(task.id(), (lane, request));
         self.running.insert(lane, cancel);
@@ -321,7 +308,7 @@ impl FileScopes {
             if let Some(reply) = self.ready.pop_front() {
                 return reply;
             }
-            // Only the sets are polled, so a dropped call loses nothing. `spans` never ends, and a set with nothing
+            // Only the sets are polled, so a dropped call loses nothing. `appearances` never ends, and a set with nothing
             // running gives `None`, which no arm takes.
             tokio::select! {
                 Some(joined) = self.tasks.join_next_with_id() => match joined {
@@ -340,22 +327,12 @@ impl FileScopes {
                                 ErrorCode::Internal,
                                 "The file's objects could not be listed",
                             );
-                            return Reply {
-                                lane,
-                                request,
-                                message: ServerMessage::FileScope {
-                                    lane,
-                                    request,
-                                    unavailable: FileScopeUnavailable::Failed(project(
-                                        &error,
-                                        self.audience,
-                                    )),
-                                },
-                            };
+                            let why = FileScopeUnavailable::Failed(project(&error, self.audience));
+                            return Reply::unavailable(lane, request, why);
                         }
                     }
                 },
-                reply = self.spans.next() => return reply,
+                reply = self.appearances.next() => return reply,
                 reply = self.events.next() => return reply,
             }
         }
@@ -381,7 +358,7 @@ impl Drop for FileScopes {
     }
 }
 
-/// The rows asked for, or why there are none. The lane's history and placement are reused while the lane's revisions
+/// The answer to the request, or why there is none. The lane's history and placement are reused while the lane's revisions
 /// and, for the listing, the query are the same.
 fn answer(
     ask: &Ask,
@@ -389,7 +366,7 @@ fn answer(
     cache: &Cache,
     cancel: &CancelToken,
     audience: Audience,
-) -> Result<ServerMessage, Stop> {
+) -> Result<FileAnswer, Stop> {
     let lane = ask.lane;
     let cached = cache.prepared(lane, input, || read(input, cancel, audience))?;
     let revisions = (cached.data_revision, cached.policy_revision);
@@ -413,21 +390,20 @@ fn answer(
         row: matches.row_of(&cached.history, id),
         id: id.clone(),
     });
-    let message = ServerMessage::FileRows {
-        lane,
-        request: ask.request,
-        data_revision: cached.data_revision,
-        policy_revision: cached.policy_revision,
-        total: matches.total(),
-        matched: matches.matched(),
-        offset: ask.offset,
-        rows,
-        located,
-    };
+    let answer = found(
+        &cached,
+        FileBody::Objects {
+            total: matches.total(),
+            matched: matches.matched(),
+            offset: ask.offset,
+            rows,
+            located,
+        },
+    );
     cache.update(lane, revisions, |kept| {
         kept.listing = Some((query, matches))
     });
-    Ok(message)
+    Ok(answer)
 }
 
 /// The history and placement of `input`, read now.

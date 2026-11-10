@@ -30,7 +30,7 @@ const follow =
 const within = (id, fx, fy) =>
   `(() => { const r = document.querySelector('[data-cursor-id="${id}"]').getBoundingClientRect(); return { x: Math.round(r.left + r.width * ${fx}), y: Math.round(r.top + r.height * ${fy}) }; })()`;
 
-module.exports.sharing = async (window, shell, ownerCsp) => {
+module.exports.run = async ({ window, shell, ownerCsp }) => {
   const { js, wait } = page(window);
   const owner = { js, wait };
   const shoot = async (name, theme, windows) => {
