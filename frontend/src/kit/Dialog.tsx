@@ -1,5 +1,5 @@
 import {
-  useEffect,
+  useLayoutEffect,
   useId,
   useRef,
   type FormEvent,
@@ -35,10 +35,12 @@ export function DialogFrame({
 }: FrameProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = dialog.current;
     if (element && !element.open) element.showModal();
     if (focusSubmit) element?.querySelector<HTMLElement>("[type=submit]")?.focus();
+    // Close before React removes the modal, so the browser restores its previous focus target.
+    return () => element?.close();
   }, [focusSubmit]);
   return (
     <dialog
