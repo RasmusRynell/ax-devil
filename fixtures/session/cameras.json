@@ -327,7 +327,7 @@
               "recipe": {
                 "found": null,
                 "head": 1,
-                "host": " 10.0.0.2 ",
+                "host": "10.0.0.2",
                 "kept_datahub": null,
                 "kept_mqtt": null,
                 "label": "Door",
@@ -358,7 +358,7 @@
                   "recipe": {
                     "found": null,
                     "head": 1,
-                    "host": " 10.0.0.2 ",
+                    "host": "10.0.0.2",
                     "kept_datahub": null,
                     "kept_mqtt": null,
                     "label": "Door",
@@ -381,7 +381,7 @@
               },
               "shown": {
                 "broker_host": null,
-                "host": " 10.0.0.2 "
+                "host": "10.0.0.2"
               }
             }
           ],

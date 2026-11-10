@@ -98,7 +98,7 @@ impl From<KeptDto> for KeptTransports {
     fn from(kept: KeptDto) -> Self {
         Self {
             mqtt: kept.mqtt.map(|mqtt| MqttSettings {
-                broker_host: mqtt.broker_host,
+                broker_host: mqtt.broker_host.trim().to_owned(),
                 broker_port: mqtt.broker_port,
                 broker_user: mqtt.broker_user,
                 broker_pass: Secret::new(mqtt.broker_pass),
@@ -206,7 +206,7 @@ impl From<LiveOverlayDto> for LiveOverlay {
                 source_key,
             } => Self::Mqtt {
                 handler,
-                broker_host,
+                broker_host: broker_host.trim().to_owned(),
                 broker_port,
                 broker_user,
                 broker_pass: Secret::new(broker_pass),
@@ -262,7 +262,7 @@ impl LiveItem {
     /// The item's id, label, source and lane matching.
     pub(crate) fn into_parts(self) -> (ItemId, String, Source, BTreeMap<String, MatchPolicy>) {
         let source = Source::Live(LiveRecipe {
-            host: self.host,
+            host: self.host.trim().to_owned(),
             username: self.username,
             password: Secret::new(self.password),
             protocol: match self.protocol {

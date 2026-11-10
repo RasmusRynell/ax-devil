@@ -7,9 +7,7 @@ import { camerasOf, seedOf } from "../live/cameras";
 const live = scenario("cameras");
 
 describe("cameras of live streams", () => {
-  // Known bug: the backend writes shown.host padded (src/session/project.rs:287 via crates/workspace/src/live.rs:318,
-  // host.rs:49 returns `typed` as is), and camerasOf trims the recipe's host (cameras.ts:125) but keys on shown.host (:127).
-  it.fails("groups a stream whose host is padded with the one of the same host", () => {
+  it("groups a stream whose host is padded with the one of the same host", () => {
     const [camera, ...others] = camerasOf(live.doc("padded").workspace.items);
     expect(others).toEqual([]);
     expect(camera?.name).toBe("Lobby");

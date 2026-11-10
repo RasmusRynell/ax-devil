@@ -12,7 +12,7 @@ recovery copies with their locks, and the recent workspaces list.
   `/`, any other absolute, both folded lexically (`.`, `..`); "inside" compares where the path's folder and the file's folder really are, through symlinks; a link as the last part stays the link. Playlist settings, overlay
   options and unreadable items are opaque. A symlinked workspace file is read and written at its target and anchors to
   the target's folder; the link stays.
-- **Live items.** A `live` item (`live.rs`) keeps host, login and broker text as entered, `$NAME` references
+- **Live items.** A `live` item (`live.rs`) reads camera and broker hosts without surrounding white space, as intake stores them, and keeps the rest as entered, `$NAME` references
   unexpanded and literal passwords in clear, so the file is as private as a new file is (0600).
 - **Saving.** Temporary file in the target's folder, `sync_all`, rename. A failure keeps the old bytes and mode and
   leaves no temporary file. A new file is 0600; an existing file keeps its mode.

@@ -35,7 +35,7 @@ fn mqtt(broker: &str) -> LiveOverlay {
 }
 
 /// Two streams of one camera: `a` (Lobby, on a broker, open) and `b` (Door, video only). In the state `padded`, `b`
-/// is as a workspace file holds it with its host padded as it was typed.
+/// is as a workspace file holds it with its host padded; loading trims it.
 fn cameras() -> Recording {
     let build = |padded: bool| {
         let mut scene = Scene::new();

@@ -241,7 +241,7 @@ impl Scene {
     }
 
     /// The item `raw` of a workspace file, as reading that file leaves it: an item of a kind this build does not
-    /// know stays unreadable, and a host stays as typed. `raw` gets the item's fixed id.
+    /// know stays unreadable, and a host loses its surrounding white space. `raw` gets the item's fixed id.
     pub(super) fn loaded(&mut self, key: &str, mut raw: serde_json::Value) -> ItemId {
         let id = self.register(key);
         raw["id"] = id.to_string().into();

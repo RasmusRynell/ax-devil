@@ -92,6 +92,19 @@ fn an_empty_form_takes_the_configured_defaults_as_written_and_an_entered_value_w
     let item = live(NewLive::default(), &defaults(), &Handlers::built_in()).unwrap();
     assert_eq!(recipe(&item).host, "$AX_DEVIL_TARGET_ADDR");
     assert_eq!(item.display_name(), "Live stream");
+
+    let mut padded = defaults();
+    padded.host = " 10.0.0.2 ".into();
+    padded.mqtt.host = " 10.0.0.9 ".into();
+    padded.overlay = LiveMode::Mqtt;
+    let item = live(NewLive::default(), &padded, &Handlers::built_in()).unwrap();
+    let LiveOverlay::Mqtt { broker_host, .. } = &recipe(&item).overlay else {
+        panic!("the configured mode is MQTT");
+    };
+    assert_eq!(
+        (recipe(&item).host.as_str(), broker_host.as_str()),
+        ("10.0.0.2", "10.0.0.9")
+    );
 }
 
 #[test]
