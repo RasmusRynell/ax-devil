@@ -20,7 +20,7 @@ use scene::{ClassRule, Coverage, Fields, FilterOption, FilterPolicy, MatchBasis,
 
 /// The `Spec::version` of all four ADF decoders, which share their reading code: raise it whenever any of them gives
 /// other output for the same file.
-const VERSION: u32 = 6;
+const VERSION: u32 = 7;
 
 /// Filter id, label and the class it shows, as every ADF decoder lists them first.
 const FILTERS: [(&str, &str, &str); 12] = [

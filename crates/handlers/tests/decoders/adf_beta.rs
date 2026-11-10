@@ -52,7 +52,7 @@ fn observation(track_id: &str, timestamp: &str, class: Json) -> Json {
 
 #[test]
 fn a_frame_keeps_the_time_box_class_and_colors_of_each_observation() {
-    let timestamp = "2024-05-12T10:00:00Z";
+    let timestamp = "2024-05-12T12:00:00+0200";
     let car = json!({"type": "Car", "score": 0.8, "colors": [{"name": "Blue", "score": 0.7}]});
     let record =
         json!({"timestamp": timestamp, "observations": [observation("track-1", timestamp, car)]});
@@ -95,7 +95,11 @@ fn frames_join_in_one_scene_and_only_the_first_class_is_used() {
     ]);
     let record = json!({"frames": [
         {"timestamp": "2024-05-12T10:00:00Z", "observations": [first],
-         "operations": [{"type": "DeleteOperation", "id": "gone"}]},
+         "operations": [{"type": "DeleteOperation", "id": "gone"},
+             {"type": "DeleteOperation", "id": 0},
+             {"type": "DeleteOperation", "id": 0.0},
+             {"type": "DeleteOperation", "id": false},
+             {"type": "DeleteOperation", "id": "0"}]},
         {"timestamp": "2024-05-12T10:00:02Z",
          "observations": [observation("a", "2024-05-12T10:00:02Z", json!({"type": "Car"}))],
          "operations": [{"type": "RenameOperation", "from": "a", "to": "b"}]}
@@ -122,7 +126,7 @@ fn frames_join_in_one_scene_and_only_the_first_class_is_used() {
         Some(&Value::Str("ABC123".into()))
     );
     let labels: Vec<_> = scene.events().iter().map(Event::label).collect();
-    assert_eq!(labels, ["Delete gone", "Rename a → b"]);
+    assert_eq!(labels, ["Delete gone", "Delete 0", "Rename a → b"]);
 }
 
 #[test]
