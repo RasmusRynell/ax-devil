@@ -103,6 +103,10 @@ function plan(groups, selection) {
     .split(",")
     .map((token) => token.trim())
     .filter(Boolean);
+  if (tokens.length === 0 && selection.trim() !== "")
+    refuse(
+      `SMOKE selects nothing: "${selection}"; name a group or scenario, or leave it empty for everything`,
+    );
   const need = new Map();
   for (const token of tokens) {
     if (Object.hasOwn(groups, token)) {
