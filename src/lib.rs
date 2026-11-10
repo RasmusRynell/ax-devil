@@ -297,13 +297,16 @@ pub fn app(state: AppState) -> Router {
     router.layer(from_fn(access::security_headers))
 }
 
-/// What an Owner reads of the settings: every value and shortcut, what references give only with Full access.
+/// What the holder of `credential` reads of `state`: every value and shortcut, what references give only with Full
+/// access as `state` itself grants it. The one place that decides it, for a read and for the reply to a save.
 fn snapshot(
     settings: &settings::Settings,
     log_file: Option<&Path>,
     state: &settings::State,
-    principal: Principal,
+    policy: &Policy,
+    credential: Option<&str>,
 ) -> SettingsState {
+    let principal = policy.principal_in(credential, state);
     SettingsState {
         values: state.values(),
         // What a reference gives is the server's environment: only Full access is told.
@@ -325,16 +328,20 @@ fn snapshot(
 }
 
 pub(crate) async fn get_settings(
-    principal: Principal,
+    headers: axum::http::HeaderMap,
     State(AppState {
-        settings, log_file, ..
+        settings,
+        policy,
+        log_file,
+        ..
     }): State<AppState>,
 ) -> Json<SettingsState> {
     Json(snapshot(
         &settings,
         log_file.as_deref(),
         &settings.state(),
-        principal,
+        &policy,
+        bearer(&headers),
     ))
 }
 
@@ -376,10 +383,9 @@ pub(crate) async fn put_settings(
     let saved = tokio::task::spawn_blocking(move || {
         // The default catalog is checked under the lock that writes it, against the value stored by then, so a
         // catalog deleted meanwhile (which resets the default under the same lock) is not stored again.
-        let mut principal = Principal::None;
         settings
             .replace_if(&change, |current| {
-                principal = save_principal(&policy, bearer(&headers), current, &change)?;
+                admit_save(&policy, bearer(&headers), current, &change)?;
                 let stored = current.resolved(catalogs::DEFAULT_SETTING);
                 match routes::catalogs::default_refusal(&library, stored.as_ref(), &change.values) {
                     Some(reason) => Err(settings::Error {
@@ -391,7 +397,15 @@ pub(crate) async fn put_settings(
                     None => Ok(()),
                 }
             })
-            .map(|state| snapshot(&settings, log_file.as_deref(), &state, principal))
+            .map(|state| {
+                snapshot(
+                    &settings,
+                    log_file.as_deref(),
+                    &state,
+                    &policy,
+                    bearer(&headers),
+                )
+            })
     })
     .await
     .map_err(|error| {
@@ -414,19 +428,19 @@ pub(crate) async fn put_settings(
     })
 }
 
-/// Who is saving, judged against `current`, the stored state under the write lock, and refused if the change needs
-/// Full access that this caller does not have in that state.
-fn save_principal(
+/// Refuses the change if it needs Full access that this caller does not have in `current`, the stored state under the
+/// write lock.
+fn admit_save(
     policy: &Policy,
     credential: Option<&str>,
     current: &settings::State,
     change: &settings::Change,
-) -> Result<Principal, settings::Error> {
-    let principal = policy.principal_in(credential, current);
-    if !principal.full_access() {
-        current.refuse_without_full_access(change)?;
+) -> Result<(), settings::Error> {
+    if policy.principal_in(credential, current).full_access() {
+        Ok(())
+    } else {
+        current.refuse_without_full_access(change)
     }
-    Ok(principal)
 }
 
 pub(crate) fn failure(

@@ -196,7 +196,19 @@ fn a_save_is_judged_against_the_state_it_is_written_under_so_a_revocation_in_bet
         .values
         .insert("storage.cache_dir".into(), "/tmp/other".into());
 
-    assert!(save_principal(&policy, Some("pw"), &on, &change).is_ok());
-    let refused = save_principal(&policy, Some("pw"), &off, &change).unwrap_err();
+    assert!(admit_save(&policy, Some("pw"), &on, &change).is_ok());
+    let refused = admit_save(&policy, Some("pw"), &off, &change).unwrap_err();
     assert_eq!(refused.location, "storage.cache_dir");
+
+    // The reply to a save that revokes Full access is projected by the saved state: no `resolved`.
+    toggle(true.into());
+    let with_reference = settings
+        .update("scan.range", |_| Some("$RANGE".into()))
+        .unwrap();
+    let reply = |state: &settings::State| snapshot(&settings, None, state, &policy, Some("pw"));
+    assert!(reply(&with_reference).resolved.is_some());
+    change.values.insert("scan.range".into(), "$RANGE".into());
+    change.values.insert("storage.cache_dir".into(), "".into());
+    let saved = settings.replace(&change).unwrap();
+    assert!(reply(&saved).resolved.is_none());
 }
