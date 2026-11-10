@@ -76,3 +76,12 @@ pub enum ExportStateWire {
     /// The job failed and nothing was written.
     Failed(ErrorWire),
 }
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<CatalogRefWire>();
+    types.visit::<ExportLaneWire>();
+    types.visit::<ExportQualityWire>();
+    types.visit::<ExportFormatWire>();
+    types.visit::<ExportStateWire>();
+}

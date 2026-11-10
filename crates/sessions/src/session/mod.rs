@@ -67,3 +67,13 @@ pub enum Access {
     /// Explore, and change the Doc's content.
     Edit,
 }
+
+/// Visits the types this module sends to the frontend, and its modules' types.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<Access>();
+    authorize::visit_api_types(types);
+    commands::visit_api_types(types);
+    layout::visit_api_types(types);
+    roster::visit_api_types(types);
+    views::visit_api_types(types);
+}

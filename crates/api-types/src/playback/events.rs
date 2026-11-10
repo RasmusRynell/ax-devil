@@ -119,3 +119,13 @@ pub enum FileEvent {
         unavailable: FileScopeUnavailable,
     },
 }
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<EventQueryWire>();
+    types.visit::<EventAskWire>();
+    types.visit::<EventRowsWire>();
+    types.visit::<EventWire>();
+    types.visit::<FileEvents>();
+    types.visit::<FileEvent>();
+}

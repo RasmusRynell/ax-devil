@@ -66,3 +66,11 @@ pub enum InspectionWire {
     /// The viewer does not hold this sample under this revision, or its authority no longer reaches it.
     Unavailable,
 }
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<FieldWire>();
+    types.visit::<ItemWire>();
+    types.visit::<ObjectItemsWire>();
+    types.visit::<InspectionWire>();
+}

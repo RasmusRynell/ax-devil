@@ -21,6 +21,11 @@ mod source;
 mod window;
 mod worker;
 
+/// Visits every type this crate sends to the frontend, for `export-types`.
+pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    authority::visit_api_types(types);
+}
+
 #[cfg(test)]
 mod testing;
 #[cfg(test)]

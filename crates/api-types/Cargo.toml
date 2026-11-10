@@ -25,5 +25,6 @@ serde.workspace = true
 serde_json.workspace = true
 sessions.workspace = true
 settings.workspace = true
+syn.workspace = true
 ts-rs.workspace = true
 workspace.workspace = true

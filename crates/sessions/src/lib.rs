@@ -81,3 +81,12 @@ impl Default for CursorOptions {
         }
     }
 }
+
+/// Visits every type this crate sends to the frontend, for `export-types`.
+pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<EndReason>();
+    types.visit::<SeatRole>();
+    types.visit::<SeatMode>();
+    types.visit::<CursorOptions>();
+    session::visit_api_types(types);
+}

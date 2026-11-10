@@ -304,3 +304,10 @@ const AT_START: ClockIntent = ClockIntent {
     speed_centi: 100,
     at_us: 0,
 };
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<ContentRef>();
+    types.visit::<Refusal>();
+    types.visit::<Can>();
+}

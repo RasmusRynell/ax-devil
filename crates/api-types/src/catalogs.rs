@@ -49,3 +49,12 @@ pub struct ReloadCatalogRequest {
     /// The id of the catalog to read again: `built-in:<name>` or `user:<file>`.
     pub id: String,
 }
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<CatalogInfoWire>();
+    types.visit::<CopyCatalogRequest>();
+    types.visit::<CopiedCatalog>();
+    types.visit::<DeleteCatalogRequest>();
+    types.visit::<ReloadCatalogRequest>();
+}

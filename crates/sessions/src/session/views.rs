@@ -219,6 +219,14 @@ impl ViewLane {
     }
 }
 
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<SidebarView>();
+    types.visit::<Sidebar>();
+    types.visit::<ViewerView>();
+    types.visit::<View>();
+}
+
 #[cfg(test)]
 mod tests {
     use super::{super::layout::Axis, *};

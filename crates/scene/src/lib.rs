@@ -60,6 +60,12 @@ impl fmt::Display for SceneVersion {
     }
 }
 
+/// Visits every type this crate sends to the frontend, for `export-types`.
+pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    inspection::visit_api_types(types);
+    scene::visit_api_types(types);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
