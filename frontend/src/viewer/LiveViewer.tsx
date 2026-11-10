@@ -36,7 +36,6 @@ import {
 } from "../session/session";
 import { useSettings } from "../client/settings";
 import { MediaToolsPanel } from "../tools/MediaToolsPanel";
-import { jump } from "../tools/pageStack";
 import { useMediaTools } from "../tools/useMediaTools";
 import type { ViewerProps } from "../viewers";
 import { PaneActiveContext, useViewerActions } from "./actions";
@@ -69,7 +68,7 @@ function Live({
   const { viewport, onViewport, onDrawn } = useSharedViewport(viewer);
   const [inspector, setInspector] = useState<InspectorMemory>(FRESH_MEMORY);
   // The media tools' pages, lists and width, kept while they are closed; the selected object is the page on top.
-  const { pages, outlined, setOutlined, navigate, panel } = useMediaTools(session, objectDetails);
+  const { outlined, pick, chooseLane, panel } = useMediaTools(session, objectDetails, tools);
   const shown = useMemo(() => shownLanes(view.lanes, NOTHING_HIDDEN, entry), [view.lanes, entry]);
   const fullscreen = useLaneFullscreen(pane, shown);
   const shownViewport = useRef(viewport);
@@ -108,10 +107,16 @@ function Live({
         "zoom-out": () => zoom(1 / ZOOM_STEP),
         "zoom-reset": () => onViewport?.(FIT),
         "play-pause": togglePause,
-        "media-tools": () => setTools((open) => !open),
+        "media-tools": () => {
+          if (!tools) {
+            const lane = fullscreen.target();
+            if (lane !== null) chooseLane(lane);
+          }
+          setTools((open) => !open);
+        },
         "lane-fullscreen": fullscreen.toggle,
       }),
-      [zoom, onViewport, togglePause, fullscreen.toggle],
+      [zoom, onViewport, togglePause, fullscreen.toggle, fullscreen.target, tools, chooseLane],
     ),
   );
   return (
@@ -160,11 +165,7 @@ function Live({
                 objectDetails={objectDetails}
                 laneNames={laneNames}
                 onHover={(picked) => objects.current?.hover(picked)}
-                onSelect={(selection) =>
-                  selection
-                    ? navigate(jump(pages, { kind: "object", entity: selection.entity }), selection)
-                    : setOutlined(false)
-                }
+                onSelect={pick}
                 onDrawn={(next) => {
                   geometry.current = next;
                   objects.current?.drawn(next);

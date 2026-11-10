@@ -119,12 +119,6 @@ export function MediaToolsPanel({
   const [live, setLive] = useState(width);
   const panel = useId();
   const lanes = view.lanes.flatMap((lane, index) => (lane.source === null ? [] : [index]));
-  // An object picked on another lane's picture switches the panel to that lane, as does opening after it.
-  const picked = view.selection?.lane;
-  const pickable = picked !== undefined && lanes.includes(picked);
-  useEffect(() => {
-    if (picked !== undefined && pickable) onChosen(picked);
-  }, [picked, pickable, onChosen]);
   const lane = chosen !== null && lanes.includes(chosen) ? chosen : lanes[0];
 
   // The Events tab says how many events there are, whichever tab shows.

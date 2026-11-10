@@ -133,8 +133,7 @@ interface Draft {
 
 /**
  * The smallest and largest score and confidence to keep; an empty end is open. Each keystroke is applied when it is a
- * number and the lane's filter still compiles with it; otherwise the field is marked invalid and the previous bound
- * stays. An expression that does not compile on its own is the expression field's problem: it neither marks nor
+ * number (unfinished input opens the bound) and the lane's filter still compiles with it; otherwise the previous bound stays. An expression that does not compile on its own is the expression field's problem: it neither marks nor
  * refuses a bound.
  */
 function Ranges({
@@ -161,8 +160,8 @@ function Ranges({
     const value = parseBound(text);
     const found = value === undefined ? [] : wrong(next(value));
     const edit = (typed: string) => {
-      const bound = parseBound(typed);
-      const fits = bound !== undefined && wrong(next(bound)).length === 0;
+      const bound = parseBound(typed) ?? null;
+      const fits = wrong(next(bound)).length === 0;
       if (fits && bound !== current) onChange({ ranges: next(bound) });
       setDrafts({ ...drafts, [name]: { text: typed, base: fits ? bound : current } });
     };

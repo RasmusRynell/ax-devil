@@ -38,7 +38,7 @@ import { leavesMessage, listMessage, noticeOf, staleOf } from "./listStatus";
 import { MiddleElided } from "../kit/MiddleElided";
 import { SearchBar } from "./SearchBar";
 import { nextSort } from "./table/columns";
-import { Table, type TableMemory } from "./table/Table";
+import { Table } from "./table/Table";
 import { useApplied } from "./useApplied";
 
 /** What the panel reads of a viewer and asks of it: `PlaybackStream` is one. */
@@ -119,7 +119,7 @@ export function ObjectsList({
   const scope = hasFile ? list.scope : "frame";
   const [offset, setOffset] = useState(0);
   // Where each scope's table was scrolled and where its cursor was, for when the scope is shown again.
-  const tables = useRef<Record<Scope, TableMemory>>({
+  const tables = (list.tables[lane] ??= {
     frame: { top: 0, cursor: null },
     file: { top: 0, cursor: null },
   });
@@ -224,16 +224,8 @@ export function ObjectsList({
   useEffect(() => {
     if (inFile && isFileSort(sort))
       // Moving the cursor asks for nothing; the next request names where it is, for the table to find it.
-      source.files.request(
-        lane,
-        text,
-        sort,
-        wanted,
-        PAGE,
-        BINS,
-        from ?? tables.current.file.cursor,
-      );
-  }, [source, lane, inFile, text, sort, wanted, from]);
+      source.files.request(lane, text, sort, wanted, PAGE, BINS, from ?? tables.file.cursor);
+  }, [source, lane, inFile, text, sort, wanted, from, tables]);
   // Return and Clear ask for the list at once; this runs after the request the committed text made.
   useEffect(() => {
     if (!committed) return;
@@ -334,7 +326,7 @@ export function ObjectsList({
             rowAt={(index) => page?.rows[index - page.offset]}
             keyOf={(row) => row.id}
             indexOf={(key) => openRow(key, page, null).row ?? -1}
-            memory={tables.current.file}
+            memory={tables.file}
             dimmed={(row) => absent(row.id)}
             onActivate={(row) => choose(row.id, absent(row.id) ? row.first_frame : undefined)}
             onRange={onRange}
@@ -351,7 +343,7 @@ export function ObjectsList({
           rowAt={(index) => found[index]}
           keyOf={(object) => object.id}
           indexOf={(key) => foundAt.get(key) ?? -1}
-          memory={tables.current.frame}
+          memory={tables.frame}
           onActivate={(object) => choose(object.id)}
           cursorId={(object) => `row:object-${object.id}`}
         />

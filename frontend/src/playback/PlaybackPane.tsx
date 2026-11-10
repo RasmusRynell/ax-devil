@@ -17,7 +17,6 @@ import { Popover } from "../kit/Popover";
 import { useAllowed, useOverlays } from "../session/session";
 import { useSettings } from "../client/settings";
 import { MediaToolsPanel } from "../tools/MediaToolsPanel";
-import { jump } from "../tools/pageStack";
 import { useMediaTools } from "../tools/useMediaTools";
 import { PaneActiveContext, useHeaderDetails, useViewerActions } from "../viewer/actions";
 import { registerExport } from "../viewer/exportTargets";
@@ -84,7 +83,7 @@ export function Playback({
   const [waiting, setWaiting] = useState(false);
   const [tools, setTools] = useState(false);
   // The media tools' pages, lists and width, kept while they are closed; the selected object is the page on top.
-  const { pages, outlined, setOutlined, navigate, panel } = useMediaTools(stream, objectDetails);
+  const { outlined, pick, chooseLane, panel } = useMediaTools(stream, objectDetails, tools);
   // One switch for every lane; it lives here so it stays across entries.
   const [info, setInfo] = useState(false);
   useChromeVisibility(pane);
@@ -176,13 +175,29 @@ export function Playback({
         "step-back-10": () => stream.step(-10),
         "speed-up": () => stream.stepSpeed(1),
         "speed-down": () => stream.stepSpeed(-1),
-        "media-tools": () => setTools((open) => !open),
+        "media-tools": () => {
+          if (!tools) {
+            const lane = fullscreen.target();
+            if (lane !== null) chooseLane(lane);
+          }
+          setTools((open) => !open);
+        },
         "info-overlay": () => setInfo((shown) => !shown),
         "lane-fullscreen": fullscreen.toggle,
         "export-video": () => exportLane(null),
         "add-bookmark": addBookmark,
       }),
-      [stream, zoom, onViewport, fullscreen.toggle, exportLane, addBookmark],
+      [
+        stream,
+        zoom,
+        onViewport,
+        fullscreen.toggle,
+        fullscreen.target,
+        exportLane,
+        addBookmark,
+        tools,
+        chooseLane,
+      ],
     ),
   );
   return (
@@ -195,7 +210,7 @@ export function Playback({
         // An Escape a popup closed is spent, and in fullscreen Escape only leaves it.
         const plain = !event.ctrlKey && !event.altKey && !event.metaKey;
         if (event.key === "Escape" && plain && !event.nativeEvent.defaultPrevented)
-          if (!fullscreen.leave()) setOutlined(false);
+          if (!fullscreen.leave()) pick(null);
       }}
     >
       {view.status === "ready" ? (
@@ -241,11 +256,7 @@ export function Playback({
                 objectDetails={objectDetails}
                 laneNames={laneNames}
                 onHover={hover}
-                onSelect={(selection) =>
-                  selection
-                    ? navigate(jump(pages, { kind: "object", entity: selection.entity }), selection)
-                    : setOutlined(false)
-                }
+                onSelect={pick}
                 onDrawn={drawn}
               />
             </ContextMenu>

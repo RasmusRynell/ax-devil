@@ -146,24 +146,3 @@ describe("Object pages", () => {
     expect(title()).toBe("n41");
   });
 });
-
-describe("A selection on another lane", () => {
-  it("is the lane the panel lists, steps and navigates in when the panel opens after the pick", () => {
-    const other = fullSample([
-      { id: "31", class: "car", score: 0.9, confidence: 0.5, box: [0.1, 0.1, 0.3, 0.3] },
-      { id: "32", class: "car", score: 0.5, confidence: 0.5, box: [0.5, 0.5, 0.6, 0.7] },
-    ]);
-    const at: unknown[] = [];
-    mount(
-      { onNavigate: (_, place) => at.push(place) },
-      {
-        second: other,
-        selection: { lane: 1, source: 1, entity: "31" },
-        first: push(EMPTY, { kind: "object", entity: "31" }),
-      },
-    );
-    expect(screen.getByRole("region", { name: "Object page" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Next in list" }));
-    expect(at).toEqual([{ lane: 1, source: 1 }]);
-  });
-});

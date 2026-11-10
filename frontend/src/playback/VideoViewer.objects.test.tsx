@@ -96,8 +96,19 @@ describe("video viewer objects", () => {
     act(() => props().onSelect?.(SELECTION));
     expect(shown.boxes).toHaveBeenLastCalledWith(SELECTION, null);
     expect(page()).toBeNull();
+    act(() => props().onSelect?.(null));
+    run("media-tools");
+    expect(page()).toBeNull();
+    run("media-tools");
+    act(() => props().onSelect?.(SELECTION));
     run("media-tools");
     expect(page()).toBeTruthy();
+
+    run("media-tools");
+    act(() => props().onSelect?.({ ...SELECTION, entity: "9" }));
+    act(() => props().onSelect?.(null));
+    run("media-tools");
+    expect(page()?.querySelector("header")?.textContent).toContain("7");
 
     // Empty space on the video drops the outline, not the page; Back drops the selection too.
     act(() => props().onSelect?.(null));
@@ -305,4 +316,21 @@ describe("video viewer objects", () => {
     run("zoom-reset");
     expect(props().viewport).toEqual(FIT);
   });
+});
+
+it("opens tools on the targeted lane and leaves the other lane's object page behind", async () => {
+  const { props, run } = await mount(undefined, [
+    { label: "DPM", slot: "DPM", source: 0 },
+    { label: "GT", slot: "GT", source: 1 },
+  ]);
+  act(() => focusLane(1, s.ids["list/A"], "GT"));
+  run("media-tools");
+  expect((screen.getByRole("combobox", { name: "Lane" }) as HTMLSelectElement).value).toBe("1");
+  act(() => props().onSelect?.(SELECTION));
+  expect(page()).toBeTruthy();
+  run("media-tools");
+  act(() => focusLane(1, s.ids["list/A"], "GT"));
+  run("media-tools");
+  expect((screen.getByRole("combobox", { name: "Lane" }) as HTMLSelectElement).value).toBe("1");
+  expect(page()).toBeNull();
 });

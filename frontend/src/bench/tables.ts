@@ -15,7 +15,7 @@ import { Inspector } from "../playback/Inspector";
 import { LANE_SETTINGS } from "../lanes/fakeOpened";
 import { LaneSet } from "../lanes/lanes";
 import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
-import { freshEvents, FRESH_LIST, type ListState } from "../tools/listState";
+import { freshEvents, freshList, type ListState } from "../tools/listState";
 import { MediaToolsPanel } from "../tools/MediaToolsPanel";
 import { EMPTY } from "../tools/pageStack";
 import { rememberedWidths } from "../tools/table/fit";
@@ -105,7 +105,7 @@ class Rig {
   readonly #source;
   #current = 0;
   #open = false;
-  #list: ListState = FRESH_LIST;
+  #list: ListState = freshList();
   #events = freshEvents();
   playhead = 0;
 
