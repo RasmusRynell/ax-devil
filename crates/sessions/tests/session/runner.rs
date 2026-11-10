@@ -62,18 +62,22 @@ async fn a_resolver_that_panics_fails_its_item_instead_of_leaving_it_resolving()
             open: false,
         }))
         .unwrap();
-    let failure = tokio::time::timeout(Duration::from_secs(10), async {
-        loop {
-            if let Some(Resolution::Failed(error)) =
-                owner.state().doc.workspace.resolutions.get(&id)
-            {
-                return error.clone();
-            }
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-    })
+    let mut states = service.subscribe(owner.session()).unwrap();
+    let failed = tokio::time::timeout(
+        Duration::from_secs(10),
+        states.wait_for(|state| {
+            matches!(
+                state.doc.workspace.resolutions.get(&id),
+                Some(Resolution::Failed(_))
+            )
+        }),
+    )
     .await
-    .expect("a resolver that panicked left its item resolving instead of failed");
+    .expect("a resolver that panicked left its item resolving instead of failed")
+    .unwrap();
+    let Some(Resolution::Failed(failure)) = failed.doc.workspace.resolutions.get(&id) else {
+        unreachable!("wait_for observed a failed resolution")
+    };
     assert!(
         failure.reason.contains("Resolving stopped unexpectedly"),
         "{}",

@@ -191,3 +191,7 @@ pub(super) async fn open_video<T: Send + 'static>(
 fn release(session: Session) {
     drop(tokio::task::spawn_blocking(move || drop(session)));
 }
+
+#[cfg(test)]
+#[path = "open_tests.rs"]
+mod tests;
