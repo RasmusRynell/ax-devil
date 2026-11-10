@@ -266,13 +266,13 @@ mod tests {
         let (_camera, resolved) = silent_camera().await;
 
         // The setting changes after the connector exists; the default would leave the attempt waiting for ten seconds.
-        let mut values = settings.state().values(&settings::Scope::ALL);
+        let mut values = settings.state().values();
         values.insert("camera.timeout".into(), 1.into());
         let change = settings::Change {
             values,
             shortcuts: Default::default(),
         };
-        settings.replace(&settings::Scope::ALL, &change).unwrap();
+        settings.replace(&change).unwrap();
 
         let broker = Broker {
             host: "127.0.0.1".into(),

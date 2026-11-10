@@ -6,7 +6,7 @@ import { Dialog, DialogFrame } from "../kit/Dialog";
 import { Checkbox, Select, TextField } from "../kit/Fields";
 import { MiddleElided } from "../kit/MiddleElided";
 import type { PlaybackView } from "../playback/view";
-import { useServerKind } from "../windowBridge";
+import { nativeBridge } from "../windowBridge";
 import { choicesOf } from "./lanes";
 import type { ExportJobs, ExportStatus } from "./jobs";
 
@@ -153,7 +153,7 @@ export function ExportDialog({
   const status = useSyncExternalStore(jobs.subscribe, jobs.getSnapshot);
   const latest = useRef(view);
   latest.current = view;
-  const bridge = useServerKind() === "local" ? window.axDevilWindow : undefined;
+  const bridge = nativeBridge();
   const offered = (lanes: PlaybackView["lanes"]) =>
     choicesOf(lanes).filter((choice) => only === undefined || choice.lane === only);
   const choices = offered(view.lanes);

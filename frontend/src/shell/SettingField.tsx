@@ -5,6 +5,7 @@ import { BrowseButton } from "../kit/Button";
 import { SegmentedControl } from "../kit/Chips";
 import { Checkbox, LABELLED, Select, TextField } from "../kit/Fields";
 import { Icon } from "../kit/Icon";
+import { nativeBridge } from "../windowBridge";
 import { LoginsEditor } from "./LoginsEditor";
 
 /** A setting's value as the backend stores it. */
@@ -136,7 +137,7 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
     <TextField label={label} value={textOf(value)} suggestions={decoders} onChange={onChange} />
   ),
   folder: ({ row, label, value, onChange }) => {
-    const bridge = window.axDevilWindow;
+    const bridge = nativeBridge();
     return (
       <TextField
         label={label}

@@ -19,7 +19,7 @@ Owns credential handling; [08](08-settings-cli.md) links here.
 A workspace file from someone else is untrusted input. A Live Stream Item's `$VARIABLE` references are expanded
 silently while resolving, as in the reference (D18: no prompt, no host binding), so a shared workspace can name an
 attacker host and `$SOME_SECRET` and receive it once the user starts the stream. That holds only for the person at
-this machine (the `preferences` grant): a Session owned by a holder of the server password, and its questions to a
+this machine (Full access): a Session owned by a holder of the server password, and its questions to a
 camera, keep a reference as literal text, and a watcher of the Local owner's shared Session cannot add a stream that
 holds one.
 

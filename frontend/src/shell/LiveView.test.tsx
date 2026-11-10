@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { GrantsContext } from "../access";
+import { AccessContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
-import type { Grant, NetworkRow, NetworkSnapshot } from "../generated/api";
+import type { NetworkRow, NetworkSnapshot } from "../generated/api";
 import type { AddSeed } from "../live/cameras";
 import type { SettingsApi } from "../settings";
 import { scenario } from "../session/fakeScenario";
@@ -102,13 +102,10 @@ afterEach(() => {
 async function renderView(
   state?: string,
   onAdd: (seed: AddSeed) => void = () => {},
-  {
-    grants = ["files", "preferences"],
-    save,
-  }: { grants?: Grant[]; save?: SettingsApi["save"] } = {},
+  { save }: { save?: SettingsApi["save"] } = {},
 ) {
   render(
-    <GrantsContext value={grants}>
+    <AccessContext value={{ owner: true, fullAccess: false }}>
       <FakeSettings save={save}>
         <SessionProvider>
           <KeptStateProvider>
@@ -116,7 +113,7 @@ async function renderView(
           </KeptStateProvider>
         </SessionProvider>
       </FakeSettings>
-    </GrantsContext>,
+    </AccessContext>,
   );
   await act(async () => {});
   const room = FakeSocket.rooms.get("room-1") as Room;
@@ -315,7 +312,7 @@ describe("scanning", () => {
 
   it("takes the sign-in box for the scans it starts without saving it", async () => {
     const save = vi.fn(() => Promise.resolve(null));
-    await renderView(undefined, undefined, { grants: ["files", "configuration"], save });
+    await renderView(undefined, undefined, { save });
     fireEvent.click(await screen.findByRole("checkbox", { name: /sign in to found cameras/ }));
     fireEvent.click(screen.getByRole("button", { name: "Rescan" }));
     expect(JSON.parse(scansStarted()[0][1] as string)).toEqual({ sign_in: false });
@@ -324,7 +321,7 @@ describe("scanning", () => {
 
   it("returns the sign-in box to the saved setting whenever that changes", async () => {
     const page = (signIn: boolean) => (
-      <GrantsContext value={["files", "configuration"]}>
+      <AccessContext value={{ owner: true, fullAccess: false }}>
         <FakeSettings
           state={{
             ...DEFAULT_SETTINGS,
@@ -337,7 +334,7 @@ describe("scanning", () => {
             </KeptStateProvider>
           </SessionProvider>
         </FakeSettings>
-      </GrantsContext>
+      </AccessContext>
     );
     const { rerender } = render(page(true));
     const box = async () =>

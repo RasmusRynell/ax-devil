@@ -1,24 +1,24 @@
 import { render, screen } from "@testing-library/react";
-import { GrantsContext } from "../access";
+import { AccessContext, type Access } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
-import type { Grant, SettingsState } from "../generated/api";
+import type { SettingsState } from "../generated/api";
 import type { CommandId } from "../generated/settings";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import type { SettingsApi } from "../settings";
 import { Shell } from "./Shell";
 
-/** The shell under the given settings, grants and Session (the window's own by default), once it is seated. */
+/** The shell under the given settings, access and Session (the window's own by default), once it is seated. */
 export async function showShell({
   shortcuts = {},
   values = {},
-  grants = ["configuration"],
+  access = { owner: true, fullAccess: false },
   file,
   save,
 }: {
   shortcuts?: Partial<Record<CommandId, string | null>>;
   values?: Partial<typeof DEFAULT_SETTINGS.values>;
-  grants?: Grant[];
+  access?: Access;
   /** Where the backend says its settings and log are, as it tells a caller who may see this machine's files. */
   file?: SettingsState["file"];
   save?: SettingsApi["save"];
@@ -30,13 +30,13 @@ export async function showShell({
     shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...shortcuts },
   };
   render(
-    <GrantsContext.Provider value={grants}>
+    <AccessContext.Provider value={access}>
       <FakeSettings state={state} save={save}>
         <SessionProvider>
           <Shell version="1.2.3" />
         </SessionProvider>
       </FakeSettings>
-    </GrantsContext.Provider>,
+    </AccessContext.Provider>,
   );
   await screen.findByRole("heading", { name: "ax-devil" });
 }

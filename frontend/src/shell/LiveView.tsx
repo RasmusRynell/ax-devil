@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { useGrants } from "../access";
+import { useAccess } from "../access";
 import type { NewLiveWire } from "../generated/api";
 import { camerasOf, type AddSeed } from "../live/cameras";
 import { useLoginChecks } from "../live/checks";
@@ -35,7 +35,7 @@ const NO_FACETS: ReadonlySet<string> = new Set();
  * Live Stream dialog from a seed.
  */
 export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
-  const scans = useGrants().includes("files");
+  const scans = useAccess().owner;
   const mayAct = useCan("content");
   const { values } = useSettings();
   const items = useDoc()?.workspace.items;

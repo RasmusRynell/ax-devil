@@ -62,7 +62,7 @@ impl Scene {
     /// An empty session: its owner holds the files grant and reads no environment.
     pub(super) fn new() -> Self {
         Self {
-            session: SessionState::new(SessionId::generate(), OwnerId::generate(), true, false),
+            session: SessionState::new(SessionId::generate(), OwnerId::generate(), false),
             outcomes: Outcomes::default(),
             items: BTreeMap::new(),
             ids: BTreeMap::new(),

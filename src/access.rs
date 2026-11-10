@@ -1,7 +1,7 @@
-//! Who is asking and what they may do: principals and their grants, the guard that keeps other websites off the Local
+//! Who is asking and what they may do: principals, the gate of each route, the guard that keeps other websites off the Local
 //! listener, the headers every response carries, and the limits on open sockets.
 
-use api_types::{ApiError, Grant};
+use api_types::ApiError;
 use axum::{
     Json,
     extract::{FromRef, FromRequestParts, Request, State},
@@ -12,7 +12,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use sessions::Secret;
-use settings::Scope;
 use std::{
     collections::HashMap,
     convert::Infallible,
@@ -29,7 +28,7 @@ pub enum Policy {
     /// A listener other machines reach. Nothing is granted by address or cookie: the server password, sent as a
     /// bearer token, is the only way to be more than [`Principal::None`].
     Shared {
-        /// The server password; without one nobody holds [`Principal::Server`].
+        /// The server password; without one nobody is an Owner here.
         password: Option<Secret>,
     },
 }
@@ -37,39 +36,24 @@ pub enum Policy {
 /// Who a request comes from, which decides what it may do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Principal {
-    /// The person at this machine, on the Local listener.
-    Local,
-    /// Someone who holds the server password.
-    Server,
+    /// The Owner: the person at this machine, or a holder of the server password. `full` is Full access.
+    Owner {
+        /// Whether the Owner may reach outside ax-devil on the server's machine.
+        full: bool,
+    },
     /// No credential.
     None,
 }
 
 impl Principal {
-    /// What this principal may do.
-    pub fn grants(self) -> &'static [Grant] {
-        match self {
-            Self::Local => &[
-                Grant::Preferences,
-                Grant::Configuration,
-                Grant::Sessions,
-                Grant::Files,
-            ],
-            Self::Server => &[Grant::Configuration, Grant::Sessions, Grant::Files],
-            Self::None => &[],
-        }
+    /// Whether this is the Owner.
+    pub fn is_owner(self) -> bool {
+        matches!(self, Self::Owner { .. })
     }
 
-    /// The settings this principal may read and change.
-    pub fn scopes(self) -> Vec<Scope> {
-        self.grants()
-            .iter()
-            .filter_map(|grant| match grant {
-                Grant::Preferences => Some(Scope::Personal),
-                Grant::Configuration => Some(Scope::Server),
-                Grant::Sessions | Grant::Files => None,
-            })
-            .collect()
+    /// Whether this is an Owner with Full access.
+    pub fn full_access(self) -> bool {
+        matches!(self, Self::Owner { full: true })
     }
 }
 
@@ -81,10 +65,12 @@ impl Policy {
     /// Who holds `password`, which a browser socket sends in its first message because it cannot set headers.
     pub fn principal_for(&self, password: Option<&str>) -> Principal {
         match self {
-            Self::Local => Principal::Local,
+            Self::Local => Principal::Owner { full: true },
             Self::Shared {
                 password: Some(secret),
-            } if password.is_some_and(|candidate| secret.matches(candidate)) => Principal::Server,
+            } if password.is_some_and(|candidate| secret.matches(candidate)) => {
+                Principal::Owner { full: false }
+            }
             Self::Shared { .. } => Principal::None,
         }
     }
@@ -107,62 +93,49 @@ where
     }
 }
 
-/// Answers 401 when the caller does not pass a route's gate.
-struct Unauthorized;
-
-impl IntoResponse for Unauthorized {
-    fn into_response(self) -> Response {
-        refuse(
-            StatusCode::UNAUTHORIZED,
-            "this needs the server password",
-            "authorization",
-        )
-    }
-}
-
 /// Who a route lets through, as the route table states it. Everything beyond `Principal` checks stays in the handler.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Who {
-    /// Anyone; the handler may show more to a caller with grants.
+    /// Anyone; the handler may show more to an Owner.
     Public,
-    /// A caller who may read or change at least one kind of setting; the handler narrows it with
-    /// [`Principal::scopes`].
-    Settings,
-    /// A caller who holds the `Preferences` grant: the person at this machine.
-    Preferences,
-    /// A caller who holds the `Sessions` grant.
-    Sessions,
-    /// A caller who holds the `Files` grant: it may read this machine's folders, as listing handlers and scanning a
-    /// resolver's folder do.
-    Files,
+    /// The Owner.
+    Owner,
+    /// An Owner with Full access.
+    FullAccess,
     /// A WebSocket upgrade: the socket limits admit it and the first message authenticates it: `Hello` on the
     /// Session socket, a ticket on the playback socket.
     Upgrade,
 }
 
 impl Who {
-    /// Whether `principal` passes this gate.
-    pub fn allows(self, principal: Principal) -> bool {
+    /// The status that refuses `principal` at this gate, or `None` when it passes: 401 for a caller that is not an
+    /// Owner, 403 for an Owner without the Full access the route needs.
+    pub fn refusal(self, principal: Principal) -> Option<StatusCode> {
         match self {
-            Self::Public | Self::Upgrade => true,
-            Self::Settings => !principal.scopes().is_empty(),
-            Self::Preferences => principal.grants().contains(&Grant::Preferences),
-            Self::Sessions => principal.grants().contains(&Grant::Sessions),
-            Self::Files => principal.grants().contains(&Grant::Files),
+            Self::Public | Self::Upgrade => None,
+            Self::Owner | Self::FullAccess if !principal.is_owner() => {
+                Some(StatusCode::UNAUTHORIZED)
+            }
+            Self::FullAccess if !principal.full_access() => Some(StatusCode::FORBIDDEN),
+            Self::Owner | Self::FullAccess => None,
         }
     }
 }
 
-/// Answers 401 unless the caller passes the gate `who` of the route.
+/// Answers 401 or 403 unless the caller passes the gate `who` of the route.
 pub async fn require(
     State((policy, who)): State<(Arc<Policy>, Who)>,
     request: Request,
     next: Next,
 ) -> Response {
-    if who.allows(policy.principal(request.headers())) {
-        next.run(request).await
-    } else {
-        Unauthorized.into_response()
+    match who.refusal(policy.principal(request.headers())) {
+        None => next.run(request).await,
+        Some(StatusCode::FORBIDDEN) => refuse(
+            StatusCode::FORBIDDEN,
+            "this needs full access",
+            "authorization",
+        ),
+        Some(status) => refuse(status, "this needs the server password", "authorization"),
     }
 }
 

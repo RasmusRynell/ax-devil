@@ -31,14 +31,15 @@ struct Caller {
     headers: &'static [(&'static str, &'static str)],
 }
 
-/// The four kinds of caller from the access design: the person at this machine, someone with only a join link on the
-/// listener for other machines, a holder of the server password, and a caller with no credential on a server.
+/// The four kinds of caller: an Owner with Full access (the person at this machine), someone with only a join link on
+/// the listener for other machines, an Owner without it (a holder of the server password), and a caller with no
+/// credential on a server.
 fn callers() -> [Caller; 4] {
     [
         Caller {
             name: "local",
             listener: Listener::Local,
-            principal: Principal::Local,
+            principal: Principal::Owner { full: true },
             headers: &[("host", "127.0.0.1")],
         },
         Caller {
@@ -50,7 +51,7 @@ fn callers() -> [Caller; 4] {
         Caller {
             name: "password",
             listener: Listener::Server,
-            principal: Principal::Server,
+            principal: Principal::Owner { full: false },
             headers: &[("authorization", "Bearer secret")],
         },
         Caller {
@@ -134,7 +135,9 @@ async fn every_route_answers_every_caller_as_the_table_says() {
                     };
                     assert_eq!(got, unmounted, "{at}");
                 } else if let Some(row) = row {
-                    if row.who.allows(caller.principal) {
+                    if let Some(refused) = row.who.refusal(caller.principal) {
+                        assert_eq!(got, refused, "{at}");
+                    } else {
                         // Past the gate. What the handler makes of an empty request is its own business, and a path
                         // that names a thing (`{item}`) may say there is no such thing.
                         let refused = [
@@ -144,8 +147,6 @@ async fn every_route_answers_every_caller_as_the_table_says() {
                         ];
                         let missing = got == StatusCode::NOT_FOUND && !path.contains('{');
                         assert!(!refused.contains(&got) && !missing, "{at}: {got}");
-                    } else {
-                        assert_eq!(got, StatusCode::UNAUTHORIZED, "{at}");
                     }
                 } else {
                     assert_eq!(got, StatusCode::METHOD_NOT_ALLOWED, "{at}");

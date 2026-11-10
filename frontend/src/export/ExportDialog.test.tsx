@@ -8,7 +8,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { GrantsContext } from "../access";
+import { AccessContext } from "../access";
 import type { ClientMessage, ServerMessage } from "../generated/api";
 import type { LaneState } from "../playback/contract";
 import { LANE_SETTINGS } from "../playback/fakeOpened";
@@ -311,9 +311,9 @@ describe("export dialog", () => {
     const sent: ClientMessage[] = [];
     const jobs = new ExportJobs((message) => sent.push(message));
     render(
-      <GrantsContext.Provider value={["preferences"]}>
+      <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
         <ExportDialog jobs={jobs} view={VIEW} name="clip.mp4" onClose={() => {}} />
-      </GrantsContext.Provider>,
+      </AccessContext.Provider>,
     );
     expect(screen.queryByLabelText("Path on the server")).toBeNull();
     press("Export");
@@ -338,14 +338,14 @@ describe("export dialog", () => {
       ],
     };
     render(
-      <GrantsContext.Provider value={["preferences"]}>
+      <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
         <ExportDialog
           jobs={new ExportJobs(() => {})}
           view={view}
           name="clip.mp4"
           onClose={() => {}}
         />
-      </GrantsContext.Provider>,
+      </AccessContext.Provider>,
     );
     press("Export");
     await waitFor(() => expect(pick).toHaveBeenLastCalledWith("front.v2.mp4", "mp4"));

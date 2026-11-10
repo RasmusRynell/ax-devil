@@ -31,7 +31,7 @@ async fn a_label_that_repeats_the_default_in_the_sessions_environment_is_stored_
     for expands in [true, false] {
         let session = state
             .sessions
-            .create(true, expands, CursorOptions::default())
+            .create(expands, CursorOptions::default())
             .unwrap();
         let mut seq = 0;
         let mut send = |wire: serde_json::Value| {
@@ -128,7 +128,7 @@ async fn a_guest_cannot_find_a_hosts_text_by_which_label_clears() {
     let state = app(folder.path());
     let owner = state
         .sessions
-        .create(true, true, CursorOptions::default())
+        .create(true, CursorOptions::default())
         .unwrap();
     answer(
         &state,
@@ -181,7 +181,7 @@ async fn adding_and_editing_a_video_or_a_staged_item_clears_a_default_label() {
     for expands in [true, false] {
         let owner = state
             .sessions
-            .create(true, expands, CursorOptions::default())
+            .create(expands, CursorOptions::default())
             .unwrap();
         let session = owner.session().to_string();
         let video = json!({"type": "Video", "path": clip.to_str().unwrap()});

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { GrantsContext } from "../access";
+import { AccessContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { scenario } from "../session/fakeScenario";
 import { FakeSocket } from "../session/fakeSession";
@@ -20,13 +20,13 @@ afterEach(() => {
 /** The shell of the window's own Session, once it is seated; resolves to the Session's room. */
 async function renderShell(state = DEFAULT_SETTINGS) {
   render(
-    <GrantsContext.Provider value={["configuration"]}>
+    <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
       <FakeSettings state={state}>
         <SessionProvider>
           <Shell version="1.2.3" />
         </SessionProvider>
       </FakeSettings>
-    </GrantsContext.Provider>,
+    </AccessContext.Provider>,
   );
   await screen.findByRole("heading", { name: "ax-devil" });
   return FakeSocket.rooms.get("room-1")!;

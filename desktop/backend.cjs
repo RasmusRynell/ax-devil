@@ -5,9 +5,6 @@ const path = require("node:path");
 
 const { apiVersion, shellApi } = require("./generated/api.json");
 
-// What the shell needs from a backend it opens without a password: every grant a local window uses.
-const LOCAL_GRANTS = ["preferences", "configuration", "sessions"];
-
 /** Reads a server's `/api/info`; rejects when it cannot be reached or does not answer with JSON. */
 async function fetchInfo(base, timeoutMs) {
   const response = await fetch(`${base}/api/info`, {
@@ -88,7 +85,7 @@ function createBackend({ port, devUrl, executable, args = [], onUnexpectedExit, 
       const info = await fetchInfo(base, 1500);
       if (info.app !== "ax-devil" || info.api !== apiVersion || info.shell !== shellApi)
         throw new Error(`Port ${port} belongs to an incompatible server.`);
-      if (!LOCAL_GRANTS.every((grant) => info.grants?.includes(grant)))
+      if (!(info.owner && info.fullAccess))
         throw new Error(`Port ${port} does not give this app full access.`);
       // A development backend serves no frontend; only the development supervisor pairs it with one.
       if (info.development && !devUrl)

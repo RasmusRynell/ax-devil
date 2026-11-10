@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useGrants } from "../access";
+import { useAccess } from "../access";
 import { reasonOf } from "../errors";
 import type {
   CatalogInfoWire,
@@ -68,7 +68,7 @@ export function LaneCatalogActions({
   onReload?: () => void;
 }) {
   const { values, shortcuts, save, reload } = useSettings();
-  const mayChange = useGrants().includes("preferences");
+  const mayChange = useAccess().owner;
   const [naming, setNaming] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);

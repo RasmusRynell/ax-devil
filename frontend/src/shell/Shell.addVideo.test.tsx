@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Grant } from "../generated/api";
 import { FakeSocket } from "../session/fakeSession";
 import { renderShell } from "./shellHarness";
 import type { WindowBridge } from "../windowBridge";
@@ -26,10 +25,9 @@ const enabled = () =>
   );
 
 describe("add video", () => {
-  // The desktop's own backend grants preferences, which is how a window knows it may browse this machine's files.
-  const local: Grant[] = ["configuration", "preferences"];
   const chooses = (video: string | null) => {
     window.axDevilWindow = {
+      remote: false,
       minimize() {},
       toggleMaximize() {},
       close() {},
@@ -62,7 +60,7 @@ describe("add video", () => {
   it("opens the dialog, sends nothing until Add, and adds the file the chooser gave", async () => {
     serve();
     chooses("/clips/a.mp4");
-    await renderShell({ grants: local });
+    await renderShell();
     fireEvent.click(screen.getByRole("menuitem", { name: "File" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Add Video/ }));
     await screen.findByRole("dialog", { name: "Add Video" });
@@ -96,9 +94,10 @@ describe("add video", () => {
       const pick = vi.fn(() => Promise.resolve("/clients/own.mp4"));
       if (desktop) {
         chooses(null);
+        window.axDevilWindow!.remote = true;
         window.axDevilWindow!.pickVideo = pick;
       }
-      await renderShell({ grants: ["files"] });
+      await renderShell();
       FakeSocket.latest.defer = true;
       fireEvent.keyDown(document, { key: "n", ctrlKey: true });
       expect(screen.queryByRole("button", { name: "Choose video file" })).toBeNull();
@@ -154,7 +153,7 @@ describe("add video with an overlay", () => {
       async (url: string) =>
         new Response(JSON.stringify(url === "/api/files/check" ? [] : { decoders, resolvers: [] })),
     );
-    await renderShell({ grants: ["files"] });
+    await renderShell();
     fireEvent.keyDown(document, { key: "n", ctrlKey: true });
     fireEvent.change(screen.getByRole("textbox", { name: "Video path" }), {
       target: { value: "/srv/a.mp4" },

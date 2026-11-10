@@ -38,8 +38,8 @@ impl Budget {
     }
 }
 
-static LOCAL: Budget = Budget(Mutex::new(None));
-static SERVER: Budget = Budget(Mutex::new(None));
+static FULL: Budget = Budget(Mutex::new(None));
+static OWNER: Budget = Budget(Mutex::new(None));
 static ANYONE: Budget = Budget(Mutex::new(None));
 
 /// The largest body accepted; a stack trace is a few kilobytes.
@@ -69,8 +69,8 @@ pub(crate) async fn post(
     Json(error): Json<PageError>,
 ) -> StatusCode {
     let (caller, budget) = match principal {
-        Principal::Local => ("this machine", &LOCAL),
-        Principal::Server => ("server password", &SERVER),
+        Principal::Owner { full: true } => ("owner with full access", &FULL),
+        Principal::Owner { full: false } => ("owner", &OWNER),
         Principal::None => ("no credential", &ANYONE),
     };
     if !budget.admit(Instant::now()) {

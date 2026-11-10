@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { GrantsContext } from "../access";
+import { AccessContext } from "../access";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { SessionsView } from "./SessionsView";
@@ -31,12 +31,12 @@ afterEach(() => {
 describe("sessions view", () => {
   it("starts sharing, copies the join link, lets viewers explore, and stopping makes the window private again", async () => {
     render(
-      <GrantsContext value={["sessions"]}>
+      <AccessContext value={{ owner: true, fullAccess: false }}>
         <SessionProvider>
           <ShareControl onStartSharing={() => {}} />
           <SessionsView />
         </SessionProvider>
-      </GrantsContext>,
+      </AccessContext>,
     );
     expect(await screen.findByRole("button", { name: "Watch Session ann" })).toBeTruthy();
     // Connecting to a server is the desktop shell's: a plain browser is not offered it.

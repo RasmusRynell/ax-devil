@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { GrantsContext } from "../access";
+import { AccessContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
-import type { CatalogInfoWire, Grant } from "../generated/api";
+import type { CatalogInfoWire } from "../generated/api";
 import { LaneCatalogActions } from "./LaneCatalogActions";
 
 afterEach(() => {
@@ -40,7 +40,7 @@ function routes(reply: { ok: true; body?: unknown } | { ok: false; reason: strin
 function setup(
   catalog: string,
   defaultId: string,
-  grants: Grant[] = ["preferences"],
+  access = { owner: true, fullAccess: false },
   stored = defaultId,
 ) {
   const onChange = vi.fn();
@@ -48,7 +48,7 @@ function setup(
   const reload = vi.fn(async () => {});
   const onReload = vi.fn();
   const view = (current: string, listing: CatalogInfoWire[] = CATALOGS) => (
-    <GrantsContext value={grants}>
+    <AccessContext value={access}>
       <FakeSettings
         state={{
           ...DEFAULT_SETTINGS,
@@ -67,7 +67,7 @@ function setup(
           onChange={onChange}
         />
       </FakeSettings>
-    </GrantsContext>
+    </AccessContext>
   );
   const { rerender } = render(view(catalog));
   return {
@@ -88,8 +88,8 @@ const confirmDelete = () =>
   );
 
 describe("catalog copy and delete", () => {
-  it("are for the person at the machine", () => {
-    setup("user:night.json", "built-in:standard", []);
+  it("need an Owner", () => {
+    setup("user:night.json", "built-in:standard", { owner: false, fullAccess: false });
     expect(screen.getByRole("button", { name: "Use as default" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
@@ -242,7 +242,7 @@ describe("catalog copy and delete", () => {
     const { save } = setup(
       "built-in:standard",
       "built-in:standard",
-      ["preferences"],
+      { owner: true, fullAccess: false },
       "user:gone.json",
     );
     fireEvent.click(screen.getByRole("button", { name: "Use as default" }));

@@ -44,26 +44,25 @@ pid: number,
  */
 shell: number, 
 /**
- * What the caller of this request may do.
+ * Whether the caller of this request is the Owner.
  */
-grants: Array<Grant>, };
+owner: boolean, 
+/**
+ * Whether the caller is an Owner with Full access.
+ */
+fullAccess: boolean, };
 
 /**
- * What a caller may do on a backend. Every request is judged by the grants of whoever sent it; they are not roles.
- */
-export type Grant = "preferences" | "configuration" | "sessions" | "files";
-
-/**
- * The body of `PUT /api/settings`: every setting and shortcut the caller may change, which replace the stored ones.
- * A masked secret sent back keeps the stored secret; a key outside the caller's scopes is refused with 403.
+ * The body of `PUT /api/settings`: every setting and shortcut, which replace the stored ones. A masked
+ * secret sent back keeps the stored secret.
  */
 export type SettingsChange = { 
 /**
- * Every setting of the caller's scopes by dotted key.
+ * Every setting by dotted key.
  */
 values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<"score" | "confidence", { min: number | null; max: number | null }>; expression: string }>, 
 /**
- * The key of every command; `null` when unbound. Empty unless the caller holds the `preferences` grant.
+ * The key of every command; `null` when unbound.
  */
 shortcuts: Record<CommandId, string | null>, };
 
@@ -90,22 +89,21 @@ log?: string, };
  */
 export type SettingsState = { 
 /**
- * The settings the caller may read by dotted key, such as `"ui.theme"`, with the default when unset: those of
- * its scopes, a `$NAME` reference as written and a literal secret masked.
+ * Every setting by dotted key, such as `"ui.theme"`, with the default when unset, a `$NAME` reference as written
+ * and a literal secret masked.
  */
 values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<"score" | "confidence", { min: number | null; max: number | null }>; expression: string }>, 
 /**
  * What each non-secret setting among `values` that holds a `$NAME` reference gives as it is used (a number for a
- * whole-number setting), for a form that starts from the value. Only for the person at this machine, whose
- * environment it is; absent for a setting without a reference.
+ * whole-number setting), for a form that starts from the value. Only with Full access, since it is the server's
+ * environment; absent for a setting without a reference.
  */
 resolved?: Partial<Record<SettingKey, string | number>>, 
 /**
- * The config file, for a caller who may see this machine's files.
+ * The config file.
  */
 file?: SettingsFile, 
 /**
- * The key of every command once the user's changes apply; `null` when unbound. Empty unless the caller holds
- * the `preferences` grant: shortcuts are Personal.
+ * The key of every command once the user's changes apply; `null` when unbound.
  */
 shortcuts: Record<CommandId, string | null>, };

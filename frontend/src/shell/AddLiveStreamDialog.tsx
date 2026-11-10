@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CommandFailed, reasonOf } from "../errors";
 import type { HandlersInfo, LiveConnection, NewLiveWire } from "../generated/api";
-import { useGrants } from "../access";
+import { useAccess } from "../access";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { seedOf, type AddSeed } from "../live/cameras";
 import { askResolutions, askSources, DEBOUNCE_MS, sizesOf, useDiscovery } from "../live/discovery";
@@ -216,12 +216,8 @@ export function AddLiveStreamDialog({
     (refusal?.judged ? refusal.reason : undefined);
   const message = wrong ?? refusal?.reason ?? "";
 
-  // Only the person at this machine may ask what a reference expands to.
-  const expansions = useExpansions(
-    form.host,
-    form.broker_host,
-    useGrants().includes("preferences"),
-  );
+  // Only Full access may ask what a reference expands to.
+  const expansions = useExpansions(form.host, form.broker_host, useAccess().fullAccess);
   const props: PanelProps = {
     form,
     set: <K extends FieldKey>(field: K, value: LiveForm[K]) => {

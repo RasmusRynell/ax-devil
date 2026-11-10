@@ -99,7 +99,7 @@ pub(super) enum Standing {
 }
 
 impl Standing {
-    fn allows(self, scope: Scope, files: bool) -> bool {
+    fn allows(self, scope: Scope) -> bool {
         match scope {
             // Back to the presenter's view: a seat that follows, or explores a view it may drop. An editing seat's
             // view is its own to keep, and a watching seat has none.
@@ -116,7 +116,7 @@ impl Standing {
                 Self::Watching | Self::Following | Self::Exploring => false,
             },
             Scope::Host => match self {
-                Self::Owner => files,
+                Self::Owner => true,
                 Self::Watching | Self::Following | Self::Exploring | Self::Editing => false,
             },
             Scope::Control => match self {
@@ -151,7 +151,7 @@ pub struct Can {
 /// What `seat` at `lease` may do, or `SeatGone` when it is not a current seat of a live session.
 pub fn can(state: &SessionState, seat: SeatId, lease: Lease) -> Result<Can, Refusal> {
     let standing = standing(state, seat, lease)?;
-    let allows = |scope| standing.allows(scope, state.files);
+    let allows = |scope| standing.allows(scope);
     Ok(Can {
         view: allows(Scope::View),
         content: allows(Scope::Content),
@@ -202,7 +202,7 @@ pub fn authorize(
 ) -> Result<(), Refusal> {
     match use_ {
         Use::Command(scope) => {
-            if standing(state, seat, lease)?.allows(scope, state.files) {
+            if standing(state, seat, lease)?.allows(scope) {
                 Ok(())
             } else {
                 Err(Refusal::NotAllowed)

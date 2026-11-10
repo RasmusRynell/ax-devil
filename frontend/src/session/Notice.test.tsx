@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { credential, GrantsContext } from "../access";
+import { credential, AccessContext } from "../access";
 import { FakeSocket } from "./fakeSession";
 import { SessionProvider } from "./session";
 
@@ -10,7 +10,7 @@ const reload = vi.fn();
 beforeEach(() => {
   vi.stubGlobal("WebSocket", FakeSocket);
   vi.stubGlobal("location", { href: window.location.href, reload });
-  window.axDevilWindow = { disconnect } as never;
+  window.axDevilWindow = { disconnect, remote: true } as never;
   FakeSocket.serverPassword = "right";
   window.sessionStorage.setItem(
     "ax-devil.credential",
@@ -30,11 +30,11 @@ afterEach(() => {
 /** A desktop window on another machine's server, which turned the stored password down. */
 async function rejected() {
   render(
-    <GrantsContext.Provider value={[]}>
+    <AccessContext.Provider value={{ owner: false, fullAccess: false }}>
       <SessionProvider>
         <p>app</p>
       </SessionProvider>
-    </GrantsContext.Provider>,
+    </AccessContext.Provider>,
   );
   await act(async () => {});
   return screen.findByRole("alert");
@@ -71,11 +71,11 @@ describe("a browser that opened a server with a password", () => {
 
   const open = () =>
     render(
-      <GrantsContext.Provider value={[]}>
+      <AccessContext.Provider value={{ owner: false, fullAccess: false }}>
         <SessionProvider>
           <p>app</p>
         </SessionProvider>
-      </GrantsContext.Provider>,
+      </AccessContext.Provider>,
     );
 
   it("asks for the password, and is let in once it gives the right one", async () => {

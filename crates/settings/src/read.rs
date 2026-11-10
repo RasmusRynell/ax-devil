@@ -1,17 +1,17 @@
 //! How the rest of the app reads a setting's value from the state: as used, as stored, as written, or listed for a
 //! form, each deciding what a `$NAME` reference gives.
 
-use crate::{Kind, Scope, State};
+use crate::{Kind, State};
 use serde_json::Value;
 use std::{collections::BTreeMap, path::PathBuf};
 
 impl State {
-    /// What each non-secret setting in `scopes` that holds a `$NAME` reference gives as it is used, by dotted key, for
+    /// What each non-secret setting that holds a `$NAME` reference gives as it is used, by dotted key, for
     /// a form that starts from the value rather than the reference. Not logged: nothing is used yet.
-    pub fn references(&self, scopes: &[Scope]) -> BTreeMap<String, Value> {
+    pub fn references(&self) -> BTreeMap<String, Value> {
         self.table
             .iter()
-            .filter(|setting| scopes.contains(&setting.scope) && !setting.secret)
+            .filter(|setting| !setting.secret)
             .filter_map(|setting| {
                 let value = self.values.get(setting.key)?;
                 setting.holds_reference(value).then(|| {

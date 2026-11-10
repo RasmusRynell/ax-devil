@@ -28,7 +28,7 @@ Shared language for ax-devil's inspection workspace. Code, docs and UI use these
 | Watcher | Anyone else in a Session: Following shows the Presenter View, Exploring shows its own view of what the Owner has open. | Viewer, guest, spectator |
 | Presenter View | The view state the Owner publishes. | Shared screen |
 | Join Link | A URL whose secret admits its holder to one Session only. | Invite, share link |
-| Server Password | The secret that lets someone use a remote server itself: own and watch Sessions, add its videos, change its Server settings. | Login, token |
+| Server Password | The secret that lets someone use a remote server itself: own and watch Sessions, add its videos, change its settings. | Login, token |
 | Sidebar View | What the sidebar shows, chosen from the activity bar: the Workspace or one part of it (top zone), or something about the application (bottom zone). | Panel, tab, page |
 | Content | What a Workspace Item resolves to: Seekable Video, Live Video, or Playlist Content. Rebuilt on every resolution, never saved. | Startup content, resolved item |
 | Viewer | An open inspection surface hosted by the Workspace: the user-facing name for a Viewer Widget. | Player, pane, runtime bucket |

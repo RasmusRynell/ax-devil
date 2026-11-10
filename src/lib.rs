@@ -24,7 +24,7 @@ pub mod video_sources;
 
 use access::{Admission, Limits, Policy, Principal};
 use api_types::{
-    API_VERSION, ApiError, AppInfo, Grant, SHELL_API, SettingsChange, SettingsFile, SettingsState,
+    API_VERSION, ApiError, AppInfo, SHELL_API, SettingsChange, SettingsFile, SettingsState,
 };
 use axum::{
     Json, Router,
@@ -43,9 +43,8 @@ use routes::Listener;
 use scene_store::TrackRegistry;
 use session::{GRACE, LaunchQueue, Sessions, WorkspaceFiles, WorkspaceStorage};
 use sessions::session::{OnRuntime, poll_sources};
-use settings::Scope;
 use share::Hosting;
-use std::{collections::BTreeMap, path::Path, sync::Arc, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 use tokio::{sync::watch, time::MissedTickBehavior};
 
 pub use routes::window::Windows;
@@ -64,7 +63,7 @@ const CATALOG_POLL: Duration = Duration::from_millis(500);
 /// What every route can reach: the services it is an adapter over, who is asking, the socket limits, and the sessions.
 #[derive(Clone)]
 pub struct AppState {
-    /// The settings service; a route reads and writes only the scopes its caller is granted.
+    /// The settings service; every Owner reads and writes every row.
     pub settings: Arc<settings::Settings>,
     /// Where the saved window positions are, when this backend keeps any; see [`AppState::with_windows`].
     windows: Option<Arc<Windows>>,
@@ -298,41 +297,30 @@ pub fn app(state: AppState) -> Router {
     router.layer(from_fn(access::security_headers))
 }
 
-/// What `principal` may read of the settings: its scopes' values, the shortcuts when it holds the `preferences`
-/// grant.
+/// What an Owner reads of the settings: every value and shortcut, what references give only with Full access.
 fn snapshot(
     settings: &settings::Settings,
     log_file: Option<&Path>,
     state: &settings::State,
     principal: Principal,
 ) -> SettingsState {
-    let scopes = principal.scopes();
-    let shortcuts = if scopes.contains(&Scope::Personal) {
-        state
+    SettingsState {
+        values: state.values(),
+        // What a reference gives is the server's environment: only Full access is told.
+        resolved: principal
+            .full_access()
+            .then(|| state.references())
+            .filter(|resolved| !resolved.is_empty()),
+        file: Some(SettingsFile {
+            path: settings.path().display().to_string(),
+            version: state.version(),
+            log: log_file.map(|file| file.display().to_string()),
+        }),
+        shortcuts: state
             .shortcuts()
             .into_iter()
             .map(|(id, key)| (id.to_owned(), key))
-            .collect()
-    } else {
-        BTreeMap::new()
-    };
-    SettingsState {
-        values: state.values(&scopes),
-        // What a reference gives is this machine's environment: only the person at this machine is told.
-        resolved: principal
-            .grants()
-            .contains(&Grant::Preferences)
-            .then(|| state.references(&scopes))
-            .filter(|resolved| !resolved.is_empty()),
-        file: principal
-            .grants()
-            .contains(&Grant::Files)
-            .then(|| SettingsFile {
-                path: settings.path().display().to_string(),
-                version: state.version(),
-                log: log_file.map(|file| file.display().to_string()),
-            }),
-        shortcuts,
+            .collect(),
     }
 }
 
@@ -350,7 +338,7 @@ pub(crate) async fn get_settings(
     ))
 }
 
-/// Replaces every setting and shortcut the caller may change; a rejected or unsaved change leaves the stored state
+/// Replaces every setting and shortcut; a rejected or unsaved change leaves the stored state
 /// as it was.
 pub(crate) async fn put_settings(
     principal: Principal,
@@ -362,26 +350,6 @@ pub(crate) async fn put_settings(
     }): State<AppState>,
     Json(body): Json<SettingsChange>,
 ) -> Result<Json<SettingsState>, (StatusCode, Json<ApiError>)> {
-    let scopes = principal.scopes();
-    let not_yours = |location: &str| {
-        failure(
-            StatusCode::FORBIDDEN,
-            location,
-            "this setting is not yours to change".into(),
-        )
-    };
-    if let Some(key) = body.values.keys().find(|key| {
-        settings::TABLE
-            .iter()
-            .any(|setting| setting.key == key.as_str() && !scopes.contains(&setting.scope))
-    }) {
-        return Err(not_yours(key));
-    }
-    if !scopes.contains(&Scope::Personal)
-        && let Some(id) = body.shortcuts.keys().next()
-    {
-        return Err(not_yours(&format!("shortcuts.{id}")));
-    }
     if let Some(serde_json::Value::String(range)) = body.values.get("scan.range") {
         // A `$NAME` reference is checked as the variable holds it now, as the scan will read it; blank is the local
         // network.
@@ -408,7 +376,7 @@ pub(crate) async fn put_settings(
         // The default catalog is checked under the lock that writes it, against the value stored by then, so a
         // catalog deleted meanwhile (which resets the default under the same lock) is not stored again.
         settings
-            .replace_if(&scopes, &change, |current| {
+            .replace_if(&change, |current| {
                 let stored = current.resolved(catalogs::DEFAULT_SETTING);
                 match routes::catalogs::default_refusal(&library, stored.as_ref(), &change.values) {
                     Some(reason) => Err(settings::Error {
@@ -462,7 +430,8 @@ pub(crate) async fn info(principal: Principal) -> Json<AppInfo> {
         development: !cfg!(feature = "embed-assets"),
         pid: std::process::id(),
         shell: SHELL_API,
-        grants: principal.grants().to_vec(),
+        owner: principal.is_owner(),
+        full_access: principal.full_access(),
     })
 }
 

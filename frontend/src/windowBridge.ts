@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { useGrants } from "./access";
 
 /** What the Electron shell's preload exposes to the page; absent in a plain browser. */
 export interface WindowBridge {
+  /** Whether this window shows another machine's server, whose machine the native features below cannot reach. */
+  remote: boolean;
   minimize(): void;
   toggleMaximize(): void;
   close(): void;
@@ -85,11 +86,15 @@ export function useAppFullscreen(): boolean {
 
 /**
  * Where this page comes from: `browser` (no desktop shell around it), `local` (the desktop's own backend) or
- * `remote` (another machine's server, in the desktop). Only the local backend grants personal preferences, so the
- * grants tell the two desktop cases apart without asking the shell.
+ * `remote` (another machine's server, in the desktop). The shell says which; the role never does.
  */
 export function useServerKind(): "browser" | "local" | "remote" {
-  const grants = useGrants();
   if (!window.axDevilWindow) return "browser";
-  return grants.includes("preferences") ? "local" : "remote";
+  return window.axDevilWindow.remote ? "remote" : "local";
+}
+
+/** The shell's native features (file dialogs, restart, opening logs), only in a window on this machine's own backend. */
+export function nativeBridge(): WindowBridge | undefined {
+  const bridge = window.axDevilWindow;
+  return bridge && !bridge.remote ? bridge : undefined;
 }

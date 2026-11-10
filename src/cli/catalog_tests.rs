@@ -79,7 +79,7 @@ fn catalog_use_stores_one_setting_and_standard_clears_it() {
         let state = ::settings::Settings::load(&dir.path().join("settings.json"))
             .unwrap()
             .state();
-        state.values(&[::settings::Scope::Personal])
+        state.values()
     };
     let before = personal();
 

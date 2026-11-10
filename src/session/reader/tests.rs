@@ -90,7 +90,7 @@ async fn adding_a_found_camera_uses_the_scan_login_and_never_shows_it() {
         .unwrap();
     let handle = state
         .sessions
-        .create(true, true, CursorOptions::default())
+        .create(true, CursorOptions::default())
         .unwrap();
 
     // Only the owner has the scan's logins.
@@ -189,7 +189,7 @@ async fn another_stream_of_a_camera_copies_its_saved_login_for_the_owner_only() 
     );
     let owner = state
         .sessions
-        .create(true, true, CursorOptions::default())
+        .create(true, CursorOptions::default())
         .unwrap();
     let ok = |ack: &SessionServerMessage| {
         matches!(
@@ -329,7 +329,7 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
     );
     let owner = state
         .sessions
-        .create(true, true, CursorOptions::default())
+        .create(true, CursorOptions::default())
         .unwrap();
     let mut acks = vec![
         answer(
@@ -416,7 +416,7 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
     );
     let owner = state
         .sessions
-        .create(true, true, CursorOptions::default())
+        .create(true, CursorOptions::default())
         .unwrap();
     let mqtt = json!({"mode": "mqtt", "handler": "ADF_V1_FRAME", "broker_host": "b.local", "broker_user": "mqtt",
         "broker_pass": PASSWORD, "source_key": "k"});
@@ -573,16 +573,13 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
 
     // A guest's stream keeps nothing the owner configured for a mode it does not use: with the broker user set to
     // a reference, the kept user stays blank.
-    let mut values = state.settings.state().values(&settings::Scope::ALL);
+    let mut values = state.settings.state().values();
     values.insert("broker.user".into(), "$SOME_SECRET".into());
     let change = settings::Change {
         values,
         shortcuts: Default::default(),
     };
-    state
-        .settings
-        .replace(&settings::Scope::ALL, &change)
-        .unwrap();
+    state.settings.replace(&change).unwrap();
     let added = json!({"host": "cam.local", "username": "guest", "overlay": {"mode": "none"},
         "kept_mqtt": {"broker_host": "attacker.example", "broker_pass": "literal"}});
     seq += 1;

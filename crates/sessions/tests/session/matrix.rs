@@ -75,7 +75,7 @@ fn world(access: Access) -> World {
         crate::video_in(dir.path(), "b.mp4"),
     );
     let id = item.id;
-    let mut state = SessionState::new(SessionId::generate(), OwnerId::generate(), true, true);
+    let mut state = SessionState::new(SessionId::generate(), OwnerId::generate(), true);
     let add = DocCommand::AddItems {
         items: vec![item],
         open: true,

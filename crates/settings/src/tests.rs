@@ -122,7 +122,7 @@ fn the_view_defaults_take_a_whole_object_in_range_and_sticky_is_not_written_whil
         "overlays.default_sticky".into(),
         json!({"enabled": true, "timeout_ms": 2050, "opacity": 1.0}),
     );
-    settings.replace(&Scope::ALL, &edit).unwrap();
+    settings.replace(&edit).unwrap();
     assert!(
         read(&path)["settings"]
             .get("overlays.default_sticky")
@@ -133,7 +133,7 @@ fn the_view_defaults_take_a_whole_object_in_range_and_sticky_is_not_written_whil
         "overlays.default_sticky".into(),
         json!({"enabled": false, "timeout_ms": null, "opacity": 0.5}),
     );
-    settings.replace(&Scope::ALL, &edit).unwrap();
+    settings.replace(&edit).unwrap();
     assert_eq!(
         read(&path)["settings"]["overlays.default_sticky"],
         json!({"enabled": false, "timeout_ms": null, "opacity": 0.5})
@@ -153,7 +153,7 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
     .unwrap();
 
     let settings = Settings::load(&path).unwrap();
-    assert_eq!(settings.state().values(&Scope::ALL)["ui.theme"], "light");
+    assert_eq!(settings.state().values()["ui.theme"], "light");
     assert_eq!(settings.state().shortcuts()["exit"], None);
 
     let mut edit = change("dark");
@@ -161,7 +161,7 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
         .insert("ui.quick_setup_done".into(), json!(false));
     edit.shortcuts
         .insert("exit".into(), Some("Ctrl+Alt+Q".into()));
-    settings.replace(&Scope::ALL, &edit).unwrap();
+    settings.replace(&edit).unwrap();
 
     assert_eq!(
         read(&path),
@@ -174,7 +174,7 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
         "only what differs from the default is written; unknown entries stay"
     );
     let again = Settings::load(&path).unwrap().state();
-    assert_eq!(again.values(&Scope::ALL)["ui.theme"], "dark");
+    assert_eq!(again.values()["ui.theme"], "dark");
     assert_eq!(again.shortcuts()["exit"].as_deref(), Some("Ctrl+Alt+Q"));
     assert_eq!(
         fs::read_dir(path.parent().unwrap()).unwrap().count(),
@@ -186,7 +186,7 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
     reset
         .values
         .insert("ui.quick_setup_done".into(), json!(false));
-    settings.replace(&Scope::ALL, &reset).unwrap();
+    settings.replace(&reset).unwrap();
     assert_eq!(
         read(&path)["settings"],
         json!({"ui.zoom": "large"}),
@@ -269,7 +269,7 @@ fn an_older_file_is_backed_up_migrated_in_order_and_written_at_the_current_versi
     let v1 = r#"{"version": 1, "settings": {"theme": "night"}}"#;
     let (folder, path, settings) = load(v1);
     assert_eq!(
-        settings.state().values(&Scope::ALL)["ui.theme"],
+        settings.state().values()["ui.theme"],
         "dark",
         "step 2 saw the result of step 1"
     );
@@ -285,7 +285,7 @@ fn an_older_file_is_backed_up_migrated_in_order_and_written_at_the_current_versi
 
     let (folder, _, settings) = load(r#"{"version": 2, "settings": {"ui.theme": "night"}}"#);
     assert_eq!(
-        settings.state().values(&Scope::ALL)["ui.theme"],
+        settings.state().values()["ui.theme"],
         "dark",
         "a v2 file skips step 1"
     );
@@ -343,18 +343,18 @@ fn every_released_settings_file_still_loads() {
         let settings = Settings::load(&path).unwrap_or_else(|error| panic!("{name}: {error}"));
         let state = settings.state();
         let again = Change {
-            values: state.values(&Scope::ALL),
+            values: state.values(),
             shortcuts: state
                 .shortcuts()
                 .into_iter()
                 .map(|(id, key)| (id.to_owned(), key))
                 .collect(),
         };
-        settings.replace(&Scope::ALL, &again).unwrap();
+        settings.replace(&again).unwrap();
         assert_eq!(read(&path)["version"], VERSION, "{name}");
         assert_eq!(
-            Settings::load(&path).unwrap().state().values(&Scope::ALL),
-            state.values(&Scope::ALL),
+            Settings::load(&path).unwrap().state().values(),
+            state.values(),
             "{name}"
         );
     }
@@ -377,8 +377,8 @@ fn saving_replaces_a_linked_settings_file_with_a_private_file_and_leaves_the_tar
     std::os::unix::fs::symlink(&target, &path).unwrap();
 
     let settings = Settings::load(&path).unwrap();
-    assert_eq!(settings.state().values(&Scope::ALL)["ui.theme"], "light");
-    settings.replace(&Scope::ALL, &change("dark")).unwrap();
+    assert_eq!(settings.state().values()["ui.theme"], "light");
+    settings.replace(&change("dark")).unwrap();
 
     assert_eq!(fs::read_to_string(&target).unwrap(), original);
     assert!(!fs::symlink_metadata(&path).unwrap().is_symlink());
@@ -389,7 +389,7 @@ fn saving_replaces_a_linked_settings_file_with_a_private_file_and_leaves_the_tar
     let private = folder.path().join("a/b/settings.json");
     Settings::load(&private)
         .unwrap()
-        .replace(&Scope::ALL, &change("dark"))
+        .replace(&change("dark"))
         .unwrap();
     let mode = fs::metadata(private.parent().unwrap())
         .unwrap()
@@ -426,12 +426,12 @@ fn a_rejected_replace_changes_neither_state_nor_file() {
         (duplicate, "shortcuts.exit"),
         (reserved, "shortcuts.exit"),
     ] {
-        let error = settings.replace(&Scope::ALL, &rejected).unwrap_err();
+        let error = settings.replace(&rejected).unwrap_err();
         assert_eq!(error.location, location);
         assert!(error.invalid);
     }
 
-    assert_eq!(settings.state().values(&Scope::ALL)["ui.theme"], "auto");
+    assert_eq!(settings.state().values()["ui.theme"], "auto");
     assert!(!path.exists());
 }
 
@@ -440,11 +440,11 @@ fn a_replace_is_checked_against_the_stored_state_and_a_refusal_changes_nothing()
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
     let settings = Settings::load(&path).unwrap();
-    settings.replace(&Scope::ALL, &change("dark")).unwrap();
+    settings.replace(&change("dark")).unwrap();
 
     let refused = settings
-        .replace_if(&Scope::ALL, &change("light"), |stored| {
-            assert_eq!(stored.values(&Scope::ALL)["ui.theme"], "dark");
+        .replace_if(&change("light"), |stored| {
+            assert_eq!(stored.values()["ui.theme"], "dark");
             Err(Error {
                 location: "ui.theme".into(),
                 reason: "no".into(),
@@ -454,7 +454,7 @@ fn a_replace_is_checked_against_the_stored_state_and_a_refusal_changes_nothing()
         .unwrap_err();
 
     assert_eq!(refused.reason, "no");
-    assert_eq!(settings.state().values(&Scope::ALL)["ui.theme"], "dark");
+    assert_eq!(settings.state().values()["ui.theme"], "dark");
     assert_eq!(read(&path)["settings"]["ui.theme"], "dark");
 }
 
@@ -477,10 +477,10 @@ fn the_video_cache_is_auto_or_whole_mib_in_range_and_a_saved_number_survives_a_r
         json!("512"),
         json!(true),
     ] {
-        let error = settings.replace(&Scope::ALL, &with(rejected)).unwrap_err();
+        let error = settings.replace(&with(rejected)).unwrap_err();
         assert_eq!(error.location, "playback.video_cache");
     }
-    settings.replace(&Scope::ALL, &with(json!(512))).unwrap();
+    settings.replace(&with(json!(512))).unwrap();
     assert_eq!(
         Settings::load(&path)
             .unwrap()
@@ -488,7 +488,7 @@ fn the_video_cache_is_auto_or_whole_mib_in_range_and_a_saved_number_survives_a_r
             .auto_or_whole("playback.video_cache"),
         Some(512)
     );
-    settings.replace(&Scope::ALL, &with(json!("auto"))).unwrap();
+    settings.replace(&with(json!("auto"))).unwrap();
     assert_eq!(settings.state().auto_or_whole("playback.video_cache"), None);
 }
 
@@ -499,16 +499,13 @@ fn subscribers_see_each_saved_change_and_nothing_for_a_rejected_one() {
     let mut changes = settings.subscribe();
     assert!(!changes.has_changed().unwrap());
 
-    settings.replace(&Scope::ALL, &change("neon")).unwrap_err();
+    settings.replace(&change("neon")).unwrap_err();
     assert!(
         !changes.has_changed().unwrap(),
         "a rejected change is not announced"
     );
 
-    settings.replace(&Scope::ALL, &change("dark")).unwrap();
+    settings.replace(&change("dark")).unwrap();
     assert!(changes.has_changed().unwrap());
-    assert_eq!(
-        changes.borrow_and_update().values(&Scope::ALL)["ui.theme"],
-        "dark"
-    );
+    assert_eq!(changes.borrow_and_update().values()["ui.theme"], "dark");
 }

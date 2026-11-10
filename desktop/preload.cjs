@@ -7,6 +7,8 @@ const { contextBridge, ipcRenderer, webFrame } = require("electron");
 const restartable = process.argv.includes("--ax-devil-restartable");
 
 contextBridge.exposeInMainWorld("axDevilWindow", {
+  // Whether this window shows another machine's server; the native features of this machine are refused there.
+  remote: process.argv.includes("--ax-devil-remote"),
   minimize: () => ipcRenderer.send("window:minimize"),
   toggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),
   close: () => ipcRenderer.send("window:close"),

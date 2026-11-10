@@ -8,7 +8,7 @@
 
 use crate::{AppState, access::Principal, camera_questions, live_sources, session::live::defaults};
 use api_types::{
-    Audience, Grant,
+    Audience,
     live::{
         LiveConnection, LiveProblem, LiveReason, LiveResolutions, LiveTopics, NewLiveOverlayWire,
         NewLiveWire, ResolutionsRequest, SourcesAnswer, SourcesOverlay, SourcesRequest,
@@ -39,10 +39,10 @@ fn camera(
 ) -> Result<ResolvedCamera, Problem> {
     let settings = state.settings.state();
     let handlers = state.plugins.handlers();
-    // The configured passwords are the person at this machine's: another principal names its own.
-    let owner = principal.grants().contains(&Grant::Preferences);
-    let mut defaults = defaults(&settings, owner);
-    if !owner {
+    // The configured passwords are for Full access: another principal names its own.
+    let full_access = principal.full_access();
+    let mut defaults = defaults(&settings, full_access);
+    if !full_access {
         defaults = defaults.without_secrets();
     }
     let like = connection.like;
@@ -64,7 +64,7 @@ fn camera(
             },
         )
     };
-    if owner
+    if full_access
         && let Some(held) = like.and_then(|item| state.sessions.find_item(item))
         && let Source::Live(saved) = &held.item.recipe.source
     {
@@ -83,9 +83,9 @@ fn camera(
         defaults.password = Secret::new("");
     }
     let item = intake::live(new, &defaults, &handlers).map_err(|error| invalid(&error))?;
-    // A reference reads this machine's environment only for the person at this machine; a remote viewer's text,
+    // A reference reads this machine's environment only with Full access; any other text,
     // defaults included, stays literal.
-    let env = if owner {
+    let env = if full_access {
         Environment::of_process()
     } else {
         Environment::literal()
@@ -235,17 +235,14 @@ mod tests {
             Plugins::fixed(Handlers::built_in()),
             &cache,
         );
-        let mut values = state.settings.state().values(&settings::Scope::ALL);
+        let mut values = state.settings.state().values();
         values.insert("camera.password".into(), "CONFIGURED-PASSWORD".into());
         state
             .settings
-            .replace(
-                &settings::Scope::ALL,
-                &settings::Change {
-                    values,
-                    shortcuts: Default::default(),
-                },
-            )
+            .replace(&settings::Change {
+                values,
+                shortcuts: Default::default(),
+            })
             .unwrap();
         let configured = defaults(&state.settings.state(), true);
         let saved = intake::live(
@@ -274,7 +271,7 @@ mod tests {
         let like_reference = by_reference.id;
         let session = state
             .sessions
-            .create(true, true, CursorOptions::default())
+            .create(true, CursorOptions::default())
             .unwrap();
         session
             .command(Command::Content(DocCommand::AddItems {
@@ -294,14 +291,14 @@ mod tests {
                 .login
                 .map(|login| login.password.expose().to_owned())
         };
-        let default = password(Principal::Local, "cam.local", None);
+        let default = password(Principal::Owner { full: true }, "cam.local", None);
         assert_eq!(default.as_deref(), Some("CONFIGURED-PASSWORD"));
         assert_eq!(
-            password(Principal::Local, "cam.local", Some(like)).as_deref(),
+            password(Principal::Owner { full: true }, "cam.local", Some(like)).as_deref(),
             Some("SAVED-PASSWORD")
         );
         assert_eq!(
-            password(Principal::Local, "other.local", Some(like)),
+            password(Principal::Owner { full: true }, "other.local", Some(like)),
             default
         );
         // An edit sends a cleared password as empty: the saved literal it was never sent comes back, but the
@@ -313,7 +310,7 @@ mod tests {
                 like,
                 ..LiveConnection::default()
             };
-            resolve(&state, Principal::Local, connection)
+            resolve(&state, Principal::Owner { full: true }, connection)
                 .unwrap()
                 .login
                 .map(|login| login.password.expose().to_owned())
@@ -332,7 +329,7 @@ mod tests {
                 like: Some(like_reference),
                 ..LiveConnection::default()
             };
-            resolve(&state, Principal::Local, connection)
+            resolve(&state, Principal::Owner { full: true }, connection)
                 .unwrap()
                 .login
                 .map(|login| login.password.expose().to_owned())
@@ -342,7 +339,7 @@ mod tests {
             reference(Some(WireSecret::default())).unwrap_or_default(),
             ""
         );
-        for principal in [Principal::Server, Principal::None] {
+        for principal in [Principal::Owner { full: false }, Principal::None] {
             for like in [None, Some(like)] {
                 // The configured user is a reference, kept literal for them, so there may be a login, never a password.
                 assert_eq!(
@@ -377,7 +374,7 @@ mod tests {
             .unwrap();
     }
 
-    /// `PATH` stands for any variable: the person at this machine's reference reads it, a remote viewer's never does.
+    /// `PATH` stands for any variable: a reference with Full access reads it, one without never does.
     #[tokio::test]
     async fn a_reference_reads_the_environment_for_the_local_seat_and_stays_literal_for_a_remote_viewer()
      {
@@ -389,11 +386,11 @@ mod tests {
             .unwrap()
         };
         let path = std::env::var("PATH").unwrap();
-        let local = resolve(&test.state, Principal::Local, connection()).unwrap();
+        let local = resolve(&test.state, Principal::Owner { full: true }, connection()).unwrap();
         assert_eq!(local.host, path);
         assert_eq!(local.login.unwrap().password.expose(), path);
 
-        let remote = resolve(&test.state, Principal::Server, connection()).unwrap();
+        let remote = resolve(&test.state, Principal::Owner { full: false }, connection()).unwrap();
         assert_eq!(remote.host, "$PATH");
         let login = remote.login.unwrap();
         assert_eq!(

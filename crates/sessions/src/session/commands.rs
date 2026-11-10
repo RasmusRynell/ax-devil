@@ -23,7 +23,7 @@ pub enum Scope {
     Follow,
     /// Change the Doc's content.
     Content,
-    /// Read the host's files. The owner needs the files grant.
+    /// Read the host's files. Only the owner may.
     Host,
     /// Change who the session is shared with.
     Control,

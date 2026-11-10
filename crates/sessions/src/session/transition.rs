@@ -154,8 +154,7 @@ pub enum Outcome {
         entry: Option<Box<Entry>>,
         /// How the workspace says each lane of `entry` matches its records to frames; `None` for the default.
         matching: BTreeMap<String, MatchPolicy>,
-        /// Whether the holder may learn the host's paths and diagnostic text: it is the owner of a session whose
-        /// owner holds the files grant.
+        /// Whether the holder may learn the host's paths and diagnostic text: it is the owner of the session.
         host_details: bool,
     },
 }

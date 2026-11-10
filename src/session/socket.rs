@@ -11,7 +11,7 @@ use crate::{
     AppState,
     access::{Principal, Slot},
 };
-use api_types::{CursorPoint, Grant, SessionAuth, SessionClientMessage};
+use api_types::{CursorPoint, SessionAuth, SessionClientMessage};
 use axum::{
     extract::{ConnectInfo, State, WebSocketUpgrade, ws::Message, ws::WebSocket},
     http::StatusCode,
@@ -122,20 +122,14 @@ async fn hello(
     match auth {
         SessionAuth::Own { server_password } => {
             let principal = member(state, server_password.as_deref())?;
-            let files = principal.grants().contains(&Grant::Files);
-            // The person at this machine holds `preferences`; a holder of the server password does not, and what
-            // it types never reads this machine's environment.
+            // Only Full access lets what the Owner types read this machine's environment.
             let handle = sessions
-                .create(
-                    files,
-                    principal.grants().contains(&Grant::Preferences),
-                    cursors,
-                )
+                .create(principal.full_access(), cursors)
                 .map_err(|error| refuse(error, ENDED))?;
-            if files && let Some(rx) = sessions.subscribe(handle.session()) {
+            if let Some(rx) = sessions.subscribe(handle.session()) {
                 state.files.attach(handle.session(), rx);
-                // Only the first Local session starts from what the command line asked for.
-                if principal == Principal::Local
+                // Only the first session with Full access starts from what the command line asked for.
+                if principal.full_access()
                     && let Some(launch) = state.launch.take()
                 {
                     state.files.launch(&handle, launch).await;
@@ -166,14 +160,13 @@ async fn hello(
     }
 }
 
-/// Who the password makes the caller, if that may own or watch sessions: the person at this machine or a password
-/// holder.
+/// Who the password makes the caller, if that is an Owner, who may own or watch sessions.
 fn member(state: &AppState, password: Option<&str>) -> Result<Principal, Exit> {
     let principal = state.policy.principal_for(password);
     if password.is_some() && principal == Principal::None {
         return Err(Exit::close(INVALID_CREDENTIAL, "invalid password"));
     }
-    if principal.grants().contains(&Grant::Sessions) {
+    if principal.is_owner() {
         Ok(principal)
     } else {
         Err(Exit::close(NOT_ALLOWED, "this needs the server password"))

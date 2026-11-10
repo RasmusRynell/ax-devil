@@ -7,9 +7,8 @@ publishes one immutable `State`. Domain code takes settings as values; only the 
 ## Scopes and defaults
 
 Each row in `TABLE` has a `Scope`: Personal (how one person's app behaves: theme, shortcuts) or Server (what the
-server works with: the video cache, the cache folder). What a caller may read and change is decided from its grants
-by the backend (`State::values` and `Settings::replace` take the scopes); a literal in a `secret` row is shown masked
-and the masked value sent back keeps the stored one.
+server works with: the video cache, the cache folder). The scope groups rows for the UI; a caller reads and changes
+every row. A literal in a `secret` row is shown masked and the masked value sent back keeps the stored one.
 
 Settings supply defaults at the moment something is created, and the value is copied in: a workspace, video or saved
 layout never refers back to the settings file, and nothing shareable embeds a setting, a `$NAME` reference or a

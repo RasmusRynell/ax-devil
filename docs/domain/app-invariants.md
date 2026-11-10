@@ -98,8 +98,9 @@ and the rest of the rules: [invariants](invariants.md).
 - Saves validate every editable field, replace the configuration atomically, and only then notify; a failed save
   changes nothing. Startup storage folders stay active until restart.
 - Settings live in one immutable state replaced whole; consumers subscribe to changes, never poll.
-- Each settings row is Personal (how my app behaves) or Server (what the server works with). A client without the
-  `preferences` grant keeps Personal settings in its browser. A masked secret sent back means unchanged.
+- Each settings row is Personal (how my app behaves) or Server (what the server works with); an Owner reads and
+  writes both, and a page that holds only a join link keeps Personal settings in its browser. A masked secret sent back
+  means unchanged.
 - On/off overlay preferences are one closed set; adding a member adds it to the View menu, Settings and the config.
 - All shortcuts are defined in one table; persistence is override-only, so no overrides means all defaults apply. An
   override wins over any default with the same key, which becomes unbound.

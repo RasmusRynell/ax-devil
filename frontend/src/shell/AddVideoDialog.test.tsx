@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { DecoderInfo } from "../generated/api";
-import { GrantsContext } from "../access";
+import { AccessContext } from "../access";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { AddVideoDialog } from "./AddVideoDialog";
@@ -229,11 +229,11 @@ it("fills the path from the file chooser, keeps it when the chooser is cancelled
     pickVideo: () => Promise.resolve(picks.shift() ?? null),
   } as unknown as WindowBridge;
   render(
-    <GrantsContext.Provider value={["preferences"]}>
+    <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
       <SessionProvider>
         <AddVideoDialog onClose={() => {}} />
       </SessionProvider>
-    </GrantsContext.Provider>,
+    </AccessContext.Provider>,
   );
   const video = (await screen.findByLabelText("Video path")) as HTMLInputElement;
   const name = screen.getByLabelText("Name") as HTMLInputElement;
@@ -268,11 +268,11 @@ it("fills an overlay from its file chooser, which offers the decoders' extension
   const pickOverlay = vi.fn(() => Promise.resolve(picks.shift() ?? null));
   window.axDevilWindow = { pickOverlay } as unknown as WindowBridge;
   render(
-    <GrantsContext.Provider value={["preferences"]}>
+    <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
       <SessionProvider>
         <AddVideoDialog onClose={() => {}} />
       </SessionProvider>
-    </GrantsContext.Provider>,
+    </AccessContext.Provider>,
   );
   const [path] = (await overlays()) as HTMLInputElement[];
   const choose = () => fireEvent.click(screen.getByRole("button", { name: "Choose overlay file" }));
@@ -358,11 +358,11 @@ it.each([
     serve([]);
     window.axDevilWindow = { pickVideo: pick } as unknown as WindowBridge;
     render(
-      <GrantsContext.Provider value={["preferences"]}>
+      <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
         <SessionProvider>
           <AddVideoDialog onClose={() => {}} />
         </SessionProvider>
-      </GrantsContext.Provider>,
+      </AccessContext.Provider>,
     );
     const video = (await screen.findByLabelText("Video path")) as HTMLInputElement;
     fireEvent.change(video, { target: { value: "/clips/a.mp4" } });

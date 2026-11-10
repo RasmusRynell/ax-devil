@@ -15,7 +15,7 @@ import {
 } from "./OverlayRow";
 import { Refusal } from "../kit/Refusal";
 import { checkFiles, useFileProblems } from "./useFileProblems";
-import { useServerKind } from "../windowBridge";
+import { nativeBridge } from "../windowBridge";
 
 const blankEntry = (key: number): OverlayEntry => ({ key, path: "", picked: "" });
 
@@ -72,7 +72,7 @@ export function AddVideoDialog({
   const readers = useRef(new Map<number, () => OverlayRead>());
   const decoders = handlers?.decoders ?? [];
   // Only the local backend's window may browse this machine's files.
-  const bridge = useServerKind() === "local" ? window.axDevilWindow : undefined;
+  const bridge = nativeBridge();
   const named = entries.map((entry) => entry.path.trim());
   const files = [...new Set([path.trim(), ...named].filter(Boolean))];
   const { problems, checking } = useFileProblems(files);

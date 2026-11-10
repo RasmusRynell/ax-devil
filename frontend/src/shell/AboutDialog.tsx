@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
 import { useSettings } from "../settings";
-import { useServerKind } from "../windowBridge";
+import { nativeBridge, useServerKind } from "../windowBridge";
 
 /** Where the project lives; the desktop shell opens exactly this link in the default browser. */
 const PROJECT_LINK = "https://github.com/rasmusrynell/ax-devil";
@@ -23,7 +23,7 @@ export function AboutDialog({ version, onClose }: { version: string; onClose: ()
   }, []);
   // The desktop's version is asked for; until it answers there is no version to show.
   const shown = kind === "browser" ? version : desktop;
-  const bridge = kind === "local" ? window.axDevilWindow : undefined;
+  const bridge = nativeBridge();
   const log = file?.log;
   // A page that is not a secure context, such as a server's over plain HTTP, has no clipboard.
   const canCopy = typeof navigator.clipboard?.writeText === "function";

@@ -100,8 +100,11 @@ describe("quick setup", () => {
     expect(screen.getByRole("dialog", { name: "Quick Setup" })).toBeTruthy();
   });
 
-  it("is not offered to someone who may not configure the server", async () => {
-    await renderShell({ grants: ["sessions"], values: { "ui.quick_setup_done": false } });
+  it("is not offered to a page that is not the Owner", async () => {
+    await renderShell({
+      access: { owner: false, fullAccess: false },
+      values: { "ui.quick_setup_done": false },
+    });
     expect(screen.queryByRole("dialog", { name: "Quick Setup" })).toBeNull();
     fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
     expect(screen.queryByRole("menuitem", { name: "Quick Setup" })).toBeNull();
@@ -128,7 +131,7 @@ describe("quick setup", () => {
 
 describe("about", () => {
   it("shows the backend's version and the project link from the Help menu, whoever the seat is", async () => {
-    await renderShell({ grants: ["sessions"] });
+    await renderShell();
     fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "About" }));
     const dialog = screen.getByRole("dialog", { name: "About ax-devil" });
@@ -146,15 +149,14 @@ describe("about on the desktop", () => {
 
   it("shows the desktop's own version, and for a remote server also its address and version", async () => {
     window.axDevilWindow = {
+      remote: false,
       appVersion: async () => "0.9.0",
       onMaximizedChange: () => () => undefined,
       onFullScreenChange: () => () => undefined,
     } as unknown as Window["axDevilWindow"];
-    for (const [grants, remote] of [
-      [["preferences", "sessions"], false],
-      [["sessions"], true],
-    ] as const) {
-      await renderShell({ grants: [...grants] });
+    for (const remote of [false, true]) {
+      window.axDevilWindow!.remote = remote;
+      await renderShell();
       fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
       fireEvent.click(screen.getByRole("menuitem", { name: "About" }));
       const dialog = screen.getByRole("dialog", { name: "About ax-devil" });
@@ -188,7 +190,7 @@ describe("diagnostics", () => {
       fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
       fireEvent.click(screen.getByRole("menuitem", { name: "About" }));
     };
-    await renderShell({ grants: ["preferences", "sessions"], file });
+    await renderShell({ file });
     about();
     await screen.findByText("Version 0.9.0");
     fireEvent.click(screen.getByRole("button", { name: "Open logs folder" }));
@@ -205,7 +207,7 @@ describe("diagnostics", () => {
 
     // Without the files grant the backend sends no paths, and the dialog offers nothing to copy.
     cleanup();
-    await renderShell({ grants: ["preferences", "sessions"] });
+    await renderShell();
     about();
     await screen.findByRole("dialog", { name: "About ax-devil" });
     expect(screen.queryByRole("button", { name: "Copy diagnostics" })).toBeNull();
@@ -354,7 +356,7 @@ describe("a watcher", () => {
       "ax-devil.credential",
       JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
     );
-    await showShell({ grants: ["sessions"] });
+    await showShell();
     expect(screen.getAllByRole("heading", { name: "Live" })[0]).toBeTruthy();
     expect(screen.getByRole("group", { name: "a.mp4", current: true })).toBeTruthy();
     expect(
@@ -369,7 +371,7 @@ describe("a watcher", () => {
       "ax-devil.credential",
       JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
     );
-    await showShell({ grants: ["sessions"] });
+    await showShell();
     expect(
       document.querySelector<HTMLButtonElement>('[data-cursor-id="sidebar:open-workspace"]')
         ?.disabled,
@@ -390,7 +392,7 @@ describe("a watcher", () => {
       "ax-devil.credential",
       JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
     );
-    await showShell({ grants: ["sessions"] });
+    await showShell();
     return room;
   }
   const selected = () =>
@@ -420,7 +422,7 @@ describe("a watcher", () => {
       "ax-devil.credential",
       JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
     );
-    await showShell({ grants: ["sessions"] });
+    await showShell();
     const add = screen.getAllByRole("button", { name: "Add Video" });
     expect(add.every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
   });

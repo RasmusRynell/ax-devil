@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { useGrants } from "../access";
+import { useAccess } from "../access";
 import { SETTINGS } from "../generated/settings";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
@@ -32,9 +32,9 @@ export function SettingsDialog({
   onRestartNeeded: () => void;
 }) {
   const { values, shortcuts, file } = useSettings();
-  const configures = useGrants().includes("configuration");
-  const shown = PAGED.filter((row) => configures || row.scope === "personal");
-  // Where the settings are kept, for whoever may see this machine's files.
+  // A page that holds only a join link keeps just its Personal settings, in its browser.
+  const { owner } = useAccess();
+  const shown = PAGED.filter((row) => owner || row.scope === "personal");
   const pages = [...new Set(shown.flatMap((row) => row.page ?? [])), ...(file ? ["Advanced"] : [])];
   const [draft, setDraft] = useState(values);
   const [page, setPage] = useState(pages[0] ?? "");

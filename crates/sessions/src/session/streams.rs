@@ -148,11 +148,10 @@ pub(super) fn redeem(
         Box::new(content.clone()),
         entry.map(|entry| Box::new(entry.clone())),
     );
-    let host_details = next.files
-        && next
-            .seats
-            .get(&pending.seat)
-            .is_some_and(|seat| matches!(seat.kind, SeatKind::Owner));
+    let host_details = next
+        .seats
+        .get(&pending.seat)
+        .is_some_and(|seat| matches!(seat.kind, SeatKind::Owner));
     next.next_grant += 1;
     let grant = GrantId(next.next_grant);
     next.grants.insert(

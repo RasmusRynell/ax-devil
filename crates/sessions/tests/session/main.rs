@@ -116,10 +116,7 @@ impl Rig {
 
     /// An owner that shares with `access`, and a watcher that joined.
     pub(crate) fn shared(&self, access: Access) -> (Handle<u8>, Handle<u8>) {
-        let owner = self
-            .service
-            .create(true, true, CursorOptions::default())
-            .unwrap();
+        let owner = self.service.create(true, CursorOptions::default()).unwrap();
         owner
             .command(Command::Control(Control::Share { access }))
             .unwrap();

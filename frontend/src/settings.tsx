@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useGrants } from "./access";
+import { useAccess } from "./access";
 import { apiFetch } from "./api";
 import type { ApiError, SettingsChange, SettingsState } from "./generated/api";
 import { COMMANDS, SETTINGS, type SettingKey } from "./generated/settings";
@@ -38,7 +38,7 @@ type Row = (typeof SETTINGS)[number];
 type Values = SettingsState["values"];
 type Shortcuts = SettingsState["shortcuts"];
 
-/** The Personal settings and shortcut overrides this browser keeps when the backend does not keep them. */
+/** The Personal settings and shortcut overrides a page without a backend of its own keeps in this browser. */
 interface Local {
   values: Partial<Values>;
   /** Only the commands whose key differs from the standard one. */
@@ -152,14 +152,6 @@ function localOf(change: SettingsChange): Local {
   return { values, shortcuts };
 }
 
-/** The part of *change* that belongs on the server: every row that is not Personal. */
-function serverValues(values: Values): Partial<Values> {
-  const personal = new Set<SettingKey>(PERSONAL.map((row) => row.key));
-  return Object.fromEntries(
-    Object.entries(values).filter(([key]) => !personal.has(key as SettingKey)),
-  );
-}
-
 async function request(init?: RequestInit): Promise<SettingsState> {
   const response = await apiFetch("/api/settings", init);
   if (!response.ok) {
@@ -186,23 +178,20 @@ export function useAppearance(theme: string, textSize: string) {
 }
 
 /**
- * Where each setting lives follows the grants. Personal settings and shortcuts come from the backend only when it
- * grants `preferences`, so a server-password holder or a link watcher never changes someone else's theme; otherwise
- * this browser keeps them. Server settings come from the backend for `configuration` holders. Children render once
- * the settings are read, with the theme and text size applied live to the document root; a failed read shows its reason instead.
+ * An Owner's settings all come from the backend and go to it. A page that holds only a join link has no settings
+ * there: this browser keeps its Personal ones. Children render once the settings are read, with the theme and text
+ * size applied live to the document root; a failed read shows its reason instead.
  */
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const grants = useGrants();
-  const keepsPreferences = grants.includes("preferences");
-  const hasBackend = keepsPreferences || grants.includes("configuration");
+  const { owner } = useAccess();
   const [load, setLoad] = useState<Load>(
-    hasBackend ? { state: "loading" } : { state: "ready", remote: null },
+    owner ? { state: "loading" } : { state: "ready", remote: null },
   );
   const [local, setLocal] = useState(readLocal);
   // Bumped when a reload or a save starts or finishes, so a reload answer that a later one overtook is dropped.
   const latest = useRef(0);
   useEffect(() => {
-    if (!hasBackend) return;
+    if (!owner) return;
     let current = true;
     request()
       .then((remote) => {
@@ -214,9 +203,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return () => {
       current = false;
     };
-  }, [hasBackend]);
+  }, [owner]);
   const remote = load.state === "ready" ? load.remote : null;
-  const mine = keepsPreferences ? null : local;
+  const mine = owner ? null : local;
   const values = { ...DEFAULT_VALUES, ...remote?.values, ...mine?.values };
   useAppearance(values["ui.theme"] as string, values["ui.text_size"] as string);
 
@@ -227,23 +216,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const save = async (change: SettingsChange) => {
     latest.current += 1;
     try {
-      if (hasBackend) {
-        // Without `preferences` the backend takes only the Server rows, and the shortcuts go back as they were read.
-        const sent = keepsPreferences
-          ? change
-          : {
-              values: serverValues(change.values),
-              shortcuts: remote?.shortcuts ?? STANDARD_SHORTCUTS,
-            };
+      if (owner) {
         const replaced = await request({
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(sent),
+          body: JSON.stringify(change),
         });
         latest.current += 1;
         setLoad({ state: "ready", remote: replaced });
-      }
-      if (!keepsPreferences) {
+      } else {
         const kept = localOf(change);
         window.localStorage.setItem(LOCAL_KEY, JSON.stringify(kept));
         setLocal(kept);
@@ -254,7 +235,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   };
   const reload = async () => {
-    if (!hasBackend) return;
+    if (!owner) return;
     latest.current += 1;
     const started = latest.current;
     try {

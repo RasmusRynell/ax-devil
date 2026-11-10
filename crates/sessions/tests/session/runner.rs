@@ -53,9 +53,7 @@ async fn a_resolver_that_panics_fails_its_item_instead_of_leaving_it_resolving()
             environment: Arc::new(workspace::Environment::of_process),
         }),
     );
-    let owner = service
-        .create(true, true, CursorOptions::default())
-        .unwrap();
+    let owner = service.create(true, CursorOptions::default()).unwrap();
     owner
         .command(Command::Content(DocCommand::AddItems {
             items: vec![item],

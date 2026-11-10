@@ -111,10 +111,9 @@ Each row is removed by the change that makes it true; this section is deleted wi
 
 | Model | Today |
 |-------|-------|
-| Roles are Owner and Guest | Principals are `Local` and `Server` with four grants; the frontend guesses a remote window from a missing grant; the glossary calls a Guest a Watcher |
-| Full access is a Server setting | It does not exist. A Server Password holder never installs plugins or manages render catalogs (those routes need the `preferences` grant, which only Local has), but can write `$NAME` into a Server row and change the two folder settings; a Session carries `files` and `expands` flags taken from whoever created it, and only a Local Owner's Sessions expand references |
+| Roles are Owner and Guest | The frontend and the glossary still call a Guest a Watcher |
+| Full access is a Server setting | The setting does not exist, so only a local connection has Full access; a Server Password holder can still write `$NAME` into a Server row and change the two folder settings; a Session still carries an `expands` flag |
 | Saves are per key and pushed | A save replaces the whole set; clients reload by hand |
-| Personal settings are the same on every device | A Server Password holder keeps them in browser storage |
 | Device scope | Theme and text size are Personal; shortcuts are stored outside the table |
 | Secrets are write-only | A masked value is sent to the client and matched back on save |
 | Any number of Owner seats share the Presenter View | The Owner is the seat that created the Session; a Server Password holder who opens an existing Session gets a Guest seat; an Edit sharing level exists that no UI offers |

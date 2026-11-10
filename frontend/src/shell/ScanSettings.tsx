@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useGrants } from "../access";
 import type { NetworkSnapshot } from "../generated/api";
 import { type SettingKey } from "../generated/settings";
 import { Button } from "../kit/Button";
@@ -32,7 +31,6 @@ export function ScanSettings({
   connected: boolean;
 }) {
   const { values, shortcuts, save } = useSettings();
-  const configures = useGrants().includes("configuration");
   const range = values["scan.range"];
   const stored = typeof range === "string" ? range : "";
   // The field follows the setting until the user types in it.
@@ -61,13 +59,8 @@ export function ScanSettings({
   const scan = () => {
     if (!ready) return;
     const range = typed?.trim();
-    // Only a caller who configures may turn sign-in on for a scan; the others leave it to the setting.
     press(
-      () =>
-        rescan(
-          range === undefined || range === stored.trim() ? undefined : range,
-          configures ? signIn : undefined,
-        ),
+      () => rescan(range === undefined || range === stored.trim() ? undefined : range, signIn),
       setRefused,
     );
   };
@@ -112,25 +105,23 @@ export function ScanSettings({
             Rescan
           </Button>
         </div>
-        {configures && (
-          // Settings edits the same two, so a window too short for them leaves them out.
-          <div className="flex flex-col gap-s [@media(max-height:20rem)]:hidden">
-            <Checkbox
-              leading
-              label="Try to sign in to found cameras"
-              title={SIGN_IN_HINT}
-              className="text-small"
-              checked={signIn}
-              onChange={setChosen}
+        {/* Settings edits the same two, so a window too short for them leaves them out. */}
+        <div className="flex flex-col gap-s [@media(max-height:20rem)]:hidden">
+          <Checkbox
+            leading
+            label="Try to sign in to found cameras"
+            title={SIGN_IN_HINT}
+            className="text-small"
+            checked={signIn}
+            onChange={setChosen}
+          />
+          {signIn && (
+            <LoginsEditor
+              logins={Array.isArray(logins) ? logins : []}
+              onSave={(next) => store("scan.logins", next)}
             />
-            {signIn && (
-              <LoginsEditor
-                logins={Array.isArray(logins) ? logins : []}
-                onSave={(next) => store("scan.logins", next)}
-              />
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </section>
   );

@@ -3,7 +3,7 @@ import { Dialog, DialogBody } from "../kit/Dialog";
 import { TextField } from "../kit/Fields";
 import { useCommand, useDoc } from "../session/session";
 import { Refusal } from "../kit/Refusal";
-import { useServerKind } from "../windowBridge";
+import { nativeBridge } from "../windowBridge";
 
 /**
  * Exporting every bookmark to a CSV file on the machine that runs the backend: the function that starts it, and the
@@ -13,7 +13,7 @@ import { useServerKind } from "../windowBridge";
 export function useExportBookmarks(onFail: (error: unknown) => void): [() => void, ReactNode] {
   const command = useCommand();
   const name = `${useDoc()?.workspace.name ?? "Untitled"} bookmarks.csv`;
-  const bridge = useServerKind() === "local" ? window.axDevilWindow : undefined;
+  const bridge = nativeBridge();
   const [asking, setAsking] = useState(false);
   const [path, setPath] = useState("");
   const [empty, setEmpty] = useState(false);

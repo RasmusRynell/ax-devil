@@ -46,6 +46,8 @@ const PROJECT_LINK = "https://github.com/rasmusrynell/ax-devil";
 
 // Tells the preload that the page may offer to restart the app.
 const RESTARTABLE_ARGUMENT = "--ax-devil-restartable";
+// Tells the preload that the page is served by another machine's backend.
+const REMOTE_ARGUMENT = "--ax-devil-remote";
 
 // Window contents -> { origin, remote }; `remote` is a page served by another machine's backend.
 const trusted = new WeakMap();
@@ -83,7 +85,10 @@ async function openWindow(
       // Smoke test windows overlap, and an overlapped page must keep drawing (see main.cjs).
       backgroundThrottling: !process.argv.includes("--smoke-test"),
       preload: path.join(__dirname, "preload.cjs"),
-      additionalArguments: restartable ? [RESTARTABLE_ARGUMENT] : [],
+      additionalArguments: [
+        ...(restartable ? [RESTARTABLE_ARGUMENT] : []),
+        ...(remote ? [REMOTE_ARGUMENT] : []),
+      ],
     },
   });
   const contents = window.webContents;

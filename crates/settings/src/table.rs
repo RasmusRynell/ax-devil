@@ -3,7 +3,7 @@
 use crate::kind::{Kind, NoFilter, StickyValue, SyncValue};
 use serde::Serialize;
 
-/// Who a setting belongs to, which decides who may read and change it on a backend that several people use.
+/// Where a setting is grouped: how one person likes to work, or what the server works with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Scope {
@@ -11,11 +11,6 @@ pub enum Scope {
     Personal,
     /// What the server works with: device and broker defaults, folders, cache.
     Server,
-}
-
-impl Scope {
-    /// Every scope, for the person who owns the backend.
-    pub const ALL: [Self; 2] = [Self::Personal, Self::Server];
 }
 
 /// One declared setting.

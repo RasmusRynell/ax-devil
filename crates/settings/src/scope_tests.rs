@@ -1,4 +1,4 @@
-//! Scopes: which settings a person reads and changes, and how a literal secret is shown.
+//! How a literal secret is shown, and how a masked one sent back is matched to the stored one.
 
 use super::*;
 use serde_json::json;
@@ -10,14 +10,6 @@ fn read(path: &Path) -> Value {
 
 fn no_env(_: &str) -> Option<String> {
     None
-}
-
-/// The shortcuts as they are by default, which a Personal change must hold.
-fn default_shortcuts() -> BTreeMap<String, Option<String>> {
-    shortcuts::effective(&BTreeMap::new())
-        .into_iter()
-        .map(|(id, key)| (id.to_owned(), key))
-        .collect()
 }
 
 const MIXED: &[Setting] = &[
@@ -54,75 +46,32 @@ const MIXED: &[Setting] = &[
 ];
 
 #[test]
-fn a_person_reads_and_changes_only_their_scopes_and_a_literal_secret_is_masked() {
+fn a_literal_secret_is_masked_and_the_masked_value_sent_back_keeps_the_stored_one() {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
     let settings = Settings::open(&path, MIXED, &[], Arc::new(no_env)).unwrap();
-    let edit = |values: &[(&str, &str)], shortcuts: BTreeMap<String, Option<String>>| Change {
-        values: values
-            .iter()
-            .map(|(key, value)| ((*key).to_owned(), json!(value)))
-            .collect(),
-        shortcuts,
+    let edit = |token: &str| Change {
+        values: BTreeMap::from([
+            ("me.mode".to_owned(), json!("b")),
+            ("server.token".to_owned(), json!(token)),
+        ]),
+        shortcuts: BTreeMap::new(),
     };
-    let none = BTreeMap::new;
 
-    let state = settings
-        .replace(
-            &[Scope::Server],
-            &edit(&[("server.token", "hunter2")], none()),
-        )
-        .unwrap();
+    let state = settings.replace(&edit("hunter2")).unwrap();
     assert_eq!(read(&path)["settings"]["server.token"], "hunter2");
-    assert_eq!(state.values(&[Scope::Server])["server.token"], MASK);
+    assert_eq!(state.values()["server.token"], MASK);
     assert_eq!(state.resolved("server.token"), Some(json!("hunter2")));
-    assert!(
-        !state
-            .values(&[Scope::Personal])
-            .contains_key("server.token")
-    );
-    assert!(!state.values(&[Scope::Server]).contains_key("me.mode"));
 
-    settings
-        .replace(&[Scope::Server], &edit(&[("server.token", MASK)], none()))
-        .unwrap();
+    settings.replace(&edit(MASK)).unwrap();
     assert_eq!(
         read(&path)["settings"]["server.token"],
         "hunter2",
         "the masked secret sent back keeps the stored one"
     );
-    let state = settings
-        .replace(
-            &[Scope::Server],
-            &edit(&[("server.token", "$TOKEN")], none()),
-        )
-        .unwrap();
-    assert_eq!(state.values(&[Scope::Server])["server.token"], "$TOKEN");
-
-    let outside = edit(&[("server.token", "x"), ("me.mode", "b")], none());
-    let error = settings.replace(&[Scope::Server], &outside).unwrap_err();
-    assert_eq!(error.location, "me.mode");
-    let own_shortcuts = default_shortcuts();
-    let error = settings
-        .replace(
-            &[Scope::Server],
-            &edit(&[("server.token", "x")], own_shortcuts.clone()),
-        )
-        .unwrap_err();
-    assert!(error.location.starts_with("shortcuts."), "{error}");
-
-    settings
-        .replace(
-            &[Scope::Personal],
-            &edit(&[("me.mode", "b")], own_shortcuts),
-        )
-        .unwrap();
-    let saved = read(&path);
-    assert_eq!(saved["settings"]["me.mode"], "b");
-    assert_eq!(
-        saved["settings"]["server.token"], "$TOKEN",
-        "a change of one scope leaves the other"
-    );
+    let state = settings.replace(&edit("$TOKEN")).unwrap();
+    assert_eq!(state.values()["server.token"], "$TOKEN");
+    assert_eq!(read(&path)["settings"]["me.mode"], "b");
 }
 
 const LOGINS: &[Setting] = &[Setting {
@@ -153,9 +102,9 @@ fn a_literal_password_in_a_list_of_logins_is_masked_and_a_masked_one_keeps_its_l
             values: BTreeMap::from([("server.logins".to_owned(), Value::Array(logins))]),
             shortcuts: BTreeMap::new(),
         };
-        settings.replace(&[Scope::Server], &change)
+        settings.replace(&change)
     };
-    let shown = |state: &State| state.values(&[Scope::Server])["server.logins"].clone();
+    let shown = |state: &State| state.values()["server.logins"].clone();
 
     let state = replace(vec![login("root", "hunter2"), login("ops", "$OPS_PASS")]).unwrap();
     assert_eq!(
