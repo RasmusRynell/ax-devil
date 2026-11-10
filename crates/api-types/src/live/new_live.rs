@@ -1,13 +1,11 @@
 //! The request to add or edit a live stream, and the password it may carry.
 
-use super::{KeptDataHubWire, KeptMqttWire, LiveProtocol, LiveRtspRoute};
+use super::{KeptDataHubWire, KeptMqttWire};
 use foundation::ItemId;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use ts_rs::TS;
-use workspace::{
-    LiveOverlay, LiveRecipe, Protocol, RtspRoute, Secret, intake, url_without_password,
-};
+use workspace::{LiveOverlay, LiveRecipe, Protocol, RtspRoute, Secret, StreamUrl, intake};
 
 /// A password in a request. `Debug` prints `***`, so a logged request cannot leak it.
 #[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -80,8 +78,7 @@ pub enum NewLiveOverlayWire {
 
 /// What the user entered to add a live stream. Text that is absent or blank takes its configured default; numbers are
 /// checked against their range by the intake, so its message names the field. Mirrors `workspace::intake::NewLive`.
-/// `Debug` leaves out the password of a login in `url` (`live/redact.rs`).
-#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(default)]
 #[ts(optional_fields)]
 pub struct NewLiveWire {
@@ -95,7 +92,7 @@ pub struct NewLiveWire {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<WireSecret>,
     /// The web interface's protocol.
-    pub protocol: Option<LiveProtocol>,
+    pub protocol: Option<Protocol>,
     /// The web interface's port, 0 to 65535; 0 or absent is the standard one.
     #[ts(type = "number", optional)]
     pub port: Option<i64>,
@@ -106,12 +103,13 @@ pub struct NewLiveWire {
     #[ts(type = "number", optional)]
     pub rtsp_port: Option<i64>,
     /// Which door of the camera the stream comes through; absent is the configured one.
-    pub rtsp_route: Option<LiveRtspRoute>,
+    pub rtsp_route: Option<RtspRoute>,
     /// The resolution such as `1280x720`; blank is the camera's own.
     pub resolution: Option<String>,
     /// A stream URL to use instead of the one made from the host, as typed. A saved URL is sent without its login's
     /// password, and one sent back that way keeps the saved password.
-    pub url: Option<String>,
+    #[ts(type = "string", optional)]
+    pub url: Option<StreamUrl>,
     /// The overlay; absent is the configured one for a new stream and the saved one for an edit.
     pub overlay: Option<NewLiveOverlayWire>,
     /// What the form holds for MQTT while another overlay mode is chosen, kept with the stream.
@@ -231,13 +229,13 @@ impl From<&LiveRecipe> for NewLiveWire {
             host: Some(host.clone()),
             username: Some(username.clone()),
             password: reference_only(password),
-            protocol: Some((*protocol).into()),
+            protocol: Some(*protocol),
             port: Some(i64::from(*port)),
             head: Some(i64::from(*head)),
             rtsp_port: Some(i64::from(*rtsp_port)),
-            rtsp_route: Some((*rtsp_route).into()),
+            rtsp_route: Some(*rtsp_route),
             resolution: resolution.clone(),
-            url: url.as_deref().map(url_without_password),
+            url: url.as_ref().map(StreamUrl::without_password),
             overlay: Some(overlay.into()),
             kept_mqtt: kept.mqtt.as_ref().map(Into::into),
             kept_datahub: kept.datahub.as_ref().map(Into::into),
@@ -254,11 +252,11 @@ impl From<NewLiveWire> for intake::NewLive {
             host: new.host,
             username: new.username,
             password: new.password.map(Secret::from),
-            protocol: new.protocol.map(Protocol::from),
+            protocol: new.protocol,
             port: new.port,
             head: new.head,
             rtsp_port: new.rtsp_port,
-            rtsp_route: new.rtsp_route.map(RtspRoute::from),
+            rtsp_route: new.rtsp_route,
             resolution: new.resolution,
             url: new.url,
             overlay: new.overlay.map(Into::into),
@@ -274,4 +272,64 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<WireSecret>();
     types.visit::<NewLiveOverlayWire>();
     types.visit::<NewLiveWire>();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Spellings of one URL whose password a plain text search of the URL would not find.
+    const SPELLINGS: [&str; 5] = [
+        "http://root:SECRET@cam/s",
+        "http:root:SECRET@cam/s",
+        "http:////root:SECRET@cam/s",
+        "HTTP://root:SECRET@CAM:80/s",
+        "rtsp://root:SE%43RET@cam/s",
+    ];
+
+    fn recipe(url: &str) -> LiveRecipe {
+        LiveRecipe {
+            host: "cam".into(),
+            username: String::new(),
+            password: Secret::new(""),
+            protocol: Protocol::Https,
+            port: 0,
+            head: 1,
+            rtsp_port: 554,
+            rtsp_route: RtspRoute::Direct,
+            resolution: None,
+            url: Some(url.into()),
+            overlay: LiveOverlay::None,
+            kept: Default::default(),
+        }
+    }
+
+    #[test]
+    fn a_hostless_or_opaque_url_goes_to_a_client_as_a_placeholder() {
+        for url in [
+            "rtsp:////root:SECRET@cam/s",
+            "rtsp:root:SECRET@cam",
+            "rtsp://:SECRET@/s",
+        ] {
+            let wire = NewLiveWire::from(&recipe(url));
+            assert_eq!(wire.url.as_deref(), Some("(unusable URL)"), "{url}");
+            assert!(!format!("{wire:?}{wire:#?}").contains("SECRET"), "{url}");
+        }
+    }
+
+    #[test]
+    fn the_request_a_recipe_makes_again_carries_its_urls_user_but_never_its_password() {
+        for url in SPELLINGS {
+            let wire = NewLiveWire::from(&recipe(url));
+            let sent = wire.url.as_deref().unwrap();
+            assert!(sent.contains("root@cam"), "{url} -> {sent}");
+            for text in [
+                serde_json::to_string(&wire).unwrap(),
+                format!("{wire:?}"),
+                format!("{wire:#?}"),
+            ] {
+                assert!(!text.to_uppercase().contains("SECRET"), "{url}: {text}");
+            }
+        }
+    }
 }

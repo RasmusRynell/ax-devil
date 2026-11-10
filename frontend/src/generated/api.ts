@@ -39,3 +39,4 @@ export * from "./types/sessions.session.commands";
 export * from "./types/sessions.session.layout";
 export * from "./types/sessions.session.roster";
 export * from "./types/sessions.session.views";
+export * from "./types/workspace.live";

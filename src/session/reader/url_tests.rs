@@ -208,7 +208,7 @@ async fn scenario(saved_url: &str, shown: &str, spellings: &[&str]) {
         .recipe
         .source
     {
-        Source::Live(recipe) => recipe.url.clone().unwrap_or_default(),
+        Source::Live(recipe) => recipe.url.as_deref().unwrap_or_default().to_owned(),
         _ => panic!("a live stream"),
     };
     assert_eq!(stored(), saved_url);
@@ -283,7 +283,7 @@ async fn an_unusable_saved_url_survives_a_rename_and_is_replaced_by_a_good_one_w
     let id = item().id.to_string();
     let stored = || match item().recipe.source {
         Source::Live(recipe) => (
-            recipe.url.unwrap_or_default(),
+            recipe.url.as_deref().unwrap_or_default().to_owned(),
             recipe.password.expose().to_owned(),
         ),
         _ => panic!("a live stream"),

@@ -20,73 +20,16 @@ use crate::{
 use scene::{Event, OperationKind};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use workspace::{LiveOverlay, Protocol, RtspRoute};
+use workspace::LiveOverlay;
 
 mod discovery;
 mod glance;
 mod kept;
 mod new_live;
-mod redact;
 pub use discovery::*;
 pub use glance::*;
 pub use kept::*;
 pub use new_live::*;
-
-/// The protocol of a camera's web interface.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "lowercase")]
-pub enum LiveProtocol {
-    /// Plain HTTP.
-    Http,
-    /// HTTP over TLS.
-    Https,
-}
-
-impl From<LiveProtocol> for Protocol {
-    fn from(protocol: LiveProtocol) -> Self {
-        match protocol {
-            LiveProtocol::Http => Self::Http,
-            LiveProtocol::Https => Self::Https,
-        }
-    }
-}
-
-impl From<Protocol> for LiveProtocol {
-    fn from(protocol: Protocol) -> Self {
-        match protocol {
-            Protocol::Http => Self::Http,
-            Protocol::Https => Self::Https,
-        }
-    }
-}
-
-/// Which door of the camera a stream comes through.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "snake_case")]
-pub enum LiveRtspRoute {
-    /// The camera's RTSP port.
-    Direct,
-    /// The camera's web interface.
-    WebApi,
-}
-
-impl From<LiveRtspRoute> for RtspRoute {
-    fn from(route: LiveRtspRoute) -> Self {
-        match route {
-            LiveRtspRoute::Direct => Self::Direct,
-            LiveRtspRoute::WebApi => Self::WebApi,
-        }
-    }
-}
-
-impl From<RtspRoute> for LiveRtspRoute {
-    fn from(route: RtspRoute) -> Self {
-        match route {
-            RtspRoute::Direct => Self::Direct,
-            RtspRoute::WebApi => Self::WebApi,
-        }
-    }
-}
 
 /// Where a live video's overlay comes from. At most one per video.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -281,8 +224,6 @@ pub struct LiveGapWire {
 
 /// Visits the types this module sends to the frontend, and its modules' types.
 pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<LiveProtocol>();
-    types.visit::<LiveRtspRoute>();
     types.visit::<LiveOverlayKind>();
     types.visit::<LiveReason>();
     types.visit::<LiveFeedStatus>();

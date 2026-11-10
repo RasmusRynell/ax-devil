@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use workspace::{
     DataHubSettings, KeptTransports, LiveOverlay, LiveRecipe, MqttSettings, Protocol, RtspRoute,
-    Secret, Source,
+    Secret, Source, StreamUrl,
 };
 
 /// A live stream, with passwords and references as entered.
@@ -252,7 +252,7 @@ impl LiveItem {
                 RtspRoute::WebApi => RtspRouteDto::WebApi,
             },
             resolution: recipe.resolution.clone(),
-            url: recipe.url.clone(),
+            url: recipe.url.as_deref().map(str::to_owned),
             overlay: (&recipe.overlay).into(),
             kept: (&recipe.kept).into(),
             lane_matching,
@@ -277,7 +277,7 @@ impl LiveItem {
                 RtspRouteDto::WebApi => RtspRoute::WebApi,
             },
             resolution: self.resolution,
-            url: self.url,
+            url: self.url.map(StreamUrl::from),
             overlay: self.overlay.into(),
             kept: self.kept.into(),
         });

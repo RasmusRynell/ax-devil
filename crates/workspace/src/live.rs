@@ -10,12 +10,15 @@ use crate::{
 };
 use foundation::{ErrorCode, ItemId, Location, UserError};
 use handlers::Handlers;
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 mod endpoint;
-mod redact;
+mod stream_url;
 
 pub(crate) use endpoint::{camera_endpoint, url_endpoint, url_has_login};
 pub use endpoint::{url_password_dropped, url_without_password};
+pub use stream_url::StreamUrl;
 
 /// The lane slot of the one overlay a live video has.
 pub const LIVE_SLOT: &str = "live";
@@ -24,7 +27,9 @@ pub const LIVE_SLOT: &str = "live";
 const HEAD_MAX: u16 = 9999;
 
 /// The protocol of the camera's web interface and DataHub.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(rename = "LiveProtocol")]
 pub enum Protocol {
     /// Plain HTTP.
     Http,
@@ -51,7 +56,9 @@ impl Protocol {
 }
 
 /// Which door of the camera a stream comes through, when it has no stream URL of its own (the URL's scheme decides).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename = "LiveRtspRoute")]
 pub enum RtspRoute {
     /// The camera's RTSP port.
     #[default]
@@ -163,9 +170,8 @@ pub struct KeptTransports {
     pub datahub: Option<DataHubSettings>,
 }
 
-/// A camera to stream from and the overlay to draw on it, with every text as entered. `Debug` leaves out the password of
-/// a login in the stream URL (`live/redact.rs`).
-#[derive(Clone, PartialEq, Eq)]
+/// A camera to stream from and the overlay to draw on it, with every text as entered.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LiveRecipe {
     /// The camera's host.
     pub host: String,
@@ -187,7 +193,7 @@ pub struct LiveRecipe {
     pub resolution: Option<String>,
     /// A stream URL to use instead of the one made from the host, as typed: `rtsp://`, `http://` or `https://`, with
     /// a login if it has one. Whether it can be streamed is for the camera to say when it connects.
-    pub url: Option<String>,
+    pub url: Option<StreamUrl>,
     /// The overlay.
     pub overlay: LiveOverlay,
     /// What the other overlay modes hold.
@@ -203,8 +209,8 @@ pub struct Login {
     pub password: Secret,
 }
 
-/// A camera with every reference expanded, ready to connect to. `Debug` leaves out the passwords, the stream URL's too.
-#[derive(Clone, PartialEq, Eq)]
+/// A camera with every reference expanded, ready to connect to.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedCamera {
     /// The host.
     pub host: String,
@@ -221,7 +227,7 @@ pub struct ResolvedCamera {
     /// The resolution; `None` is the camera's own.
     pub resolution: Option<String>,
     /// A stream URL to use instead of the generated one, as typed, with its login if it has one.
-    pub url: Option<String>,
+    pub url: Option<StreamUrl>,
     /// The login, when there is a user or a password.
     pub login: Option<Login>,
 }
@@ -241,6 +247,12 @@ pub struct LiveVideoContent {
     pub overlay: LiveOverlay,
     /// The lane slot of the overlay, [`LIVE_SLOT`].
     pub slot: String,
+}
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<Protocol>();
+    types.visit::<RtspRoute>();
 }
 
 fn invalid(field: &str, reason: impl Into<String>) -> UserError {

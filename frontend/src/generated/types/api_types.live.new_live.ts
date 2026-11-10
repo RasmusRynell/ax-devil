@@ -1,7 +1,7 @@
 // Generated from api_types::live::new_live by make; do not edit.
 
-import type { LiveProtocol, LiveRtspRoute } from "./api_types.live";
 import type { KeptDataHubWire, KeptMqttWire } from "./api_types.live.kept";
+import type { LiveProtocol, LiveRtspRoute } from "./workspace.live";
 
 /**
  * The overlay the user chose for a new stream; anything left out takes the configured default. Mirrors
@@ -52,7 +52,6 @@ channel?: number, };
 /**
  * What the user entered to add a live stream. Text that is absent or blank takes its configured default; numbers are
  * checked against their range by the intake, so its message names the field. Mirrors `workspace::intake::NewLive`.
- * `Debug` leaves out the password of a login in `url` (`live/redact.rs`).
  */
 export type NewLiveWire = { 
 /**

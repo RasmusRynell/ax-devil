@@ -8,7 +8,6 @@ use crate::routes::resolve::Staged;
 use api_types::{
     CURSOR_NAME_MAX, CursorElement, CursorPoint, SessionCommand, WorkspaceCommand,
     bookmarks::{BookmarkCommand as BookmarkWire, BookmarkKindWire},
-    live::LiveProtocol,
     workspace::{HiddenTarget, NewItem},
 };
 use foundation::{ErrorCode, ItemId, MediaTime};
@@ -389,12 +388,9 @@ fn scanned(
             "The scan has not signed in to that camera",
         ));
     };
-    let standard = match row.scheme {
-        LiveProtocol::Http => 80,
-        LiveProtocol::Https => 443,
-    };
+    let standard = row.scheme.default_port();
     new.host = Some(row.address);
-    new.protocol = Some(row.scheme.into());
+    new.protocol = Some(row.scheme);
     new.port = Some(if row.port == standard {
         0
     } else {
