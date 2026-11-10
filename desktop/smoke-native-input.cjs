@@ -51,13 +51,15 @@ module.exports.run = async ({ window }) => {
     );
     await wait("document.activeElement?.getAttribute('aria-label') === 'Search shortcuts'");
   };
+  const binding = (button) =>
+    js(`[...${button}.querySelectorAll('kbd')].map(chip => chip.textContent)`);
   const key = "document.querySelector('[aria-label=\"Key for Exit\"]')";
   await open();
   // Keypad Enter carries Chromium's keypad location; Qt incorrectly lets it accept the whole dialog (KD-03).
-  for (const [activation, modifiers] of [
-    ["Enter", []],
-    ["Space", []],
-    ["Enter", ["isKeypad"]],
+  for (const [activation, modifiers, captured] of [
+    ["Enter", [], "y"],
+    ["Space", [], "u"],
+    ["Enter", ["isKeypad"], "j"],
   ]) {
     await js(`${key}.focus()`);
     await js(
@@ -66,20 +68,22 @@ module.exports.run = async ({ window }) => {
     press(activation, modifiers);
     await wait(`${key}?.textContent === 'Press a key…'`);
     assert.equal(await js("window.smokeKeyLocation"), modifiers.includes("isKeypad") ? 3 : 0);
-    press("y", ["control", "alt"]);
+    press(captured, ["control", "alt"]);
     await wait(`${key}.textContent !== 'Press a key…'`);
     assert.equal(
       await js("document.querySelector('[role=status]')?.textContent"),
-      "Exit set to Ctrl+Alt+Y",
+      `Exit set to Ctrl+Alt+${captured.toUpperCase()}`,
     );
-    assert.equal(await js(`${key}.textContent.includes('Press a key')`), false);
+    assert.deepEqual(await binding(key), ["Ctrl", "Alt", captured.toUpperCase()]);
     assert.equal(await js(`document.activeElement === ${key}`), true);
   }
   await answer("OK");
   await open();
-  assert.equal(await js(`${key}.textContent.includes('Y')`), true, "OK keeps the captured binding");
+  assert.deepEqual(await binding(key), ["Ctrl", "Alt", "J"], "OK keeps the complete binding");
   // Space's release must not reactivate the button after capturing it; Escape cancels capture only.
   const play = "document.querySelector('[aria-label=\"Key for Play / Pause\"]')";
+  await js("document.querySelector('[aria-label=\"Clear Play / Pause\"]').click()");
+  await wait(`${play}.textContent === 'Not set'`);
   await js(`${play}.focus()`);
   press("Space");
   await wait(`${play}.textContent === 'Press a key…'`);
@@ -87,12 +91,13 @@ module.exports.run = async ({ window }) => {
   await wait(
     "document.querySelector('[role=status]')?.textContent === 'Play / Pause set to Space'",
   );
-  assert.equal(await js(`${play}.textContent.includes('Press a key')`), false);
+  assert.deepEqual(await binding(play), ["Space"]);
   press("Enter");
   await wait(`${play}.textContent === 'Press a key…'`);
   press("Escape");
   await wait(`${play}.textContent !== 'Press a key…'`);
   assert.equal(await js("!!document.querySelector('dialog[open]')"), true);
+  assert.deepEqual(await binding(play), ["Space"], "Escape keeps the previous binding");
   await js(
     "[...document.querySelectorAll('dialog button')].find(b => b.textContent === 'Reset to Defaults').click()",
   );
