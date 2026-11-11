@@ -253,9 +253,11 @@ describe("logins editor", () => {
       </AccessContext.Provider>,
     );
     const user = await screen.findByLabelText("Username");
+    // The editor's mount effect, still pending on a loaded machine, would put an edit made before it ran back.
+    await act(async () => {});
     fireEvent.change(user, { target: { value: "ops" } });
     fireEvent.keyDown(user, { key: "Enter" });
-    await waitFor(() => expect(bodies).toHaveLength(1), { timeout: 5000 });
+    await waitFor(() => expect(bodies).toHaveLength(1), { timeout: 3000 });
     expect(bodies[0]).toEqual({ set: { "scan.logins": [{ id: "a1", user: "ops" }] } });
   });
 });
