@@ -129,7 +129,7 @@ function Live({
         // An Escape a popup closed is spent, and in fullscreen Escape only leaves it.
         const plain = !event.ctrlKey && !event.altKey && !event.metaKey;
         if (event.key === "Escape" && plain && !event.nativeEvent.defaultPrevented)
-          if (!fullscreen.leave()) session.select(null);
+          if (!fullscreen.leave()) pick(null);
       }}
     >
       <LiveBar

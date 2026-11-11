@@ -70,15 +70,18 @@ export function useMediaTools(
         onChosen(lane);
         return;
       }
+      const cancelled = pending.current;
       pending.current = null;
       onChosen(lane);
       if (pagePlace.current?.lane !== lane) {
         pagePlace.current = null;
         setPages((current) => ({ ...current, entries: [], mark: null }));
         session.select(null);
+      } else if (cancelled) {
+        navigate(pages, pagePlace.current);
       }
     },
-    [session],
+    [session, navigate, pages],
   );
   useEffect(() => {
     const selection = pending.current;
