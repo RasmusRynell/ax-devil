@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 use crate::{io::read_exact_at, stat::Stat};
 
 /// Changes when the layout of an artifact file changes; older files are rebuilt.
-pub const STORE_FORMAT_VERSION: u32 = 5;
+// Rebuild cached history after timestamp-first observation ordering changed latest selection.
+pub const STORE_FORMAT_VERSION: u32 = 6;
 
 const MAGIC: &[u8; 4] = b"AXSC";
 const END: &[u8; 4] = b"AXSE";

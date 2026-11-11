@@ -73,6 +73,48 @@ fn key(scene: &scene::Scene) -> SceneTime {
 }
 
 #[test]
+fn a_plugin_keeps_an_observation_on_another_clock() {
+    let folder = tempfile::tempdir().expect("folder");
+    let line = r#"{"sample":{"time":{"start":{"frame":3},"end":{"frame":3}},"entities":[{"id":"a","observations":[{"time":{"us":100},"geometry":{"box":[0.1,0.2,0.3,0.4]}}]}]}}"#;
+    let command = serde_json::json!([
+        "sh",
+        "-c",
+        format!("cat >/dev/null; printf '%s\\n' '{line}'")
+    ]);
+    let manifest = common::manifest_text(&command.to_string(), "");
+    let path = folder.path().join(plugins::MANIFEST_FILE);
+    std::fs::write(&path, manifest).expect("manifest");
+    let decoder = LoadedPlugin::load(&path).expect("loads").decoders.remove(0);
+    let run = decode(
+        &decoder,
+        &folder.path().join("input.test"),
+        &Settings::new(),
+        &CancelToken::new(),
+        TestSink::default(),
+    );
+    run.summary();
+    assert!(run.sink.skips.is_empty());
+    let scene = &run.sink.samples[0].0;
+    assert_eq!(scene.time().start(), SceneTime::Frame(3));
+    let observation = scene.entities()[0].latest_observation().expect("retained");
+    assert_eq!(observation.time.frame(), None);
+    assert_eq!(
+        observation.time.timestamp(),
+        Some(foundation::MediaTime(100))
+    );
+    let item = scene::serial::columns::encode_sample_item(
+        scene,
+        &scene::FilterPolicy {
+            name: "test",
+            options: Vec::new(),
+        },
+    )
+    .expect("display and export sample");
+    // The display/export encoder must retain the entity as one drawable row.
+    assert_eq!(u32::from_le_bytes(item[8..12].try_into().unwrap()), 1);
+}
+
+#[test]
 fn the_python_plugin_gives_the_model_everything_it_covers() {
     if !python_available() {
         return;

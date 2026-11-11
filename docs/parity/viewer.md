@@ -41,3 +41,10 @@ Row format: [parity](../parity.md). Deviations: [viewer deviations](viewer-devia
 | RC-02 | Per-view selection, Apply to all, Use as default, hot reload | M | done | `lanes/{LaneMenu,laneCatalog,catalogs}.test.*`, `crates/catalogs` tests, `tests/it/playback_catalogs.rs` | Built-in and `user:<file>`, hot-reloaded or Reload; a failing one keeps its last good. Default: `overlays.default_catalog`; no Other-views line (deviations) |
 | RC-03 | Catalog Copy and Delete | M | done | `src/routes/catalogs.rs`, `lanes/LaneCatalogActions.test.tsx` | Viewer window and preview sheets dropped by owner decision |
 | RC-04 | `catalog` CLI | M | done | `src/cli/catalog_tests.rs`, `tests/export/catalog_check.rs` | `reference` generated; `render` dropped by owner decision |
+
+## Scene model
+
+SCN-003 — done: observation clocks and deterministic order. Proved by `crates/scene/src/scene.rs`
+(`mixed_observations_have_a_stable_total_order`), `crates/scene/src/serial/tests.rs`
+(`every_model_value_survives_json_and_postcard`) and `crates/plugins/tests/it/fixtures.rs`
+(`a_plugin_keeps_an_observation_on_another_clock`).

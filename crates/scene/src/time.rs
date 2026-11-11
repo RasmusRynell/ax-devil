@@ -5,7 +5,7 @@ use crate::SceneError;
 
 /// When something applies: a frame number or a Media Time timestamp.
 ///
-/// The order is only meaningful between times of one [`TimeKind`]; a Scene never mixes kinds.
+/// Frame keys sort before timestamp keys; elapsed time is meaningful only within one [`TimeKind`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SceneTime {
     /// A frame number of the video the overlay belongs to. Negative numbers are valid here; a decoder may give one
@@ -37,7 +37,7 @@ impl SceneTime {
 /// When an observation was made: a frame number, a timestamp, or both.
 ///
 /// The two clocks are independent facts and are never converted into each other. A Scene is on one of them
-/// ([`TimeSlice`]) and every observation in it carries that one; the other is extra.
+/// ([`TimeSlice`]); observations need not carry that same clock.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ObservationTime {
     frame: Option<i64>,
@@ -61,6 +61,16 @@ impl ObservationTime {
     /// The timestamp, if the observation has one.
     pub fn timestamp(&self) -> Option<MediaTime> {
         self.timestamp
+    }
+
+    /// Total observation order: frame-only sightings first, then timestamp-bearing sightings.
+    /// Within each group use the supplied value; timestamps take precedence when both exist.
+    pub fn order_key(&self) -> SceneTime {
+        match self.timestamp {
+            Some(time) => SceneTime::Timestamp(time),
+            // Construction requires at least one clock, so a missing timestamp proves a frame exists.
+            None => SceneTime::Frame(self.frame.expect("a frame without a timestamp")),
+        }
     }
 
     /// The time on the `kind` clock, if the observation has one.

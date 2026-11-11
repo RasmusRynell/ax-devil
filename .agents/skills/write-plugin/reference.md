@@ -168,8 +168,8 @@ A scan or resolve the user abandons kills the plugin.
 ## Scene
 
 A sample is one Scene in the JSON of `scene::serial`. Times are `{"frame": N}` (frame-keyed) or `{"us": N}`
-(microseconds on the video's clock); one file uses one kind. An observation's `time` carries its Scene's key and may
-carry the other too, `{"frame": N, "us": N}`. Frame numbers are integers; a Scene keyed before frame 0 is skipped
+(microseconds on the video's clock); one file uses one kind. An observation's `time` carries either clock, independently
+of the Scene key, or both, `{"frame": N, "us": N}`. Frame numbers are integers; a Scene keyed before frame 0 is skipped
 with a warning. Geometry is normalized to `[0,1]` of the frame. Absent
 parts may be left out.
 
