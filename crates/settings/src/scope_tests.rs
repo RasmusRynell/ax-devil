@@ -75,6 +75,18 @@ fn a_literal_secret_is_masked_and_a_patch_that_does_not_name_it_keeps_it() {
         "hunter2",
         "a secret the patch does not name is untouched"
     );
+    let refused = settings.patch(&edit(MASK)).unwrap_err();
+    assert!(refused.invalid);
+    assert_eq!(refused.location, "server.token");
+    assert_eq!(
+        read(&path)["settings"]["server.token"],
+        "hunter2",
+        "the mask is refused, not stored"
+    );
+    assert!(
+        read(&path)["settings"]["me.mode"].is_null(),
+        "and nothing else in the patch is saved"
+    );
     let state = settings.patch(&edit("$TOKEN")).unwrap();
     assert_eq!(state.values()["server.token"], "$TOKEN");
     assert_eq!(read(&path)["settings"]["me.mode"], "b");

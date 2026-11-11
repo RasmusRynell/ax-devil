@@ -56,8 +56,8 @@ impl Setting {
         }
     }
 
-    /// What a person's `sent` value means once the masked passwords in it are put back from the `stored` value: a
-    /// masked password in a record keeps the stored password of the record at
+    /// What a person's `sent` value means once the masked passwords in it are put back from the `stored` value. A text
+    /// secret sent as the mask is refused: a client names a text secret only to change it. A masked password in a record keeps the stored password of the record at
     /// the same position when its other fields are unchanged, else of an unclaimed record with the same other fields,
     /// else of the unclaimed record at the same position (the user changed another field of it). A stored record
     /// keeps its password for one row only, and a masked secret with nothing to keep is refused rather than stored
@@ -124,6 +124,9 @@ impl Setting {
                     .collect::<Result<Vec<_>, &str>>()
                     .map(Value::Array)
                     .map_err(str::to_owned)
+            }
+            (Value::String(text), _) if text == MASK => {
+                Err("Enter the secret itself, not the mask.".into())
             }
             _ => Ok(sent.clone()),
         }

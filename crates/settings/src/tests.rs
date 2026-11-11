@@ -340,8 +340,13 @@ fn every_released_settings_file_still_loads() {
 
         let settings = Settings::load(&path).unwrap_or_else(|error| panic!("{name}: {error}"));
         let state = settings.state();
+        // A masked text secret is never sent back: naming a secret changes it.
         let again = Patch {
-            set: state.values(),
+            set: state
+                .values()
+                .into_iter()
+                .filter(|(_, value)| value != crate::MASK)
+                .collect(),
             shortcuts_set: state
                 .shortcuts()
                 .into_iter()
