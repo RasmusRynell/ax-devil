@@ -85,15 +85,4 @@ mod tests {
             ]
         );
     }
-
-    #[test]
-    fn all_accepted_metadata_remains_readable() {
-        let long = "é".repeat(300);
-        let metadata: Settings = (0..33)
-            .map(|n| (format!("key{n:02}"), Value::from(long.clone())))
-            .collect();
-        let fields = metadata_fields(&metadata);
-        assert_eq!(fields.len(), 33);
-        assert_eq!(fields.last().unwrap(), &("key32".into(), long));
-    }
 }

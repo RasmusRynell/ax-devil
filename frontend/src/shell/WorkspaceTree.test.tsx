@@ -371,10 +371,13 @@ describe("items", () => {
     leave();
   });
 
-  it("removes the whole item at once from the menu or with Delete, and edits it with F2", async () => {
+  it("removes a top-level item with modified Delete, refuses a nested row, and edits with modified F2", async () => {
     await renderTree();
-    fireEvent.contextMenu(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
+    fireEvent.keyDown(screen.getByRole("tree", { name: "Videos" }), {
+      key: "Delete",
+      ctrlKey: true,
+      altKey: true,
+    });
     await act(async () => {});
     const tree = screen.getByRole("tree", { name: "Playlists" });
     tree.focus();

@@ -35,7 +35,7 @@ fn plugin(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn python_available() -> bool {
+pub(crate) fn python_available() -> bool {
     let found = Command::new("python3")
         .arg("--version")
         .stdout(Stdio::null())

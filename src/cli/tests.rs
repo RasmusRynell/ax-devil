@@ -239,6 +239,8 @@ fn open_refuses_a_recovery_copy_the_window_could_not_take_over() {
     let held = copy.path().to_path_buf();
     assert!(open(&held).err().unwrap().contains("another window"));
     drop(copy);
+    // A crashed process can leave an incomplete file even though dropping a reservation cleans it up.
+    std::fs::write(&held, "").unwrap();
     assert!(
         open(&held).err().unwrap().contains("Work"),
         "empty file is not a workspace"

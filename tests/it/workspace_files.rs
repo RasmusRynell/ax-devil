@@ -174,14 +174,29 @@ async fn recovery_failure_does_not_prevent_replacement() {
         workspace_files::save(&workspace::Workspace::default(), &target).unwrap();
         let address = backend(folder.path(), None).await;
         let mut owner = Socket::own(&address, None).await;
+        let session = owner.until(|message| message["type"] == "welcome").await["session"].clone();
+        let mut second = Socket::connect(&address, "/api/session").await;
+        second
+            .say(
+                json!({"type": "hello", "auth": {"type": "attach", "session": session},
+            "cursors": {"show": true, "share": true}}),
+            )
+            .await;
+        let seat = second.until(|message| message["type"] == "seat").await;
+        assert_eq!(seat["access"], "owner");
         for (seq, command) in [
             (2, json!({"type": "new"})),
             (4, json!({"type": "open", "path": target})),
         ] {
             owner.say(add_video(seq - 1)).await;
-            doc(&mut owner, |ws| ws["modified"] == true).await;
-            owner.say(workspace(seq, command)).await;
-            let (outcome, empty) = settle(&mut owner, seq, |ws| ws["items"] == json!([])).await;
+            let modified = doc(&mut owner, |ws| ws["modified"] == true).await;
+            assert_eq!(
+                doc(&mut second, |ws| ws["modified"] == true).await,
+                modified
+            );
+            second.say(workspace(seq, command)).await;
+            let (outcome, empty) = settle(&mut second, seq, |ws| ws["items"] == json!([])).await;
+            assert_eq!(doc(&mut owner, |ws| ws["items"] == json!([])).await, empty);
             assert_eq!(outcome, json!({"status": "ok"}), "{blocked}");
             assert_eq!(empty["modified"], false);
         }

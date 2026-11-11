@@ -10,6 +10,7 @@ use std::{
     fs::{self, File, OpenOptions, TryLockError},
     io,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicBool, Ordering},
 };
 use workspace::Workspace;
 
@@ -27,12 +28,14 @@ pub enum Claim {
     Failed(UserError),
 }
 
-/// A recovery copy this window holds. Dropping it releases the lock and keeps the file.
+/// A recovery copy this window holds. Dropping it releases the lock and keeps only a written file.
 #[derive(Debug)]
 pub struct RecoveryCopy {
     path: PathBuf,
     /// Held for as long as the copy is.
     _lock: File,
+    written: AtomicBool,
+    removed: AtomicBool,
 }
 
 impl RecoveryFolder {
@@ -73,7 +76,12 @@ impl RecoveryFolder {
             };
             match taken {
                 Ok(lock) => {
-                    return Ok(RecoveryCopy { path, _lock: lock });
+                    return Ok(RecoveryCopy {
+                        path,
+                        _lock: lock,
+                        written: AtomicBool::new(false),
+                        removed: AtomicBool::new(false),
+                    });
                 }
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => n += 1,
                 Err(error) => return Err(error),
@@ -102,7 +110,12 @@ impl RecoveryFolder {
                 let _ = fs::remove_file(lock_path(&path));
                 Err(missing())
             }
-            Ok(lock) => Ok(RecoveryCopy { path, _lock: lock }),
+            Ok(lock) => Ok(RecoveryCopy {
+                path,
+                _lock: lock,
+                written: AtomicBool::new(true),
+                removed: AtomicBool::new(false),
+            }),
             Err(TryLockError::WouldBlock) => Err(Claim::InUse),
             Err(TryLockError::Error(error)) => {
                 let reason = format!("Cannot open {}: {error}", file_name(&path));
@@ -128,11 +141,27 @@ impl RecoveryCopy {
     /// Replaces the copy with `workspace` atomically. Paths are written absolute; `recovers` is the workspace file
     /// the copy belongs to, `None` for Untitled.
     pub fn write(&self, workspace: &Workspace, recovers: Option<&Path>) -> Result<(), UserError> {
+        self.write_with(workspace, recovers, write_file)
+    }
+
+    /// Whether the copy has contents that may be offered for recovery. A reservation alone is not recoverable.
+    pub fn is_written(&self) -> bool {
+        self.written.load(Ordering::Acquire)
+    }
+
+    fn write_with(
+        &self,
+        workspace: &Workspace,
+        recovers: Option<&Path>,
+        writer: impl FnOnce(&Path, &serde_json::Value) -> io::Result<()>,
+    ) -> Result<(), UserError> {
         let document = to_document(workspace, None, Some(recovers));
-        write_file(&self.path, &document).map_err(|error| {
+        writer(&self.path, &document).map_err(|error| {
             let reason = format!("Could not save {}: {error}", file_name(&self.path));
             UserError::new(ErrorCode::SaveFailed, reason).at(HostPath::new(&self.path))
-        })
+        })?;
+        self.written.store(true, Ordering::Release);
+        Ok(())
     }
 
     /// The workspace in the copy and the file it belongs to.
@@ -150,6 +179,7 @@ impl RecoveryCopy {
                 .as_ref()
                 .is_err_and(|e| e.kind() == io::ErrorKind::NotFound)
         {
+            self.removed.store(true, Ordering::Release);
             let _ = fs::remove_file(lock_path(&self.path));
         }
         match removed {
@@ -158,6 +188,18 @@ impl RecoveryCopy {
         }
     }
 }
+
+impl Drop for RecoveryCopy {
+    fn drop(&mut self) {
+        // Successful deletion releases the name: another holder may already have reused it.
+        if !self.is_written() && !self.removed.load(Ordering::Acquire) {
+            let _ = self.delete();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;
 
 /// A file name stem for a workspace named `name`: path separators, control characters and the characters Windows
 /// reserves in names (`:` also starts a drive prefix or an NTFS stream, which would put the copy outside its folder)

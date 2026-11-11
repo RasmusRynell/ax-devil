@@ -62,6 +62,7 @@ impl WorkspaceFiles {
         // Other windows can push the copy out of the recents, so it is put back rather than trusted to be there.
         if let Some(copy) = files.copy.clone()
             && outgoing.doc.workspace.modified()
+            && copy.is_written()
         {
             let recovers = outgoing
                 .doc

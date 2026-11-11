@@ -172,6 +172,7 @@ module.exports.run = async ({ window }) => {
       found.closest('[role=tree]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
     })()`);
     await wait(`!${row("Door")}`);
+    await require("./information-fit.cjs").run(window);
   } finally {
     nativeTheme.themeSource = theme;
     await removeTemp(folder);

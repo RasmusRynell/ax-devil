@@ -19,5 +19,6 @@ mod session_settings;
 mod session_socket;
 mod shutdown;
 mod workspace_files;
+mod workspace_metadata;
 mod workspace_recovery;
 mod workspace_session;

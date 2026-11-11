@@ -12,6 +12,7 @@ const CHECKED = {
   "export/ExportDialog.tsx": "smoke-export.cjs",
   "kit/Gallery.tsx": "smoke-gallery.cjs",
   "lanes/LaneCatalogActions.tsx": "smoke-panels.cjs",
+  "shell/InformationDialog.tsx": "smoke-items.cjs",
   "shell/AboutDialog.tsx": "smoke-shell.cjs",
   "shell/AddLiveStreamDialog.tsx": "smoke-live.cjs",
   "shell/AddPlaylistDialog.tsx": "smoke-playlist.cjs",
@@ -30,8 +31,6 @@ const EXEMPT = {
   "bookmarks/RenameBookmark.tsx": "one text field, the shape of the Connect dialog's password page",
   "session/Notice.tsx":
     "the server password dialog is one masked field, the shape of the Connect dialog's password page",
-  "shell/InformationDialog.tsx":
-    "needs a connected camera, which the offline smoke test never has; its table scrolls inside the window",
 };
 
 function sources(dir) {
