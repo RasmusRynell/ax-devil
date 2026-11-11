@@ -63,6 +63,7 @@ fn one_video() -> Recording {
     let ids = scene.ids().clone();
     let initial = scene.session().clone();
     recording.branch("initial", &initial, remove(&ids["a"]), "removed-at-once");
+    recording.branch("initial", &initial, close_viewer(&ids["a"]), "closed");
     scene.source_changed("a");
     recording.state("changed-1", scene.session());
     scene.source_changed("a");

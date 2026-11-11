@@ -191,7 +191,7 @@ pub fn transition(state: &SessionState, input: Input) -> Result<(SessionState, E
     let mut next = state.clone();
     let mut fx = Effects::default();
     apply(&mut next, &mut fx, input)?;
-    settle(state, &mut next, &mut fx);
+    settle(&mut next, &mut fx, state.doc_rev);
     if next.visibly_differs(state) {
         next.revision += 1;
     }
@@ -366,6 +366,9 @@ fn set_view(
     }
     match standing {
         Standing::Owner => {
+            // Owner views are whole snapshots: concurrent updates can undo another Owner's pane change.
+            // Distinguishing a close from a stale omission needs a base revision or explicit pane operations;
+            // an incoming view therefore never closes an item just because it omits its pane.
             let view = keep_overlays(
                 keep_viewports(
                     clamp_intents(view, &next.presenter, now_us),
@@ -446,32 +449,31 @@ fn complete_job(next: &mut SessionState, job: JobId, completion: Completion) {
 
 /// Brings everything derived back in line with the new state: views inside the Doc, jobs that are still wanted, and
 /// tickets and grants that still pass.
-fn settle(previous: &SessionState, next: &mut SessionState, fx: &mut Effects) {
-    let presenter = restrict(&next.presenter, &next.doc);
-    // One retirement boundary for Owner views and Doc changes. Newly opened items without a pane are still
-    // waiting for placement; only items represented before this change can lose their last pane.
-    let kept: BTreeSet<_> = presenter
-        .viewers
-        .values()
-        .map(|viewer| viewer.item)
-        .collect();
-    let orphaned: BTreeSet<_> = previous
-        .presenter
-        .viewers
-        .values()
-        .chain(next.presenter.viewers.values())
-        .map(|viewer| viewer.item)
-        .filter(|item| !kept.contains(item) && next.doc.workspace.open.contains(item))
-        .collect();
-    for item in orphaned {
-        commands::content(next, fx, DocCommand::CloseViewer(item));
-    }
-    if presenter != *next.presenter {
-        next.presenter = Arc::new(presenter);
-        next.presenter_rev += 1;
-        next.presenter_by = None;
-    }
-    if next.doc_rev != previous.doc_rev {
+fn settle(next: &mut SessionState, fx: &mut Effects, old_doc_rev: u64) {
+    if next.doc_rev != old_doc_rev {
+        let presenter = restrict(&next.presenter, &next.doc);
+        // As with closing a pane in the owner window, losing the last pane closes its item.
+        // Publish both together: an open item without a pane would be automatically placed again.
+        let kept: BTreeSet<_> = presenter
+            .viewers
+            .values()
+            .map(|viewer| viewer.item)
+            .collect();
+        let orphaned: BTreeSet<_> = next
+            .presenter
+            .viewers
+            .values()
+            .map(|viewer| viewer.item)
+            .filter(|item| !kept.contains(item) && next.doc.workspace.open.contains(item))
+            .collect();
+        for item in orphaned {
+            commands::content(next, fx, DocCommand::CloseViewer(item));
+        }
+        if presenter != *next.presenter {
+            next.presenter = Arc::new(presenter);
+            next.presenter_rev += 1;
+            next.presenter_by = None;
+        }
         let doc = Arc::clone(&next.doc);
         for seat in next.seats.values_mut() {
             if let Some(view) = &seat.view {

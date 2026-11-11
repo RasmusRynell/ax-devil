@@ -142,7 +142,62 @@ fn view(state: &mut SessionState, seat: SeatId, view: View, seq: u64) {
 }
 
 #[test]
-fn a_late_owner_close_cannot_reopen_an_entry_retired_by_reload() {
+fn a_stale_owner_snapshot_does_not_close_another_owners_new_item() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = crate::video_in(dir.path(), "A.mp4");
+    let b = crate::video_in(dir.path(), "B.mp4");
+    let (a_id, b_id) = (a.id, b.id);
+    let mut state = SessionState::new(SessionId::generate(), false);
+    let first = state.seat_owner();
+    let second = state.seat_owner();
+    command(
+        &mut state,
+        first,
+        DocCommand::AddItems {
+            items: vec![a],
+            open: true,
+        },
+    );
+    let mut a_only = showing(a_id);
+    a_only.viewers.get_mut(&ViewerId(1)).unwrap().pinned = true;
+    view(&mut state, first, a_only, 1);
+    // Hold Owner 2's clock update from the shared A-only view.
+    let mut delayed = (*state.presenter).clone();
+    delayed.viewers.get_mut(&ViewerId(1)).unwrap().clock = Some(playback::ClockIntent {
+        frame: 7,
+        playing: false,
+        speed_centi: 100,
+        at_us: 0,
+    });
+    command(
+        &mut state,
+        first,
+        DocCommand::AddItems {
+            items: vec![b],
+            open: true,
+        },
+    );
+    let mut both = (*state.presenter).clone();
+    both.viewers.insert(ViewerId(2), looking(b_id));
+    both.layout = Some(Layout::Split {
+        axis: Axis::Row,
+        share: 5000,
+        first: pane(1),
+        second: pane(2),
+    });
+    view(&mut state, first, both.clone(), 2);
+    view(&mut state, second, delayed, 1);
+    assert!(
+        state.doc.workspace.open.contains(&b_id),
+        "a stale omission is not a close"
+    );
+    // The open item can be placed again, as useFrontViewer does after receiving this snapshot.
+    view(&mut state, first, both, 3);
+    assert_eq!(state.presenter.viewers[&ViewerId(2)].item, b_id);
+}
+
+#[test]
+fn a_close_during_reload_can_be_undone_by_automatic_placement() {
     let dir = tempfile::tempdir().unwrap();
     let playlist = playlist_in(dir.path(), &["A", "B"]);
     let item = playlist.id;
@@ -157,62 +212,34 @@ fn a_late_owner_close_cannot_reopen_an_entry_retired_by_reload() {
             open: true,
         },
     );
-    let (a, b) = (
-        crate::entry_key(&state, item, 0).entry,
-        crate::entry_key(&state, item, 1).entry,
-    );
-    view(
-        &mut state,
-        first,
-        View {
-            viewers: [
-                (
-                    ViewerId(1),
-                    sessions::session::ViewerView {
-                        entry: Some(a),
-                        pinned: true,
-                        ..looking(item)
-                    },
-                ),
-                (
-                    ViewerId(2),
-                    sessions::session::ViewerView {
-                        entry: Some(b),
-                        ..looking(item)
-                    },
-                ),
-            ]
-            .into(),
-            layout: Some(Layout::Split {
-                axis: Axis::Row,
-                share: 4000,
-                first: pane(1),
-                second: pane(2),
-            }),
-            ..showing(item)
+    let a = crate::entry_key(&state, item, 0).entry;
+    let b = crate::entry_key(&state, item, 1).entry;
+    let mut both = showing(item);
+    both.viewers.get_mut(&ViewerId(1)).unwrap().entry = Some(a.clone());
+    both.viewers.insert(
+        ViewerId(2),
+        sessions::session::ViewerView {
+            entry: Some(b),
+            ..looking(item)
         },
-        1,
     );
-    // Owner 2 closes A using its old A/B view, but its packet waits until after Owner 1's reload.
+    both.layout = Some(Layout::Split {
+        axis: Axis::Row,
+        share: 5000,
+        first: pane(1),
+        second: pane(2),
+    });
+    view(&mut state, first, both, 1);
+    // Hold Owner 2's close of A before it learns that B disappeared.
     let mut delayed = (*state.presenter).clone();
     delayed.viewers.remove(&ViewerId(1));
     delayed.active = Some(ViewerId(2));
     delayed.layout = Some(*pane(2));
-    let survivor = state.presenter.viewers[&ViewerId(1)].clone();
     std::fs::remove_file(dir.path().join("videos/B.mp4")).unwrap();
     command(&mut state, first, DocCommand::Resolve(item));
-    assert_eq!(state.presenter.viewers, [(ViewerId(1), survivor)].into());
-    assert!(state.doc.workspace.open.contains(&item));
-
     view(&mut state, second, delayed, 1);
-    assert!(
-        !state.doc.workspace.open.contains(&item),
-        "no open item remains for a window to auto-place"
-    );
+    assert!(state.doc.workspace.open.contains(&item));
     assert!(state.presenter.viewers.is_empty());
-    assert!(state.presenter.layout.is_none());
-    // A stale client can still try to auto-place A; only an explicit Open can reopen its item.
     view(&mut state, first, showing(item), 2);
-    assert!(state.presenter.viewers.is_empty());
-    assert!(state.doc.workspace.open.is_empty());
+    assert_eq!(state.presenter.viewers[&ViewerId(1)].entry, Some(a));
 }

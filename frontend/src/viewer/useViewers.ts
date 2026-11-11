@@ -5,7 +5,6 @@ import {
   useCommand,
   useDoc,
   useFollowing,
-  useViewSettled,
   useReadView,
   useSetView,
   useView,
@@ -13,7 +12,7 @@ import {
 import { MAX_PANES } from "../session/views";
 import { hiddenOf, NOTHING_HIDDEN, type Hidden } from "./hidden";
 import { leaves } from "./layout";
-import { autoPlace, close, open as openIn, openToSide, reuse } from "./placement";
+import { autoPlace, close, leftWithout, open as openIn, openToSide, reuse } from "./placement";
 import { focusLane } from "./laneFocus";
 import { hold, isHeld } from "./placing";
 
@@ -82,7 +81,6 @@ export function useFrontViewer(onFull?: () => void): void {
   const decides = useCan("view");
   const opens = useCan("content");
   const following = useFollowing();
-  const settled = useViewSettled();
   // The items asked to close that the Doc still has open, so a second pass does not ask again.
   const closing = useRef(new Set<string>());
   const told = useRef(onFull);
@@ -93,7 +91,7 @@ export function useFrontViewer(onFull?: () => void): void {
     setView((shown) => {
       let next = shown;
       const placed = new Set(Object.values(shown.viewers).map((viewer) => viewer?.item));
-      if (opens && settled)
+      if (opens)
         for (const item of open) {
           if (placed.has(item.id) || isHeld(item.id)) continue;
           const added = autoPlace(next, item.id);
@@ -113,7 +111,7 @@ export function useFrontViewer(onFull?: () => void): void {
       void closeItems(command, fresh);
       told.current?.();
     }
-  }, [decides, opens, following, settled, open, front, viewers, layout, setView, command]);
+  }, [decides, opens, following, open, front, viewers, layout, setView, command]);
 }
 
 /** What the user hid in the workspace tree, as the Doc's rows say. */
@@ -163,11 +161,13 @@ export function useShow(): (item: string, entry?: string, how?: Show) => Promise
           await command({ type: "content", command: { type: "openViewer", item } });
         }
         let refused = false;
+        let left: string[] = [];
         let placed: number | undefined;
         setView((shown) => {
           const next = place(shown);
           refused = !next;
           placed = next?.active;
+          left = next ? leftWithout(shown, next) : [];
           return next ?? shown;
         });
         if (refused) {
@@ -177,6 +177,7 @@ export function useShow(): (item: string, entry?: string, how?: Show) => Promise
         }
         // The viewer the view just placed is in front; its pane hands the keyboard to the lane when it can.
         if (placed !== undefined) focusLane(placed, entry, how.lane);
+        if (opens && left.length > 0) await closeItems(command, left);
       } finally {
         release();
       }
@@ -185,8 +186,24 @@ export function useShow(): (item: string, entry?: string, how?: Show) => Promise
   );
 }
 
-/** Removes panes from the view; the Session closes items left without a Presenter pane. */
+/**
+ * The way to close panes: they leave the view and, for each item left without one, the Doc closes the item, as
+ * closing a pane releases its viewer.
+ */
 export function useClosePanes(): (viewers: readonly number[]) => void {
+  const command = useCommand();
   const setView = useSetView();
-  return useCallback((viewers) => setView((shown) => close(shown, viewers)), [setView]);
+  const opens = useCan("content");
+  return useCallback(
+    (viewers) => {
+      let left: string[] = [];
+      setView((shown: View) => {
+        const next = close(shown, viewers);
+        left = leftWithout(shown, next);
+        return next;
+      });
+      if (opens && left.length > 0) void closeItems(command, left);
+    },
+    [command, setView, opens],
+  );
 }

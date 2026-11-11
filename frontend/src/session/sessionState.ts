@@ -27,8 +27,6 @@ export interface SessionState {
   cursorOptions: CursorOptions;
   /** What the window shows now, including a change the backend has not settled yet. */
   view: View;
-  /** Whether a local view change is waiting for the backend to settle it. */
-  viewPending: boolean;
   /** Whether the window shows the presenter's view and nothing of its own. */
   following: boolean;
   /**

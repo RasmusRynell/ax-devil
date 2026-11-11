@@ -135,3 +135,13 @@ export function pinned(view: View, viewer: number, pin: boolean): View {
 export function activated(view: View, viewer: number): View {
   return view.active === viewer || !(viewer in view.viewers) ? view : { ...view, active: viewer };
 }
+
+/**
+ * The items that had a viewer in `before` and have none in `after`: the Doc still holds them open, and they need
+ * a `closeViewer`. An item that keeps a pane, however many it lost, does not.
+ */
+export function leftWithout(before: View, after: View): string[] {
+  const kept = new Set(Object.values(after.viewers).map((viewer) => viewer?.item));
+  const items = Object.values(before.viewers).map((viewer) => viewer?.item);
+  return [...new Set(items)].filter((item): item is string => !!item && !kept.has(item));
+}
