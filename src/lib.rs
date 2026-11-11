@@ -457,16 +457,32 @@ fn refuse_unscannable_range(
 /// A failed request: the status and the error as the host sees it. Every route that fails answers this shape.
 pub(crate) type Failure = (StatusCode, Json<ErrorWire>);
 
-/// The failure `reason` about `location` (a setting key or a field), whose code follows from `status`: a refused
-/// caller is `Forbidden`, any other client fault `InvalidRequest`, and the rest `Internal`.
-pub(crate) fn failure(status: StatusCode, location: &str, reason: String) -> Failure {
-    let code = match status {
+/// The failure `error` under `status`, as the host sees it.
+fn failed(status: StatusCode, error: UserError) -> Failure {
+    (status, Json(project(&error, Audience::HOST)))
+}
+
+/// The code of a failure by its status: a refused caller is `Forbidden`, any other client fault `InvalidRequest`, and
+/// the rest `Internal`.
+fn code_of(status: StatusCode) -> ErrorCode {
+    match status {
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => ErrorCode::Forbidden,
         status if status.is_client_error() => ErrorCode::InvalidRequest,
         _ => ErrorCode::Internal,
-    };
-    let error = UserError::new(code, reason).at(Location::field(location));
-    (status, Json(project(&error, Audience::HOST)))
+    }
+}
+
+/// The failure `reason` about `location`, a setting key or a field.
+pub(crate) fn failure(status: StatusCode, location: &str, reason: String) -> Failure {
+    failed(
+        status,
+        UserError::new(code_of(status), reason).at(Location::field(location)),
+    )
+}
+
+/// The failure `reason` about no particular field.
+pub(crate) fn rejected(status: StatusCode, reason: String) -> Failure {
+    failed(status, UserError::new(code_of(status), reason))
 }
 
 pub(crate) async fn info(principal: Principal) -> Json<AppInfo> {

@@ -27,10 +27,15 @@ mod conformance;
 use crate::{
     AppState,
     access::{self, Who},
+    rejected,
 };
 use axum::{
     Router,
-    middleware::from_fn_with_state,
+    body::{Body, to_bytes},
+    extract::Request,
+    http::{StatusCode, header},
+    middleware::{Next, from_fn, from_fn_with_state},
+    response::{IntoResponse, Response},
     routing::{MethodFilter, MethodRouter, on},
 };
 use foundation::CancelToken;
@@ -300,6 +305,34 @@ pub(crate) const ROUTES: &[Route] = &[
     },
 ];
 
+/// The sockets' paths: their failures are upgrade refusals no page reads as JSON.
+const SOCKETS: [&str; 2] = ["/api/session", "/api/playback"];
+
+/// Answers an extractor's plain-text rejection (a body that is not the route's JSON, a missing content type, a bad path
+/// or query) as an `ErrorWire` under the same status, so a JSON route fails in one shape. The text is axum's own and
+/// names only what the caller sent. Left as they are: responses that are not plain text (images, the scan stream,
+/// bodiless 404 and 405), the sockets' upgrade refusals and any 429, which a handler words itself.
+async fn wire_rejections(request: Request, next: Next) -> Response {
+    let path = request.uri().path().to_owned();
+    let response = next.run(request).await;
+    let status = response.status();
+    let plain = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|kind| kind.to_str().ok())
+        .is_some_and(|kind| kind.starts_with("text/plain"));
+    let rejection = (status.is_client_error() || status.is_server_error())
+        && status != StatusCode::TOO_MANY_REQUESTS;
+    if !plain || !rejection || !path.starts_with("/api/") || SOCKETS.contains(&path.as_str()) {
+        return response;
+    }
+    // A rejection is a sentence; a body that is not readable as one is not ours to word.
+    match to_bytes(Body::new(response.into_body()), 4096).await {
+        Ok(text) => rejected(status, String::from_utf8_lossy(&text).into_owned()).into_response(),
+        Err(_) => status.into_response(),
+    }
+}
+
 /// The routes `listener` serves, and in release builds the embedded frontend for every other GET.
 pub(crate) fn mount(listener: Listener, state: AppState) -> Router {
     let mut router = Router::new();
@@ -315,5 +348,5 @@ pub(crate) fn mount(listener: Listener, state: AppState) -> Router {
     {
         router = router.fallback_service(axum::routing::get(crate::asset));
     }
-    router.with_state(state)
+    router.with_state(state).layer(from_fn(wire_rejections))
 }

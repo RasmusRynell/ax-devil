@@ -219,6 +219,33 @@ mod tests {
         }
     }
 
+    /// What the extractor refuses is answered as every other failure is: an `ErrorWire` under the same status.
+    #[tokio::test]
+    async fn a_body_the_route_cannot_read_is_an_invalid_request_with_the_reason() {
+        let test = TestApp::new();
+        let unreadable = |body: &'static str| {
+            Request::builder()
+                .method("POST")
+                .uri("/api/live/resolutions")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap()
+        };
+        for (body, status) in [
+            (
+                r#"{"connection":{"head":"bad"}}"#,
+                StatusCode::UNPROCESSABLE_ENTITY,
+            ),
+            ("{", StatusCode::BAD_REQUEST),
+        ] {
+            let (answered, bytes) = test.send(unreadable(body)).await;
+            assert_eq!(answered, status);
+            let error = json(&bytes);
+            assert_eq!(error["code"], "InvalidRequest");
+            assert!(!error["reason"].as_str().unwrap().is_empty());
+        }
+    }
+
     /// Another stream of a camera asks the camera with that stream's saved login, for the person at this machine and
     /// the same camera only. The configured password is also the person at this machine's: another principal asks
     /// with none, whatever host it names.
