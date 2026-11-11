@@ -209,6 +209,20 @@ async fn recovery_failure_does_not_prevent_replacement() {
             assert_eq!(doc(&mut owner, |ws| ws["items"] == json!([])).await, empty);
             assert_eq!(outcome, json!({"status": "ok"}), "{blocked}");
             assert_eq!(empty["modified"], false);
+            let listed: Vec<_> = recents(folder.path())
+                .list()
+                .into_iter()
+                .map(|recent| recent.path)
+                .collect();
+            let expected = if blocked == "unsaved" && seq == 4 {
+                vec![target.clone()]
+            } else {
+                Vec::new()
+            };
+            assert_eq!(listed, expected, "only usable workspaces enter Recents");
+            if blocked == "unsaved" {
+                assert!(copies(folder.path()).is_empty());
+            }
         }
     }
 }
