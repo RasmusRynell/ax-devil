@@ -26,7 +26,7 @@ module.exports.run = async ({ window }) => {
   await until(() => window.isMaximized(), "maximized window before restore-drag");
   await driver.wait("document.querySelector('[aria-label=Restore]')");
   const maximizedBounds = window.getBounds();
-  const titleHeight = await driver.js(`${TITLE}.getBoundingClientRect().height`);
+  const titleHeight = await driver.js(`${TITLE}.closest("header").getBoundingClientRect().height`);
   const maximized = await point(window, TITLE);
   await input("move", maximized.x, maximized.y);
   try {
@@ -37,9 +37,16 @@ module.exports.run = async ({ window }) => {
     assert.ok(window.isMaximized(), "a three-pixel gesture does not restore the window");
     await input("move", maximized.x + 2, maximized.y + 2);
     await until(() => !window.isMaximized(), "dragging the maximized title to restore");
-    const first = window.getBounds();
     await input("move", maximized.x - 100, maximized.y + 160);
-    await until(() => window.getBounds().y > first.y, "continuing the same restore gesture");
+    await until(() => {
+      const bounds = window.getBounds();
+      return (
+        bounds.x ===
+          Math.round(
+            maximized.x - 100 - (800 * (maximized.x - maximizedBounds.x)) / maximizedBounds.width,
+          ) && bounds.y === Math.max(0, Math.round(maximized.y + 160 - titleHeight / 2))
+      );
+    }, "continuing the same restore gesture to its pointer-relative position");
   } finally {
     await input("up");
   }
