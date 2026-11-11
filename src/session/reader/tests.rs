@@ -573,13 +573,10 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
 
     // A guest's stream keeps nothing the owner configured for a mode it does not use: with the broker user set to
     // a reference, the kept user stays blank.
-    let mut values = state.settings.state().values();
-    values.insert("broker.user".into(), "$SOME_SECRET".into());
-    let change = settings::Change {
-        values,
-        shortcuts: Default::default(),
-    };
-    state.settings.replace(&change).unwrap();
+    state
+        .settings
+        .update("broker.user", |_| Some("$SOME_SECRET".into()))
+        .unwrap();
     let added = json!({"host": "cam.local", "username": "guest", "overlay": {"mode": "none"},
         "kept_mqtt": {"broker_host": "attacker.example", "broker_pass": "literal"}});
     seq += 1;

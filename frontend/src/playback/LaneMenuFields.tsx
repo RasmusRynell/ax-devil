@@ -97,7 +97,7 @@ export function MakeDefault({
   isDefault: boolean;
   usable?: boolean;
 }) {
-  const { values, shortcuts, save } = useSettings();
+  const { set } = useSettings();
   const [refusal, setRefusal] = useState<string | null>(null);
   return (
     <div className="flex flex-col items-start gap-s">
@@ -109,9 +109,7 @@ export function MakeDefault({
           title="Start new viewers and lanes with these settings."
           onClick={() => {
             setRefusal(null);
-            void save({ values: { ...values, [setting]: value }, shortcuts }).then((refused) =>
-              setRefusal(refused?.reason ?? null),
-            );
+            void set(setting, value).then((refused) => setRefusal(refused?.reason ?? null));
           }}
         >
           Make default

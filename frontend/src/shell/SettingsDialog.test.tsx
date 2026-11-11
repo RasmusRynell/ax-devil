@@ -113,7 +113,7 @@ describe("settings dialog", () => {
     const state = { ...DEFAULT_SETTINGS, values } as never;
     render(
       <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
-        <FakeSettings state={state} save={save}>
+        <FakeSettings state={state} apply={save}>
           <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
         </FakeSettings>
       </AccessContext.Provider>,
@@ -154,16 +154,15 @@ describe("settings dialog", () => {
     fireEvent.change(screen.getByLabelText("Dir"), { target: { value: "/data/cache" } });
 
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    // Only what the dialog changed is sent: the flag it left alone is not.
     expect(save).toHaveBeenCalledWith({
-      values: {
-        ...values,
+      set: {
         "t.mode": "http",
         "t.size": 512,
         "t.port": "$PORT",
         "t.dir": "/data/cache",
         "t.token": "$TOKEN",
       },
-      shortcuts: DEFAULT_SETTINGS.shortcuts,
     });
   });
 
@@ -193,7 +192,7 @@ describe("settings dialog", () => {
               values: { ...DEFAULT_SETTINGS.values, "t.decoder": "A" },
             } as never
           }
-          save={save}
+          apply={save}
         >
           <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
         </FakeSettings>
@@ -205,11 +204,7 @@ describe("settings dialog", () => {
     expect(field.list?.options[0]).toMatchObject({ value: "ADF_V1_FRAME", label: "ADF v1 frame" });
     fireEvent.change(field, { target: { value: "MY_PLUGIN_DECODER" } });
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
-    expect(save).toHaveBeenCalledWith(
-      expect.objectContaining({
-        values: expect.objectContaining({ "t.decoder": "MY_PLUGIN_DECODER" }),
-      }),
-    );
+    expect(save).toHaveBeenCalledWith({ set: { "t.decoder": "MY_PLUGIN_DECODER" } });
   });
 
   it("offers the Server rows only to someone who may configure the server", () => {
@@ -241,7 +236,7 @@ describe("settings dialog", () => {
     const values = { ...DEFAULT_SETTINGS.values, "t.dir": "" };
     render(
       <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
-        <FakeSettings state={{ ...DEFAULT_SETTINGS, values } as never} save={save}>
+        <FakeSettings state={{ ...DEFAULT_SETTINGS, values } as never} apply={save}>
           <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
         </FakeSettings>
       </AccessContext.Provider>,
@@ -261,7 +256,7 @@ describe("settings dialog", () => {
       const values = { ...DEFAULT_SETTINGS.values, "scan.logins": logins };
       render(
         <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
-          <FakeSettings state={{ ...DEFAULT_SETTINGS, values } as never} save={save}>
+          <FakeSettings state={{ ...DEFAULT_SETTINGS, values } as never} apply={save}>
             <SettingsDialog onClose={onClose} onRestartNeeded={() => {}} />
           </FakeSettings>
         </AccessContext.Provider>,
@@ -278,13 +273,9 @@ describe("settings dialog", () => {
       expect(save).not.toHaveBeenCalled();
 
       fireEvent.click(screen.getByRole("button", { name: "OK" }));
-      expect(save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          values: expect.objectContaining({
-            "scan.logins": [...logins, { user: "ops", password: "$OPS" }],
-          }),
-        }),
-      );
+      expect(save).toHaveBeenCalledWith({
+        set: { "scan.logins": [...logins, { user: "ops", password: "$OPS" }] },
+      });
     });
 
     it("are discarded on Cancel", () => {
@@ -299,105 +290,67 @@ describe("settings dialog", () => {
   });
 
   describe("keyboard shortcuts", () => {
-    /** Settings that keep what is saved, as the real provider does, and report every save. */
-    const Keeping = ({
-      save,
-      onClose,
-      until,
-    }: {
-      save: (change: Parameters<SettingsApi["save"]>[0]) => void;
-      onClose: () => void;
-      /** Holds each save's answer back until this settles. */
-      until?: Promise<void>;
-    }) => {
-      const [state, setState] = useState(DEFAULT_SETTINGS);
-      return (
-        <SettingsContext.Provider
-          value={{
-            ...state,
-            reload: () => Promise.resolve(),
-            save: async (change) => {
-              save(change);
-              await until;
-              setState(change);
-              return null;
-            },
-          }}
-        >
+    /** Settings over `apply`, which answers once `until` settles. */
+    const open = (apply: SettingsApi["apply"], onClose = vi.fn()) =>
+      render(
+        <FakeSettings apply={apply}>
           <SettingsDialog onClose={onClose} onRestartNeeded={() => {}} />
-        </SettingsContext.Provider>
+        </FakeSettings>,
       );
-    };
-    /** Opens the editor over Settings, stages an edit in Settings and in the editor, and confirms the editor. */
-    const editInBoth = async (save = vi.fn(), onClose = vi.fn()) => {
-      render(<Keeping save={save} onClose={onClose} />);
-      fireEvent.click(screen.getByLabelText("Flag"));
+    const clearExit = () => {
       fireEvent.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));
       fireEvent.click(screen.getByRole("button", { name: "Clear Exit" }));
-      fireEvent.click(
-        within(screen.getByRole("dialog", { name: "Keyboard Shortcuts" })).getByRole("button", {
-          name: "OK",
-        }),
-      );
-      await act(async () => {});
-      return { save, onClose };
+      return screen.getByRole("dialog", { name: "Keyboard Shortcuts" });
     };
-    const shortcutsWithoutExit = { ...DEFAULT_SETTINGS.shortcuts, exit: null };
 
-    it("are stored when their editor is confirmed, and stay when Settings is cancelled", async () => {
-      const { save, onClose } = await editInBoth();
+    it("are stored by their editor alone, and Settings then sends only what was staged in it", async () => {
+      const save = vi.fn(async () => null);
+      const onClose = vi.fn();
+      open(save, onClose);
+      fireEvent.click(screen.getByLabelText("Flag"));
+      fireEvent.click(within(clearExit()).getByRole("button", { name: "OK" }));
+      await act(async () => {});
       expect(save).toHaveBeenCalledTimes(1);
-      expect(save).toHaveBeenLastCalledWith({
-        values: DEFAULT_SETTINGS.values,
-        shortcuts: shortcutsWithoutExit,
-      });
+      expect(save).toHaveBeenLastCalledWith({ shortcutsSet: { exit: null } });
       expect(screen.queryByRole("dialog", { name: "Keyboard Shortcuts" })).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "OK" }));
+      expect(save).toHaveBeenLastCalledWith({ set: { "t.flag": true } });
+    });
+
+    it("stay stored when Settings is cancelled", async () => {
+      const save = vi.fn(async () => null);
+      const onClose = vi.fn();
+      open(save, onClose);
+      fireEvent.click(within(clearExit()).getByRole("button", { name: "OK" }));
+      await act(async () => {});
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
       expect(onClose).toHaveBeenCalled();
       expect(save).toHaveBeenCalledTimes(1);
     });
 
-    it("are not overwritten by OK in Settings, which keeps what was staged there", async () => {
-      const { save } = await editInBoth();
-      expect((screen.getByLabelText("Flag") as HTMLInputElement).checked).toBe(true);
-      fireEvent.click(screen.getByRole("button", { name: "OK" }));
-      expect(save).toHaveBeenLastCalledWith({
-        values: { ...DEFAULT_SETTINGS.values, "t.flag": true },
-        shortcuts: shortcutsWithoutExit,
-      });
-    });
-
-    it("cannot be opened while Settings is saving", async () => {
-      let answer = () => {};
-      const until = new Promise<void>((resolve) => (answer = resolve));
-      render(<Keeping save={vi.fn()} onClose={vi.fn()} until={until} />);
+    it("cannot be opened while Settings is saving, and their editor cannot be dismissed while saving", async () => {
+      let answer: (refused: null) => void = () => {};
+      open(vi.fn(() => new Promise<null>((resolve) => (answer = resolve))));
+      fireEvent.click(screen.getByLabelText("Flag"));
       fireEvent.click(screen.getByRole("button", { name: "OK" }));
       expect(
         (screen.getByRole("button", { name: "Keyboard shortcuts" }) as HTMLButtonElement).disabled,
       ).toBe(true);
-      await act(async () => answer());
+      await act(async () => answer(null));
     });
 
-    it("cannot be dismissed while saving, so OK in Settings then writes the saved ones", async () => {
-      let answer = () => {};
-      const until = new Promise<void>((resolve) => (answer = resolve));
-      const save = vi.fn();
-      render(<Keeping save={save} onClose={vi.fn()} until={until} />);
-      fireEvent.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));
-      fireEvent.click(screen.getByRole("button", { name: "Clear Exit" }));
-      const editor = screen.getByRole("dialog", { name: "Keyboard Shortcuts" });
+    it("have an editor that cannot be dismissed while its write is pending", async () => {
+      let answer: (refused: null) => void = () => {};
+      open(vi.fn(() => new Promise<null>((resolve) => (answer = resolve))));
+      const editor = clearExit();
       fireEvent.click(within(editor).getByRole("button", { name: "OK" }));
       fireEvent.click(within(editor).getByRole("button", { name: "Cancel" }));
       fireEvent(editor, new Event("cancel", { cancelable: true }));
       expect(screen.getByRole("dialog", { name: "Keyboard Shortcuts" })).toBe(editor);
 
-      await act(async () => answer());
+      await act(async () => answer(null));
       expect(screen.queryByRole("dialog", { name: "Keyboard Shortcuts" })).toBeNull();
-      fireEvent.click(screen.getByRole("button", { name: "OK" }));
-      expect(save).toHaveBeenLastCalledWith({
-        values: DEFAULT_SETTINGS.values,
-        shortcuts: shortcutsWithoutExit,
-      });
     });
   });
 });

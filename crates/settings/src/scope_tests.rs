@@ -48,30 +48,34 @@ const MIXED: &[Setting] = &[
 ];
 
 #[test]
-fn a_literal_secret_is_masked_and_the_masked_value_sent_back_keeps_the_stored_one() {
+fn a_literal_secret_is_masked_and_a_patch_that_does_not_name_it_keeps_it() {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
     let settings = Settings::open(&path, MIXED, &[], Arc::new(no_env)).unwrap();
-    let edit = |token: &str| Change {
-        values: BTreeMap::from([
+    let edit = |token: &str| Patch {
+        set: BTreeMap::from([
             ("me.mode".to_owned(), json!("b")),
             ("server.token".to_owned(), json!(token)),
         ]),
-        shortcuts: BTreeMap::new(),
+        ..Patch::default()
     };
 
-    let state = settings.replace(&edit("hunter2")).unwrap();
+    let state = settings.patch(&edit("hunter2")).unwrap();
     assert_eq!(read(&path)["settings"]["server.token"], "hunter2");
     assert_eq!(state.values()["server.token"], MASK);
     assert_eq!(state.resolved("server.token"), Some(json!("hunter2")));
 
-    settings.replace(&edit(MASK)).unwrap();
+    let other = Patch {
+        set: BTreeMap::from([("me.mode".to_owned(), json!("a"))]),
+        ..Patch::default()
+    };
+    settings.patch(&other).unwrap();
     assert_eq!(
         read(&path)["settings"]["server.token"],
         "hunter2",
-        "the masked secret sent back keeps the stored one"
+        "a secret the patch does not name is untouched"
     );
-    let state = settings.replace(&edit("$TOKEN")).unwrap();
+    let state = settings.patch(&edit("$TOKEN")).unwrap();
     assert_eq!(state.values()["server.token"], "$TOKEN");
     assert_eq!(read(&path)["settings"]["me.mode"], "b");
 }
@@ -101,11 +105,11 @@ fn a_literal_password_in_a_list_of_logins_is_masked_and_a_masked_one_keeps_its_l
     let settings = Settings::open(&path, LOGINS, &[], Arc::new(no_env)).unwrap();
     let login = |user: &str, password: &str| json!({"user": user, "password": password});
     let replace = |logins: Vec<Value>| {
-        let change = Change {
-            values: BTreeMap::from([("server.logins".to_owned(), Value::Array(logins))]),
-            shortcuts: BTreeMap::new(),
+        let change = Patch {
+            set: BTreeMap::from([("server.logins".to_owned(), Value::Array(logins))]),
+            ..Patch::default()
         };
-        settings.replace(&change)
+        settings.patch(&change)
     };
     let shown = |state: &State| state.values()["server.logins"].clone();
 

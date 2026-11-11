@@ -134,12 +134,7 @@ mod tests {
         ));
         let task = follow(&settings, videos, Some(4 * GIB));
         let save = |cache: serde_json::Value| {
-            let mut values = settings.state().values();
-            values.insert(SETTING.into(), cache);
-            let shortcuts = Default::default();
-            settings
-                .replace(&settings::Change { values, shortcuts })
-                .unwrap();
+            settings.update(SETTING, |_| Some(cache)).unwrap();
         };
         let resized = async |expected: u64| {
             while pool.allowance() as u64 != expected {

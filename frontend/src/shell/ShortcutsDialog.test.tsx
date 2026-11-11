@@ -14,7 +14,7 @@ describe("shortcuts dialog", () => {
   it("refuses reserved keys, offers to take a key from its owner, and resets to the default", async () => {
     const save = vi.fn(async () => null);
     render(
-      <FakeSettings save={save}>
+      <FakeSettings apply={save}>
         <ShortcutsDialog onClose={() => {}} />
       </FakeSettings>,
     );
@@ -45,23 +45,23 @@ describe("shortcuts dialog", () => {
     expect(status()).toBe("Exit set to Ctrl+S, taken from Save Workspace");
     expect(binding("Exit")).toContain("S");
     expect(save).toHaveBeenLastCalledWith({
-      values: DEFAULT_SETTINGS.values,
-      shortcuts: { ...DEFAULT_SETTINGS.shortcuts, exit: "Ctrl+S", "save-workspace": null },
+      shortcutsSet: { exit: "Ctrl+S", "save-workspace": null },
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Reset Exit" }));
     expect(status()).toMatch(/^Exit reset to /);
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
-    expect(save).toHaveBeenLastCalledWith({
-      values: DEFAULT_SETTINGS.values,
-      shortcuts: { ...DEFAULT_SETTINGS.shortcuts, "save-workspace": null },
-    });
+    expect(save).toHaveBeenLastCalledWith({ shortcutsSet: { "save-workspace": null } });
   });
 
   it("stages every default again with Reset to Defaults, and keeps it for OK", async () => {
     const save = vi.fn(async () => null);
+    const state = {
+      ...DEFAULT_SETTINGS,
+      shortcuts: { ...DEFAULT_SETTINGS.shortcuts, exit: "Ctrl+Alt+Q" },
+    };
     render(
-      <FakeSettings save={save}>
+      <FakeSettings state={state} apply={save}>
         <ShortcutsDialog onClose={() => {}} />
       </FakeSettings>,
     );
@@ -73,10 +73,7 @@ describe("shortcuts dialog", () => {
     expect(screen.getByRole("button", { name: "Reset Exit" }).hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     await act(async () => {});
-    expect(save).toHaveBeenLastCalledWith({
-      values: DEFAULT_SETTINGS.values,
-      shortcuts: DEFAULT_SETTINGS.shortcuts,
-    });
+    expect(save).toHaveBeenLastCalledWith({ shortcutsReset: ["exit"] });
   });
 
   it("groups commands by category and filters them by label, category or key", () => {

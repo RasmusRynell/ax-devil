@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AccessContext } from "./access";
 import { apiFetch } from "./api";
 import type { AppInfo } from "./generated/api";
@@ -31,10 +31,16 @@ export function App() {
       });
     return () => request.abort();
   }, []);
+  // Full access follows `server.password_full_access` when the settings change: the backend's answer replaces the info.
+  const refreshed = useCallback(
+    (info: AppInfo) =>
+      setBackend((now) => (now.state === "ready" ? { state: "ready", info } : now)),
+    [],
+  );
   if (backend.state === "ready")
     return (
       <AccessContext value={{ owner: backend.info.owner, fullAccess: backend.info.fullAccess }}>
-        <SettingsProvider>
+        <SettingsProvider onInfo={refreshed}>
           <SessionProvider>
             <SeekProvider>
               <Shell version={backend.info.version} />

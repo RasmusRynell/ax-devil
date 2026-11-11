@@ -24,7 +24,7 @@ pub mod video_sources;
 
 use access::{Admission, Limits, Policy, Principal, bearer};
 use api_types::{
-    API_VERSION, ApiError, AppInfo, SHELL_API, SettingsChange, SettingsFile, SettingsState,
+    API_VERSION, ApiError, AppInfo, SHELL_API, SettingsFile, SettingsPatch, SettingsState,
 };
 use axum::{
     Json, Router,
@@ -308,6 +308,7 @@ fn snapshot(
 ) -> SettingsState {
     let principal = policy.principal_in(credential, state);
     SettingsState {
+        revision: state.revision(),
         values: state.values(),
         // What a reference gives is the server's environment: only Full access is told.
         resolved: principal
@@ -345,9 +346,9 @@ pub(crate) async fn get_settings(
     ))
 }
 
-/// Replaces every setting and shortcut; a rejected or unsaved change leaves the stored state
-/// as it was.
-pub(crate) async fn put_settings(
+/// Applies a patch to the keys it names, in the order writes arrive; a rejected or unsaved patch leaves the stored
+/// state as it was.
+pub(crate) async fn patch_settings(
     headers: axum::http::HeaderMap,
     State(AppState {
         settings,
@@ -356,9 +357,11 @@ pub(crate) async fn put_settings(
         log_file,
         ..
     }): State<AppState>,
-    Json(body): Json<SettingsChange>,
+    Json(body): Json<SettingsPatch>,
 ) -> Result<Json<SettingsState>, (StatusCode, Json<ApiError>)> {
-    if let Some(serde_json::Value::String(range)) = body.values.get("scan.range") {
+    if let Some(serde_json::Value::String(range)) =
+        body.set.as_ref().and_then(|set| set.get("scan.range"))
+    {
         // A `$NAME` reference is checked as the variable holds it now, as the scan will read it; blank is the local
         // network.
         let expanded = settings::reference(range).map_or_else(
@@ -375,19 +378,25 @@ pub(crate) async fn put_settings(
             ));
         }
     }
-    let change = settings::Change {
-        values: body.values,
-        shortcuts: body.shortcuts,
+    let patch = settings::Patch {
+        set: body.set.unwrap_or_default(),
+        reset: body.reset.unwrap_or_default().into_iter().collect(),
+        shortcuts_set: body.shortcuts_set.unwrap_or_default(),
+        shortcuts_reset: body
+            .shortcuts_reset
+            .unwrap_or_default()
+            .into_iter()
+            .collect(),
     };
     // The file write blocks, so it stays off the async workers.
     let saved = tokio::task::spawn_blocking(move || {
         // The default catalog is checked under the lock that writes it, against the value stored by then, so a
         // catalog deleted meanwhile (which resets the default under the same lock) is not stored again.
         settings
-            .replace_if(&change, |current| {
-                admit_save(&policy, bearer(&headers), current, &change)?;
+            .patch_if(&patch, |current| {
+                admit_save(&policy, bearer(&headers), current, &patch)?;
                 let stored = current.resolved(catalogs::DEFAULT_SETTING);
-                match routes::catalogs::default_refusal(&library, stored.as_ref(), &change.values) {
+                match routes::catalogs::default_refusal(&library, stored.as_ref(), &patch.set) {
                     Some(reason) => Err(settings::Error {
                         location: catalogs::DEFAULT_SETTING.to_owned(),
                         reason,
@@ -428,18 +437,18 @@ pub(crate) async fn put_settings(
     })
 }
 
-/// Refuses the change if it needs Full access that this caller does not have in `current`, the stored state under the
+/// Refuses the patch if it needs Full access that this caller does not have in `current`, the stored state under the
 /// write lock.
 fn admit_save(
     policy: &Policy,
     credential: Option<&str>,
     current: &settings::State,
-    change: &settings::Change,
+    patch: &settings::Patch,
 ) -> Result<(), settings::Error> {
     if policy.principal_in(credential, current).full_access() {
         Ok(())
     } else {
-        current.refuse_without_full_access(change)
+        current.refuse_without_full_access(patch)
     }
 }
 

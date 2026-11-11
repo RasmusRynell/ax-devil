@@ -22,6 +22,7 @@ import type {
   View,
 } from "../generated/api";
 import { Banner, EndedScreen } from "./Notice";
+import { SettingsNoticeContext } from "../settings";
 import { SessionStore, type SessionState } from "./store";
 import { canDo } from "./views";
 
@@ -52,6 +53,11 @@ export function SessionProvider({
 }) {
   const [store] = useState(() => given ?? new SessionStore());
   const viewer = useMemo(() => credential()?.kind === "join", []);
+  const settingsNoticed = useContext(SettingsNoticeContext);
+  useEffect(() => {
+    store.onSettings(settingsNoticed);
+    return () => store.onSettings(null);
+  }, [store, settingsNoticed]);
   useEffect(() => {
     store.start();
     return () => store.stop();

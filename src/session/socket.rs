@@ -59,14 +59,14 @@ pub(crate) async fn socket(
 /// Runs one socket until it ends. Dropping the seat at the end is the disconnect that starts its grace period.
 async fn run(state: &AppState, mut slot: Slot, socket: WebSocket) {
     let (mut sink, mut stream) = socket.split();
-    let handle = match hello(state, &mut slot, &mut stream).await {
-        Ok(handle) => handle,
+    let (handle, owner) = match hello(state, &mut slot, &mut stream).await {
+        Ok(seated) => seated,
         Err(exit) => return finish(&mut sink, exit).await,
     };
     let (replies, outgoing) = mpsc::channel(REPLIES);
     let result = tokio::select! {
         result = reader::run(state, &mut stream, &handle, replies) => result,
-        result = writer::run(state, &mut sink, &handle, outgoing) => result,
+        result = writer::run(state, &mut sink, &handle, outgoing, owner) => result,
     };
     let Err(exit) = result;
     if matches!(exit, Exit::Left) {
@@ -75,12 +75,27 @@ async fn run(state: &AppState, mut slot: Slot, socket: WebSocket) {
     finish(&mut sink, exit).await;
 }
 
-/// Reads `Hello` and seats the socket.
+/// Whether the hello's credential makes the connection an Owner, who is told when settings change. A resumed socket
+/// is judged by the credential its hello carries again; the resume itself never depends on it.
+fn presents_owner(state: &AppState, auth: &SessionAuth) -> bool {
+    match auth {
+        SessionAuth::Own { server_password }
+        | SessionAuth::Watch {
+            server_password, ..
+        } => state
+            .policy
+            .principal_for(server_password.as_deref())
+            .is_owner(),
+        SessionAuth::Join { .. } => false,
+    }
+}
+
+/// Reads `Hello` and seats the socket; the flag is whether it is an Owner's.
 async fn hello(
     state: &AppState,
     slot: &mut Slot,
     stream: &mut SplitStream<WebSocket>,
-) -> Result<Handle<CursorPoint>, Exit> {
+) -> Result<(Handle<CursorPoint>, bool), Exit> {
     let first = timeout(FIRST_MESSAGE_TIMEOUT, async {
         loop {
             match stream.next().await {
@@ -106,6 +121,7 @@ async fn hello(
         return Err(Exit::close(INVALID_DATA, "expected hello"));
     };
     let sessions = &state.sessions;
+    let owner = presents_owner(state, &auth);
     // The token alone is the credential of a resume, so `auth` is not looked at.
     if let Some(token) = resume {
         let token = token
@@ -117,7 +133,7 @@ async fn hello(
         // The client sent its current choices; they replace the ones the seat had when it dropped, before the first
         // part is built.
         handle.set_cursor_options(cursors);
-        return Ok(handle);
+        return Ok((handle, owner));
     }
     match auth {
         SessionAuth::Own { server_password } => {
@@ -135,7 +151,7 @@ async fn hello(
                     state.files.launch(&handle, launch).await;
                 }
             }
-            Ok(handle)
+            Ok((handle, owner))
         }
         SessionAuth::Watch {
             session,
@@ -147,6 +163,7 @@ async fn hello(
                 .map_err(|error| refuse(error, ENDED))?;
             sessions
                 .watch(id, cursors)
+                .map(|handle| (handle, owner))
                 .map_err(|error| refuse(error, ENDED))
         }
         SessionAuth::Join { link } => {
@@ -155,6 +172,7 @@ async fn hello(
                 .map_err(|error| refuse(error, INVALID_CREDENTIAL))?;
             sessions
                 .join(&link, cursors)
+                .map(|handle| (handle, owner))
                 .map_err(|error| refuse(error, INVALID_CREDENTIAL))
         }
     }

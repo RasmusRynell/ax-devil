@@ -6,7 +6,9 @@
 //! a person may read and change when several share one backend. See the README for the file format and how to
 //! change it.
 //!
-//! A change reaches subscribers as the new state, replaced whole; a subscriber that is busy sees only the newest.
+//! A change names the keys it sets and resets; any other key keeps the value it has now, whoever wrote it. It reaches
+//! subscribers as the new state, replaced whole, with a rising revision; a subscriber that is busy sees only the
+//! newest.
 
 mod access;
 mod env;
@@ -26,7 +28,7 @@ pub use migrate::VERSION;
 pub use secret::MASK;
 use serde_json::{Map, Value};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, PoisonError},
@@ -59,14 +61,18 @@ impl std::error::Error for Error {}
 /// Looks up an environment variable by name.
 type Lookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
-/// A full replacement of the settings and shortcuts a person may change (see [`Settings::replace`]). The file stores
-/// only what differs from the defaults.
-#[derive(Clone, Debug)]
-pub struct Change {
-    /// Every setting by dotted key, references unresolved. A masked secret keeps its value.
-    pub values: BTreeMap<String, Value>,
-    /// The key of every command, `None` when unbound.
-    pub shortcuts: BTreeMap<String, Option<String>>,
+/// A change to the settings and shortcuts a person may change (see [`Settings::patch`]): only the keys it names change.
+/// The file stores only what differs from the defaults.
+#[derive(Clone, Debug, Default)]
+pub struct Patch {
+    /// The settings to set by dotted key, references unresolved. A masked password in a record keeps its stored value.
+    pub set: BTreeMap<String, Value>,
+    /// The settings to put back to their default.
+    pub reset: BTreeSet<String>,
+    /// The commands to bind: a key, or `None` to unbind.
+    pub shortcuts_set: BTreeMap<String, Option<String>>,
+    /// The commands to put back to their own key.
+    pub shortcuts_reset: BTreeSet<String>,
 }
 
 /// One immutable snapshot of every declared setting and shortcut, replaced whole.
@@ -74,6 +80,8 @@ pub struct State {
     table: &'static [Setting],
     lookup: Lookup,
     version: u64,
+    /// Rises with every write; see [`revision`](Self::revision).
+    revision: u64,
     values: BTreeMap<String, Value>,
     /// The number each whole-number setting that holds a reference gives, read when the state was built; see
     /// [`stored`](Self::stored).
@@ -118,7 +126,7 @@ impl State {
                 .remove(setting.key)
                 .unwrap_or_else(|| setting.kind.default_value());
             // A reference whose variable is unset or wrong here still loads, as it does in Python, which checks it
-            // only when it is saved: `replace` and `update` refuse it, and `resolved` falls back to the default.
+            // only when it is saved: `patch` and `update` refuse it, and `resolved` falls back to the default.
             if let Err(reason) = setting.check(&value, &**lookup)
                 && !setting.holds_reference(&value)
             {
@@ -171,6 +179,7 @@ impl State {
             table,
             lookup: Arc::clone(lookup),
             version,
+            revision: 0,
             values,
             numbers,
             overrides,
@@ -216,6 +225,12 @@ impl State {
     /// The format version of the file this state is written to.
     pub fn version(&self) -> u64 {
         self.version
+    }
+
+    /// Rises with every write, so a client can tell which of two states is newer. It starts at the time the service
+    /// loaded, in milliseconds, so a restarted backend never repeats a revision a client already holds.
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     /// The key of every command once the user's overrides apply; `None` when unbound. Shortcuts belong to
@@ -270,8 +285,11 @@ impl Settings {
                 )
             }
         };
-        let state = state
+        let mut state = state
             .map_err(|error| file::fail(path, format!("{}: {}", error.location, error.reason)))?;
+        state.revision = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| u64::try_from(since.as_millis()).unwrap_or(0));
         let unknown = state.unknown();
         if !unknown.is_empty() {
             tracing::warn!(
@@ -300,23 +318,24 @@ impl Settings {
         self.state.borrow().clone()
     }
 
-    /// A receiver that holds the current state and is woken by every successful [`replace`](Self::replace).
+    /// A receiver that holds the current state and is woken by every successful write.
     pub fn subscribe(&self) -> watch::Receiver<Arc<State>> {
         self.state.subscribe()
     }
 
-    /// Replaces every setting and shortcut with `change`, which must hold every setting and only known commands; a masked secret keeps its stored value.
-    /// Validates all, writes the file atomically with only what differs from the defaults (and keeps what this
-    /// version does not know), then swaps the state; on any failure nothing changes.
-    pub fn replace(&self, change: &Change) -> Result<Arc<State>, Error> {
-        self.replace_if(change, |_| Ok(()))
+    /// Applies `patch` to the current state: each key it names changes, every other key keeps its value, so the last
+    /// write to a key wins. A masked password in a record keeps its stored value. Validates the result, writes the
+    /// file atomically with only what differs from the defaults (and keeps what this version does not know), then
+    /// swaps the state; on any failure nothing changes.
+    pub fn patch(&self, patch: &Patch) -> Result<Arc<State>, Error> {
+        self.patch_if(patch, |_| Ok(()))
     }
 
-    /// As [`replace`](Self::replace), but `allow` first sees the stored state under the lock that orders every
-    /// change, so a check that depends on the stored values and on what other writers do holds when the write happens.
-    pub fn replace_if(
+    /// As [`patch`](Self::patch), but `allow` first sees the stored state under the lock that orders every change, so
+    /// a check that depends on the stored values and on what other writers do holds when the write happens.
+    pub fn patch_if(
         &self,
-        change: &Change,
+        patch: &Patch,
         allow: impl FnOnce(&State) -> Result<(), Error>,
     ) -> Result<Arc<State>, Error> {
         let _writing = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
@@ -328,7 +347,7 @@ impl Settings {
             invalid: true,
             forbidden: false,
         };
-        if let Some(key) = change.values.keys().find(|key| {
+        if let Some(key) = patch.set.keys().chain(&patch.reset).find(|key| {
             !current
                 .table
                 .iter()
@@ -336,21 +355,41 @@ impl Settings {
         }) {
             return Err(invalid(key, "unknown setting"));
         }
+        if let Some(key) = patch.reset.iter().find(|key| patch.set.contains_key(*key)) {
+            return Err(invalid(key, "named twice"));
+        }
         let mut values = current.values.clone();
         for setting in current.table {
-            let value = change
-                .values
-                .get(setting.key)
-                .ok_or_else(|| invalid(setting.key, "missing"))?;
+            let value = match patch.set.get(setting.key) {
+                Some(value) => value.clone(),
+                None if patch.reset.contains(setting.key) => setting.kind.default_value(),
+                None => continue,
+            };
             let kept = setting
-                .unmasked(value, current.values.get(setting.key))
+                .unmasked(&value, current.values.get(setting.key))
                 .map_err(|reason| invalid(setting.key, &reason))?;
             setting
                 .check(&kept, &*current.lookup)
                 .map_err(|reason| invalid(setting.key, &reason))?;
             values.insert(setting.key.to_owned(), kept);
         }
-        let overrides = shortcuts::overrides_from(&change.shortcuts)?;
+        let mut bound: BTreeMap<String, Option<String>> = shortcuts::effective(&current.overrides)
+            .into_iter()
+            .map(|(id, key)| (id.to_owned(), key))
+            .collect();
+        for id in &patch.shortcuts_reset {
+            let location = format!("shortcuts.{id}");
+            let command = shortcuts::COMMANDS
+                .iter()
+                .find(|command| command.id == id.as_str())
+                .ok_or_else(|| invalid(&location, "is not a command"))?;
+            if patch.shortcuts_set.contains_key(id) {
+                return Err(invalid(&location, "named twice"));
+            }
+            bound.insert(id.clone(), command.key.map(str::to_owned));
+        }
+        bound.extend(patch.shortcuts_set.clone());
+        let overrides = shortcuts::overrides_from(&bound)?;
         self.write(&current, values, overrides)
     }
 
@@ -358,7 +397,7 @@ impl Settings {
     /// stored value as it is now and answers the value to store, or `None` to leave the setting alone and get the
     /// current state back. It works on raw values (a `$NAME` reference as written, a secret as stored), so no secret
     /// passes through it, and no other change falls between the read and the write. The stored value is validated as
-    /// by [`replace`](Self::replace); on any failure nothing changes.
+    /// by [`patch`](Self::patch); on any failure nothing changes.
     pub fn update(
         &self,
         key: &str,
@@ -423,18 +462,17 @@ impl Settings {
         rest.insert("settings".into(), Value::Object(settings));
         rest.insert("shortcuts".into(), Value::Object(shortcut_entries));
 
-        let state = Arc::new(State::build(
-            current.version,
-            &rest,
-            current.table,
-            &current.lookup,
-        )?);
+        let mut state = State::build(current.version, &rest, current.table, &current.lookup)?;
+        state.revision = current.revision + 1;
+        let state = Arc::new(state);
         file::write(&self.path, state.version, &state.document)?;
         self.state.send_replace(Arc::clone(&state));
         Ok(state)
     }
 }
 
+#[cfg(test)]
+mod patch_tests;
 #[cfg(test)]
 mod reference_tests;
 #[cfg(test)]

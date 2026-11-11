@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { adoptFragment, credential } from "./access";
 import { App } from "./App";
 import { apiFetch } from "./api";
 import { DEFAULT_SETTINGS } from "./fakeSettings";
-import type { SettingsChange, SettingsState } from "./generated/api";
+import type { SettingsPatch, SettingsState } from "./generated/api";
 import { FakeSocket } from "./session/fakeSession";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
@@ -30,7 +30,7 @@ const info = (access = { owner: true, fullAccess: true }) => ({
   ...access,
 });
 
-/** A backend with the given settings; a PUT replaces them, as the real one does, or is refused with `refuse`. */
+/** A backend with the given settings; a PATCH changes the keys it names, as the real one does, or is refused with `refuse`. */
 function backend(
   settings = dark,
   refuse?: { reason: string; location: string },
@@ -39,10 +39,14 @@ function backend(
   let current = settings;
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === "/api/info") return { ok: true, json: async () => info(access) };
-    if (init?.method === "PUT") {
+    if (init?.method === "PATCH") {
       if (refuse) return { ok: false, status: 422, json: async () => refuse };
-      const change = JSON.parse(init.body as string) as SettingsChange;
-      current = { ...current, ...change };
+      const patch = JSON.parse(init.body as string) as SettingsPatch;
+      current = {
+        ...current,
+        revision: current.revision + 1,
+        values: { ...current.values, ...patch.set },
+      };
     }
     return { ok: true, json: async () => current };
   });
@@ -90,18 +94,16 @@ describe("app shell", () => {
     fireEvent.change(await screen.findByLabelText("Theme"), { target: { value: "light" } });
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
-    const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
-    expect(JSON.parse(put?.[1]?.body as string)).toEqual({
-      values: { ...dark.values, "ui.theme": "light" },
-      shortcuts: dark.shortcuts,
-    });
+    const patch = fetchMock.mock.calls.find(([, init]) => init?.method === "PATCH");
+    expect(JSON.parse(patch?.[1]?.body as string)).toEqual({ set: { "ui.theme": "light" } });
   });
 
   it("keeps the dialog open and says why at the value the backend refused", async () => {
     backend(dark, { reason: "no such theme", location: "ui.theme" });
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
-    fireEvent.click(await screen.findByRole("button", { name: "OK" }));
+    fireEvent.change(await screen.findByLabelText("Theme"), { target: { value: "light" } });
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("no such theme");
     expect(within(alert.parentElement as HTMLElement).getByLabelText("Theme")).toBeTruthy();
@@ -115,13 +117,14 @@ describe("app shell", () => {
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url === "/api/info") return { ok: true, json: async () => info() };
-        if (init?.method !== "PUT") return { ok: true, json: async () => dark };
+        if (init?.method !== "PATCH") return { ok: true, json: async () => dark };
         puts.push(init.body as string);
         await new Promise<void>((resolve) => {
           finish = resolve;
         });
-        const change = JSON.parse(init.body as string) as SettingsChange;
-        return { ok: true, json: async () => ({ ...dark, ...change }) };
+        const patch = JSON.parse(init.body as string) as SettingsPatch;
+        const values = { ...dark.values, ...patch.set };
+        return { ok: true, json: async () => ({ ...dark, revision: 1, values }) };
       }),
     );
     render(<App />);
@@ -202,7 +205,7 @@ describe("access", () => {
     expect(fetchMock.mock.calls.every(([url]) => url !== "/api/settings")).toBe(true);
   });
 
-  it("sends every setting of a server-password holder to the server and keeps nothing in the browser", async () => {
+  it("sends only the settings a server-password holder changed to the server and keeps nothing in the browser", async () => {
     const fetchMock = backend(DEFAULT_SETTINGS, undefined, { owner: true, fullAccess: false });
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
@@ -211,9 +214,40 @@ describe("access", () => {
     fireEvent.change(screen.getByLabelText("Cache folder"), { target: { value: "/var/cache" } });
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
-    const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
-    const sent = JSON.parse(put?.[1]?.body as string) as SettingsChange;
-    expect(sent.values).toMatchObject({ "ui.theme": "light", "storage.cache_dir": "/var/cache" });
+    const patch = fetchMock.mock.calls.find(([, init]) => init?.method === "PATCH");
+    expect(JSON.parse(patch?.[1]?.body as string)).toEqual({
+      set: { "ui.theme": "light", "storage.cache_dir": "/var/cache" },
+    });
     expect(window.localStorage.getItem("ax-devil.preferences")).toBeNull();
+  });
+});
+
+describe("settings changed elsewhere", () => {
+  it("are read again with the info, only for a notice above the revision held", async () => {
+    let held: SettingsState = { ...dark, revision: 3 };
+    const fetchMock = vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () => (url === "/api/info" ? info() : held),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    await screen.findByRole("heading", { name: "ax-devil" });
+    const reads = () =>
+      fetchMock.mock.calls
+        .map(([url]) => url)
+        .filter((url) => url === "/api/info" || url === "/api/settings")
+        .sort();
+    expect(reads()).toEqual(["/api/info", "/api/settings"]);
+
+    // Another window changed the theme; this window learns it from the notice and from nothing else.
+    held = { ...held, revision: 4, values: { ...held.values, "ui.theme": "light" } };
+    await act(async () => FakeSocket.latest.emit({ type: "settings", revision: 4 }));
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
+    expect(reads()).toEqual(["/api/info", "/api/info", "/api/settings", "/api/settings"]);
+
+    held = { ...held, revision: 3, values: { ...held.values, "ui.theme": "dark" } };
+    await act(async () => FakeSocket.latest.emit({ type: "settings", revision: 4 }));
+    expect(reads()).toHaveLength(4);
+    expect(document.documentElement.dataset.theme).toBe("light");
   });
 });

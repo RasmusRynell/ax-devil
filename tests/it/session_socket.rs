@@ -12,7 +12,7 @@ use ax_devil::{
     share::{Hosting, LinkBase},
 };
 use serde_json::{Value, json};
-use session_client::{Proxy, Socket, get};
+use session_client::{Proxy, Socket, get, patch_settings};
 use sessions::Secret;
 use std::{net::SocketAddr, path::Path, sync::Arc};
 
@@ -250,6 +250,53 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
     )
     .await;
     assert_eq!(late.closed().await, 4401);
+}
+
+#[tokio::test]
+async fn a_settings_change_is_announced_to_an_owner_connection_and_never_to_a_join_link() {
+    let folder = tempfile::tempdir().unwrap();
+    let address = serve(folder.path()).await;
+    let mut owner = Socket::own(&address, Some(PASSWORD)).await;
+    // An Owner is told the current revision at once, so a change made before it connected is not missed.
+    let first = owner.until(of_type("settings")).await["revision"]
+        .as_u64()
+        .unwrap();
+    owner
+        .say(command(
+            1,
+            json!({"type": "control", "control": {"type": "share", "access": "watch"}}),
+        ))
+        .await;
+    let seat = owner
+        .until(|m| m["type"] == "seat" && !m["sharing"].is_null())
+        .await;
+    let link = seat["sharing"]["link"].as_str().unwrap();
+    let link = link.split("join=").nth(1).unwrap();
+    let mut guest = Socket::connect(&address, "/api/session").await;
+    guest
+        .say(
+            json!({"type": "hello", "auth": {"type": "join", "link": link},
+                    "cursors": {"show": true, "share": true}}),
+        )
+        .await;
+
+    let saved = patch_settings(&address, PASSWORD, &json!({"set": {"ui.theme": "dark"}})).await;
+    let told = owner
+        .until(|m| m["type"] == "settings" && m["revision"] != first)
+        .await;
+    assert_eq!(
+        told,
+        json!({"type": "settings", "revision": saved["revision"]})
+    );
+
+    // The guest's own view is answered after the change, and nothing about settings came before it.
+    guest.say(view(1, false)).await;
+    guest
+        .until(|m| {
+            assert_ne!(m["type"], "settings", "a guest was told");
+            m["type"] == "seat" && m["viewsDone"] == 1
+        })
+        .await;
 }
 
 #[tokio::test]

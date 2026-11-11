@@ -52,6 +52,7 @@ pub(super) async fn run<S: Sink<Message> + Unpin>(
     sink: &mut S,
     handle: &Handle<CursorPoint>,
     mut replies: mpsc::Receiver<SessionServerMessage>,
+    owner: bool,
 ) -> Result<Infallible, Exit> {
     let mut feed = handle.feed();
     let mut cursors = handle.cursors();
@@ -76,6 +77,13 @@ pub(super) async fn run<S: Sink<Message> + Unpin>(
     };
     send_parts(state, sink, handle, &first, audience, &mut sent).await?;
     send_roster(sink, &mut roster).await?;
+    // An Owner's connection is told the settings' revision now, for a change made since the page read them, and again
+    // with each change. A Guest's is never told.
+    let mut settings = owner.then(|| state.settings.subscribe());
+    if let Some(settings) = &mut settings {
+        let revision = settings.borrow_and_update().revision();
+        send(sink, &SessionServerMessage::Settings { revision }).await?;
+    }
 
     let ticker = |period: Duration| {
         let mut ticker = interval_at(Instant::now() + period, period);
@@ -98,6 +106,11 @@ pub(super) async fn run<S: Sink<Message> + Unpin>(
                 if changed.is_ok() {
                     send_roster(sink, &mut roster).await?;
                 }
+            },
+            revision = next_settings(&mut settings) => match revision {
+                Some(revision) => send(sink, &SessionServerMessage::Settings { revision }).await?,
+                // The service is gone, which only happens when the backend stops.
+                None => settings = None,
             },
             reply = replies.recv() => match reply {
                 Some(reply) => send(sink, &reply).await?,
@@ -185,6 +198,18 @@ async fn send_parts<S: Sink<Message> + Unpin>(
     send(sink, &message).await?;
     sent.mine = Some(mine);
     Ok(())
+}
+
+/// The revision of the next settings change, or never when this connection is not told.
+async fn next_settings(
+    settings: &mut Option<watch::Receiver<Arc<settings::State>>>,
+) -> Option<u64> {
+    let Some(settings) = settings else {
+        return std::future::pending().await;
+    };
+    settings.changed().await.ok()?;
+    let revision = settings.borrow_and_update().revision();
+    Some(revision)
 }
 
 async fn send_roster<S: Sink<Message> + Unpin>(

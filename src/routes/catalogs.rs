@@ -10,7 +10,7 @@ use axum::{Json, extract::State, http::StatusCode};
 use catalogs::{CatalogId, DEFAULT_SETTING, Library};
 use foundation::{ErrorCode, UserError};
 
-/// Why a settings change may not make its default catalog the one it names: the change names a catalog other than the
+/// Why a settings patch may not make its default catalog the one it names: the patch names a catalog other than the
 /// stored default, and the library does not list that one without a problem. Saving other settings with a stale
 /// default stays possible.
 pub(crate) fn default_refusal(
@@ -140,17 +140,16 @@ mod tests {
     /// The stored default catalog; with `set`, first stores that as the default through the settings API.
     async fn default_catalog(test: &TestApp, set: Option<&str>) -> String {
         let get = || Request::builder().uri("/api/settings").body(Body::empty());
-        let (_, body) = test.send(get().unwrap()).await;
-        let mut settings = json(&body);
         if let Some(id) = set {
-            settings["values"]["overlays.default_catalog"] = id.into();
-            let put = Request::builder()
-                .method("PUT")
+            let patch = Request::builder()
+                .method("PATCH")
                 .uri("/api/settings")
                 .header("content-type", "application/json")
-                .body(Body::from(settings.to_string()))
+                .body(Body::from(
+                    json!({ "set": { "overlays.default_catalog": id } }).to_string(),
+                ))
                 .unwrap();
-            assert_eq!(test.send(put).await.0, StatusCode::OK);
+            assert_eq!(test.send(patch).await.0, StatusCode::OK);
         }
         let (_, body) = test.send(get().unwrap()).await;
         json(&body)["values"]["overlays.default_catalog"]
@@ -162,23 +161,15 @@ mod tests {
     #[tokio::test]
     async fn a_default_that_names_no_listed_catalog_is_refused_and_nothing_is_stored() {
         let test = TestApp::with_catalog_folder();
-        let (_, body) = test
-            .send(
-                Request::builder()
-                    .uri("/api/settings")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await;
-        let mut settings = json(&body);
-        settings["values"]["overlays.default_catalog"] = "user:gone.json".into();
-        let put = Request::builder()
-            .method("PUT")
+        let patch = Request::builder()
+            .method("PATCH")
             .uri("/api/settings")
             .header("content-type", "application/json")
-            .body(Body::from(settings.to_string()))
+            .body(Body::from(
+                json!({ "set": { "overlays.default_catalog": "user:gone.json" } }).to_string(),
+            ))
             .unwrap();
-        assert_eq!(test.send(put).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(test.send(patch).await.0, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(default_catalog(&test, None).await, "");
     }
 

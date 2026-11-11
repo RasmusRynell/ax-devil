@@ -509,6 +509,13 @@ pub enum SessionServerMessage {
         #[ts(type = "number")]
         server_us: i64,
     },
+    /// The settings changed; sent only to an Owner's connection, and carries no setting. A client whose own
+    /// revision is lower fetches `GET /api/settings` and `GET /api/info` again.
+    Settings {
+        /// The revision of the new settings, the one `GET /api/settings` reports.
+        #[ts(type = "number")]
+        revision: u64,
+    },
     /// Another seat's cursor moved or left; a seat's own cursor is never sent back.
     Cursor {
         /// Whose cursor.

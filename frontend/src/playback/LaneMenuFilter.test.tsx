@@ -20,10 +20,7 @@ describe("lane menu filter", () => {
     const { save } = setup({ settings: { ...LANE_SETTINGS, ...filtered } });
     tab("Filter");
     fireEvent.click(screen.getByRole("button", { name: "Make default" }));
-    expect(save).toHaveBeenCalledWith({
-      values: { ...DEFAULT_SETTINGS.values, "overlays.default_object_filter": filtered },
-      shortcuts: DEFAULT_SETTINGS.shortcuts,
-    });
+    expect(save).toHaveBeenCalledWith({ set: { "overlays.default_object_filter": filtered } });
     cleanup();
     setup();
     tab("Filter");

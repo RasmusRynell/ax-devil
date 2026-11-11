@@ -9,7 +9,7 @@ import { KeyChips } from "../kit/KeyChips";
 import { QUIET } from "../kit/look";
 import { SectionCaption } from "../kit/SectionCaption";
 import { shortcutOf } from "../kit/shortcut";
-import { useSettings } from "../settings";
+import { shortcutsPatch, useSettings } from "../settings";
 import { useSaveDialog } from "./useSaveDialog";
 
 /** Why a row's key was not taken, and, when another command holds it, the way to take it from that command. */
@@ -32,12 +32,14 @@ const SECTIONS = [...new Set(COMMANDS.map((command) => command.category))]
 const labelOf = (id: CommandId) => COMMANDS.find((command) => command.id === id)?.label ?? id;
 
 /**
- * The Keyboard Shortcuts dialog. Changes apply on OK, through the backend, which keeps only the differences. It cannot
+ * The Keyboard Shortcuts dialog. Changes apply on OK, through the backend, as the commands that changed. It cannot
  * be dismissed while that write is pending, so whatever is open beneath never acts on shortcuts the write is replacing.
  */
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
-  const { values, shortcuts } = useSettings();
-  const [draft, setDraft] = useState<Shortcuts>(shortcuts);
+  const { shortcuts } = useSettings();
+  // What the dialog opened with: only the commands changed from it are sent.
+  const [base] = useState(shortcuts);
+  const [draft, setDraft] = useState<Shortcuts>(base);
   const [recording, setRecording] = useState<CommandId | null>(null);
   const [note, setNote] = useState<Note | null>(null);
   // What the one polite live region says: recording started, a key set, cleared or reset.
@@ -110,7 +112,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   return (
     <Dialog
       title="Keyboard Shortcuts"
-      onOk={() => void submit({ values, shortcuts: draft })}
+      onOk={() => void submit(shortcutsPatch(base, draft))}
       onCancel={() => {
         if (!saving) onClose();
       }}

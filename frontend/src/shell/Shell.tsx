@@ -87,7 +87,7 @@ export function Shell({ version }: { version: string }) {
   // A failed save of a setting: a notice the user acknowledges, as the app's own dialogs do.
   const [refused, setRefused] = useState<{ title: string; message: string } | null>(null);
   const [viewerActions, setViewerActions] = useState<ViewerActions>(NO_ACTIONS);
-  const { values, shortcuts, save } = useSettings();
+  const { values, shortcuts, set } = useSettings();
   const { owner } = useAccess();
   // Settings arrive before the shell renders, so a first run is known here.
   const [dialog, setDialog] = useState<Dialog | null>(
@@ -160,7 +160,7 @@ export function Shell({ version }: { version: string }) {
       Object.entries(SETTING_CHECKS).map(([id, key]) => [
         id,
         () =>
-          void save({ values: { ...values, [key]: values[key] !== true }, shortcuts }).then(
+          void set(key, values[key] !== true).then(
             (refusal) =>
               refusal &&
               setRefused({

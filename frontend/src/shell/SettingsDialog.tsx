@@ -8,7 +8,7 @@ import { Icon } from "../kit/Icon";
 import { SectionCaption } from "../kit/SectionCaption";
 import { Tabs } from "../kit/Tabs";
 import { useHandlers } from "../resolvers/useHandlers";
-import { useSettings } from "../settings";
+import { settingsPatch, useSettings } from "../settings";
 import { literalSecret, PlainTextNote, SettingField, type Row } from "./SettingField";
 import { Refusal } from "../kit/Refusal";
 import { ShortcutsDialog } from "./ShortcutsDialog";
@@ -21,8 +21,7 @@ const PAGED: readonly Row[] = SETTINGS.filter((row) => row.page !== null);
  * The Settings dialog, built from the settings table: the Personal rows for everyone, the Server rows for whoever may
  * configure the server. Changes apply on OK; `onRestartNeeded` runs after a save that changed a setting that applies
  * only after a restart. Keyboard shortcuts open in a dialog of their own over this one, which stores them when it is
- * confirmed, even if this one is cancelled. That editor stays open until its write settles, so OK here always writes
- * the shortcuts as stored, never an older copy.
+ * confirmed, even if this one is cancelled.
  */
 export function SettingsDialog({
   onClose,
@@ -31,12 +30,14 @@ export function SettingsDialog({
   onClose: () => void;
   onRestartNeeded: () => void;
 }) {
-  const { values, shortcuts, file } = useSettings();
+  const { values, file } = useSettings();
   // A page that holds only a join link keeps just its Personal settings, in its browser.
   const { owner, fullAccess } = useAccess();
   const shown = PAGED.filter((row) => owner || row.scope === "personal");
   const pages = [...new Set(shown.flatMap((row) => row.page ?? [])), ...(file ? ["Advanced"] : [])];
-  const [draft, setDraft] = useState(values);
+  // What the dialog opened with: only the settings changed from it are sent, so another window's change to the rest stays.
+  const [base] = useState(values);
+  const [draft, setDraft] = useState(base);
   const [page, setPage] = useState(pages[0] ?? "");
   const [editingShortcuts, setEditingShortcuts] = useState(false);
   const { saving, refusal, submit } = useSaveDialog(onClose);
@@ -46,14 +47,14 @@ export function SettingsDialog({
     .filter((decoder) => decoder.live)
     .map((decoder) => [decoder.handler, decoder.display_name] as const);
   const ok = async () => {
-    const outcome = await submit({ values: draft, shortcuts });
+    const outcome = await submit(settingsPatch(base, draft));
     if (outcome.kind === "refused") {
       const at = shown.find((row) => row.key === outcome.refusal.location);
       if (at?.page) setPage(at.page);
     }
     if (
       outcome.kind === "saved" &&
-      shown.some((row) => !row.live && draft[row.key] !== values[row.key])
+      shown.some((row) => !row.live && draft[row.key] !== base[row.key])
     )
       onRestartNeeded();
   };

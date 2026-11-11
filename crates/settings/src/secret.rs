@@ -1,10 +1,11 @@
-//! How a secret setting is shown and kept: the literal in it is masked for a person and put back from the stored
-//! value when the masked text is sent back.
+//! How a secret setting is shown and kept: the literal in it is masked for a person. A text secret is changed only
+//! by naming it in a patch; a record in a list of logins is sent whole, and its masked password is put back from the
+//! stored value.
 
 use crate::{env, table::Setting};
 use serde_json::Value;
 
-/// Shown in place of a literal secret; sending it back keeps the stored secret.
+/// Shown in place of a literal secret; a masked password sent back in a record keeps the stored one.
 pub const MASK: &str = "********";
 
 /// The field of a record in a secret list that holds the secret.
@@ -55,8 +56,8 @@ impl Setting {
         }
     }
 
-    /// What a person's `sent` value means once the masked secrets in it are put back from the `stored` value: the
-    /// masked text keeps the stored secret; a masked password in a record keeps the stored password of the record at
+    /// What a person's `sent` value means once the masked passwords in it are put back from the `stored` value: a
+    /// masked password in a record keeps the stored password of the record at
     /// the same position when its other fields are unchanged, else of an unclaimed record with the same other fields,
     /// else of the unclaimed record at the same position (the user changed another field of it). A stored record
     /// keeps its password for one row only, and a masked secret with nothing to keep is refused rather than stored
@@ -68,8 +69,6 @@ impl Setting {
             return Ok(sent.clone());
         }
         match (sent, stored) {
-            (Value::String(text), Some(stored)) if text == MASK => Ok(stored.clone()),
-            (Value::String(text), None) if text == MASK => Err(REENTER.into()),
             (Value::Array(records), stored) => {
                 let before = stored
                     .and_then(Value::as_array)

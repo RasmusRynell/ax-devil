@@ -43,7 +43,7 @@ export interface Backend {
 export function setup(
   lane: Partial<LaneState> = {},
   status: LaneStatusWire = READY,
-  save: SettingsApi["save"] = vi.fn(async () => null),
+  save: SettingsApi["apply"] = vi.fn(async () => null),
   cadence: CadenceWire | null = null,
   { catalogs = CATALOGS, defaultCatalog = "" }: Backend = {},
 ) {
@@ -64,7 +64,7 @@ export function setup(
   };
   const menu = (shown: LaneState) => (
     <FakeSettings
-      save={save}
+      apply={save}
       state={{
         ...DEFAULT_SETTINGS,
         values: { ...DEFAULT_SETTINGS.values, "overlays.default_catalog": defaultCatalog },

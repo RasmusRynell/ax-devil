@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -9,22 +10,81 @@ import {
 } from "react";
 import { useAccess } from "./access";
 import { apiFetch } from "./api";
-import type { ApiError, SettingsChange, SettingsState } from "./generated/api";
-import { COMMANDS, SETTINGS, type SettingKey } from "./generated/settings";
+import type { ApiError, AppInfo, SettingsPatch, SettingsState } from "./generated/api";
+import { COMMANDS, SETTINGS, type CommandId, type SettingKey } from "./generated/settings";
 import { MEASURES } from "./present";
 
+/**
+ * Every way to store settings resolves to the refusal (its `location` is a setting key or `shortcuts.<id>`, empty when
+ * the backend could not be reached), else null. Only the keys named are written; any other keeps the value it has
+ * now, whoever wrote it.
+ */
 export interface SettingsApi extends SettingsState {
-  /**
-   * Stores *change* where each part lives and shows what the backend returns; resolves to the refusal (its `location`
-   * is a setting key or `shortcuts.<id>`, empty when the backend could not be reached), else null.
-   */
-  save: (change: SettingsChange) => Promise<ApiError | null>;
-  /**
-   * Reads the settings from the backend again, for a change the backend made itself; does nothing without one. A
-   * failed read keeps the settings already loaded.
-   */
-  reload: () => Promise<void>;
+  /** Stores one patch: several settings and shortcuts at once, as one write that is refused or taken whole. */
+  apply: (patch: SettingsPatch) => Promise<ApiError | null>;
+  /** Sets one setting. */
+  set: <K extends SettingKey>(
+    key: K,
+    value: SettingsState["values"][K],
+  ) => Promise<ApiError | null>;
+  /** Puts one setting back to its default. */
+  reset: (key: SettingKey) => Promise<ApiError | null>;
+  /** Binds a command to *key*, or unbinds it with null. */
+  setShortcut: (id: CommandId, key: string | null) => Promise<ApiError | null>;
+  /** Puts a command back to its own key. */
+  resetShortcut: (id: CommandId) => Promise<ApiError | null>;
 }
+
+/** The single-key ways to store, over `apply`. */
+export function through(apply: SettingsApi["apply"]) {
+  return {
+    apply,
+    set: (key: SettingKey, value: unknown) =>
+      apply({ set: { [key]: value } as SettingsPatch["set"] }),
+    reset: (key: SettingKey) => apply({ reset: [key] }),
+    setShortcut: (id: CommandId, key: string | null) => apply({ shortcutsSet: { [id]: key } }),
+    resetShortcut: (id: CommandId) => apply({ shortcutsReset: [id] }),
+  };
+}
+
+/** Whether *patch* names nothing. */
+export const isEmpty = (patch: SettingsPatch) =>
+  Object.keys(patch.set ?? {}).length +
+    (patch.reset?.length ?? 0) +
+    Object.keys(patch.shortcutsSet ?? {}).length +
+    (patch.shortcutsReset?.length ?? 0) ===
+  0;
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/** The patch that takes the settings *base* to *draft*: only the keys that differ. */
+export function settingsPatch(base: SettingsState["values"], draft: SettingsState["values"]) {
+  const set: Record<string, unknown> = {};
+  for (const key of Object.keys(draft) as SettingKey[])
+    if (!same(base[key], draft[key])) set[key] = draft[key];
+  return (Object.keys(set).length ? { set } : {}) as SettingsPatch;
+}
+
+/** The patch that takes the shortcuts *base* to *draft*: a command back on its own key is reset, the rest set. */
+export function shortcutsPatch(
+  base: SettingsState["shortcuts"],
+  draft: SettingsState["shortcuts"],
+) {
+  const shortcutsSet: Record<string, string | null> = {};
+  const shortcutsReset: CommandId[] = [];
+  for (const { id, key } of COMMANDS) {
+    if (base[id] === draft[id]) continue;
+    if (draft[id] === key) shortcutsReset.push(id);
+    else shortcutsSet[id] = draft[id];
+  }
+  return {
+    ...(Object.keys(shortcutsSet).length && { shortcutsSet }),
+    ...(shortcutsReset.length && { shortcutsReset }),
+  } as SettingsPatch;
+}
+
+/** The session connection tells this when the backend says settings changed; `SettingsProvider` provides it. */
+export const SettingsNoticeContext = createContext<(revision: number) => void>(() => {});
 
 type Load =
   | { state: "loading" }
@@ -142,13 +202,18 @@ function readLocal(): Local {
   return local;
 }
 
-/** The part of *change* this browser keeps. */
-function localOf(change: SettingsChange): Local {
-  const values: Partial<Values> = {};
-  for (const { key } of PERSONAL) values[key] = change.values[key];
-  const shortcuts: Partial<Shortcuts> = {};
-  for (const { id, key } of COMMANDS)
-    if (change.shortcuts[id] !== key) shortcuts[id] = change.shortcuts[id];
+/** What this browser keeps once *patch* applies to *kept*: only Personal rows and commands. */
+function applyLocal(kept: Local, patch: SettingsPatch): Local {
+  const values = { ...kept.values };
+  const shortcuts = { ...kept.shortcuts };
+  for (const { key } of PERSONAL) {
+    if (patch.set && key in patch.set) Object.assign(values, { [key]: patch.set[key] });
+    if (patch.reset?.includes(key)) delete values[key];
+  }
+  for (const { id } of COMMANDS) {
+    if (patch.shortcutsSet && id in patch.shortcutsSet) shortcuts[id] = patch.shortcutsSet[id];
+    if (patch.shortcutsReset?.includes(id)) delete shortcuts[id];
+  }
   return { values, shortcuts };
 }
 
@@ -180,22 +245,35 @@ export function useAppearance(theme: string, textSize: string) {
 /**
  * An Owner's settings all come from the backend and go to it. A page that holds only a join link has no settings
  * there: this browser keeps its Personal ones. Children render once the settings are read, with the theme and text
- * size applied live to the document root; a failed read shows its reason instead.
+ * size applied live to the document root; a failed read shows its reason instead. The settings are read again only
+ * when the session connection reports a revision above the one held, together with `GET /api/info`, which `onInfo`
+ * receives so that Full access follows `server.password_full_access`.
  */
-export function SettingsProvider({ children }: { children: ReactNode }) {
+export function SettingsProvider({
+  children,
+  onInfo,
+}: {
+  children: ReactNode;
+  onInfo: (info: AppInfo) => void;
+}) {
   const { owner } = useAccess();
   const [load, setLoad] = useState<Load>(
     owner ? { state: "loading" } : { state: "ready", remote: null },
   );
   const [local, setLocal] = useState(readLocal);
-  // Bumped when a reload or a save starts or finishes, so a reload answer that a later one overtook is dropped.
-  const latest = useRef(0);
+  // The revision of the settings held and of the last info asked for; a reply older than what is held is dropped.
+  const held = useRef({ settings: 0, info: 0 });
+  const take = useCallback((remote: SettingsState) => {
+    if (remote.revision < held.current.settings) return;
+    held.current.settings = remote.revision;
+    setLoad({ state: "ready", remote });
+  }, []);
   useEffect(() => {
     if (!owner) return;
     let current = true;
     request()
       .then((remote) => {
-        if (current) setLoad({ state: "ready", remote });
+        if (current) take(remote);
       })
       .catch((error: unknown) => {
         if (current) setLoad({ state: "failed", reason: refusalOf(error).reason });
@@ -203,7 +281,20 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return () => {
       current = false;
     };
-  }, [owner]);
+  }, [owner, take]);
+  const noticed = useCallback(
+    (revision: number) => {
+      if (revision > held.current.info) {
+        held.current.info = revision;
+        apiFetch("/api/info")
+          .then(async (response) => response.ok && onInfo((await response.json()) as AppInfo))
+          // A failed read keeps what is held: the failed state would unmount the whole app.
+          .catch(() => {});
+      }
+      if (revision > held.current.settings) request().then(take, () => {});
+    },
+    [take, onInfo],
+  );
   const remote = load.state === "ready" ? load.remote : null;
   const mine = owner ? null : local;
   const values = { ...DEFAULT_VALUES, ...remote?.values, ...mine?.values };
@@ -213,19 +304,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return <p role="alert">ax-devil cannot read its settings: {load.reason}</p>;
   if (load.state === "loading") return <main aria-busy="true" />;
 
-  const save = async (change: SettingsChange) => {
-    latest.current += 1;
+  const apply = async (patch: SettingsPatch) => {
     try {
       if (owner) {
-        const replaced = await request({
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(change),
-        });
-        latest.current += 1;
-        setLoad({ state: "ready", remote: replaced });
+        take(
+          await request({
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(patch),
+          }),
+        );
       } else {
-        const kept = localOf(change);
+        const kept = applyLocal(readLocal(), patch);
         window.localStorage.setItem(LOCAL_KEY, JSON.stringify(kept));
         setLocal(kept);
       }
@@ -234,30 +324,28 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       return refusalOf(error);
     }
   };
-  const reload = async () => {
-    if (!owner) return;
-    latest.current += 1;
-    const started = latest.current;
-    try {
-      const remote = await request();
-      if (latest.current === started) setLoad({ state: "ready", remote });
-    } catch {
-      // A failed refresh keeps the settings already read: the failed state would unmount the whole app.
-    }
-  };
   const shortcuts = mine
     ? { ...STANDARD_SHORTCUTS, ...mine.shortcuts }
     : (remote?.shortcuts ?? STANDARD_SHORTCUTS);
   return (
-    <SettingsContext.Provider
-      value={{ values, resolved: remote?.resolved, file: remote?.file, shortcuts, save, reload }}
-    >
-      {children}
-    </SettingsContext.Provider>
+    <SettingsNoticeContext.Provider value={noticed}>
+      <SettingsContext.Provider
+        value={{
+          revision: remote?.revision ?? 0,
+          values,
+          resolved: remote?.resolved,
+          file: remote?.file,
+          shortcuts,
+          ...through(apply),
+        }}
+      >
+        {children}
+      </SettingsContext.Provider>
+    </SettingsNoticeContext.Provider>
   );
 }
 
-/** The stored settings, the effective shortcuts, and the way to store new ones; only inside a `SettingsProvider`. */
+/** The stored settings, the effective shortcuts, and the ways to store new ones; only inside a `SettingsProvider`. */
 export function useSettings(): SettingsApi {
   const settings = useContext(SettingsContext);
   if (!settings) throw new Error("useSettings needs a SettingsProvider");

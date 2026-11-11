@@ -379,7 +379,11 @@ serverUs: number, } | { "type": "heartbeat",
 /**
  * The backend's clock when it sent this.
  */
-serverUs: number, } | { "type": "cursor", 
+serverUs: number, } | { "type": "settings", 
+/**
+ * The revision of the new settings, the one `GET /api/settings` reports.
+ */
+revision: number, } | { "type": "cursor", 
 /**
  * Whose cursor.
  */

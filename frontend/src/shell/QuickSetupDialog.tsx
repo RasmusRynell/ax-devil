@@ -3,7 +3,7 @@ import { SETTINGS, type SettingKey } from "../generated/settings";
 import { SegmentedControl, TileChoice } from "../kit/Chips";
 import { Dialog } from "../kit/Dialog";
 import { SectionCaption } from "../kit/SectionCaption";
-import { applyAppearance, useAppearance, useSettings } from "../settings";
+import { applyAppearance, settingsPatch, useAppearance, useSettings } from "../settings";
 import { textOf, type Row } from "./SettingField";
 import { useSaveDialog } from "./useSaveDialog";
 
@@ -100,15 +100,16 @@ export function QuickSetupDialog({
   onClose: () => void;
   onNotice: (message: string) => void;
 }) {
-  const { values, shortcuts } = useSettings();
-  const [draft, setDraft] = useState(values);
+  const { values } = useSettings();
+  const [base] = useState(values);
+  const [draft, setDraft] = useState(base);
   useAppearance(textOf(draft["ui.theme"]), textOf(draft["ui.text_size"]));
   const { saving, submit } = useSaveDialog(onClose);
   const changed =
-    !values["ui.quick_setup_done"] || ROWS.some((row) => draft[row.key] !== values[row.key]);
+    !base["ui.quick_setup_done"] || ROWS.some((row) => draft[row.key] !== base[row.key]);
   const done = async () => {
     if (!changed) return onClose();
-    const outcome = await submit({ values: { ...draft, "ui.quick_setup_done": true }, shortcuts });
+    const outcome = await submit(settingsPatch(base, { ...draft, "ui.quick_setup_done": true }));
     if (outcome.kind === "refused") {
       // The preview showed choices that were not stored, so the app goes back to the stored ones.
       applyAppearance(textOf(values["ui.theme"]), textOf(values["ui.text_size"]));
