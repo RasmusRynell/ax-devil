@@ -74,7 +74,7 @@ describe("settings", () => {
 });
 
 function Choices() {
-  const { values, apply, previewDevice } = useSettings();
+  const { values, revision, apply, previewDevice } = useSettings();
   const noticed = useNoticeSink();
   const [result, setResult] = useState("");
   return (
@@ -97,6 +97,8 @@ function Choices() {
         Preview
       </button>
       <button onClick={() => noticed?.("settings", 5, false)}>Other Owner</button>
+      <button onClick={() => noticed?.("settings", 1, false)}>Own save notice</button>
+      <p>{`revision ${revision}`}</p>
       <button
         onClick={() =>
           void apply({
@@ -114,66 +116,79 @@ function Choices() {
   );
 }
 
-it("keeps newer Device previews through a refused patch, Owner push and older mixed save", async () => {
-  let finish: (state: unknown) => void = () => {};
-  const earlier = new Promise((resolve) => {
-    finish = resolve;
-  });
-  const { "ui.theme": _theme, "ui.text_size": _size, ...values } = DEFAULT_SETTINGS.values;
-  const initial = { ...DEFAULT_SETTINGS, values: { ...values, "ui.quick_setup_done": false } };
-  let reads = 0;
-  const patches: unknown[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (url: string, init?: RequestInit) => {
-      if (url === "/api/info") return { ok: false };
-      if (init?.method === "PATCH") {
-        patches.push(JSON.parse(init.body as string));
-        return patches.length === 1
-          ? { ok: true, json: () => earlier }
-          : {
-              ok: false,
-              json: async () => ({ reason: "disk full", location: "ui.quick_setup_done" }),
-            };
-      }
-      reads += 1;
-      return {
-        ok: true,
-        json: async () =>
-          reads === 1
-            ? initial
+it.each(["before reply", "after reply"])(
+  "keeps previews through refusal and Owner Changed when the own notice arrives %s",
+  async (noticeOrder) => {
+    let finish: (state: unknown) => void = () => {};
+    const earlier = new Promise((resolve) => {
+      finish = resolve;
+    });
+    const { "ui.theme": _theme, "ui.text_size": _size, ...values } = DEFAULT_SETTINGS.values;
+    const initial = { ...DEFAULT_SETTINGS, values: { ...values, "ui.quick_setup_done": false } };
+    let served = initial;
+    const patches: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/api/info") return { ok: false };
+        if (init?.method === "PATCH") {
+          patches.push(JSON.parse(init.body as string));
+          return patches.length === 1
+            ? { ok: true, json: () => earlier }
             : {
-                ...initial,
-                revision: 5,
-                values: { ...initial.values, "overlays.default_catalog": "user:new.json" },
-              },
+                ok: false,
+                json: async () => ({ reason: "disk full", location: "ui.quick_setup_done" }),
+              };
+        }
+        return { ok: true, json: async () => served };
+      }),
+    );
+    render(
+      <ChangesProvider>
+        <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
+          <SettingsProvider>
+            <Choices />
+          </SettingsProvider>
+        </AccessContext.Provider>
+      </ChangesProvider>,
+    );
+    fireEvent.click(await screen.findByText("Earlier save"));
+    fireEvent.click(screen.getByText("Preview"));
+    const otherOwner = async () => {
+      served = {
+        ...initial,
+        revision: 5,
+        values: { ...initial.values, "overlays.default_catalog": "user:new.json" },
       };
-    }),
-  );
-  render(
-    <ChangesProvider>
-    <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
-      <SettingsProvider>
-        <Choices />
-      </SettingsProvider>
-    </AccessContext.Provider>
-    </ChangesProvider>,
-  );
-  fireEvent.click(await screen.findByText("Earlier save"));
-  fireEvent.click(screen.getByText("Preview"));
-  fireEvent.click(screen.getByText("Other Owner"));
-  await screen.findByText("user:new.json");
-  expect(screen.getByText("dark/larger")).toBeTruthy();
-  fireEvent.click(screen.getByText("Finish setup"));
-  await screen.findByText("refused");
-  expect(screen.getByText("pending")).toBeTruthy();
-  expect(window.localStorage.getItem("ax-devil.device")).toBeNull();
-  await act(async () => finish({ ...initial, revision: 1 }));
-  await screen.findByText("earlier finished");
-  expect(screen.getByText("dark/larger")).toBeTruthy();
-  expect(screen.getByText("user:new.json")).toBeTruthy();
-  expect(patches).toEqual([
-    { set: { "camera.protocol": "http" } },
-    { set: { "ui.quick_setup_done": true } },
-  ]);
-});
+      fireEvent.click(screen.getByText("Other Owner"));
+      await screen.findByText("user:new.json");
+      expect(screen.getByText("dark/larger")).toBeTruthy();
+    };
+    if (noticeOrder === "before reply") {
+      served = { ...initial, revision: 1 };
+      fireEvent.click(screen.getByText("Own save notice"));
+      await screen.findByText("revision 1");
+      expect(screen.getByText("dark/larger")).toBeTruthy();
+      await otherOwner();
+    }
+    fireEvent.click(screen.getByText("Finish setup"));
+    await screen.findByText("refused");
+    expect(screen.getByText("pending")).toBeTruthy();
+    expect(window.localStorage.getItem("ax-devil.device")).toBeNull();
+    await act(async () => finish({ ...initial, revision: 1 }));
+    await screen.findByText("earlier finished");
+    if (noticeOrder === "after reply") {
+      served = { ...initial, revision: 1 };
+      fireEvent.click(screen.getByText("Own save notice"));
+      await screen.findByText("revision 1");
+      expect(screen.getByText("dark/larger")).toBeTruthy();
+      await otherOwner();
+    }
+    expect(screen.getByText("dark/larger")).toBeTruthy();
+    expect(screen.getByText("user:new.json")).toBeTruthy();
+    expect(patches).toEqual([
+      { set: { "camera.protocol": "http" } },
+      { set: { "ui.quick_setup_done": true } },
+    ]);
+  },
+);

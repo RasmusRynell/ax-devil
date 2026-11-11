@@ -17,6 +17,7 @@ afterEach(() => {
 async function mount() {
   vi.resetModules();
   const { SettingsProvider, useSettings } = await import("../settings");
+  const { ChangesProvider } = await import("../resource");
   const { AccessContext } = await import("../access");
   const { QuickSetupDialog } = await import("./QuickSetupDialog");
   const { SettingsDialog } = await import("./SettingsDialog");
@@ -40,11 +41,13 @@ async function mount() {
     );
   }
   return render(
-    <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
-      <SettingsProvider onInfo={() => {}}>
-        <Host />
-      </SettingsProvider>
-    </AccessContext.Provider>,
+    <ChangesProvider>
+      <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
+        <SettingsProvider>
+          <Host />
+        </SettingsProvider>
+      </AccessContext.Provider>
+    </ChangesProvider>,
   );
 }
 
