@@ -86,6 +86,12 @@ const say = (
   state: Extract<ServerMessage, { type: "Export" }>["state"],
 ) => act(() => jobs.receive({ type: "Export", job, state }));
 
+/** Export once the previous pick has settled: the button is disabled while a dialog is open, and a click then is lost. */
+const pressExport = async () => {
+  await waitFor(() => expect(disabled("Export")).toBe(false));
+  press("Export");
+};
+
 /** What the stubbed native dialog gives for the export file. */
 let chosen = "";
 const exportNow = () =>
@@ -326,10 +332,10 @@ describe("export dialog", () => {
       </AccessContext.Provider>,
     );
     expect(screen.queryByLabelText("Path on the server")).toBeNull();
-    press("Export");
+    await pressExport();
     await waitFor(() => expect(pick).toHaveBeenCalledWith("DPM.mp4", "mp4"));
     expect(sent).toEqual([]);
-    press("Export");
+    await pressExport();
     await waitFor(() =>
       expect(sent).toMatchObject([{ type: "Export", path: "/home/me/clip.mp4" }]),
     );
@@ -357,16 +363,16 @@ describe("export dialog", () => {
         />
       </AccessContext.Provider>,
     );
-    press("Export");
+    await pressExport();
     await waitFor(() => expect(pick).toHaveBeenLastCalledWith("front.v2.mp4", "mp4"));
     fireEvent.click(screen.getByLabelText("front.v2.avi"));
-    press("Export");
+    await pressExport();
     await waitFor(() => expect(pick).toHaveBeenLastCalledWith("detections.mp4", "mp4"));
     fireEvent.click(screen.getByLabelText("detections.json"));
-    press("Export");
+    await pressExport();
     await waitFor(() => expect(pick).toHaveBeenLastCalledWith("tracks.mp4", "mp4"));
     fireEvent.click(screen.getByLabelText("camera.v2/tracks"));
-    press("Export");
+    await pressExport();
     await waitFor(() => expect(pick).toHaveBeenLastCalledWith("folder.mp4", "mp4"));
   });
 });
