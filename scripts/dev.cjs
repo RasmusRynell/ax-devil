@@ -1,6 +1,8 @@
 const { observe } = require("./owned-child.cjs");
 const { spawn } = require("node:child_process");
 const { apiVersion } = require("../desktop/generated/api.json");
+const STARTUP_TIMEOUT_MS = 60_000;
+const PROBE_TIMEOUT_MS = 1000;
 const mode = process.argv[2];
 const port = process.env.PORT || "7330";
 const uiPort = process.env.UI_PORT || "7331";
@@ -31,7 +33,9 @@ function start(command, args, env = {}) {
 }
 async function available(url) {
   try {
-    const response = await fetch(`${url}/api/info`, { signal: AbortSignal.timeout(1000) });
+    const response = await fetch(`${url}/api/info`, {
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
     const data = await response.json();
     if (!data.development)
       throw new Error(
@@ -46,15 +50,14 @@ async function available(url) {
   }
 }
 async function ready(url) {
-  for (let i = 0; i < 600; i++) {
+  const deadline = Date.now() + STARTUP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
     if (await available(url)) return;
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error(`Startup timed out: ${url}`);
 }
-process.on("SIGINT", () => stop());
-process.on("SIGTERM", () => stop());
-(async () => {
+async function main() {
   if (!(await available(origin))) {
     start(
       process.env.WATCHEXEC || ".tools/bin/watchexec", // The Makefile exports the one on PATH, else .tools/.
@@ -112,7 +115,13 @@ process.on("SIGTERM", () => stop());
     });
     child.on("exit", (code) => stop(code || 0));
   } else setInterval(() => {}, 60000);
-})().catch((error) => {
-  console.error(error.message);
-  stop(1);
-});
+}
+if (require.main === module) {
+  process.on("SIGINT", () => stop());
+  process.on("SIGTERM", () => stop());
+  void main().catch((error) => {
+    console.error(error.message);
+    stop(1);
+  });
+}
+module.exports = { STARTUP_TIMEOUT_MS, PROBE_TIMEOUT_MS };

@@ -36,6 +36,20 @@ module.exports.run = async ({ window }) => {
     );
   };
 
+  // Seed before title edits can start recovery writes; later updates preserve this entry under their file lock.
+  // A recent workspace in a deep folder, as a long state folder gives: the start panel still has to fit.
+  const state = isolatedState();
+  const deep = path.join(
+    os.tmpdir(),
+    "ax-devil-smoke-recents",
+    "a-folder-whose-name-is-far-too-long-for-the-narrow-sidebar",
+    "and-another-one-below-it",
+    "Quarterly review.ax-devil.workspace",
+  );
+  const recents = path.join(state, "ax-devil", "recent-workspaces.json");
+  await fs.mkdir(path.dirname(recents), { recursive: true });
+  await fs.writeFile(recents, JSON.stringify([{ path: deep, used_ms: Date.now() }]));
+  const recentRow = `[...document.querySelectorAll('[data-cursor-id^="row:recent:"]')].find(row => row.dataset.cursorId === ${JSON.stringify(`row:recent:${deep}`)})`;
   // The start panel of a fresh page, with no dialog over it, has Open Workspace as its default: a real Enter asks
   // the native Open dialog.
   await reload(window);
@@ -125,38 +139,16 @@ module.exports.run = async ({ window }) => {
       "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent.startsWith('Keyboard Shortcuts'))",
     );
   };
-  // A recent workspace in a deep folder, as a long state folder gives: the start panel still has to fit.
-  const state = isolatedState();
-  const deep = path.join(
-    os.tmpdir(),
-    "ax-devil-smoke-recents",
-    "a-folder-whose-name-is-far-too-long-for-the-narrow-sidebar",
-    "and-another-one-below-it",
-    "Quarterly review.ax-devil.workspace",
-  );
-  const recents = path.join(state, "ax-devil", "recent-workspaces.json");
-  // The title edits above left a recovery copy that the backend takes off the recents a moment after the title reads
-  // Untitled again; a copy recorded after the fixture is written would be listed ahead of it.
-  await until(async () => {
-    try {
-      return !JSON.parse(await fs.readFile(recents, "utf8")).some((recent) =>
-        recent.path.replaceAll("\\", "/").includes("/unsaved-workspaces/"),
-      );
-    } catch (error) {
-      return error.code === "ENOENT";
-    }
-  }, "the recovery copy off the recent workspaces");
-  await fs.mkdir(path.dirname(recents), { recursive: true });
-  await fs.writeFile(recents, JSON.stringify([{ path: deep, used_ms: Date.now() }]));
+  // Recovery writes may reorder recents after the title edits. Inspect the fixture by identity, not position.
   await reload(window);
   await wait("document.querySelector('h1')?.textContent === 'ax-devil'");
-  await wait("document.querySelector('[data-cursor-id^=\"row:recent:\"]')");
+  await wait(recentRow);
   await fitChecker(window);
   // At 640x480 the name, the end of the folder and the date each stay whole and inside the row, and the folder's
   // tooltip holds all of it.
   await setView(window, [640, 480], 1);
   const recent = await js(`(() => {
-    const row = document.querySelector('[data-cursor-id^="row:recent:"]');
+    const row = ${recentRow};
     const box = row.getBoundingClientRect();
     const inside = (element) => {
       const rect = element.getBoundingClientRect();
@@ -168,6 +160,8 @@ module.exports.run = async ({ window }) => {
       suffix: inside(folder.lastElementChild) && folder.lastElementChild.scrollWidth <= folder.lastElementChild.clientWidth + 1,
       date: inside(row.lastElementChild) && row.lastElementChild.textContent === "today",
       folder: folder.title,
+      truncated: folder.firstElementChild.scrollWidth > folder.firstElementChild.clientWidth,
+      oneLine: folder.getBoundingClientRect().height <= parseFloat(getComputedStyle(folder).lineHeight) + 1,
     };
   })()`);
   assert.deepEqual(
@@ -175,6 +169,8 @@ module.exports.run = async ({ window }) => {
     [true, true, true],
     "name, folder suffix and date stay whole in the row",
   );
+  assert.equal(recent.truncated, true, "the long folder is truncated");
+  assert.equal(recent.oneLine, true, "the folder stays on one line");
   assert.equal(recent.folder.replaceAll("\\", "/"), path.dirname(deep).replaceAll("\\", "/"));
   for (const [theme, zoom] of [
     ["light", 1],
