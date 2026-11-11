@@ -246,17 +246,28 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 }
 
 /** Shares catalog validation ordering across every menu using the settings owner. */
-export function SettingsScope({ value, children }: {
+export function SettingsScope({
+  value,
+  children,
+}: {
   value: Omit<SettingsApi, "saveCatalogDefault">;
   children: ReactNode;
 }) {
   const current = useRef(value.apply);
   current.current = value.apply;
   const newest = useRef(0);
-  useEffect(() => () => { newest.current++; }, []);
+  useEffect(
+    () => () => {
+      newest.current++;
+    },
+    [],
+  );
   const apply: SettingsApi["apply"] = (patch) => {
-    if ("overlays.default_catalog" in (patch.set ?? {}) ||
-        patch.reset?.includes("overlays.default_catalog")) newest.current++;
+    if (
+      "overlays.default_catalog" in (patch.set ?? {}) ||
+      patch.reset?.includes("overlays.default_catalog")
+    )
+      newest.current++;
     return current.current(patch);
   };
   const saveCatalogDefault: SettingsApi["saveCatalogDefault"] = async (id, validate) => {
@@ -269,7 +280,11 @@ export function SettingsScope({ value, children }: {
       return request === newest.current ? refusalOf(error) : null;
     }
   };
-  return <SettingsContext value={{ ...value, ...through(apply), saveCatalogDefault }}>{children}</SettingsContext>;
+  return (
+    <SettingsContext value={{ ...value, ...through(apply), saveCatalogDefault }}>
+      {children}
+    </SettingsContext>
+  );
 }
 
 /** The effective and confirmed settings, the effective shortcuts, and the ways to store new ones; only inside a `SettingsProvider`. */

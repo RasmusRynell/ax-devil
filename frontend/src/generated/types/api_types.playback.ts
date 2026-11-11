@@ -257,7 +257,7 @@ reason: string, } | { "type": "Catalog",
  */
 id: string, 
 /**
- * Counts the document's changes; 0 when there is no such catalog.
+ * Counts document changes; 0 when unavailable to this viewer. Availability is ordered by the feed, not this number.
  */
 revision: number, 
 /**

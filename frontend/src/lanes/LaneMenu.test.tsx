@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import catalogDocument from "../../../assets/catalogs/standard.v4.json?raw";
-import { DEFAULT_SETTINGS } from "../client/fakeSettings";
 import type { CatalogInfoWire } from "../generated/api";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { ALL_FEATURES, CATALOGS, READY, box, setup, tab } from "./laneMenuRig";

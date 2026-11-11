@@ -256,4 +256,84 @@ mod tests {
         assert!(feed.kept("user:b.json", 2 * MAX_KEPT as u32).is_some());
         assert_eq!(feed.kept.len(), MAX_KEPT);
     }
+
+    /// Records real feed replies, including the revision-zero withdrawal, for the frontend's ordering regression.
+    #[tokio::test]
+    async fn last_owner_lend_withdraws_and_restores_the_catalog_frontend_fixture() {
+        use std::{fs, path::Path};
+        let folder = tempfile::tempdir().unwrap();
+        let document =
+            r#"{"schema":4,"name":"Shared","description":"","vars":{},"rules":[],"layers":[]}"#;
+        fs::write(folder.path().join("shared.json"), document).unwrap();
+        // Load the selected document first: directory iteration order must not choose its recorded revision.
+        let library = Library::with_folder(folder.path().to_path_buf());
+        for number in 0..64 {
+            fs::write(folder.path().join(format!("{number}.json")), document).unwrap();
+            library.reread(&CatalogId::User(format!("{number}.json")));
+        }
+        let session = SessionId::generate();
+        let mut first = CatalogFeed::new(&library, Audience::HOST, session);
+        let mut second = CatalogFeed::new(&library, Audience::HOST, session);
+        let mut guest = CatalogFeed::new(
+            &library,
+            Audience {
+                host_details: false,
+            },
+            session,
+        );
+        let id = "user:shared.json";
+        first.ask(id.into());
+        second.ask(id.into());
+        guest.ask(id.into());
+        let initial = next_catalog(&mut guest).await;
+        // Each Owner seat has its own feed; exhausting one cannot withdraw the other seat's lend.
+        for number in 0..64 {
+            first.ask(format!("user:{number}.json"));
+        }
+        guest.ask(id.into());
+        let one_owner = next_catalog(&mut guest).await;
+        assert_eq!(initial, one_owner);
+        for number in 0..64 {
+            second.ask(format!("user:{number}.json"));
+        }
+        let withdrawn = next_catalog(&mut guest).await;
+        assert_eq!(withdrawn["revision"], 0);
+        assert!(withdrawn["document"].is_null());
+        // Re-lending unchanged text restores the same document revision, not a fabricated higher one.
+        second.ask(id.into());
+        let restored = next_catalog(&mut guest).await;
+        assert_eq!(initial, restored);
+        let mut recorded = serde_json::json!({"initial": initial, "oneOwner": one_owner,
+            "withdrawn": withdrawn, "restored": restored});
+        // Library revisions use a process-wide clock shared with other tests. Canonicalize only its offset;
+        // preserve zero withdrawals and every relative revision from the real feed.
+        let offset = recorded["initial"]["revision"].as_u64().unwrap() - 1;
+        for reply in recorded.as_object_mut().unwrap().values_mut() {
+            let revision = reply["revision"].as_u64().unwrap();
+            if revision > 0 {
+                reply["revision"] = (revision - offset).into();
+            }
+        }
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/catalogs/lend-feed.json");
+        fs::write(
+            path,
+            format!("{}\n", serde_json::to_string_pretty(&recorded).unwrap()),
+        )
+        .unwrap();
+    }
+
+    async fn next_catalog(feed: &mut CatalogFeed) -> serde_json::Value {
+        loop {
+            let outgoing = tokio::time::timeout(std::time::Duration::from_secs(2), feed.next())
+                .await
+                .unwrap();
+            let Message::Text(message) = outgoing.message else {
+                panic!("expected text");
+            };
+            let value: serde_json::Value = serde_json::from_str(message.as_str()).unwrap();
+            if value["type"] == "Catalog" {
+                return value;
+            }
+        }
+    }
 }

@@ -15,7 +15,15 @@ type CatalogEntry =
 /** What the backend last said of a catalog: revisions restart with the backend, so the text counts too. */
 type Reply = { revision: number; document: string | null; problem: string | null };
 
-type Held = { reply?: Reply; epoch?: number; entry: CatalogEntry };
+type Held = {
+  reply?: Reply;
+  epoch?: number;
+  /** Last document revision, retained across an availability withdrawal. */
+  revision?: number;
+  /** Counts ordered feed availability transitions, independently of document revisions. */
+  availability: number;
+  entry: CatalogEntry;
+};
 
 /** The diagnostics of a failed compile, one per line with the document position when it has one. */
 function describe(diagnostics: readonly Diagnostic[], document: string): string {
@@ -55,7 +63,7 @@ export class Catalogs {
   get(id: string): CatalogEntry {
     let held = this.#held.get(id);
     if (!held) {
-      held = { entry: { state: "loading" } };
+      held = { entry: { state: "loading" }, availability: 0 };
       this.#held.set(id, held);
       this.#request(id);
     }
@@ -81,9 +89,12 @@ export class Catalogs {
   async validate(id: string, current: () => boolean): Promise<boolean> {
     const epoch = this.#epoch;
     this.get(id);
+    const availability = this.#held.get(id)?.availability;
     const fresh = await readFreshCatalog(id);
     if (!current() || epoch !== this.#epoch) return false;
-    this.receive(id, fresh.revision, fresh.document);
+    // A reply started before a withdrawal cannot restore availability; only the ordered feed can do that.
+    if (availability === this.#held.get(id)?.availability)
+      this.receive(id, fresh.revision, fresh.document);
     const held = this.get(id);
     if (held.state !== "ready" || !held.catalog || held.problem)
       throw new Error(held.state === "ready" ? held.problem : "The catalog is loading");
@@ -108,13 +119,17 @@ export class Catalogs {
   ): boolean {
     const held = this.#held.get(id);
     const last = held?.reply;
-    if (held?.epoch === this.#epoch && last && revision < last.revision) return false;
-    if (held) held.epoch = this.#epoch;
-    if (
-      !held ||
-      (last?.revision === revision && last.document === document && last.problem === problem)
-    )
+    if (!held) return false;
+    // Revision zero is an availability withdrawal, not an older document. Socket messages are ordered.
+    const withdrawn = revision === 0 && document === null && problem === null;
+    if (held.epoch === this.#epoch) {
+      if (!withdrawn && revision < (held.revision ?? 0)) return false;
+    } else held.revision = undefined;
+    held.epoch = this.#epoch;
+    if (!withdrawn) held.revision = revision;
+    if (last?.revision === revision && last.document === document && last.problem === problem)
       return false;
+    if ((last?.document === null) !== (document === null)) held.availability++;
     held.reply = { revision, document, problem };
     const catalog = held.entry.state === "ready" ? held.entry.catalog : undefined;
     if (document === null) {

@@ -1,5 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import feed from "../../../fixtures/catalogs/lend-feed.json";
+import { LaneCatalogs } from "./laneCatalog";
 import { Catalogs } from "./catalogs";
 import { catalogDocument } from "../stream/fakeData";
 
@@ -72,6 +74,44 @@ describe("catalogs", () => {
       expect(await oldConnection).toBe(false);
       expect(catalogs.get(id)).toMatchObject({ catalog: { name: "Classic" } });
     }
+  });
+
+  it("retains the drawing but reports withdrawal after the last Owner lend, then accepts restoration", async () => {
+    vi.stubGlobal("window", { sessionStorage: { getItem: () => null } });
+    const { catalogs } = held();
+    const lanes = new LaneCatalogs(catalogs, () => "built-in:standard");
+    const id = feed.initial.id;
+    catalogs.get(id);
+    const receive = (reply: typeof feed.initial | typeof feed.withdrawn) =>
+      catalogs.receive(reply.id, reply.revision, reply.document, reply.problem);
+    receive(feed.initial);
+    const drawing = lanes.resolve(0, id).catalog;
+    expect(drawing).toBeDefined();
+    receive(feed.oneOwner);
+    expect(lanes.resolve(0, id).problem).toBeUndefined();
+    let reply!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      () =>
+        new Promise<Response>((resolve) => {
+          reply = resolve;
+        }),
+    );
+    const pending = catalogs.validate(id, () => true);
+    const rejected = expect(pending).rejects.toThrow(`There is no catalog ${id}`);
+    receive(feed.withdrawn);
+    expect(lanes.resolve(0, id)).toEqual({
+      catalog: drawing,
+      pending: false,
+      problem: `There is no catalog ${id}`,
+    });
+    // A pre-withdrawal HTTP reply cannot restore availability.
+    reply(Response.json(feed.initial));
+    await rejected;
+    expect(lanes.resolve(0, id).problem).toBe(`There is no catalog ${id}`);
+    receive(feed.restored);
+    expect(lanes.resolve(0, id).problem).toBeUndefined();
+    expect(catalogs.compiledRevision(id)).toBe(feed.initial.revision);
   });
 
   it("keeps the last compile and says why when a newer document fails, has gone or cannot be served", () => {
