@@ -3,7 +3,8 @@
 //! It lists names and kinds only. An Owner can already open any path on the server by typing it, so this needs no
 //! more than the Owner role.
 
-use super::handlers::{Refusal, refuse};
+use super::handlers::refuse;
+use crate::Failure;
 use api_types::workspace::{FolderEntry, FolderListing, FolderPlace, PathExists};
 use axum::{Json, extract::Query, http::StatusCode};
 use foundation::{ErrorCode, UserError};
@@ -22,7 +23,7 @@ pub(super) struct Params {
 
 /// The folder asked for, or only the places to start from when none was. The host's folder is read on a blocking
 /// thread.
-pub(super) async fn list(Query(params): Query<Params>) -> Result<Json<FolderListing>, Refusal> {
+pub(super) async fn list(Query(params): Query<Params>) -> Result<Json<FolderListing>, Failure> {
     tokio::task::spawn_blocking(move || listing(params.path.as_deref()))
         .await
         .map_err(|error| {
@@ -36,7 +37,7 @@ pub(super) async fn list(Query(params): Query<Params>) -> Result<Json<FolderList
 
 /// Whether anything is at the absolute path asked, as the filesystem names it: hidden entries count, and on a
 /// case-insensitive filesystem so does another spelling. A link that leads nowhere is still there.
-pub(super) async fn exists(Query(params): Query<Params>) -> Result<Json<PathExists>, Refusal> {
+pub(super) async fn exists(Query(params): Query<Params>) -> Result<Json<PathExists>, Failure> {
     let path = PathBuf::from(params.path.unwrap_or_default());
     if !path.is_absolute() {
         return Err(refuse(
@@ -55,7 +56,7 @@ pub(super) async fn exists(Query(params): Query<Params>) -> Result<Json<PathExis
         })
 }
 
-fn listing(path: Option<&str>) -> Result<FolderListing, Refusal> {
+fn listing(path: Option<&str>) -> Result<FolderListing, Failure> {
     let Some(path) = path else {
         return Ok(FolderListing {
             path: None,
@@ -96,7 +97,7 @@ fn listing(path: Option<&str>) -> Result<FolderListing, Refusal> {
     })
 }
 
-fn problem(error: &io::Error) -> Refusal {
+fn problem(error: &io::Error) -> Failure {
     let (status, code, reason) = match error.kind() {
         io::ErrorKind::NotFound => (
             StatusCode::NOT_FOUND,
