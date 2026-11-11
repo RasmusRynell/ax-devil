@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { reasonOf } from "../errors";
 import { SETTINGS, type SettingKey } from "../generated/settings";
 import { SegmentedControl, TileChoice } from "../kit/Chips";
 import { Dialog } from "../kit/Dialog";
@@ -113,7 +114,7 @@ export function QuickSetupDialog({
     if (outcome.kind === "refused") {
       // The preview showed choices that were not stored, so the app goes back to the stored ones.
       applyAppearance(textOf(values["ui.theme"]), textOf(values["ui.text_size"]));
-      onNotice(`Could not save these choices: ${outcome.refusal.reason}`);
+      onNotice(`Could not save these choices: ${reasonOf(outcome.refusal)}`);
       onClose();
     }
   };

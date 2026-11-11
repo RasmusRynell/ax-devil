@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from "react";
 import { useAccess } from "../access";
+import { reasonOf } from "../errors";
 import type { SettingsState } from "../generated/api";
 import type { SettingKey } from "../generated/settings";
 import { Button } from "../kit/Button";
@@ -113,7 +114,9 @@ export function MakeDefault({
           title="Start new viewers and lanes with these settings."
           onClick={() => {
             setRefusal(null);
-            void set(setting, value).then((refused) => setRefusal(refused?.reason ?? null));
+            void set(setting, value).then((refused) =>
+              setRefusal(refused ? reasonOf(refused) : null),
+            );
           }}
         >
           Make default

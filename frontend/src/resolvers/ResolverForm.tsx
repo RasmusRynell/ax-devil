@@ -293,7 +293,7 @@ export function useResolverForm(
           resolver,
           key,
           update: (view) =>
-            answer.ok ? scanFinished(view, answer.value) : scanFailed(view, answer.refusal),
+            answer.ok ? scanFinished(view, answer.value) : scanFailed(view, answer.error),
         });
         return answer.ok ? answer.value : null;
       },

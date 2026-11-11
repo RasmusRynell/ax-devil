@@ -1,6 +1,7 @@
 import { EMPTY_VIEW } from "../session/views";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import type { ErrorWire } from "../generated/api";
 import type { CommandId } from "../generated/settings";
 import { installFakeFullscreen } from "../fakeFullscreen";
 import { scenario } from "../session/fakeScenario";
@@ -259,7 +260,7 @@ describe("sidebar", () => {
 
 describe("view settings", () => {
   it("shows a refused save", async () => {
-    const save = () => Promise.resolve({ reason: "full", location: "" });
+    const save = () => Promise.resolve<ErrorWire>({ code: "Internal", params: {}, reason: "full" });
     await renderShell({ save });
     fireEvent.click(screen.getByRole("menuitem", { name: "View" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Lane Names/ }));

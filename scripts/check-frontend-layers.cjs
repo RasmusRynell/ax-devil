@@ -17,6 +17,7 @@ const FRONTEND_LAYERS = {
   client: [
     "access",
     "api",
+    "ask",
     "errors",
     "settings",
     "secret",

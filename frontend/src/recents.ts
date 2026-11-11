@@ -1,4 +1,3 @@
-import { apiFetch } from "./api";
 import type { RecentWorkspace } from "./generated/api";
 import { useResource } from "./resource";
 import { useCan } from "./session/session";
@@ -50,20 +49,15 @@ export function folderOf(path: string): string {
       : folder;
 }
 
-/** Reads the recent workspaces; a list that cannot be read is empty. */
-const readRecents = (path: string, signal: AbortSignal): Promise<readonly RecentWorkspace[]> =>
-  apiFetch(path, { signal }).then((response) =>
-    response.ok ? (response.json() as Promise<RecentWorkspace[]>) : [],
-  );
-
 /**
  * The recent workspaces, newest first, asked of the backend each time `enabled` turns on and after each change it
  * announces. Empty for a seat that may not read the host's files.
  */
 export function useRecents(enabled: boolean): readonly RecentWorkspace[] {
   const host = useCan("host");
-  const { value } = useResource("recents", enabled && host ? "/api/workspaces/recent" : null, {
-    read: readRecents,
-  });
+  const { value } = useResource<RecentWorkspace[]>(
+    "recents",
+    enabled && host ? "/api/workspaces/recent" : null,
+  );
   return value ?? [];
 }

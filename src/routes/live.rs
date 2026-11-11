@@ -6,27 +6,33 @@
 //! that stream's saved login on the backend, for the person at this machine only and under the rule of the intake's
 //! `copy_login`. Nothing here logs or returns a login.
 
-use crate::{AppState, access::Principal, camera_questions, live_sources, session::live::defaults};
+use crate::{
+    AppState, Failure, access::Principal, camera_questions, live_sources, session::live::defaults,
+};
 use api_types::{
-    Audience,
+    Audience, ErrorParams, ErrorWire,
     live::{
-        LiveConnection, LiveProblem, LiveReason, LiveResolutions, LiveTopics, NewLiveOverlayWire,
-        NewLiveWire, ResolutionsRequest, SourcesAnswer, SourcesOverlay, SourcesRequest,
+        LiveConnection, LiveReason, LiveResolutions, LiveTopics, NewLiveOverlayWire, NewLiveWire,
+        ResolutionsRequest, SourcesAnswer, SourcesOverlay, SourcesRequest,
     },
     project,
 };
 use axum::{Json, extract::State, http::StatusCode};
-use foundation::{CancelToken, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
 use workspace::{Content, Environment, ResolvedCamera, Secret, Source, intake};
 
-type Problem = (StatusCode, Json<LiveProblem>);
-
-fn problem(status: StatusCode, problem: LiveProblem) -> Problem {
-    (status, Json(problem))
-}
-
-fn camera_failed(reason: LiveReason) -> Problem {
-    problem(StatusCode::BAD_GATEWAY, LiveProblem::Camera { reason })
+/// A camera that did not answer, or answered no: its reason is a code the client words, never the device's text.
+fn camera_failed(reason: LiveReason) -> Failure {
+    let error = ErrorWire {
+        code: ErrorCode::CameraFailed,
+        params: ErrorParams {
+            camera: Some(reason),
+            ..ErrorParams::default()
+        },
+        reason: None,
+        location: None,
+    };
+    (StatusCode::BAD_GATEWAY, Json(error))
 }
 
 /// The camera `connection` names, with the settings' defaults for what it leaves out and its references expanded.
@@ -36,7 +42,7 @@ fn camera(
     state: &AppState,
     principal: Principal,
     connection: LiveConnection,
-) -> Result<ResolvedCamera, Problem> {
+) -> Result<ResolvedCamera, Failure> {
     let settings = state.settings.state();
     let handlers = state.plugins.handlers();
     // The configured passwords are for Full access: another principal names its own.
@@ -57,11 +63,9 @@ fn camera(
         ..NewLiveWire::default()
     });
     let invalid = |error: &UserError| {
-        problem(
+        (
             StatusCode::UNPROCESSABLE_ENTITY,
-            LiveProblem::Invalid {
-                error: project(error, Audience::HOST),
-            },
+            Json(project(error, Audience::HOST)),
         )
     };
     if full_access
@@ -106,7 +110,7 @@ pub(super) async fn resolutions(
     State(state): State<AppState>,
     principal: Principal,
     Json(request): Json<ResolutionsRequest>,
-) -> Result<Json<LiveResolutions>, Problem> {
+) -> Result<Json<LiveResolutions>, Failure> {
     let camera = camera(&state, principal, request.connection)?;
     let timeout = live_sources::timeout(&state.settings.state());
     camera_questions::resolutions(&camera, timeout)
@@ -120,7 +124,7 @@ pub(super) async fn sources(
     State(state): State<AppState>,
     principal: Principal,
     Json(request): Json<SourcesRequest>,
-) -> Result<Json<SourcesAnswer>, Problem> {
+) -> Result<Json<SourcesAnswer>, Failure> {
     let camera = camera(&state, principal, request.connection)?;
     let timeout = live_sources::timeout(&state.settings.state());
     let answer = match request.overlay {
@@ -189,8 +193,7 @@ mod tests {
             .send(ask(json!({ "host": "127.0.0.1", "head": 10000 })))
             .await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(json(&body)["problem"], "Invalid");
-        assert_eq!(json(&body)["error"]["location"], "head");
+        assert_eq!(json(&body)["location"], "head");
 
         // A variable the user names expands silently and goes to the camera, which is not there: the sources
         // question fails the same way.
@@ -211,7 +214,7 @@ mod tests {
             assert_eq!(status, StatusCode::BAD_GATEWAY);
             assert_eq!(
                 json(&body),
-                json!({ "problem": "Camera", "reason": "Unreachable" })
+                json!({ "code": "CameraFailed", "params": { "camera": "Unreachable" } })
             );
         }
     }

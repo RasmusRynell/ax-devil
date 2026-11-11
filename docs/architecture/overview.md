@@ -17,7 +17,8 @@ Until parity, the layer contents, seams and runtime guarantees are specified in
 
 The frontend talks to the backend that served it over HTTP and WebSockets: on `127.0.0.1` for a local backend, on
 the server's own address for another machine's. Types that cross that boundary are Rust types exported to TypeScript;
-the frontend never declares its own copy. Plain data is defined once, in the crate that owns it, with `serde` and
+the frontend never declares its own copy. A JSON route answers its value or an `ErrorWire`, which the frontend reads
+through `ask` (`frontend/src/ask.ts`). Plain data is defined once, in the crate that owns it, with `serde` and
 `ts-rs` derives (layers 1-3 may use both); `crates/api-types` holds the socket protocols and the projections that
 decide what an audience sees. The hand-parsed formats are the binary playback
 envelope (its constants are exported and its layout is in `api_types::playback`) and the Sample Item

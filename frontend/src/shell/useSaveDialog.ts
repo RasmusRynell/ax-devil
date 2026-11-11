@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import type { ApiError, SettingsPatch } from "../generated/api";
+import type { ErrorWire, SettingsPatch } from "../generated/api";
 import { isEmpty, useSettings } from "../settings";
 
 /** How a `submit` ended: stored, refused (kept in `refusal` to show where it applies), or the dialog was closed first. */
 export type SaveOutcome =
   | { kind: "saved" }
   | { kind: "closed" }
-  | { kind: "refused"; refusal: ApiError };
+  | { kind: "refused"; refusal: ErrorWire };
 
 /**
  * What a dialog that stores settings needs: `submit` stores a patch of what the dialog changed, closes the dialog when
@@ -15,7 +15,7 @@ export type SaveOutcome =
 export function useSaveDialog(onClose: () => void) {
   const { apply } = useSettings();
   const [saving, setSaving] = useState(false);
-  const [refusal, setRefusal] = useState<ApiError | null>(null);
+  const [refusal, setRefusal] = useState<ErrorWire | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;

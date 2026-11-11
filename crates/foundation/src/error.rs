@@ -50,6 +50,12 @@ pub enum ErrorCode {
     WorkspaceExists,
     /// A workspace file could not be written.
     SaveFailed,
+    /// The request, or a value in it, is not valid; the location names the setting or field.
+    InvalidRequest,
+    /// The caller lacks the access the request needs.
+    Forbidden,
+    /// A camera asked on the user's behalf did not answer, or answered no; the params say why.
+    CameraFailed,
     /// A fault of the backend itself.
     Internal,
 }

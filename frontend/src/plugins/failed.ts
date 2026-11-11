@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { PluginsInfo } from "../generated/api";
-import { ask } from "../resolvers/handlers";
+import { ask } from "../ask";
 
 let failed = 0;
 let asked = false;
@@ -26,7 +26,7 @@ export function useFailedPlugins(): number {
   useEffect(() => {
     if (asked) return;
     asked = true;
-    ask<PluginsInfo>("/api/plugins", {})
+    ask<PluginsInfo>("/api/plugins")
       .then((answer) => {
         if (answer.ok) reportFailedPlugins(failedIn(answer.value));
       })

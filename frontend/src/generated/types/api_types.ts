@@ -3,19 +3,6 @@
 import type { CommandId, SettingKey } from "../settings";
 
 /**
- * What a failed request returns: the reason, shown where the user acted, and what it is about.
- */
-export type ApiError = { 
-/**
- * What is wrong, in words for the user.
- */
-reason: string, 
-/**
- * The setting key (`camera.host`), `shortcuts.<command id>`, or file the reason is about.
- */
-location: string, };
-
-/**
  * Identifies a running backend, so the desktop shell and the development supervisor reuse only a compatible one.
  */
 export type AppInfo = { 

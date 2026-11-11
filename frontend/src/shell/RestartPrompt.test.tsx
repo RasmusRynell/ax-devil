@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AccessContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
-import type { ApiError } from "../generated/api";
+import type { ErrorWire } from "../generated/api";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { Shell } from "./Shell";
@@ -17,7 +17,7 @@ afterEach(() => {
   delete window.axDevilWindow;
 });
 
-async function showShell(save?: () => Promise<ApiError | null>) {
+async function showShell(save?: () => Promise<ErrorWire | null>) {
   render(
     <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
       <FakeSettings state={DEFAULT_SETTINGS} apply={save}>
@@ -77,14 +77,14 @@ describe("restart prompt", () => {
   });
 
   it("does not follow a refused save, or a save whose dialog was cancelled meanwhile", async () => {
-    const refused = { reason: "full", location: "" };
+    const refused: ErrorWire = { code: "Internal", params: {}, reason: "full" };
     await showShell(() => Promise.resolve(refused));
     saveSetting("Storage", "Cache folder", "/elsewhere");
     await screen.findByText("full");
     expect(screen.queryByRole("dialog", { name: "Restart ax-devil?" })).toBeNull();
     cleanup();
 
-    let finish: (outcome: ApiError | null) => void = () => undefined;
+    let finish: (outcome: ErrorWire | null) => void = () => undefined;
     await showShell(() => new Promise((resolve) => (finish = resolve)));
     saveSetting("Storage", "Cache folder", "/elsewhere");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));

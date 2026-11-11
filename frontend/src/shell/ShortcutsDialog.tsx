@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type { Shortcuts } from "../commands";
+import { reasonOf } from "../errors";
 import { COMMANDS, RESERVED, type CommandId } from "../generated/settings";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
@@ -133,7 +134,8 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
                 {commands.map(({ id, label, key: standard }) => {
                   const shown = note?.id === id ? note : null;
                   const takeFrom = shown?.takeFrom;
-                  const text = shown?.text ?? (serverNote?.id === id ? refusal?.reason : null);
+                  const text =
+                    shown?.text ?? (serverNote?.id === id && refusal ? reasonOf(refusal) : null);
                   return (
                     <li key={id} className="flex flex-col border-b border-line">
                       <div className="flex min-h-row items-center gap-m">
@@ -202,7 +204,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
       </p>
       {refusal && !serverNote && (
         <p role="alert" className="m-0">
-          {refusal.reason}
+          {reasonOf(refusal)}
         </p>
       )}
     </Dialog>

@@ -417,13 +417,10 @@ describe("add live stream dialog", () => {
             ok: false,
             status: 422,
             json: async () => ({
-              problem: "Invalid",
-              error: {
-                code: "WorkspaceInvalid",
-                params: {},
-                reason: "Enter the device host.",
-                location: "item-1",
-              },
+              code: "WorkspaceInvalid",
+              params: {},
+              reason: "Enter the device host.",
+              location: "item-1",
             }),
           },
     );

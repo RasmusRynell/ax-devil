@@ -1,6 +1,6 @@
 import { reasonOf } from "../errors";
 import type { ChoiceInfo, ErrorWire, ScanCountInfo, ScanRequest } from "../generated/api";
-import { ask, type Answer } from "./handlers";
+import { ask, type Answer } from "../ask";
 
 /** Resolver settings as the backend takes them. */
 export type Settings = Record<string, unknown>;
@@ -14,9 +14,7 @@ export function scanChoices(
 ): Promise<Answer<ChoiceInfo[]>> {
   const request: ScanRequest = { field, settings };
   return ask<ChoiceInfo[]>(`/api/resolvers/${encodeURIComponent(resolver)}/scan`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
+    json: request,
     signal,
   });
 }

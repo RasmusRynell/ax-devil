@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { apiFetch } from "../api";
+import { ask } from "../ask";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
 
@@ -25,17 +25,15 @@ async function copy(text: string): Promise<void> {
 
 /** Tells the backend, which logs it with who sent it. A failure to tell is dropped: it must not raise another dialog. */
 function report({ summary, details }: Uncaught): void {
-  apiFetch("/api/client-errors", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    // The address without its query and fragment, which may hold a credential.
-    body: JSON.stringify({
+  void ask("/api/client-errors", {
+    json: {
       summary,
       details,
+      // The address without its query and fragment, which may hold a credential.
       page: `${window.location.origin}${window.location.pathname}`,
       desktop: window.axDevilWindow !== undefined,
-    }),
-  }).catch(() => undefined);
+    },
+  });
 }
 
 function describe(thrown: unknown): Uncaught {
