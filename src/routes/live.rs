@@ -223,7 +223,7 @@ mod tests {
     #[tokio::test]
     async fn a_body_the_route_cannot_read_is_an_invalid_request_with_the_reason() {
         let test = TestApp::new();
-        let unreadable = |body: &'static str| {
+        let unreadable = |body: String| {
             Request::builder()
                 .method("POST")
                 .uri("/api/live/resolutions")
@@ -231,18 +231,26 @@ mod tests {
                 .body(Body::from(body))
                 .unwrap()
         };
+        // The message of a long value quotes all of it: the reason is cut, the status and the code are not.
+        let long = json!({ "connection": { "protocol": "x".repeat(5000) } }).to_string();
         for (body, status) in [
             (
-                r#"{"connection":{"head":"bad"}}"#,
+                r#"{"connection":{"head":"bad"}}"#.to_owned(),
                 StatusCode::UNPROCESSABLE_ENTITY,
             ),
-            ("{", StatusCode::BAD_REQUEST),
+            ("{".to_owned(), StatusCode::BAD_REQUEST),
+            (long, StatusCode::UNPROCESSABLE_ENTITY),
         ] {
             let (answered, bytes) = test.send(unreadable(body)).await;
             assert_eq!(answered, status);
             let error = json(&bytes);
             assert_eq!(error["code"], "InvalidRequest");
-            assert!(!error["reason"].as_str().unwrap().is_empty());
+            let reason = error["reason"].as_str().unwrap();
+            assert!(
+                !reason.is_empty() && reason.len() < 1100,
+                "{}",
+                reason.len()
+            );
         }
     }
 

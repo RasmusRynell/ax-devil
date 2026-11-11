@@ -31,7 +31,7 @@ use crate::{
 };
 use axum::{
     Router,
-    body::{Body, to_bytes},
+    body::Body,
     extract::Request,
     http::{StatusCode, header},
     middleware::{Next, from_fn, from_fn_with_state},
@@ -39,6 +39,7 @@ use axum::{
     routing::{MethodFilter, MethodRouter, on},
 };
 use foundation::CancelToken;
+use futures_util::StreamExt;
 use std::sync::Arc;
 
 /// Cancels the blocking work of a request or socket when its future is dropped, as the server does when the client
@@ -326,11 +327,35 @@ async fn wire_rejections(request: Request, next: Next) -> Response {
     if !plain || !rejection || !path.starts_with("/api/") || SOCKETS.contains(&path.as_str()) {
         return response;
     }
-    // A rejection is a sentence; a body that is not readable as one is not ours to word.
-    match to_bytes(Body::new(response.into_body()), 4096).await {
-        Ok(text) => rejected(status, String::from_utf8_lossy(&text).into_owned()).into_response(),
-        Err(_) => status.into_response(),
+    let text = head_of(response.into_body()).await;
+    let reason = if text.is_empty() {
+        "the request was not accepted".to_owned()
+    } else {
+        text
+    };
+    rejected(status, reason).into_response()
+}
+
+/// How many bytes of a rejection's text an `ErrorWire` carries: serde's message can quote a whole value the caller sent.
+const REASON_MOST: usize = 1024;
+
+/// The start of `body` as text, at most [`REASON_MOST`] bytes of it and read no further, with an ellipsis when cut.
+async fn head_of(body: Body) -> String {
+    let mut stream = body.into_data_stream();
+    let mut read = Vec::new();
+    while read.len() <= REASON_MOST {
+        let Some(Ok(chunk)) = stream.next().await else {
+            break;
+        };
+        read.extend_from_slice(&chunk);
     }
+    let cut = read.len() > REASON_MOST;
+    read.truncate(REASON_MOST);
+    let mut text = String::from_utf8_lossy(&read).into_owned();
+    if cut {
+        text.push('\u{2026}');
+    }
+    text
 }
 
 /// The routes `listener` serves, and in release builds the embedded frontend for every other GET.
