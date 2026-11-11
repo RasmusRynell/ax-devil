@@ -328,7 +328,7 @@ describe("video viewer objects", () => {
 });
 
 it("opens tools on the targeted lane and leaves the other lane's object page behind", async () => {
-  const { props, run } = await mount(undefined, [
+  const { props, run } = await mount([
     { label: "DPM", slot: "DPM", source: 0 },
     { label: "GT", slot: "GT", source: 1 },
   ]);
