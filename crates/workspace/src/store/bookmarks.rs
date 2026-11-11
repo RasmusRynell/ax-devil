@@ -1,8 +1,8 @@
 //! Bookmarks and reviewed marks: the commands that change them and the groups the Bookmarks view lists.
 
-use crate::{Resolution, WorkspaceState};
+use crate::store::{Resolution, WorkspaceState};
+use crate::{Bookmark, BookmarkId, BookmarkKind, BookmarkTarget, Content, ContentId, ItemId};
 use foundation::MediaTime;
-use workspace::{Bookmark, BookmarkId, BookmarkKind, BookmarkTarget, Content, ContentId, ItemId};
 
 /// A change to the workspace's bookmarks or reviewed marks.
 #[derive(Clone, Debug)]
@@ -291,11 +291,11 @@ fn quoted(field: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DocCommand, apply as apply_doc, complete};
+    use crate::store::{DocCommand, apply as apply_doc, complete};
     use handlers::Handlers;
 
     fn resolved(path: &std::path::Path) -> (WorkspaceState, ItemId) {
-        let item = workspace::intake::video(path, &[], &Handlers::built_in()).unwrap();
+        let item = crate::intake::video(path, &[], &Handlers::built_in()).unwrap();
         let id = item.id;
         let (state, jobs) = apply_doc(
             &WorkspaceState::default(),
@@ -305,10 +305,10 @@ mod tests {
             },
         );
         let job = &jobs[0];
-        let content = crate::resolve(
+        let content = crate::store::resolve(
             job,
             &Handlers::built_in(),
-            &workspace::Environment::of_process(),
+            &crate::Environment::of_process(),
             &foundation::CancelToken::new(),
         )
         .ok()
@@ -461,7 +461,7 @@ mod tests {
         let mut settings = serde_json::Map::new();
         settings.insert("root".into(), folder.path().display().to_string().into());
         let item =
-            workspace::intake::playlist("mot_challenge", settings, &Handlers::built_in()).unwrap();
+            crate::intake::playlist("mot_challenge", settings, &Handlers::built_in()).unwrap();
         let id = item.id;
         let (state, jobs) = apply_doc(
             &WorkspaceState::default(),
@@ -470,10 +470,10 @@ mod tests {
                 open: false,
             },
         );
-        let content = crate::resolve(
+        let content = crate::store::resolve(
             &jobs[0],
             &Handlers::built_in(),
-            &workspace::Environment::of_process(),
+            &crate::Environment::of_process(),
             &foundation::CancelToken::new(),
         )
         .ok()

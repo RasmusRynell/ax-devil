@@ -14,8 +14,8 @@ use axum::{
 use foundation::{ErrorCode, UserError};
 use serde::Deserialize;
 use sessions::SessionId;
+use workspace::store::Resolution;
 use workspace::{Content, ContentId};
-use workspace_store::Resolution;
 
 /// The entry to show and the session whose workspace holds it.
 #[derive(Deserialize)]

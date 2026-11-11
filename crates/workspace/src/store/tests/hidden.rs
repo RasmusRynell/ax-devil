@@ -2,14 +2,14 @@ use super::*;
 
 /// The Content of a playlist item with one playlist of these entries, each with one lane `L`; whether an entry starts
 /// hidden is also whether its lane does.
-fn playlist_of(item: &WorkspaceItem, entries: &[(&str, bool)]) -> workspace::Content {
+fn playlist_of(item: &WorkspaceItem, entries: &[(&str, bool)]) -> crate::Content {
     let entries: Vec<_> = entries
         .iter()
-        .map(|&(label, starts_hidden)| workspace::Entry {
-            id: workspace::ContentId::of_entry(&item.id, "P", label),
+        .map(|&(label, starts_hidden)| crate::Entry {
+            id: crate::ContentId::of_entry(&item.id, "P", label),
             label: label.to_owned(),
-            video: workspace::VideoRef::File(format!("/{label}.mp4").into()),
-            overlays: vec![workspace::OverlayRef {
+            video: crate::VideoRef::File(format!("/{label}.mp4").into()),
+            overlays: vec![crate::OverlayRef {
                 label: "L".into(),
                 slot: "L".into(),
                 path: "/o.txt".into(),
@@ -26,12 +26,12 @@ fn playlist_of(item: &WorkspaceItem, entries: &[(&str, bool)]) -> workspace::Con
             metadata: Default::default(),
         })
         .collect();
-    workspace::Content::Playlist(workspace::PlaylistContent {
-        id: workspace::ContentId::of_item(&item.id),
+    crate::Content::Playlist(crate::PlaylistContent {
+        id: crate::ContentId::of_item(&item.id),
         item_id: item.id,
         display_name: "P".into(),
-        playlists: vec![workspace::PlaylistSpan {
-            id: workspace::ContentId::of_playlist(&item.id, "P"),
+        playlists: vec![crate::PlaylistSpan {
+            id: crate::ContentId::of_playlist(&item.id, "P"),
             name: "P".into(),
             entries: entries.len(),
             matches: None,
@@ -68,7 +68,7 @@ fn the_users_choice_beats_how_the_resolver_started_an_entry_until_the_entry_is_g
     let set = |state: &WorkspaceState, target: HiddenRef, hidden: bool| {
         apply(state, DocCommand::SetHidden { target, hidden }).0
     };
-    let entry = |label: &str| workspace::ContentId::of_entry(&runs.id, "P", label);
+    let entry = |label: &str| crate::ContentId::of_entry(&runs.id, "P", label);
     let shown = |state: &WorkspaceState, label: &str| {
         let Resolution::Resolved { content, .. } = &state.resolutions[&runs.id] else {
             panic!("the playlist resolved");
@@ -94,7 +94,7 @@ fn the_users_choice_beats_how_the_resolver_started_an_entry_until_the_entry_is_g
         "an entry that was gone starts as its resolver says"
     );
 
-    let own = HiddenRef::Entry(workspace::ContentId::of_item(&video.id));
+    let own = HiddenRef::Entry(crate::ContentId::of_item(&video.id));
     assert_eq!(
         set(&state, own, true),
         state,

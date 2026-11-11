@@ -11,12 +11,12 @@ use sessions::{
     },
 };
 use std::{collections::BTreeMap, path::PathBuf};
+use workspace::store::{BookmarkCommand, DocCommand, HiddenRef, Saved};
 use workspace::{
     BookmarkKind, ContentId, LiveOverlay, LiveRecipe, PlaylistRecipe, Protocol, Recipe, RtspRoute,
     Secret, Source, WorkspaceItem,
     intake::{NewOverlay, video},
 };
-use workspace_store::{BookmarkCommand, DocCommand, HiddenRef, Saved};
 
 /// The first Owner seat of `session`.
 pub(super) fn owner_of(session: &SessionState) -> SeatId {

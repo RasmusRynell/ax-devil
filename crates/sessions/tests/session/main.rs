@@ -26,8 +26,8 @@ use std::{
     time::Duration,
 };
 use tempfile::TempDir;
+use workspace::store::{DocCommand, Resolution, ResolveJob};
 use workspace::{Content, ItemId, WorkspaceItem};
-use workspace_store::{DocCommand, Resolution, ResolveJob};
 
 pub(crate) const GRACE: Duration = Duration::from_secs(30);
 
@@ -56,7 +56,7 @@ impl Jobs {
 
 /// Resolves `job` with the built-in handlers, as the real runner does.
 pub(crate) fn resolve(job: &ResolveJob) -> Result<Content, UserError> {
-    match workspace_store::resolve(
+    match workspace::store::resolve(
         job,
         &Handlers::built_in(),
         &workspace::Environment::of_process(),

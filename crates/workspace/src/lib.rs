@@ -1,7 +1,7 @@
 //! Workspace items, recipes and Content: what the user has added and how it resolves to something a viewer opens.
 //!
 //! An item is a saved recipe. Resolving the recipe gives the Content a viewer opens; a recipe that cannot resolve
-//! stays in the workspace with its reason.
+//! stays in the workspace with its reason. [`store`] holds the workspace's state and its pure transitions.
 
 mod bookmark;
 mod content;
@@ -13,6 +13,7 @@ mod live;
 mod metadata;
 mod references;
 mod sources;
+pub mod store;
 mod workspace;
 
 pub use bookmark::{Bookmark, BookmarkKind, BookmarkTarget};

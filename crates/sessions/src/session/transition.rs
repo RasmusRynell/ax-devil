@@ -16,8 +16,8 @@ use overlay_sync::MatchPolicy;
 use playback::Authority;
 use std::{collections::BTreeMap, sync::Arc};
 use tokio::time::Instant;
+use workspace::store::{DocCommand, complete};
 use workspace::{Content, Entry, ItemId};
-use workspace_store::{DocCommand, complete};
 
 /// The server's furthest-back time a presenter's clock intent may claim, in microseconds before it is received.
 const INTENT_MAX_AGE_US: i64 = 2_000_000;

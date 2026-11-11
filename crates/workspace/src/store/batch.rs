@@ -1,10 +1,10 @@
 //! An add batch: items added together with a viewer requested are published together, in the order they were added.
 
+use crate::{Content, ItemId};
 use foundation::UserError;
 use std::collections::HashMap;
-use workspace::{Content, ItemId};
 
-use crate::{Resolution, WorkspaceState};
+use crate::store::{Resolution, WorkspaceState};
 
 /// The items one `AddItems { open: true }` added, each with the attempt that resolves it. Their rows are pending at
 /// once; results are held here until every item has a result or no longer waits on its attempt (removed, replaced or
@@ -17,7 +17,7 @@ pub(crate) struct Batch {
 
 impl Batch {
     /// The batch for the jobs of one add, or none when it added nothing.
-    pub(crate) fn of(jobs: &[crate::ResolveJob]) -> Option<Self> {
+    pub(crate) fn of(jobs: &[crate::store::ResolveJob]) -> Option<Self> {
         (!jobs.is_empty()).then(|| Self {
             order: jobs.iter().map(|job| (job.item, job.attempt)).collect(),
             held: HashMap::new(),

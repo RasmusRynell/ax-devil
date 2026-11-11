@@ -8,7 +8,7 @@ use super::{
 };
 use crate::{EndReason, JoinLink, SeatMode, SessionId};
 use std::{collections::BTreeMap, sync::Arc};
-use workspace_store::WorkspaceState;
+use workspace::store::WorkspaceState;
 
 /// What the session is about, for everyone it is shared with. Text a user wrote in it is shared on purpose;
 /// anything else reaches a Guest only through a projection that names every field.

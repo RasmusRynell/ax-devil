@@ -30,8 +30,8 @@ use tokio::{
     time::{MissedTickBehavior, interval},
 };
 use workspace::Workspace;
+use workspace::store::DocCommand;
 use workspace_files::{Recent, Recents, RecoveryCopy, RecoveryFolder};
-use workspace_store::DocCommand;
 
 /// How often a modified workspace is written to its recovery copy.
 const SYNC_EVERY: Duration = Duration::from_secs(2);

@@ -5,9 +5,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use workspace::{DisplayHost, VideoRef};
+use crate::{DisplayHost, VideoRef};
 
-use crate::{Row, RowKind, RowStatus};
+use crate::store::{Row, RowKind, RowStatus};
 
 /// Where a row's thing is read from.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -187,7 +187,7 @@ fn shortest_distinct_tails(files: &[&Path]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use workspace::ItemId;
+    use crate::ItemId;
 
     fn row(kind: RowKind, label: &str, location: Option<Location>) -> Row {
         Row {

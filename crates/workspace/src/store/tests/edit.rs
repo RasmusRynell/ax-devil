@@ -24,12 +24,12 @@ fn an_edit_keeps_the_item_and_resolves_again_only_when_the_recipe_changed() {
     let mark = BookmarkCommand::Add {
         id: foundation::BookmarkId::generate(),
         item: edited_id,
-        entry: workspace::ContentId::of_item(&edited_id),
+        entry: crate::ContentId::of_item(&edited_id),
         frame: 3,
         time: foundation::MediaTime::from_us(120_000),
     };
     let review = BookmarkCommand::SetReviewed {
-        target: workspace::BookmarkTarget {
+        target: crate::BookmarkTarget {
             item: edited_id,
             entry: None,
         },
@@ -106,7 +106,7 @@ fn an_edit_keeps_the_item_and_resolves_again_only_when_the_recipe_changed() {
     );
 
     let playlist = WorkspaceItem {
-        recipe: workspace::Recipe::new(Source::Playlist(workspace::PlaylistRecipe {
+        recipe: crate::Recipe::new(Source::Playlist(crate::PlaylistRecipe {
             resolver: "mot_challenge".into(),
             settings: Default::default(),
         })),

@@ -32,8 +32,8 @@ use std::{
 };
 use tokio::net::TcpStream;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, tungstenite::Message};
+use workspace::store::{DocCommand, Resolution};
 use workspace::{Content, ContentId, WorkspaceItem, intake::NewOverlay};
-use workspace_store::{DocCommand, Resolution};
 
 /// The image size in pixels the MOT files of these tests are measured in.
 pub const MOT_SIZE: (u32, u32) = (1920, 1080);

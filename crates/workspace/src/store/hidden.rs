@@ -1,9 +1,9 @@
 //! What the user chose to hide or show, over how a resolver started the entries and lanes.
 
+use crate::{Content, ContentId, Entry, ItemId};
 use std::collections::HashMap;
-use workspace::{Content, ContentId, Entry, ItemId};
 
-use crate::{Resolution, WorkspaceState};
+use crate::store::{Resolution, WorkspaceState};
 
 /// What the user hid.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

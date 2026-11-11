@@ -26,8 +26,8 @@ use tokio::{
     sync::{broadcast, watch},
     time::Instant,
 };
+use workspace::store::Resolution;
 use workspace::{Content, ItemId, WorkspaceItem};
-use workspace_store::Resolution;
 
 /// An item as the session that holds it has it.
 #[derive(Clone, Debug)]

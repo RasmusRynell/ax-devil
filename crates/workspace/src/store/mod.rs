@@ -20,12 +20,12 @@ mod hidden;
 mod resolving;
 mod rows;
 
+use crate::{Content, ItemId, Source, Workspace, WorkspaceItem};
 use batch::Batch;
 use foundation::{HostPath, UserError};
 use overlay_sync::MatchPolicy;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use workspace::{Content, ItemId, Source, Workspace, WorkspaceItem};
 
 pub use bookmarks::{
     BookmarkCommand, BookmarkGroup, Standing, csv as bookmarks_csv, groups as bookmark_groups,

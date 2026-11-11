@@ -1,6 +1,6 @@
 use super::*;
+use crate::BookmarkTarget;
 use foundation::{BookmarkId, MediaTime};
-use workspace::BookmarkTarget;
 
 #[test]
 fn removing_an_item_takes_its_viewer_and_resolution_with_it_and_drops_a_result_still_on_its_way() {

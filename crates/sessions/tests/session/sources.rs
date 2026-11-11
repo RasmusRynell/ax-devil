@@ -11,12 +11,12 @@ use sessions::{
     session::{Command, Completion, Handle, OnRuntime, Service, Work},
 };
 use std::{fs, path::Path, sync::Arc, time::Duration};
+use workspace::store::{DocCommand, Resolution};
 use workspace::{
     Content, ItemId, LiveOverlay, LiveRecipe, Protocol, Recipe, Secret, Source, Watch,
     WorkspaceItem,
     intake::{NewOverlay, video},
 };
-use workspace_store::{DocCommand, Resolution};
 
 /// A video with one overlay file in `dir`, and that file.
 fn with_overlay(dir: &Path) -> (WorkspaceItem, std::path::PathBuf) {

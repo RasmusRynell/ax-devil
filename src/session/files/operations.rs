@@ -6,8 +6,8 @@ use foundation::{ErrorCode, HostPath, UserError};
 use sessions::session::{Command, Handle, Refusal};
 use std::{path::PathBuf, sync::Arc};
 use workspace::Workspace;
+use workspace::store::{DocCommand, Saved};
 use workspace_files::{Claim, resolved};
-use workspace_store::{DocCommand, Saved};
 
 /// The Session command that `command` sends once its file work is done, over the workspace that work read or wrote and
 /// the file it names; `None` for a command that sends none. The one mapping from a client's workspace command to the
@@ -235,7 +235,7 @@ impl WorkspaceFiles {
                     .into(),
             );
         }
-        let text = workspace_store::bookmarks_csv(&handle.state().doc.workspace);
+        let text = workspace::store::bookmarks_csv(&handle.state().doc.workspace);
         files
             .off(move || workspace_files::write_text(&path, &text))
             .await?;

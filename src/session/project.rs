@@ -23,13 +23,13 @@ use api_types::{
 };
 use sessions::session::{Doc, SessionState, can};
 use std::collections::HashMap;
+use workspace::store::{
+    BookmarkGroup, ContentGen, Reload, Resolution, Row, RowKind, RowStatus, Saved, Standing,
+    WorkspaceParts, bookmark_groups, details, rows,
+};
 use workspace::{
     BookmarkKind, Content, Entry, Environment, LiveVideoContent, SeekableVideoContent, Source,
     Workspace, WorkspaceItem, metadata_fields, playlist_label,
-};
-use workspace_store::{
-    BookmarkGroup, ContentGen, Reload, Resolution, Row, RowKind, RowStatus, Saved, Standing,
-    WorkspaceParts, bookmark_groups, details, rows,
 };
 
 /// The audience of a seat: it learns the host's details when its standing may. The one rule for what a seat is shown

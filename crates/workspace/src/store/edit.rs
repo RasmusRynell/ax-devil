@@ -1,12 +1,12 @@
 //! Naming and editing an item in place: its id, place, bookmarks and reviewed marks stay.
 
-use workspace::{Content, ItemId, Source, WorkspaceItem};
+use crate::{Content, ItemId, Source, WorkspaceItem};
 
-use crate::{ContentGen, Resolution, ResolveJob, WorkspaceState};
+use crate::store::{ContentGen, Resolution, ResolveJob, WorkspaceState};
 
 impl WorkspaceState {
-    /// Names `item` `label` (see [`crate::DocCommand::RenameItem`]), which the sender has already normalized with
-    /// `workspace::intake::with_label` in its own environment: the store knows none.
+    /// Names `item` `label` (see [`crate::store::DocCommand::RenameItem`]), which the sender has already normalized with
+    /// `crate::intake::with_label` in its own environment: the store knows none.
     pub(crate) fn rename(&mut self, item: ItemId, label: &str) {
         if let Some(existing) = self.workspace.items.iter_mut().find(|i| i.id == item) {
             existing.label = label.trim().to_owned();
@@ -14,7 +14,7 @@ impl WorkspaceState {
     }
 
     /// Replaces the item with `item`'s id by `item`, and returns the job that resolves it when its recipe changed and
-    /// no `content` came with it (see [`crate::DocCommand::EditItem`]).
+    /// no `content` came with it (see [`crate::store::DocCommand::EditItem`]).
     pub(crate) fn edit(
         &mut self,
         mut item: WorkspaceItem,

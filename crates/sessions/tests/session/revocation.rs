@@ -13,7 +13,7 @@ use sessions::{
     },
 };
 use tokio::{task::yield_now, time::advance};
-use workspace_store::DocCommand;
+use workspace::store::DocCommand;
 
 const STOP: Command = Command::Control(Control::Stop);
 

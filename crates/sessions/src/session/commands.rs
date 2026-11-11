@@ -14,8 +14,8 @@ use crate::JoinLink;
 use serde::Deserialize;
 use std::sync::Arc;
 use ts_rs::TS;
+use workspace::store::{DocCommand, WorkspaceState, apply};
 use workspace::{Recipe, Source};
-use workspace_store::{DocCommand, WorkspaceState, apply};
 
 /// What a command needs a seat to be allowed to do. [`Command::needs`] decides it for every command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -1,6 +1,6 @@
 use super::*;
+use crate::{Content, ContentId};
 use foundation::{BookmarkId, MediaTime};
-use workspace::{Content, ContentId};
 
 #[test]
 fn a_playlist_listing_its_entries_in_another_order_keeps_each_mark_on_its_entry() {
@@ -17,7 +17,7 @@ fn a_playlist_listing_its_entries_in_another_order_keeps_each_mark_on_its_entry(
     let mut settings = serde_json::Map::new();
     settings.insert("root".into(), folder.path().display().to_string().into());
     let playlist =
-        workspace::intake::playlist("mot_challenge", settings, &Handlers::built_in()).unwrap();
+        crate::intake::playlist("mot_challenge", settings, &Handlers::built_in()).unwrap();
     let id = playlist.id;
     let (state, jobs) = add(&WorkspaceState::default(), vec![playlist], false);
     let state = finish(&state, &jobs[0]);

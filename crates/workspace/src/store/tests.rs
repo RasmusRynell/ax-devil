@@ -1,13 +1,13 @@
 //! The transitions of a workspace state.
 
 use super::*;
+use crate::Environment;
 use foundation::{CancelToken, ErrorCode, Interrupt};
 use handlers::Handlers;
 use std::path::Path;
-use workspace::Environment;
 
 pub(super) fn item(path: &Path) -> WorkspaceItem {
-    workspace::intake::video(path, &[], &Handlers::built_in()).unwrap()
+    crate::intake::video(path, &[], &Handlers::built_in()).unwrap()
 }
 
 pub(super) fn add(
@@ -33,7 +33,7 @@ pub(super) fn finish(state: &WorkspaceState, job: &ResolveJob) -> WorkspaceState
     complete(state, job.item, job.attempt, result)
 }
 
-fn content_id(state: &WorkspaceState, id: ItemId) -> workspace::ContentId {
+fn content_id(state: &WorkspaceState, id: ItemId) -> crate::ContentId {
     match &state.resolutions[&id] {
         Resolution::Resolved { content, .. } => content.id().clone(),
         other => panic!("expected a resolved item, got {other:?}"),
@@ -188,7 +188,7 @@ fn a_lane_matching_lands_in_the_recipe_by_slot_and_resolves_nothing() {
     let (video, overlay) = (folder.path().join("gate.mp4"), folder.path().join("gt.txt"));
     std::fs::write(&video, "x").unwrap();
     std::fs::write(&overlay, "x").unwrap();
-    let overlays = [workspace::intake::NewOverlay {
+    let overlays = [crate::intake::NewOverlay {
         path: overlay,
         handler: None,
         label: None,
@@ -197,7 +197,7 @@ fn a_lane_matching_lands_in_the_recipe_by_slot_and_resolves_nothing() {
             .into_iter()
             .collect(),
     }];
-    let added = workspace::intake::video(&video, &overlays, &Handlers::built_in()).unwrap();
+    let added = crate::intake::video(&video, &overlays, &Handlers::built_in()).unwrap();
     let id = added.id;
     let (state, jobs) = add(&WorkspaceState::default(), vec![added], false);
     let state = finish(&state, &jobs[0]);
@@ -242,36 +242,36 @@ fn a_lane_matching_lands_in_the_recipe_by_slot_and_resolves_nothing() {
 
 #[test]
 fn a_live_streams_matching_is_kept_under_its_one_slot() {
-    let new = workspace::intake::NewLive {
+    let new = crate::intake::NewLive {
         host: Some("203.0.113.5".into()),
         ..Default::default()
     };
-    let defaults = workspace::intake::LiveDefaults {
+    let defaults = crate::intake::LiveDefaults {
         host: String::new(),
         username: String::new(),
-        password: workspace::Secret::new(""),
-        protocol: workspace::Protocol::Http,
+        password: crate::Secret::new(""),
+        protocol: crate::Protocol::Http,
         head: 1,
         rtsp_port: 554,
-        rtsp_route: workspace::RtspRoute::Direct,
+        rtsp_route: crate::RtspRoute::Direct,
         resolution: String::new(),
-        overlay: workspace::intake::LiveMode::None,
+        overlay: crate::intake::LiveMode::None,
         rtsp_handler: String::new(),
-        mqtt: workspace::intake::MqttDefaults {
+        mqtt: crate::intake::MqttDefaults {
             handler: String::new(),
             host: String::new(),
             user: String::new(),
-            password: workspace::Secret::new(""),
+            password: crate::Secret::new(""),
             port: 1883,
             source_key: String::new(),
         },
-        datahub: workspace::intake::DataHubDefaults {
+        datahub: crate::intake::DataHubDefaults {
             handler: String::new(),
             topic: String::new(),
             channel: 1,
         },
     };
-    let added = workspace::intake::live(new, &defaults, &Handlers::built_in()).unwrap();
+    let added = crate::intake::live(new, &defaults, &Handlers::built_in()).unwrap();
     let id = added.id;
     let (state, jobs) = add(&WorkspaceState::default(), vec![added], false);
     let state = finish(&state, &jobs[0]);
@@ -291,10 +291,10 @@ fn a_live_streams_matching_is_kept_under_its_one_slot() {
         .0
     };
     assert_eq!(
-        set(workspace::LIVE_SLOT).workspace.items[0]
+        set(crate::LIVE_SLOT).workspace.items[0]
             .recipe
             .lane_matching
-            .get(workspace::LIVE_SLOT),
+            .get(crate::LIVE_SLOT),
         Some(&matching)
     );
     assert_eq!(
@@ -412,7 +412,7 @@ fn replacing_the_workspace_closes_viewers_bumps_the_epoch_and_never_reuses_a_gen
     let (state, _) = apply(
         &state,
         DocCommand::SetHidden {
-            target: HiddenRef::Entry(workspace::ContentId::of_item(&added.id)),
+            target: HiddenRef::Entry(crate::ContentId::of_item(&added.id)),
             hidden: true,
         },
     );

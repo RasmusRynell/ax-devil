@@ -6,8 +6,8 @@
 
 use super::{JobId, SessionState, state::Doc, transition::Effects};
 use foundation::{CancelToken, UserError};
+use workspace::store::ResolveJob;
 use workspace::{Content, ItemId};
-use workspace_store::ResolveJob;
 
 /// Who a job works for. Its result is dropped when the owner no longer wants it.
 #[derive(Clone, Debug, PartialEq, Eq)]

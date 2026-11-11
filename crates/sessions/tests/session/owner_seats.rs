@@ -8,7 +8,7 @@ use sessions::{
         Work, transition,
     },
 };
-use workspace_store::DocCommand;
+use workspace::store::DocCommand;
 
 fn step(state: &mut SessionState, input: Input) -> Outcome {
     let (next, effects) = transition(state, input).unwrap();

@@ -1,8 +1,8 @@
 //! Items added together with a viewer requested are published together, in the order added.
 
 use super::*;
-use crate::tests::{add, finish, generation, item};
-use workspace::Workspace;
+use crate::Workspace;
+use crate::store::tests::{add, finish, generation, item};
 
 /// Three items, the first of which cannot resolve, added with a viewer requested: `(state, ids, jobs)`.
 fn three(folder: &std::path::Path) -> (WorkspaceState, [ItemId; 3], Vec<ResolveJob>) {

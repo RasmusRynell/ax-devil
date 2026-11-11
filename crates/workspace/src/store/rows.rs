@@ -1,9 +1,9 @@
 //! The sidebar's rows: one projection of a workspace state.
 
+use crate::{Content, ContentId, DisplayHost, Entry, ItemId, playlist_label};
 use foundation::{UserError, Warning};
-use workspace::{Content, ContentId, DisplayHost, Entry, ItemId, playlist_label};
 
-use crate::{HiddenRef, Location, Resolution, WorkspaceState};
+use crate::store::{HiddenRef, Location, Resolution, WorkspaceState};
 
 /// What a row stands for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -185,14 +185,14 @@ const KEY_SEPARATOR: char = '\u{1f}';
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DocCommand, apply, complete};
-    use foundation::{CancelToken, ErrorCode, Interrupt};
-    use handlers::Handlers;
-    use std::{collections::HashSet, fs, path::Path};
-    use workspace::{
+    use crate::store::{DocCommand, apply, complete};
+    use crate::{
         Environment, WorkspaceItem,
         intake::{self, NewOverlay},
     };
+    use foundation::{CancelToken, ErrorCode, Interrupt};
+    use handlers::Handlers;
+    use std::{collections::HashSet, fs, path::Path};
 
     /// What finishing an item's job commits: its Content, or `error` when given.
     type Finish = Option<Result<(), UserError>>;
@@ -376,17 +376,17 @@ mod tests {
         let playlist = |item: &WorkspaceItem, name: &str, labels: &[&str]| {
             let entries: Vec<_> = labels
                 .iter()
-                .map(|label| workspace::Entry {
+                .map(|label| crate::Entry {
                     id: ContentId::of_entry(&item.id, name, label),
                     label: (*label).to_owned(),
-                    video: workspace::VideoRef::File("/v.mp4".into()),
+                    video: crate::VideoRef::File("/v.mp4".into()),
                     overlays: Vec::new(),
                     starts_hidden: *label == "z",
                     lanes_starting_hidden: Vec::new(),
                     metadata: Default::default(),
                 })
                 .collect();
-            let span = workspace::PlaylistSpan {
+            let span = crate::PlaylistSpan {
                 id: ContentId::of_playlist(&item.id, name),
                 name: name.to_owned(),
                 entries: entries.len(),
@@ -396,9 +396,9 @@ mod tests {
             };
             (span, entries)
         };
-        let content = |item: &WorkspaceItem, playlists: Vec<(workspace::PlaylistSpan, Vec<_>)>| {
+        let content = |item: &WorkspaceItem, playlists: Vec<(crate::PlaylistSpan, Vec<_>)>| {
             let (playlists, entries): (Vec<_>, Vec<_>) = playlists.into_iter().unzip();
-            Content::Playlist(workspace::PlaylistContent {
+            Content::Playlist(crate::PlaylistContent {
                 id: ContentId::of_item(&item.id),
                 item_id: item.id,
                 display_name: "Runs".into(),

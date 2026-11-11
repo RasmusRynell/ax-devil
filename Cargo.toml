@@ -31,7 +31,6 @@ members = [
   "crates/settings",
   "crates/workspace",
   "crates/workspace-files",
-  "crates/workspace-store",
 ]
 resolver = "3"
 
@@ -78,7 +77,6 @@ sessions = { path = "crates/sessions" }
 settings = { path = "crates/settings" }
 workspace = { path = "crates/workspace" }
 workspace-files = { path = "crates/workspace-files" }
-workspace-store = { path = "crates/workspace-store" }
 
 # Line tables only: panics and backtraces keep file:line, and test binaries shrink to a fraction of full debuginfo.
 [profile.dev]
@@ -141,7 +139,6 @@ settings.workspace = true
 tracing.workspace = true
 workspace.workspace = true
 workspace-files.workspace = true
-workspace-store.workspace = true
 mime_guess = { version = "2", optional = true }
 rust-embed = { version = "8", optional = true }
 tempfile = "3"

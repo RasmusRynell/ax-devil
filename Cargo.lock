@@ -172,7 +172,6 @@ dependencies = [
  "tungstenite",
  "workspace",
  "workspace-files",
- "workspace-store",
 ]
 
 [[package]]
@@ -2304,7 +2303,6 @@ dependencies = [
  "tokio",
  "ts-rs",
  "workspace",
- "workspace-store",
 ]
 
 [[package]]
@@ -3160,19 +3158,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tracing",
- "workspace",
-]
-
-[[package]]
-name = "workspace-store"
-version = "0.1.0"
-dependencies = [
- "foundation",
- "handlers",
- "overlay-sync",
- "serde",
- "serde_json",
- "tempfile",
  "workspace",
 ]
 

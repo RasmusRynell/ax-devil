@@ -1,10 +1,10 @@
 //! Resolving an item: the jobs that read its Content, and committing their results.
 
+use crate::{Content, Environment, ItemId, Recipe, WorkspaceItem};
 use foundation::{CancelToken, Interrupt, UserError};
 use handlers::Handlers;
-use workspace::{Content, Environment, ItemId, Recipe, WorkspaceItem};
 
-use crate::{ContentGen, Resolution, WorkspaceState};
+use crate::store::{ContentGen, Resolution, WorkspaceState};
 
 /// An open viewer's item read again while its old Content stays: it is the Content the viewer shows until a reload
 /// succeeds, and a failed one leaves it in place with the reason.
