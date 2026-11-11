@@ -79,7 +79,7 @@ void test("bounds with the title bar off screen are moved into the display they 
   const right = [{ x: 0, y: 0, width: 1280, height: 720 }];
   assert.deepEqual(windowBounds({ x: -1500, y: 50, width: 1400, height: 600 }, right), {
     width: 1280,
-    height: 800,
+    height: 720,
   });
   assert.deepEqual(windowBounds({ x: -1000, y: 50, width: 1400, height: 600 }, right), {
     x: 0,

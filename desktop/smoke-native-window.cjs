@@ -25,14 +25,17 @@ module.exports.run = async ({ window }) => {
   window.maximize();
   await until(() => window.isMaximized(), "maximized window before restore-drag");
   await driver.wait("document.querySelector('[aria-label=Restore]')");
+  const maximizedBounds = window.getBounds();
+  const titleHeight = await driver.js(`${TITLE}.getBoundingClientRect().height`);
   const maximized = await point(window, TITLE);
   await input("move", maximized.x, maximized.y);
-  await input("down");
   try {
-    await input("move", maximized.x + 1, maximized.y + 1);
+    await input("down");
     await frames(driver);
-    assert.ok(window.isMaximized(), "a two-pixel gesture does not restore the window");
-    await input("move", maximized.x - 50, maximized.y + 80);
+    await input("move", maximized.x + 2, maximized.y + 1);
+    await frames(driver);
+    assert.ok(window.isMaximized(), "a three-pixel gesture does not restore the window");
+    await input("move", maximized.x + 2, maximized.y + 2);
     await until(() => !window.isMaximized(), "dragging the maximized title to restore");
     const first = window.getBounds();
     await input("move", maximized.x - 100, maximized.y + 160);
@@ -45,7 +48,18 @@ module.exports.run = async ({ window }) => {
   await input("move", 1200, 950);
   await frames(driver);
   assert.deepEqual(window.getBounds(), restored, "release ends the restore drag");
-  assert.ok(restored.y > 0, "restore drag follows the pointer down the screen");
+  assert.equal(
+    restored.x,
+    Math.round(
+      maximized.x - 100 - (800 * (maximized.x - maximizedBounds.x)) / maximizedBounds.width,
+    ),
+    "restore keeps the horizontal pointer fraction",
+  );
+  assert.equal(
+    restored.y,
+    Math.max(0, Math.round(maximized.y + 160 - titleHeight / 2)),
+    "restore puts the pointer halfway down the measured title bar",
+  );
   const again = await point(window, TITLE);
   await drag(window, again, { x: again.x + 30, y: again.y + 30 });
   await until(() => window.getBounds().y > restored.y, "dragging again after release");
@@ -69,6 +83,7 @@ module.exports.run = async ({ window }) => {
       `${name} initial bounds`,
     );
     await frames(driver);
+    const before = window.getBounds();
     const at = {
       x: horizontal < 0 ? 201 : horizontal > 0 ? 998 : 600,
       y: vertical < 0 ? 201 : vertical > 0 ? 798 : 500,
@@ -79,6 +94,22 @@ module.exports.run = async ({ window }) => {
       return (!horizontal || bounds.width > 800) && (!vertical || bounds.height > 600);
     }, `native ${name} resize`);
     const bounds = window.getBounds();
+    if (horizontal < 0) {
+      assert.ok(bounds.x < before.x, `${name} moves left`);
+      assert.equal(bounds.x + bounds.width, before.x + before.width, `${name} anchors right`);
+    }
+    if (horizontal > 0) {
+      assert.ok(bounds.x + bounds.width > before.x + before.width, `${name} moves right`);
+      assert.equal(bounds.x, before.x, `${name} anchors left`);
+    }
+    if (vertical < 0) {
+      assert.ok(bounds.y < before.y, `${name} moves up`);
+      assert.equal(bounds.y + bounds.height, before.y + before.height, `${name} anchors bottom`);
+    }
+    if (vertical > 0) {
+      assert.ok(bounds.y + bounds.height > before.y + before.height, `${name} moves down`);
+      assert.equal(bounds.y, before.y, `${name} anchors top`);
+    }
     if (!horizontal) assert.equal(bounds.width, 800, `${name} keeps width`);
     if (!vertical) assert.equal(bounds.height, 600, `${name} keeps height`);
     assert.ok(window.isFocused(), `${name} keeps window focus`);

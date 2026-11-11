@@ -30,8 +30,8 @@ async function point(window, selector) {
 
 async function drag(window, from, to) {
   await input("move", from.x, from.y);
-  await input("down");
   try {
+    await input("down");
     await frames(page(window));
     for (const fraction of [0.25, 0.5, 0.75, 1]) {
       await input(

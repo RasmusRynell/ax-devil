@@ -14,18 +14,13 @@ function overlap(bounds, area) {
   return across > 0 && down > 0 ? across * down : 0;
 }
 
-/**
- * Whether the window's title-bar band (a 100x40 strip at the top, 80 px in from the left, clamped to the window's
- * width) lies wholly inside `area`: the frameless window's drag region and controls are there.
- */
+/** Whether the whole title-bar band, including the right-hand window controls, is on this display. */
 function titleBarInside(bounds, area) {
-  const width = Math.min(100, bounds.width);
-  const x = bounds.x + Math.min(80, bounds.width - width);
   return (
-    x >= area.x &&
-    x + width <= area.x + area.width &&
+    bounds.x >= area.x &&
+    bounds.x + bounds.width <= area.x + area.width &&
     bounds.y >= area.y &&
-    bounds.y + 40 <= area.y + area.height
+    bounds.y + Math.min(40, bounds.height) <= area.y + area.height
   );
 }
 
@@ -47,6 +42,12 @@ function clampInto(bounds, area) {
  * centers. Anything that is not a state with whole-number bounds counts as nothing saved.
  */
 function windowBounds(saved, areas) {
+  const defaults = areas[0]
+    ? {
+        width: Math.min(DEFAULT_SIZE.width, areas[0].width),
+        height: Math.min(DEFAULT_SIZE.height, areas[0].height),
+      }
+    : { ...DEFAULT_SIZE };
   const fields = ["x", "y", "width", "height"];
   if (
     !saved ||
@@ -54,7 +55,7 @@ function windowBounds(saved, areas) {
     saved.width <= 0 ||
     saved.height <= 0
   )
-    return { ...DEFAULT_SIZE };
+    return defaults;
   const bounds = { x: saved.x, y: saved.y, width: saved.width, height: saved.height };
   const holding = areas.find((area) => titleBarInside(bounds, area));
   if (holding)
@@ -65,7 +66,7 @@ function windowBounds(saved, areas) {
     (most, area) => (overlap(bounds, area) > overlap(bounds, most) ? area : most),
     areas[0],
   );
-  return best && overlap(bounds, best) > 0 ? clampInto(bounds, best) : { ...DEFAULT_SIZE };
+  return best && overlap(bounds, best) > 0 ? clampInto(bounds, best) : defaults;
 }
 
 /** The state saved in `file`, or undefined when there is none or it cannot be read. */

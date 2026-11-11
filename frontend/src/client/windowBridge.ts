@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
  * this window is absent too: a window on another machine's server has none of this machine's native features.
  */
 export interface WindowBridge {
-  /** Whether this window shows another machine's server, whose machine the native features below cannot reach. */
   /** Linux fallback for a maximized title drag; other platforms use their native drag region. */
   restoreDrag?(phase: "start" | "move" | "end", titleHeight?: number): void;
   minimize(): void;
