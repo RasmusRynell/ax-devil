@@ -84,7 +84,9 @@ export function shortcutsPatch(
 }
 
 /** The session connection tells this when the backend says settings changed; `SettingsProvider` provides it. */
-export const SettingsNoticeContext = createContext<(revision: number) => void>(() => {});
+export const SettingsNoticeContext = createContext<(revision: number, fresh?: boolean) => void>(
+  () => {},
+);
 
 type Load =
   | { state: "loading" }
@@ -183,11 +185,14 @@ export function SettingsProvider({
     owner ? { state: "loading" } : { state: "ready", remote: null },
   );
   const device = useDeviceValues();
-  // The revision of the settings held and of the last info asked for; a reply older than what is held is dropped.
-  const held = useRef({ settings: 0, info: 0 });
+  // The revision of the settings held and of the last info asked for, and how many infos were asked for; a reply
+  // older than what is held is dropped, and so is an info reply once a newer info was asked for.
+  const held = useRef({ settings: 0, info: 0, asks: 0 });
   const take = useCallback((remote: SettingsState) => {
     if (remote.revision < held.current.settings) return;
     held.current.settings = remote.revision;
+    // The first state taken is the one the info was read with.
+    if (held.current.info === 0) held.current.info = remote.revision;
     setLoad({ state: "ready", remote });
   }, []);
   // A page that holds only a join link kept a copy of the Personal settings here; nothing stale stays behind.
@@ -213,11 +218,17 @@ export function SettingsProvider({
     };
   }, [owner, take]);
   const noticed = useCallback(
-    (revision: number) => {
+    (revision: number, fresh = false) => {
+      // Revisions are ordered only within one connection: the first notice of a new one is always taken.
+      if (fresh) held.current = { ...held.current, settings: 0, info: 0 };
       if (revision > held.current.info) {
         held.current.info = revision;
+        const ask = ++held.current.asks;
         apiFetch("/api/info")
-          .then(async (response) => response.ok && onInfo((await response.json()) as AppInfo))
+          .then(async (response) => {
+            const info = response.ok ? ((await response.json()) as AppInfo) : null;
+            if (info && ask === held.current.asks) onInfo(info);
+          })
           // A failed read keeps what is held: the failed state would unmount the whole app.
           .catch(() => {});
       }

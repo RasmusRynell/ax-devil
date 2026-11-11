@@ -96,14 +96,19 @@ export class SessionStore {
   #name: string | null = null;
   #nameTimer: ReturnType<typeof setTimeout> | undefined;
   #nameSentAt = -RENAME_EVERY_MS;
-  #onSettings: ((revision: number) => void) | null = null;
+  #onSettings: ((revision: number, fresh: boolean) => void) | null = null;
+  /** Whether no settings notice has come since the last welcome: the first one on a connection starts a new order. */
+  #freshSettings = false;
 
   constructor(deps: Partial<SessionDeps> = {}) {
     this.#deps = { ...browser, ...deps };
   }
 
-  /** Runs *listener* with the revision of each settings notice the backend sends an Owner's connection; null stops it. */
-  onSettings(listener: ((revision: number) => void) | null): void {
+  /**
+   * Runs *listener* with the revision of each settings notice the backend sends an Owner's connection, and whether it
+   * is the first on this connection (revisions are ordered only within one); null stops it.
+   */
+  onSettings(listener: ((revision: number, fresh: boolean) => void) | null): void {
     this.#onSettings = listener;
   }
 
@@ -429,8 +434,11 @@ export class SessionStore {
         return this.#synced(message);
       case "cursor":
         return this.cursors.set(message.participant, message.at);
-      case "settings":
-        return this.#onSettings?.(message.revision);
+      case "settings": {
+        const fresh = this.#freshSettings;
+        this.#freshSettings = false;
+        return this.#onSettings?.(message.revision, fresh);
+      }
       case "heartbeat":
       case "ended":
         return;
@@ -444,6 +452,7 @@ export class SessionStore {
   }
 
   #welcome(message: Extract<SessionServerMessage, { type: "welcome" }>): void {
+    this.#freshSettings = true;
     if (message.session !== this.#state.session) {
       // Not the Session this window was in: nothing of the old one carries over.
       this.#clear();
