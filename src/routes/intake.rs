@@ -4,7 +4,8 @@
 //! `Files` grant, as adding a video does, so only someone who may add this machine's files learns whether a path on
 //! it exists.
 
-use super::handlers::{Refusal, refuse};
+use super::handlers::refuse;
+use crate::Failure;
 use api_types::workspace::{CheckFilesRequest, FileCheck};
 use axum::{Json, http::StatusCode};
 use foundation::{ErrorCode, UserError};
@@ -17,7 +18,7 @@ const MOST_FILES: usize = 64;
 /// thread.
 pub(super) async fn check(
     Json(request): Json<CheckFilesRequest>,
-) -> Result<Json<Vec<FileCheck>>, Refusal> {
+) -> Result<Json<Vec<FileCheck>>, Failure> {
     if request.paths.len() > MOST_FILES {
         return Err(refuse(
             StatusCode::BAD_REQUEST,

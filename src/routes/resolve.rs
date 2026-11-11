@@ -1,11 +1,8 @@
 //! Resolving playlists before the item exists: the Add Playlist dialog resolves first and adds the item only when
 //! that succeeds, so a failure or a cancel leaves nothing behind.
 
-use super::{
-    CancelOnDrop,
-    handlers::{Refusal, refuse},
-};
-use crate::AppState;
+use super::{CancelOnDrop, handlers::refuse};
+use crate::{AppState, Failure};
 use api_types::handlers::{ResolveRequest, ResolvedInfo};
 use axum::{
     Json,
@@ -115,7 +112,7 @@ pub(crate) async fn resolve(
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(request): Json<ResolveRequest>,
-) -> Result<Json<ResolvedInfo>, Refusal> {
+) -> Result<Json<ResolvedInfo>, Failure> {
     let handlers = state.plugins.handlers();
     if handlers.resolver(&id).is_none() {
         return Err(refuse(

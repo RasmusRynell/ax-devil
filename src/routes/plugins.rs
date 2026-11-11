@@ -1,8 +1,8 @@
 //! Routes that install and remove plugins. Installed plugins belong to this machine, so only its own listener serves
 //! them (see the route table); listing is in [`super::handlers`].
 
-use super::handlers::{Refusal, refuse};
-use crate::AppState;
+use super::handlers::refuse;
+use crate::{AppState, Failure};
 use api_types::handlers::{InstallRequest, PluginsInfo, RemoveRequest, UpdateRequest};
 use axum::{Json, extract::State, http::StatusCode};
 use foundation::{ErrorCode, UserError};
@@ -11,7 +11,7 @@ use std::{path::PathBuf, sync::Arc};
 /// Runs a change of the installed plugins on a blocking thread and answers with the plugins as they are after it.
 async fn changed(
     change: impl FnOnce() -> Result<Arc<PluginsInfo>, UserError> + Send + 'static,
-) -> Result<Json<PluginsInfo>, Refusal> {
+) -> Result<Json<PluginsInfo>, Failure> {
     let answer = tokio::task::spawn_blocking(change)
         .await
         .unwrap_or_else(|error| {
@@ -38,7 +38,7 @@ async fn changed(
 pub(crate) async fn install(
     State(state): State<AppState>,
     Json(request): Json<InstallRequest>,
-) -> Result<Json<PluginsInfo>, Refusal> {
+) -> Result<Json<PluginsInfo>, Failure> {
     let path = PathBuf::from(request.path);
     changed(move || {
         // A relative path would mean this backend's working folder, which nobody typing it has in mind.
@@ -57,7 +57,7 @@ pub(crate) async fn install(
 pub(crate) async fn remove(
     State(state): State<AppState>,
     Json(request): Json<RemoveRequest>,
-) -> Result<Json<PluginsInfo>, Refusal> {
+) -> Result<Json<PluginsInfo>, Failure> {
     changed(move || state.plugins.remove(&request.target)).await
 }
 
@@ -65,7 +65,7 @@ pub(crate) async fn remove(
 pub(crate) async fn update(
     State(state): State<AppState>,
     Json(request): Json<UpdateRequest>,
-) -> Result<Json<PluginsInfo>, Refusal> {
+) -> Result<Json<PluginsInfo>, Failure> {
     changed(move || state.plugins.reread(&request.target)).await
 }
 
