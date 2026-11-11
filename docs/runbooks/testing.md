@@ -39,12 +39,14 @@ Every suite runs through `scripts/isolated`:
   turn the startup network scan off; devices and transports are faked.
 - `DISPLAY`, `WAYLAND_DISPLAY` and the session bus are unset, so nothing can reach the user's desktop.
 - `--display` starts a private Xvfb server for that run only (`xvfb-run -a`), so parallel runs never share a display
-  or compete for focus. Without Xvfb the run fails; it never falls back to the user's display.
+  or compete for focus. The Linux `native` smoke group opts into `--window-manager`: Openbox manages that private
+  display and XTest drives native input through Python. Missing Openbox, Python or XTest fails the run. Other groups
+  keep plain Xvfb; neither path falls back to the user's display.
 - Before and after, it records path, size and modification time under `~/.ax_devil` and the `ax-devil` folders in
   the user's XDG config, data, cache and state homes, and fails the run if anything changed.
 
 Run any ad-hoc GUI check the same way: `make app ISOLATE=1 ARGS=...` runs the release app on a private display and
-`make cli ISOLATE=1 ARGS=...` the backend. What a virtual display cannot verify (physical GPU, compositor, window manager, fractional scaling on a real screen) is reported as
+`make cli ISOLATE=1 ARGS=...` the backend. What a virtual display cannot verify (physical GPU, compositor, other window managers, fractional scaling on a real screen) is reported as
 not run.
 
 What an ad-hoc check creates outside `artifacts/` and the run's temporary folder is removed when the check finishes

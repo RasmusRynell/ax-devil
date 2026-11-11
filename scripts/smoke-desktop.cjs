@@ -154,7 +154,7 @@ function launch(group, names, scenarios, result) {
     const child = spawn(
       path.join(__dirname, "isolated"),
       [
-        "--display",
+        group === "native" ? "--window-manager" : "--display",
         "pnpm",
         "--dir",
         "desktop",
@@ -272,7 +272,10 @@ async function main() {
   const planOnly = args[0] === "--plan";
   const groups = require(path.join(desktop, "smoke-groups.cjs"));
   const scenarios = loadScenarios(groups);
-  const launches = plan(groups, (planOnly ? args[1] : args[0]) ?? "");
+  // Native X11 gestures belong to the Linux suite, not the macOS/Windows package checks.
+  const launches = plan(groups, (planOnly ? args[1] : args[0]) ?? "").filter(
+    ([group]) => group !== "native" || process.platform === "linux",
+  );
   if (launches.length === 0)
     refuse("Nothing to run: the selection names no group or scenario.", groups);
   if (planOnly) {

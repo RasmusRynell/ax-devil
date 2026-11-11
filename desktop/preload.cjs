@@ -11,6 +11,11 @@ const restartable = process.argv.includes("--ax-devil-restartable");
 const remote = process.argv.includes("--ax-devil-remote");
 
 contextBridge.exposeInMainWorld("axDevilWindow", {
+  ...(process.platform === "linux" && {
+    restoreDrag: (phase, height) => {
+      void ipcRenderer.invoke("window:restore-drag", phase, height);
+    },
+  }),
   minimize: () => ipcRenderer.send("window:minimize"),
   toggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),
   close: () => ipcRenderer.send("window:close"),

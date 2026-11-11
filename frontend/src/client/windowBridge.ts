@@ -5,6 +5,9 @@ import { useEffect, useState } from "react";
  * this window is absent too: a window on another machine's server has none of this machine's native features.
  */
 export interface WindowBridge {
+  /** Whether this window shows another machine's server, whose machine the native features below cannot reach. */
+  /** Linux fallback for a maximized title drag; other platforms use their native drag region. */
+  restoreDrag?(phase: "start" | "move" | "end", titleHeight?: number): void;
   minimize(): void;
   toggleMaximize(): void;
   close(): void;
@@ -99,4 +102,12 @@ export function useAppFullscreen(): boolean {
 export function useServerKind(): "browser" | "local" | "remote" {
   if (!window.axDevilWindow) return "browser";
   return window.axDevilWindow.disconnect ? "remote" : "local";
+}
+
+/** Whether the desktop window is maximized, shared by its title gestures and controls. */
+export function useWindowMaximized(): boolean {
+  const bridge = window.axDevilWindow;
+  const [maximized, setMaximized] = useState(false);
+  useEffect(() => bridge?.onMaximizedChange(setMaximized), [bridge]);
+  return maximized;
 }

@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const { reserved } = require("./generated/api.json");
+const { restoreDrag } = require("./restore-drag.cjs");
 const { windowBounds } = require("./window-state.cjs");
 
 // Video files the Add Video dialog offers; the backend's intake takes any path, the viewer judges the media.
@@ -182,6 +183,7 @@ function installIpc({ connect, disconnect, restart, device }) {
     });
   const handle = (channel, act) =>
     ipcMain.handle(channel, (event, ...args) => act(sender(event), ...args));
+  handle("window:restore-drag", (event, phase, height) => restoreDrag(event.window, phase, height));
   on("window:minimize", ({ window }) => window.minimize());
   on("window:toggle-maximize", ({ window }) =>
     window.isMaximized() ? window.unmaximize() : window.maximize(),

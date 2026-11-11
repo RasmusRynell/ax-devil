@@ -20,7 +20,7 @@ Row format: [parity](../parity.md). Deviations: [workspace deviations](workspace
 | WS-12 | Start panel and welcome area | M | done | `shell/{Shell,WorkspaceFiles,Sidebar}.test.tsx` | Only while empty; heading only with recents; Open Workspace default; Live: AC-03 |
 | WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | done | `viewer/*.test.*`, `shell/{SplitArea,headerFailure}.test.*`, `playback/{budget,videoDetails}.test.ts`, `desktop/smoke-video.cjs` header details | Header menu: the row's, without Edit |
 | WS-14 | Long playlists load collapsed | S | done | `shell/reveal.test.ts` |  |
-| WS-15 | Hover cards with thumbnails | S | in progress | `tests/it/{local_video,glance}.rs`, `crates/live/src/glance/tests.rs`, `shell/{WorkspaceTree*,LiveView}.test.tsx`, `desktop/smoke-loopback.cjs` | Loopback live pictures; real cameras unverified |
+| WS-15 | Hover cards with thumbnails | S | in progress | `tests/it/{local_video,glance}.rs`, `crates/live/src/glance/tests.rs`, `shell/{WorkspaceTree*,LiveView,HoverPicture}.test.tsx`, `desktop/smoke-{loopback,hover-window}.cjs` | EXP-014: viewport placement, browser/tree hiding and native deactivation; loopback live pictures; real cameras unverified |
 
 ## Adding content
 

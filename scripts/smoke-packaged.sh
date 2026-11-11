@@ -107,6 +107,10 @@ run_group() {
   AX_DEVIL_SMOKE_RESULT="$(native "$result")"
   export AX_DEVIL_SMOKE_RUN="$names"
   fresh_home
+  if [[ $os == linux ]]; then
+    run[1]=--display
+    [[ $group != native ]] || run[1]=--window-manager
+  fi
   # Job control gives the app its own process group, which kill_tree ends as a whole.
   set -m
   "${run[@]}" "${flags[@]}" "--log-file=$(native "$logs/electron-$group.log")" </dev/null >"$logs/app-$group.log" 2>&1 &

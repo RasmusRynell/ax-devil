@@ -1,12 +1,10 @@
-import { useEffect, useState } from "react";
 import { IconButton } from "../kit/IconButton";
-import "../client/windowBridge";
+import { useWindowMaximized } from "../client/windowBridge";
 
 /** Minimize, maximize or restore, and close, drawn only inside the Electron shell, which frames no window itself. */
 export function WindowControls() {
   const bridge = window.axDevilWindow;
-  const [maximized, setMaximized] = useState(false);
-  useEffect(() => bridge?.onMaximizedChange(setMaximized), [bridge]);
+  const maximized = useWindowMaximized();
   if (!bridge) return null;
   // Out of the tab order, like the desktop's own title bar; Close turns red under the pointer.
   const size = "h-bar w-bar";

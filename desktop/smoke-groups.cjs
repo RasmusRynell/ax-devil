@@ -9,6 +9,7 @@ module.exports = {
   rtsp: [
     "loopback",
   ],
+  native: ["native-window", "hover-window"],
   chrome: [
     "appearance",
     "shell",
