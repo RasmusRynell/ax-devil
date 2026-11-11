@@ -8,9 +8,9 @@ async fn get(path: &str) -> (StatusCode, Vec<u8>) {
         .await
 }
 
-fn put(body: &str) -> Request<Body> {
+fn patch(body: &str) -> Request<Body> {
     Request::builder()
-        .method("PUT")
+        .method("PATCH")
         .uri("/api/settings")
         .header("host", "127.0.0.1")
         .header("content-type", "application/json")
@@ -49,47 +49,53 @@ fn get_settings_request() -> Request<Body> {
 }
 
 #[tokio::test]
-async fn settings_are_replaced_whole_and_a_rejected_change_leaves_them_as_they_were() {
+async fn a_patch_changes_only_the_keys_it_names_and_a_refused_one_changes_nothing() {
     let test = TestApp::new();
     let (_, body) = test.send(get_settings_request()).await;
-    let mut change = json(&body);
-    assert_eq!(change["shortcuts"]["save-workspace"], "Ctrl+S");
+    let first = json(&body);
+    assert_eq!(first["shortcuts"]["save-workspace"], "Ctrl+S");
     // The default password is a reference, and what it gives is never sent; the owner is told where the file is.
-    assert!(change["resolved"].is_object() && change["resolved"].get("camera.password").is_none());
+    assert!(first["resolved"].is_object() && first["resolved"].get("camera.password").is_none());
     assert!(
-        change["file"]["path"]
+        first["file"]["path"]
             .as_str()
             .is_some_and(|path| path.ends_with(".json"))
     );
-    assert!(change["file"]["version"].is_u64());
-    change["values"]["ui.theme"] = "dark".into();
-    change["shortcuts"]["save-workspace"] = "Ctrl+Alt+S".into();
-    change["shortcuts"]["exit"] = serde_json::Value::Null;
-    let body = change.to_string();
+    assert!(first["file"]["version"].is_u64());
 
-    let (status, saved) = test.send(put(&body)).await;
+    // Two windows that both loaded `first` each save one key: neither undoes the other.
+    let (status, theme) = test.send(patch(r#"{"set": {"ui.theme": "dark"}}"#)).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(json(&saved)["values"]["ui.theme"], "dark");
+    let (status, saved) = test
+        .send(patch(
+            r#"{"shortcutsSet": {"save-workspace": "Ctrl+Alt+S", "exit": null}, "reset": ["ui.text_size"]}"#,
+        ))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let saved = json(&saved);
+    assert_eq!(saved["values"]["ui.theme"], "dark");
+    assert_eq!(saved["shortcuts"]["exit"], serde_json::Value::Null);
+    assert_eq!(saved["shortcuts"]["save-workspace"], "Ctrl+Alt+S");
+    assert!(saved["revision"].as_u64() > json(&theme)["revision"].as_u64());
     let (_, read) = test.send(get_settings_request()).await;
-    assert_eq!(json(&read), json(&saved));
-    assert_eq!(json(&read)["shortcuts"]["exit"], serde_json::Value::Null);
+    assert_eq!(json(&read), saved);
 
-    let bad_theme = body.replace("\"dark\"", "\"neon\"");
-    let (status, error) = test.send(put(&bad_theme)).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(json(&error)["location"], "ui.theme");
-    // A scan range that cannot be scanned is refused here, not at the first scan.
-    let bad_range = body.replace("\"192.168.1.0/24\"", "\"10.0.0\"");
-    let (status, error) = test.send(put(&bad_range)).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(json(&error)["location"], "scan.range");
-    let taken = body.replace("\"Ctrl+Alt+S\"", "\"Ctrl+O\"");
-    let (status, error) = test.send(put(&taken)).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(json(&error)["location"], "shortcuts.save-workspace");
-
+    for (body, location) in [
+        (r#"{"set": {"ui.theme": "neon"}}"#, "ui.theme"),
+        // A scan range that cannot be scanned is refused here, not at the first scan.
+        (r#"{"set": {"scan.range": "10.0.0"}}"#, "scan.range"),
+        (
+            r#"{"set": {"ui.theme": "light"}, "shortcutsSet": {"save-workspace": "Ctrl+O"}}"#,
+            "shortcuts.save-workspace",
+        ),
+        (r#"{"set": {"ui.zoom": 2}}"#, "ui.zoom"),
+    ] {
+        let (status, error) = test.send(patch(body)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        assert_eq!(json(&error)["location"], location);
+    }
     let (_, after) = test.send(get_settings_request()).await;
-    assert_eq!(json(&after), json(&saved));
+    assert_eq!(json(&after), saved);
 }
 
 #[tokio::test]
@@ -184,16 +190,9 @@ fn a_save_is_judged_against_the_state_it_is_written_under_so_a_revocation_in_bet
             .unwrap()
     };
     let (on, off) = (toggle(true.into()), toggle(false.into()));
-    let mut change = settings::Change {
-        values: off.values().into_iter().collect(),
-        shortcuts: off
-            .shortcuts()
-            .into_iter()
-            .map(|(id, key)| (id.to_owned(), key))
-            .collect(),
-    };
+    let mut change = settings::Patch::default();
     change
-        .values
+        .set
         .insert("storage.cache_dir".into(), "/tmp/other".into());
 
     assert!(admit_save(&policy, Some("pw"), &on, &change).is_ok());
@@ -207,8 +206,11 @@ fn a_save_is_judged_against_the_state_it_is_written_under_so_a_revocation_in_bet
         .unwrap();
     let reply = |state: &settings::State| snapshot(&settings, None, state, &policy, Some("pw"));
     assert!(reply(&with_reference).resolved.is_some());
-    change.values.insert("scan.range".into(), "$RANGE".into());
-    change.values.insert("storage.cache_dir".into(), "".into());
-    let saved = settings.replace(&change).unwrap();
+    change.set.insert("scan.range".into(), "$RANGE".into());
+    change.set.insert("storage.cache_dir".into(), "".into());
+    change
+        .set
+        .insert("server.password_full_access".into(), false.into());
+    let saved = settings.patch(&change).unwrap();
     assert!(reply(&saved).resolved.is_none());
 }

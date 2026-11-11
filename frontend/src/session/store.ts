@@ -96,9 +96,15 @@ export class SessionStore {
   #name: string | null = null;
   #nameTimer: ReturnType<typeof setTimeout> | undefined;
   #nameSentAt = -RENAME_EVERY_MS;
+  #onSettings: ((revision: number) => void) | null = null;
 
   constructor(deps: Partial<SessionDeps> = {}) {
     this.#deps = { ...browser, ...deps };
+  }
+
+  /** Runs *listener* with the revision of each settings notice the backend sends an Owner's connection; null stops it. */
+  onSettings(listener: ((revision: number) => void) | null): void {
+    this.#onSettings = listener;
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -423,6 +429,8 @@ export class SessionStore {
         return this.#synced(message);
       case "cursor":
         return this.cursors.set(message.participant, message.at);
+      case "settings":
+        return this.#onSettings?.(message.revision);
       case "heartbeat":
       case "ended":
         return;

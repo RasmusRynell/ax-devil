@@ -21,7 +21,7 @@ export async function showShell({
   access?: Access;
   /** Where the backend says its settings and log are, as it tells a caller who may see this machine's files. */
   file?: SettingsState["file"];
-  save?: SettingsApi["save"];
+  save?: SettingsApi["apply"];
 } = {}) {
   const state = {
     ...DEFAULT_SETTINGS,
@@ -31,7 +31,7 @@ export async function showShell({
   };
   render(
     <AccessContext.Provider value={access}>
-      <FakeSettings state={state} save={save}>
+      <FakeSettings state={state} apply={save}>
         <SessionProvider>
           <Shell version="1.2.3" />
         </SessionProvider>

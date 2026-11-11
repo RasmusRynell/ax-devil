@@ -45,7 +45,6 @@ function setup(
 ) {
   const onChange = vi.fn();
   const save = vi.fn(async () => null);
-  const reload = vi.fn(async () => {});
   const onReload = vi.fn();
   const view = (current: string, listing: CatalogInfoWire[] = CATALOGS) => (
     <AccessContext value={access}>
@@ -54,8 +53,7 @@ function setup(
           ...DEFAULT_SETTINGS,
           values: { ...DEFAULT_SETTINGS.values, "overlays.default_catalog": stored },
         }}
-        save={save}
-        reload={reload}
+        apply={save}
       >
         <LaneCatalogActions
           catalog={current}
@@ -73,7 +71,6 @@ function setup(
   return {
     onChange,
     save,
-    reload,
     onReload,
     moveTo: (next: string) => rerender(view(next)),
     list: (listing: CatalogInfoWire[]) => rerender(view(catalog, listing)),
@@ -174,9 +171,9 @@ describe("catalog copy and delete", () => {
     expect(screen.getByRole("button", { name: "Copy" })).toBeTruthy();
   });
 
-  it("deletes a user catalog after asking, reloads the settings the backend changed and moves the lane to Standard", async () => {
+  it("deletes a user catalog after asking and moves the lane to Standard", async () => {
     const calls = routes({ ok: true });
-    const { onChange, save, reload } = setup("user:night.json", "user:night.json");
+    const { onChange, save } = setup("user:night.json", "user:night.json");
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(screen.getByRole("dialog", { name: "Delete Catalog" }).textContent).toContain(
       "Delete Standard (night.json)? The file is deleted permanently. It is the default catalog, so new views will start from Standard.",
@@ -194,7 +191,6 @@ describe("catalog copy and delete", () => {
       }),
     );
     expect(calls).toEqual([["/api/catalogs/delete", { id: "user:night.json" }]]);
-    expect(reload).toHaveBeenCalledOnce();
     expect(save).not.toHaveBeenCalled();
   });
 
@@ -246,9 +242,6 @@ describe("catalog copy and delete", () => {
       "user:gone.json",
     );
     fireEvent.click(screen.getByRole("button", { name: "Use as default" }));
-    expect(save).toHaveBeenCalledWith({
-      values: { ...DEFAULT_SETTINGS.values, "overlays.default_catalog": "built-in:standard" },
-      shortcuts: DEFAULT_SETTINGS.shortcuts,
-    });
+    expect(save).toHaveBeenCalledWith({ set: { "overlays.default_catalog": "built-in:standard" } });
   });
 });

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAccess } from "../access";
 import type { NetworkSnapshot } from "../generated/api";
 import { type SettingKey } from "../generated/settings";
 import { Button } from "../kit/Button";
@@ -17,7 +18,7 @@ const SIGN_IN_HINT =
 /**
  * The foot of the Live view: the settings of the network scan. The IP range with Rescan, which needs the snapshot
  * stream to be open and waits from the press until the scan it started has run, and for whoever may configure the
- * server, whether to sign in to found cameras and the logins to try. The sign-in box is this view's own choice for the scans it starts, which the `scan.sign_in`
+ * server with Full access, whether to sign in to found cameras and the logins to try. The sign-in box is this view's own choice for the scans it starts, which the `scan.sign_in`
  * setting only seeds; the logins are the setting's, saved as they are edited. The header says how the last scan went,
  * with the reason on hover, and a thin line over the top edge shows a scan running.
  */
@@ -30,7 +31,9 @@ export function ScanSettings({
   epoch: number;
   connected: boolean;
 }) {
-  const { values, shortcuts, save } = useSettings();
+  const { values, set } = useSettings();
+  // Signing in uses the logins configured on the server, which only Full access may.
+  const { fullAccess } = useAccess();
   const range = values["scan.range"];
   const stored = typeof range === "string" ? range : "";
   // The field follows the setting until the user types in it.
@@ -45,15 +48,13 @@ export function ScanSettings({
     setSeen(setting);
     setChosen(null);
   }
-  const signIn = chosen ?? setting;
+  const signIn = fullAccess && (chosen ?? setting);
   const { scanning, press } = useScanGuard(snapshot, epoch);
   const logins = values["scan.logins"];
 
   /** Saves one setting; resolves to why the backend refused it, else `null`. */
   const store = (key: SettingKey, value: Value) =>
-    save({ values: { ...values, [key]: value }, shortcuts }).then(
-      (refusal) => refusal?.reason ?? null,
-    );
+    set(key, value).then((refusal) => refusal?.reason ?? null);
 
   const ready = connected && !scanning;
   const scan = () => {
@@ -106,22 +107,24 @@ export function ScanSettings({
           </Button>
         </div>
         {/* Settings edits the same two, so a window too short for them leaves them out. */}
-        <div className="flex flex-col gap-s [@media(max-height:20rem)]:hidden">
-          <Checkbox
-            leading
-            label="Try to sign in to found cameras"
-            title={SIGN_IN_HINT}
-            className="text-small"
-            checked={signIn}
-            onChange={setChosen}
-          />
-          {signIn && (
-            <LoginsEditor
-              logins={Array.isArray(logins) ? logins : []}
-              onSave={(next) => store("scan.logins", next)}
+        {fullAccess && (
+          <div className="flex flex-col gap-s [@media(max-height:20rem)]:hidden">
+            <Checkbox
+              leading
+              label="Try to sign in to found cameras"
+              title={SIGN_IN_HINT}
+              className="text-small"
+              checked={signIn}
+              onChange={setChosen}
             />
-          )}
-        </div>
+            {signIn && (
+              <LoginsEditor
+                logins={Array.isArray(logins) ? logins : []}
+                onSave={(next) => store("scan.logins", next)}
+              />
+            )}
+          </div>
+        )}
       </div>
     </section>
   );

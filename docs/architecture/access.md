@@ -62,7 +62,7 @@ No handler checks an address, a listener or a list of grants itself.
 ## Settings
 
 One table declares every setting. A row states its scope, whether it is `secret` and whether it needs
-`full_access`; none of the three has a default, so a new row cannot skip the decision.
+`full_access`; `secret` and `full_access` default to no, and every row names its scope.
 
 | Scope | Stored | Owner | Guest |
 |-------|--------|-------|-------|
@@ -82,8 +82,9 @@ Rules:
 
 - A setting has one home. No client keeps a second copy, and no value is merged from two places.
 - The server never stores or receives a Device value.
-- A save names the keys it changes; the last write to a key wins. The server sends each new state, with a rising
-  revision, to every Owner seat. A client never reloads on its own schedule.
+- A save names the keys it changes; the last write to a key wins. The server sends every Owner connection a notice
+  with the new, rising revision and no value; the client then fetches again. A client never reloads on its own
+  schedule.
 - A secret is write-only. A client learns whether it is set and, if it is a reference, its `$NAME`; the value
   never leaves the server.
 - What can be chosen (render catalogs, plugins, decoders) lives with the server and is listed to whoever may
@@ -114,7 +115,6 @@ Each row is removed by the change that makes it true; this section is deleted wi
 
 | Model | Today |
 |-------|-------|
-| Saves are per key and pushed | A save replaces the whole set; clients reload by hand |
 | Device scope | Theme and text size are Personal; shortcuts are stored outside the table |
-| Secrets are write-only | A masked value is sent to the client and matched back on save |
+| Secrets are write-only | A masked value is sent to the client; a records row sends its masked passwords back on save |
 | A remote Owner has a path picker | Folder and file dialogs are refused in remote windows with no replacement |

@@ -14,14 +14,15 @@ fn values(theme: &str) -> BTreeMap<String, Value> {
     all
 }
 
-fn change(theme: &str) -> Change {
+pub(crate) fn change(theme: &str) -> Patch {
     let shortcuts = shortcuts::effective(&BTreeMap::new())
         .into_iter()
         .map(|(id, key)| (id.to_owned(), key))
         .collect();
-    Change {
-        values: values(theme),
-        shortcuts,
+    Patch {
+        set: values(theme),
+        shortcuts_set: shortcuts,
+        ..Patch::default()
     }
 }
 
@@ -118,22 +119,22 @@ fn the_view_defaults_take_a_whole_object_in_range_and_sticky_is_not_written_whil
     let path = folder.path().join("settings.json");
     let settings = Settings::load(&path).unwrap();
     let mut edit = change("auto");
-    edit.values.insert(
+    edit.set.insert(
         "overlays.default_sticky".into(),
         json!({"enabled": true, "timeout_ms": 2050, "opacity": 1.0}),
     );
-    settings.replace(&edit).unwrap();
+    settings.patch(&edit).unwrap();
     assert!(
         read(&path)["settings"]
             .get("overlays.default_sticky")
             .is_none(),
         "the default writes nothing"
     );
-    edit.values.insert(
+    edit.set.insert(
         "overlays.default_sticky".into(),
         json!({"enabled": false, "timeout_ms": null, "opacity": 0.5}),
     );
-    settings.replace(&edit).unwrap();
+    settings.patch(&edit).unwrap();
     assert_eq!(
         read(&path)["settings"]["overlays.default_sticky"],
         json!({"enabled": false, "timeout_ms": null, "opacity": 0.5})
@@ -157,11 +158,10 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
     assert_eq!(settings.state().shortcuts()["exit"], None);
 
     let mut edit = change("dark");
-    edit.values
-        .insert("ui.quick_setup_done".into(), json!(false));
-    edit.shortcuts
+    edit.set.insert("ui.quick_setup_done".into(), json!(false));
+    edit.shortcuts_set
         .insert("exit".into(), Some("Ctrl+Alt+Q".into()));
-    settings.replace(&edit).unwrap();
+    settings.patch(&edit).unwrap();
 
     assert_eq!(
         read(&path),
@@ -183,10 +183,8 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
     );
 
     let mut reset = change("auto");
-    reset
-        .values
-        .insert("ui.quick_setup_done".into(), json!(false));
-    settings.replace(&reset).unwrap();
+    reset.set.insert("ui.quick_setup_done".into(), json!(false));
+    settings.patch(&reset).unwrap();
     assert_eq!(
         read(&path)["settings"],
         json!({"ui.zoom": "large"}),
@@ -342,15 +340,21 @@ fn every_released_settings_file_still_loads() {
 
         let settings = Settings::load(&path).unwrap_or_else(|error| panic!("{name}: {error}"));
         let state = settings.state();
-        let again = Change {
-            values: state.values(),
-            shortcuts: state
+        // A masked text secret is never sent back: naming a secret changes it.
+        let again = Patch {
+            set: state
+                .values()
+                .into_iter()
+                .filter(|(_, value)| value != crate::MASK)
+                .collect(),
+            shortcuts_set: state
                 .shortcuts()
                 .into_iter()
                 .map(|(id, key)| (id.to_owned(), key))
                 .collect(),
+            ..Patch::default()
         };
-        settings.replace(&again).unwrap();
+        settings.patch(&again).unwrap();
         assert_eq!(read(&path)["version"], VERSION, "{name}");
         assert_eq!(
             Settings::load(&path).unwrap().state().values(),
@@ -378,7 +382,7 @@ fn saving_replaces_a_linked_settings_file_with_a_private_file_and_leaves_the_tar
 
     let settings = Settings::load(&path).unwrap();
     assert_eq!(settings.state().values()["ui.theme"], "light");
-    settings.replace(&change("dark")).unwrap();
+    settings.patch(&change("dark")).unwrap();
 
     assert_eq!(fs::read_to_string(&target).unwrap(), original);
     assert!(!fs::symlink_metadata(&path).unwrap().is_symlink());
@@ -389,7 +393,7 @@ fn saving_replaces_a_linked_settings_file_with_a_private_file_and_leaves_the_tar
     let private = folder.path().join("a/b/settings.json");
     Settings::load(&private)
         .unwrap()
-        .replace(&change("dark"))
+        .patch(&change("dark"))
         .unwrap();
     let mode = fs::metadata(private.parent().unwrap())
         .unwrap()
@@ -399,34 +403,33 @@ fn saving_replaces_a_linked_settings_file_with_a_private_file_and_leaves_the_tar
 }
 
 #[test]
-fn a_rejected_replace_changes_neither_state_nor_file() {
+fn a_rejected_patch_changes_neither_state_nor_file() {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
     let settings = Settings::load(&path).unwrap();
 
     let mut unknown = change("dark");
-    unknown.values.insert("ui.zoom".into(), json!(2));
-    let mut missing = change("dark");
-    missing.values.remove("ui.quick_setup_done");
+    unknown.set.insert("ui.zoom".into(), json!(2));
     let mut unknown_command = change("dark");
-    unknown_command.shortcuts.insert("teleport".into(), None);
+    unknown_command
+        .shortcuts_set
+        .insert("teleport".into(), None);
     let mut duplicate = change("dark");
     duplicate
-        .shortcuts
+        .shortcuts_set
         .insert("exit".into(), Some("Ctrl+S".into()));
     let mut reserved = change("dark");
     reserved
-        .shortcuts
+        .shortcuts_set
         .insert("exit".into(), Some("Ctrl+0".into()));
     for (rejected, location) in [
         (change("neon"), "ui.theme"),
         (unknown, "ui.zoom"),
-        (missing, "ui.quick_setup_done"),
         (unknown_command, "shortcuts.teleport"),
         (duplicate, "shortcuts.exit"),
         (reserved, "shortcuts.exit"),
     ] {
-        let error = settings.replace(&rejected).unwrap_err();
+        let error = settings.patch(&rejected).unwrap_err();
         assert_eq!(error.location, location);
         assert!(error.invalid);
     }
@@ -436,14 +439,14 @@ fn a_rejected_replace_changes_neither_state_nor_file() {
 }
 
 #[test]
-fn a_replace_is_checked_against_the_stored_state_and_a_refusal_changes_nothing() {
+fn a_patch_is_checked_against_the_stored_state_and_a_refusal_changes_nothing() {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
     let settings = Settings::load(&path).unwrap();
-    settings.replace(&change("dark")).unwrap();
+    settings.patch(&change("dark")).unwrap();
 
     let refused = settings
-        .replace_if(&change("light"), |stored| {
+        .patch_if(&change("light"), |stored| {
             assert_eq!(stored.values()["ui.theme"], "dark");
             Err(Error {
                 location: "ui.theme".into(),
@@ -467,7 +470,7 @@ fn the_video_cache_is_auto_or_whole_mib_in_range_and_a_saved_number_survives_a_r
     assert_eq!(settings.state().auto_or_whole("playback.video_cache"), None);
     let with = |cache: Value| {
         let mut all = change("dark");
-        all.values.insert("playback.video_cache".into(), cache);
+        all.set.insert("playback.video_cache".into(), cache);
         all
     };
 
@@ -478,10 +481,10 @@ fn the_video_cache_is_auto_or_whole_mib_in_range_and_a_saved_number_survives_a_r
         json!("512"),
         json!(true),
     ] {
-        let error = settings.replace(&with(rejected)).unwrap_err();
+        let error = settings.patch(&with(rejected)).unwrap_err();
         assert_eq!(error.location, "playback.video_cache");
     }
-    settings.replace(&with(json!(512))).unwrap();
+    settings.patch(&with(json!(512))).unwrap();
     assert_eq!(
         Settings::load(&path)
             .unwrap()
@@ -489,7 +492,7 @@ fn the_video_cache_is_auto_or_whole_mib_in_range_and_a_saved_number_survives_a_r
             .auto_or_whole("playback.video_cache"),
         Some(512)
     );
-    settings.replace(&with(json!("auto"))).unwrap();
+    settings.patch(&with(json!("auto"))).unwrap();
     assert_eq!(settings.state().auto_or_whole("playback.video_cache"), None);
 }
 
@@ -500,57 +503,13 @@ fn subscribers_see_each_saved_change_and_nothing_for_a_rejected_one() {
     let mut changes = settings.subscribe();
     assert!(!changes.has_changed().unwrap());
 
-    settings.replace(&change("neon")).unwrap_err();
+    settings.patch(&change("neon")).unwrap_err();
     assert!(
         !changes.has_changed().unwrap(),
         "a rejected change is not announced"
     );
 
-    settings.replace(&change("dark")).unwrap();
+    settings.patch(&change("dark")).unwrap();
     assert!(changes.has_changed().unwrap());
     assert_eq!(changes.borrow_and_update().values()["ui.theme"], "dark");
-}
-
-#[test]
-fn without_full_access_a_save_cannot_change_a_full_access_row_or_add_a_reference_but_can_resend_the_stored()
- {
-    let folder = tempfile::tempdir().unwrap();
-    let settings = Settings::load(&folder.path().join("settings.json")).unwrap();
-    let mut edit = change("light");
-    let login = |user: &str, password: &str| json!({"user": user, "password": password});
-    edit.values.insert(
-        "scan.logins".into(),
-        json!([login("$U", "secret"), login("a", "$P")]),
-    );
-    settings.replace(&edit).unwrap();
-    let refuse = |edit: &Change| settings.state().refuse_without_full_access(edit);
-    let with = |key: &str, value: Value| {
-        let mut edit = edit.clone();
-        edit.values.insert(key.into(), value);
-        edit
-    };
-    assert!(
-        refuse(&edit).is_ok(),
-        "the stored values, references included"
-    );
-    let masked = json!([login("a", "$P"), login("$U", MASK)]);
-    assert!(
-        refuse(&with("scan.logins", masked)).is_ok(),
-        "reordered, one password masked"
-    );
-
-    for (key, value) in [
-        ("storage.cache_dir", json!("/tmp/other")),
-        ("scan.range", json!("$RANGE")),
-        ("ui.theme", json!("$THEME")),
-        ("scan.logins", json!([login("$U", "$NEW")])),
-        ("scan.logins", json!([login("$NEW", MASK)])),
-        ("scan.logins", json!([login("$P", MASK)])),
-    ] {
-        let refused = refuse(&with(key, value)).unwrap_err();
-        assert!(
-            (refused.location.as_str(), refused.forbidden) == (key, true),
-            "{key}"
-        );
-    }
 }

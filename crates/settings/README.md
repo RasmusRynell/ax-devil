@@ -8,7 +8,7 @@ publishes one immutable `State`. Domain code takes settings as values; only the 
 
 Each row in `TABLE` has a `Scope`: Personal (how one person's app behaves: theme, shortcuts) or Server (what the
 server works with: the video cache, the cache folder). The scope groups rows for the UI; a caller reads and changes
-every row. A literal in a `secret` row is shown masked and the masked value sent back keeps the stored one.
+every row. A literal in a `secret` row is shown masked; a masked password sent back in a records row keeps the stored one.
 
 Settings supply defaults at the moment something is created, and the value is copied in: a workspace, video or saved
 layout never refers back to the settings file, and nothing shareable embeds a setting, a `$NAME` reference or a

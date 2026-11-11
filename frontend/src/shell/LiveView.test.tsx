@@ -102,11 +102,11 @@ afterEach(() => {
 async function renderView(
   state?: string,
   onAdd: (seed: AddSeed) => void = () => {},
-  { save }: { save?: SettingsApi["save"] } = {},
+  { save, fullAccess = true }: { save?: SettingsApi["apply"]; fullAccess?: boolean } = {},
 ) {
   render(
-    <AccessContext value={{ owner: true, fullAccess: false }}>
-      <FakeSettings save={save}>
+    <AccessContext value={{ owner: true, fullAccess }}>
+      <FakeSettings apply={save}>
         <SessionProvider>
           <KeptStateProvider>
             <LiveView onAdd={onAdd} />
@@ -319,9 +319,16 @@ describe("scanning", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  it("offers no sign-in to an Owner without Full access, and scans without it", async () => {
+    await renderView(undefined, undefined, { fullAccess: false });
+    fireEvent.click(await screen.findByRole("button", { name: "Rescan" }));
+    expect(screen.queryByRole("checkbox", { name: /sign in to found cameras/ })).toBeNull();
+    expect(JSON.parse(scansStarted()[0][1] as string)).toEqual({ sign_in: false });
+  });
+
   it("returns the sign-in box to the saved setting whenever that changes", async () => {
     const page = (signIn: boolean) => (
-      <AccessContext value={{ owner: true, fullAccess: false }}>
+      <AccessContext value={{ owner: true, fullAccess: true }}>
         <FakeSettings
           state={{
             ...DEFAULT_SETTINGS,
