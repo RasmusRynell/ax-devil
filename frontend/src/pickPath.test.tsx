@@ -40,7 +40,9 @@ describe("picking a path", () => {
       "fetch",
       vi.fn(() => Promise.resolve(Response.json({ entries: [], places: [] }))),
     );
-    window.axDevilWindow = { disconnect: () => Promise.resolve() } as unknown as typeof window.axDevilWindow;
+    window.axDevilWindow = {
+      disconnect: () => Promise.resolve(),
+    } as unknown as typeof window.axDevilWindow;
     const picked = show(true);
     const browse = screen.getByRole("button", { name: "Browse" });
     browse.focus();

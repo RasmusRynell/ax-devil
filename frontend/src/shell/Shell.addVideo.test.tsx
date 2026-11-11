@@ -92,7 +92,10 @@ describe("add video", () => {
       serve();
       if (desktop) {
         chooses(null);
-        delete window.axDevilWindow!.pickVideo;
+        // A window on another machine's server is offered no file dialog of this machine's.
+        window.axDevilWindow = Object.fromEntries(
+          Object.entries(window.axDevilWindow!).filter(([name]) => !name.startsWith("pick")),
+        ) as unknown as WindowBridge;
       }
       await renderShell();
       FakeSocket.latest.defer = true;
