@@ -26,7 +26,7 @@ function open(
   { onClose = () => {}, onNotice = () => {} } = {},
 ) {
   render(
-    <FakeSettings state={state} save={save as never}>
+    <FakeSettings state={state} apply={save as never}>
       <QuickSetupDialog onClose={onClose} onNotice={onNotice} />
     </FakeSettings>,
   );
@@ -51,13 +51,7 @@ describe("quick setup dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(save).toHaveBeenCalledWith({
-      values: {
-        ...firstRun.values,
-        "ui.theme": "dark",
-        "ui.text_size": "larger",
-        "ui.quick_setup_done": true,
-      },
-      shortcuts: firstRun.shortcuts,
+      set: { "ui.theme": "dark", "ui.text_size": "larger", "ui.quick_setup_done": true },
     });
   });
 
@@ -68,11 +62,11 @@ describe("quick setup dialog", () => {
     pick("Camera protocol", "HTTP");
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    const stored = (save.mock.calls[0] as unknown as [typeof firstRun])[0];
-    expect(stored.values["camera.protocol"]).toBe("http");
+    const { set } = (save.mock.calls[0] as unknown as [{ set: Record<string, unknown> }])[0];
+    expect(set["camera.protocol"]).toBe("http");
 
     cleanup();
-    open(stored, save);
+    open({ ...firstRun, values: { ...firstRun.values, ...set } } as typeof firstRun, save);
     expect(screen.getByRole("radio", { name: "HTTP" })).toHaveProperty("checked", true);
   });
 
@@ -114,10 +108,7 @@ describe("quick setup dialog", () => {
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
     fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(save).toHaveBeenCalledWith({
-      values: { ...firstRun.values, "ui.quick_setup_done": true },
-      shortcuts: firstRun.shortcuts,
-    });
+    expect(save).toHaveBeenCalledWith({ set: { "ui.quick_setup_done": true } });
 
     cleanup();
     save.mockClear();

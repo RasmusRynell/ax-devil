@@ -53,20 +53,6 @@ owner: boolean,
 fullAccess: boolean, };
 
 /**
- * The body of `PUT /api/settings`: every setting and shortcut, which replace the stored ones. A masked
- * secret sent back keeps the stored secret.
- */
-export type SettingsChange = { 
-/**
- * Every setting by dotted key.
- */
-values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<"score" | "confidence", { min: number | null; max: number | null }>; expression: string }>, 
-/**
- * The key of every command; `null` when unbound.
- */
-shortcuts: Record<CommandId, string | null>, };
-
-/**
  * Where the settings are kept: the file's path on the backend's machine and its format version.
  */
 export type SettingsFile = { 
@@ -84,10 +70,38 @@ version: number,
 log?: string, };
 
 /**
+ * The body of `PATCH /api/settings`: the keys to set and to reset. A key that is not named is not touched, so the
+ * last write to a key wins. A masked password in a record of logins keeps the stored password; a text secret is
+ * changed only by naming it.
+ */
+export type SettingsPatch = { 
+/**
+ * The settings to set by dotted key.
+ */
+set?: Partial<Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<"score" | "confidence", { min: number | null; max: number | null }>; expression: string }>>, 
+/**
+ * The settings to put back to their default.
+ */
+reset?: Array<SettingKey>, 
+/**
+ * The commands to bind: a key, or `null` to unbind.
+ */
+shortcutsSet?: Partial<Record<CommandId, string | null>>, 
+/**
+ * The commands to put back to their own key.
+ */
+shortcutsReset?: Array<CommandId>, };
+
+/**
  * Every setting and shortcut as the app uses them: the body of `GET /api/settings` and the reply to a save. The keys
  * and command ids are declared once, in the settings crate, and exported to `generated/settings.ts`.
  */
 export type SettingsState = { 
+/**
+ * Rises with every write to the settings; a state with a lower one is older. The Session socket's `settings`
+ * notice carries the same number.
+ */
+revision: number, 
 /**
  * Every setting by dotted key, such as `"ui.theme"`, with the default when unset, a `$NAME` reference as written
  * and a literal secret masked.

@@ -171,6 +171,26 @@ pub async fn post(address: &str, path: &str, body: &Value) -> Value {
     .unwrap()
 }
 
+/// `PATCH /api/settings` with the JSON `body` and the server `password`, and the JSON body of the answer.
+pub async fn patch_settings(address: &str, password: &str, body: &Value) -> Value {
+    let (address, password, body) = (address.to_owned(), password.to_owned(), body.to_string());
+    tokio::task::spawn_blocking(move || {
+        let mut stream = std::net::TcpStream::connect(&address).unwrap();
+        write!(
+            stream,
+            "PATCH /api/settings HTTP/1.1\r\nHost: {address}\r\nAuthorization: Bearer {password}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        serde_json::from_str(response.split_once("\r\n\r\n").unwrap().1).unwrap()
+    })
+    .await
+    .unwrap()
+}
+
 /// A loopback TCP proxy to a backend whose connections the test can cut, as a dropped network does: the peers just
 /// see their connection end, with no WebSocket close frame.
 pub struct Proxy {

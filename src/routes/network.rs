@@ -4,7 +4,7 @@
 //! clients follow it. Only a caller who may use this machine's resources (an Owner) can start or watch one.
 
 use super::handlers::refuse;
-use crate::{AppState, network::request_from_settings};
+use crate::{AppState, access::Principal, failure, network::request_from_settings};
 use api_types::live::{NetworkSnapshot, ScanRequestWire, ScanStarted};
 use axum::{
     Json,
@@ -18,15 +18,30 @@ use futures_util::stream::unfold;
 use std::convert::Infallible;
 
 /// Starts a scan of the range, ending the one that is running; its cameras start from none. Answers with the scan's
-/// number, which its snapshots carry.
+/// number, which its snapshots carry. Signing in uses the logins configured on the server, which only Full access may:
+/// an Owner without it is refused when it asks to, and a scan that does not say scans without.
 pub(super) async fn scan(
     State(state): State<AppState>,
+    principal: Principal,
     Json(request): Json<ScanRequestWire>,
 ) -> Response {
+    let full_access = principal.full_access();
+    if !full_access && request.sign_in == Some(true) {
+        return failure(
+            StatusCode::FORBIDDEN,
+            "sign_in",
+            "Signing in with the configured logins needs full access".to_owned(),
+        )
+        .into_response();
+    }
     match request_from_settings(
         &state.settings.state(),
         request.range.as_deref(),
-        request.sign_in,
+        if full_access {
+            request.sign_in
+        } else {
+            Some(false)
+        },
         ScanLoad::Normal,
     ) {
         Ok(scan) => Json(ScanStarted {
@@ -123,6 +138,51 @@ mod tests {
             uptime: Some(Duration::from_secs(90)),
             sign_in: SignIn::NotTried,
         }
+    }
+
+    #[tokio::test]
+    async fn signing_in_to_found_cameras_needs_full_access() {
+        let folder = tempfile::tempdir().unwrap();
+        let settings =
+            Arc::new(settings::Settings::load(&folder.path().join("default.json")).unwrap());
+        let cache = folder.path().join("cache");
+        let videos = crate::video_cache::start(&settings, &cache);
+        let (_stop, stopping) = tokio::sync::watch::channel(false);
+        let state = crate::AppState::new(
+            Arc::clone(&settings),
+            crate::access::Policy::Shared {
+                password: Some(sessions::Secret::chosen("pw".into()).unwrap()),
+                settings,
+            },
+            videos,
+            stopping,
+            crate::plugins::Plugins::fixed(handlers::Handlers::built_in()),
+            &cache,
+        )
+        .with_network(crate::test_support::idle_network());
+        let router = crate::app(state);
+        let send = |body: &'static str| {
+            let mut request = post("/api/network/scan", body);
+            request
+                .headers_mut()
+                .insert("authorization", "Bearer pw".parse().unwrap());
+            request.extensions_mut().insert(axum::extract::ConnectInfo(
+                std::net::SocketAddr::from(([10, 0, 0, 9], 4000)),
+            ));
+            tower::ServiceExt::oneshot(router.clone(), request)
+        };
+
+        // An Owner without Full access may not use the logins the server holds, whether it asks or leaves it to the
+        // setting.
+        assert_eq!(
+            send(r#"{"sign_in":true}"#).await.unwrap().status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            send(r#"{"sign_in":false}"#).await.unwrap().status(),
+            StatusCode::OK
+        );
+        assert_eq!(send("{}").await.unwrap().status(), StatusCode::OK);
     }
 
     #[tokio::test]

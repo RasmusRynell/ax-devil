@@ -23,7 +23,7 @@ use ts_rs::TS;
 
 /// Raised when a route changes in a way an older desktop shell or frontend cannot use, or a client message is added
 /// that an older backend would reject (a development backend of this version is reused, an older one is not).
-pub const API_VERSION: u32 = 27;
+pub const API_VERSION: u32 = 28;
 
 /// Raised when the desktop shell's own interface (the preload bridge and its IPC) changes in a way a frontend served
 /// by a remote backend cannot use. The shell loads a remote backend only when its [`AppInfo::shell`] matches.
@@ -55,6 +55,10 @@ pub struct AppInfo {
 /// and command ids are declared once, in the settings crate, and exported to `generated/settings.ts`.
 #[derive(Serialize, TS)]
 pub struct SettingsState {
+    /// Rises with every write to the settings; a state with a lower one is older. The Session socket's `settings`
+    /// notice carries the same number.
+    #[ts(type = "number")]
+    pub revision: u64,
     /// Every setting by dotted key, such as `"ui.theme"`, with the default when unset, a `$NAME` reference as written
     /// and a literal secret masked.
     #[ts(
@@ -90,18 +94,31 @@ pub struct SettingsFile {
     pub log: Option<String>,
 }
 
-/// The body of `PUT /api/settings`: every setting and shortcut, which replace the stored ones. A masked
-/// secret sent back keeps the stored secret.
+/// The body of `PATCH /api/settings`: the keys to set and to reset. A key that is not named is not touched, so the
+/// last write to a key wins. A masked password in a record of logins keeps the stored password; a text secret is
+/// changed only by naming it.
 #[derive(Deserialize, TS)]
-pub struct SettingsChange {
-    /// Every setting by dotted key.
+#[serde(rename_all = "camelCase")]
+pub struct SettingsPatch {
+    /// The settings to set by dotted key.
+    #[serde(default)]
     #[ts(
-        type = "Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<\"score\" | \"confidence\", { min: number | null; max: number | null }>; expression: string }>"
+        optional,
+        type = "Partial<Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<\"score\" | \"confidence\", { min: number | null; max: number | null }>; expression: string }>>"
     )]
-    pub values: BTreeMap<String, serde_json::Value>,
-    /// The key of every command; `null` when unbound.
-    #[ts(type = "Record<CommandId, string | null>")]
-    pub shortcuts: BTreeMap<String, Option<String>>,
+    pub set: Option<BTreeMap<String, serde_json::Value>>,
+    /// The settings to put back to their default.
+    #[serde(default)]
+    #[ts(optional, type = "Array<SettingKey>")]
+    pub reset: Option<Vec<String>>,
+    /// The commands to bind: a key, or `null` to unbind.
+    #[serde(default)]
+    #[ts(optional, type = "Partial<Record<CommandId, string | null>>")]
+    pub shortcuts_set: Option<BTreeMap<String, Option<String>>>,
+    /// The commands to put back to their own key.
+    #[serde(default)]
+    #[ts(optional, type = "Array<CommandId>")]
+    pub shortcuts_reset: Option<Vec<String>>,
 }
 
 /// What a failed request returns: the reason, shown where the user acted, and what it is about.
@@ -118,7 +135,7 @@ pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<AppInfo>();
     types.visit::<SettingsState>();
     types.visit::<SettingsFile>();
-    types.visit::<SettingsChange>();
+    types.visit::<SettingsPatch>();
     types.visit::<ApiError>();
     bookmarks::visit_api_types(types);
     catalogs::visit_api_types(types);

@@ -97,11 +97,11 @@ pub(crate) const ROUTES: &[Route] = &[
         handler: |method| on(method, crate::get_settings),
     },
     Route {
-        method: MethodFilter::PUT,
+        method: MethodFilter::PATCH,
         path: "/api/settings",
         listeners: MEMBERS,
         who: Who::Owner,
-        handler: |method| on(method, crate::put_settings),
+        handler: |method| on(method, crate::patch_settings),
     },
     Route {
         method: MethodFilter::GET,

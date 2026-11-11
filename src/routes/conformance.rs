@@ -118,7 +118,13 @@ async fn every_route_answers_every_caller_as_the_table_says() {
     for caller in callers() {
         let (router, _folder, _stop) = router(caller.listener);
         for path in &paths {
-            for method in [Method::GET, Method::POST, Method::PUT, Method::DELETE] {
+            for method in [
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+            ] {
                 let got = status(&router, &method, path, &caller).await;
                 let at = format!("{method} {path} as {}", caller.name);
                 let served: Vec<_> = ROUTES

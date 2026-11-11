@@ -20,7 +20,7 @@ afterEach(() => {
 async function showShell(save?: () => Promise<ApiError | null>) {
   render(
     <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
-      <FakeSettings state={DEFAULT_SETTINGS} save={save}>
+      <FakeSettings state={DEFAULT_SETTINGS} apply={save}>
         <SessionProvider>
           <Shell version="1.2.3" />
         </SessionProvider>

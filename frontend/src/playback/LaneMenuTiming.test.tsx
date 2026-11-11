@@ -126,10 +126,7 @@ describe("lane menu timing", () => {
     const { save } = setup({ settings: { ...LANE_SETTINGS, sticky } });
     tab("Timing");
     fireEvent.click(screen.getByRole("button", { name: "Make default" }));
-    expect(save).toHaveBeenCalledWith({
-      values: { ...DEFAULT_SETTINGS.values, "overlays.default_sticky": sticky },
-      shortcuts: DEFAULT_SETTINGS.shortcuts,
-    });
+    expect(save).toHaveBeenCalledWith({ set: { "overlays.default_sticky": sticky } });
     cleanup();
     const saved = DEFAULT_SETTINGS.values["overlays.default_sticky"] as typeof sticky;
     setup({ settings: { ...LANE_SETTINGS, sticky: saved } });
@@ -204,8 +201,7 @@ describe("lane menu timing", () => {
     const sync = screen.getByRole("group", { name: "Sync" });
     fireEvent.click(within(sync).getByRole("button", { name: "Make default" }));
     expect(timed.save).toHaveBeenCalledWith({
-      values: { ...DEFAULT_SETTINGS.values, "overlays.default_sync": { tolerance_ms: 80 } },
-      shortcuts: DEFAULT_SETTINGS.shortcuts,
+      set: { "overlays.default_sync": { tolerance_ms: 80 } },
     });
     cleanup();
     setup({ settings: { ...LANE_SETTINGS, basis: "Time" } });

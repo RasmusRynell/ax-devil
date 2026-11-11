@@ -135,7 +135,7 @@ async fn the_local_listener_answers_only_pages_it_served_and_every_response_forb
         for (method, path) in [
             ("GET", "/api/info"),
             ("GET", "/api/settings"),
-            ("PUT", "/api/settings"),
+            ("PATCH", "/api/settings"),
             ("GET", "/api/sessions"),
             ("GET", "/api/handlers"),
             ("GET", "/api/plugins"),
@@ -186,7 +186,7 @@ async fn a_server_answers_settings_and_sessions_only_to_the_password() {
     for headers in [&none[..], &wrong[..]] {
         for (method, path) in [
             ("GET", "/api/settings"),
-            ("PUT", "/api/settings"),
+            ("PATCH", "/api/settings"),
             ("GET", "/api/sessions"),
             ("GET", "/api/handlers"),
             ("GET", "/api/plugins"),
@@ -200,16 +200,14 @@ async fn a_server_answers_settings_and_sessions_only_to_the_password() {
     for path in ["/api/sessions", "/api/handlers", "/api/plugins"] {
         assert_eq!(send(&app, "GET", path, &right, "").await.0, StatusCode::OK);
     }
-    // The password holder reads and replaces every setting and shortcut, Personal ones too.
+    // The password holder reads and patches every setting and shortcut, Personal ones too.
     let (status, settings) = send(&app, "GET", "/api/settings", &right, "").await;
     assert_eq!(status, StatusCode::OK);
-    let mut values = settings["values"].clone();
-    assert_eq!(values["storage.cache_dir"], "");
+    assert_eq!(settings["values"]["storage.cache_dir"], "");
     // The default references are set, but what they give is the machine's environment: only Full access sees it.
     assert!(settings.get("resolved").is_none());
-    values["ui.theme"] = json!("dark");
-    let body = json!({"values": values, "shortcuts": {"exit": null}}).to_string();
-    let (status, saved) = send(&app, "PUT", "/api/settings", &right, &body).await;
+    let body = json!({"set": {"ui.theme": "dark"}, "shortcutsSet": {"exit": null}}).to_string();
+    let (status, saved) = send(&app, "PATCH", "/api/settings", &right, &body).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(saved["values"]["ui.theme"], "dark");
     assert_eq!(saved["shortcuts"]["exit"], json!(null));

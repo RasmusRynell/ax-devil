@@ -97,8 +97,7 @@ describe("lane menu", () => {
       });
       fireEvent.click(screen.getByRole("button", { name: "Use as default" }));
       expect(save).toHaveBeenCalledWith({
-        values: { ...DEFAULT_SETTINGS.values, "overlays.default_catalog": "built-in:tracking" },
-        shortcuts: DEFAULT_SETTINGS.shortcuts,
+        set: { "overlays.default_catalog": "built-in:tracking" },
       });
       show({ catalogProblem: "/layers: unknown" });
       const use = screen.getByRole("button", { name: "Use as default" }) as HTMLButtonElement;

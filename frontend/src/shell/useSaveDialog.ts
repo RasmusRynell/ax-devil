@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { ApiError, SettingsChange } from "../generated/api";
-import { useSettings } from "../settings";
+import type { ApiError, SettingsPatch } from "../generated/api";
+import { isEmpty, useSettings } from "../settings";
 
 /** How a `submit` ended: stored, refused (kept in `refusal` to show where it applies), or the dialog was closed first. */
 export type SaveOutcome =
@@ -9,11 +9,11 @@ export type SaveOutcome =
   | { kind: "refused"; refusal: ApiError };
 
 /**
- * What a dialog that stores settings needs: `submit` stores a change, closes the dialog when it is accepted, and
- * returns how it ended. `saving` is true meanwhile.
+ * What a dialog that stores settings needs: `submit` stores a patch of what the dialog changed, closes the dialog when
+ * it is accepted, and returns how it ended; a patch that names nothing is not sent. `saving` is true meanwhile.
  */
 export function useSaveDialog(onClose: () => void) {
-  const { save } = useSettings();
+  const { apply } = useSettings();
   const [saving, setSaving] = useState(false);
   const [refusal, setRefusal] = useState<ApiError | null>(null);
   const mounted = useRef(true);
@@ -23,10 +23,14 @@ export function useSaveDialog(onClose: () => void) {
       mounted.current = false;
     };
   }, []);
-  const submit = async (change: SettingsChange): Promise<SaveOutcome> => {
+  const submit = async (patch: SettingsPatch): Promise<SaveOutcome> => {
+    if (isEmpty(patch)) {
+      onClose();
+      return { kind: "saved" };
+    }
     setSaving(true);
     setRefusal(null);
-    const refused = await save(change);
+    const refused = await apply(patch);
     // A dialog closed meanwhile has nothing left to update; whether the write succeeded is no longer its to act on.
     if (!mounted.current) return { kind: "closed" };
     setSaving(false);

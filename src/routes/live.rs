@@ -235,14 +235,9 @@ mod tests {
             Plugins::fixed(Handlers::built_in()),
             &cache,
         );
-        let mut values = state.settings.state().values();
-        values.insert("camera.password".into(), "CONFIGURED-PASSWORD".into());
         state
             .settings
-            .replace(&settings::Change {
-                values,
-                shortcuts: Default::default(),
-            })
+            .update("camera.password", |_| Some("CONFIGURED-PASSWORD".into()))
             .unwrap();
         let configured = defaults(&state.settings.state(), true);
         let saved = intake::live(

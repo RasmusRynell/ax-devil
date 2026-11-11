@@ -67,7 +67,7 @@ export function LaneCatalogActions({
   /** Asks the backend for the catalog again; without it there is no Reload. */
   onReload?: () => void;
 }) {
-  const { values, shortcuts, save, reload } = useSettings();
+  const { values, set } = useSettings();
   const mayChange = useAccess().owner;
   const [naming, setNaming] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -132,10 +132,7 @@ export function LaneCatalogActions({
   });
 
   const setDefault = (id: string) =>
-    save({
-      values: { ...values, [DEFAULT_CATALOG]: id },
-      shortcuts,
-    }).then((refused) => setRefusal(refused?.reason ?? null));
+    set(DEFAULT_CATALOG, id).then((refused) => setRefusal(refused?.reason ?? null));
 
   const finish = (failed: string | undefined, what: string) => {
     refocus.current = true;
@@ -179,8 +176,6 @@ export function LaneCatalogActions({
     const asked = selection.current;
     void post<undefined>("/api/catalogs/delete", { id: catalog }).then((answer) => {
       if (!answer.ok) return finish(reasonOf(answer.refusal), "delete");
-      // The backend clears the default when it names the deleted catalog; this window's copy must not write it back.
-      void reload();
       // The default goes back to Standard, which the backend lists first; this lane follows the new default unless
       // its selector moved on meanwhile.
       if (asked === selection.current) {
