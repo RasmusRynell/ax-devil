@@ -266,6 +266,11 @@ impl<C: Clone + Send + 'static> Service<C> {
         result
     }
 
+    /// Reads the sessions under the lock for a step that changes none of them, so the list is not looked at again.
+    pub(super) fn quietly<R>(&self, step: impl FnOnce(&Sessions<C>) -> R) -> R {
+        step(&common::locked(&self.inner.sessions))
+    }
+
     fn run(&self, deferred: Deferred) {
         for (session, spawn) in deferred.spawn {
             let job = spawn.job;

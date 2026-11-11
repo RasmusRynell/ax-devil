@@ -23,8 +23,11 @@ const NO_LINK = "No join link";
 
 /** The Sessions of this backend, current while `enabled`; empty when there is none or the list is unavailable. */
 function useServerSessions(enabled: boolean): readonly SessionSummary[] {
-  // A failed read keeps the last list.
-  const { value } = useResource<SessionSummary[]>("sessions", enabled ? "/api/sessions" : null);
+  // The list depends on Full access too, which follows a setting. A failed read keeps the last list.
+  const { value } = useResource<SessionSummary[]>(
+    ["sessions", "settings"],
+    enabled ? "/api/sessions" : null,
+  );
   return value ?? [];
 }
 

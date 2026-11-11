@@ -96,14 +96,16 @@ export class SessionStore {
   #name: string | null = null;
   #nameTimer: ReturnType<typeof setTimeout> | undefined;
   #nameSentAt = -RENAME_EVERY_MS;
-  #onChanged: ((topic: Topic, revision: number) => void) | null = null;
+  #onChanged: ((topic: Topic, revision: number, fresh: boolean) => void) | null = null;
+  /** Whether no notice has come since the last welcome: the first of a connection starts a new revision order. */
+  #freshNotice = false;
 
   constructor(deps: Partial<SessionDeps> = {}) {
     this.#deps = { ...browser, ...deps };
   }
 
   /** Runs *listener* with each `Changed` notice the backend sends an Owner's connection; null stops it. */
-  onChanged(listener: ((topic: Topic, revision: number) => void) | null): void {
+  onChanged(listener: ((topic: Topic, revision: number, fresh: boolean) => void) | null): void {
     this.#onChanged = listener;
   }
 
@@ -421,8 +423,11 @@ export class SessionStore {
         return this.#synced(message);
       case "cursor":
         return this.cursors.set(message.participant, message.at);
-      case "changed":
-        return this.#onChanged?.(message.topic, message.revision);
+      case "changed": {
+        const fresh = this.#freshNotice;
+        this.#freshNotice = false;
+        return this.#onChanged?.(message.topic, message.revision, fresh);
+      }
       case "heartbeat":
       case "ended":
         return;
@@ -436,6 +441,7 @@ export class SessionStore {
   }
 
   #welcome(message: Extract<SessionServerMessage, { type: "welcome" }>): void {
+    this.#freshNotice = true;
     if (message.session !== this.#state.session) {
       // Not the Session this window was in: nothing of the old one carries over.
       this.#clear();

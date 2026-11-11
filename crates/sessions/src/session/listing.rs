@@ -74,16 +74,22 @@ impl<C: Clone + Send + 'static> Service<C> {
         self.inner.listed.revision.subscribe()
     }
 
+    /// Raises the listing's revision for a change of what the list shows that is not in a session, such as whether
+    /// other machines can reach this backend.
+    pub fn listing_changed(&self) {
+        self.inner
+            .listed
+            .revision
+            .send_modify(|revision| *revision += 1);
+    }
+
     /// Raises the listing's revision if the list changed; called under the lock after every change of a session.
     pub(super) fn publish_listing(&self, sessions: &Sessions<C>) {
         let next = (listings(sessions, true), listings(sessions, false));
         let mut last = common::locked(&self.inner.listed.last);
         if *last != next {
             *last = next;
-            self.inner
-                .listed
-                .revision
-                .send_modify(|revision| *revision += 1);
+            self.listing_changed();
         }
     }
 }

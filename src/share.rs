@@ -119,6 +119,8 @@ impl Hosting {
                 .problem
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner) = failure;
+            // The session list says why there is no link.
+            listener.state.sessions.listing_changed();
         }
     }
 
@@ -220,6 +222,8 @@ impl ShareListener {
             base: base.clone(),
             serving,
         });
+        // The session list carries the join links, which exist while this is open.
+        self.state.sessions.listing_changed();
         let this = Arc::clone(self);
         tokio::spawn(async move { this.close_when_empty().await });
         Ok(base)
@@ -247,6 +251,7 @@ impl ShareListener {
                 if let Some(open) = open {
                     open.serving.abort();
                     tracing::info!("Closed the sharing listener: no session is shared");
+                    self.state.sessions.listing_changed();
                 }
                 return;
             }
@@ -265,8 +270,13 @@ mod tests {
         let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let hosting = Hosting::Lan(ShareListener::new(taken.local_addr().unwrap(), &app.state));
         assert_eq!(hosting.link_problem(), None);
+        let listed = app.state.sessions.listing_revisions();
 
         hosting.open().await;
+        assert!(
+            listed.has_changed().unwrap(),
+            "the list says why there is no link"
+        );
 
         // A development build refuses before it binds, with its own reason.
         let wanted = if cfg!(feature = "embed-assets") {

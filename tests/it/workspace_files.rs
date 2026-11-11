@@ -19,7 +19,11 @@ async fn unsaved_work_survives_the_window_and_one_window_holds_a_copy_at_a_time(
 
     // An edit is written to a recovery copy, which is the newest recent workspace.
     let mut owner = Socket::own(&address, None).await;
+    let told = |m: &serde_json::Value| m["type"] == "changed" && m["topic"] == "recents";
+    let before = owner.until(told).await["revision"].clone();
     owner.say(add_video(1)).await;
+    // The Owner is told the list changed.
+    owner.until(|m| told(m) && m["revision"] != before).await;
     eventually("the recovery copy, listed", || {
         let copy = copies(folder.path()).pop();
         copy.as_deref().and_then(items_in) == Some(1) && newest_recent(folder.path()) == copy

@@ -496,3 +496,22 @@ async fn editing_an_item_keeps_its_pane_pinned_and_on_the_entry_it_shows() {
     assert!(shown.pinned, "the pane stays pinned");
     assert_eq!(shown.entry.as_ref(), Some(&second), "on the same entry");
 }
+
+#[tokio::test(start_paused = true)]
+async fn the_listing_revision_rises_with_the_list_and_not_with_a_cursor() {
+    let rig = Rig::new();
+    let mut listed = rig.service.listing_revisions();
+    let (owner, guest) = rig.shared(Access::Watch);
+    assert!(
+        listed.has_changed().unwrap(),
+        "a session, shared and joined"
+    );
+    listed.borrow_and_update();
+    guest.move_cursor(Some(1));
+    assert!(!listed.has_changed().unwrap());
+    guest.leave();
+    assert!(listed.has_changed().unwrap(), "a seat left");
+    listed.borrow_and_update();
+    owner.leave();
+    assert!(listed.has_changed().unwrap(), "the session ended");
+}
