@@ -339,19 +339,28 @@ async fn wire_rejections(request: Request, next: Next) -> Response {
 /// How many bytes of a rejection's text an `ErrorWire` carries: serde's message can quote a whole value the caller sent.
 const REASON_MOST: usize = 1024;
 
-/// The start of `body` as text, at most [`REASON_MOST`] bytes of it and read no further, with an ellipsis when cut.
+/// The start of `body` as text, at most [`REASON_MOST`] bytes of it, with an ellipsis when more followed. Only the
+/// bytes kept are copied and nothing is read once the budget is spent and one more byte has shown there is more; a
+/// character cut in two is left out whole.
 async fn head_of(body: Body) -> String {
     let mut stream = body.into_data_stream();
     let mut read = Vec::new();
-    while read.len() <= REASON_MOST {
-        let Some(Ok(chunk)) = stream.next().await else {
+    let mut cut = false;
+    while let Some(Ok(chunk)) = stream.next().await {
+        let room = REASON_MOST - read.len();
+        read.extend_from_slice(&chunk[..chunk.len().min(room)]);
+        if chunk.len() > room {
+            cut = true;
             break;
-        };
-        read.extend_from_slice(&chunk);
+        }
     }
-    let cut = read.len() > REASON_MOST;
-    read.truncate(REASON_MOST);
-    let mut text = String::from_utf8_lossy(&read).into_owned();
+    let mut text = match std::str::from_utf8(&read) {
+        Ok(text) => text.to_owned(),
+        Err(error) if cut && error.error_len().is_none() => {
+            String::from_utf8_lossy(&read[..error.valid_up_to()]).into_owned()
+        }
+        Err(_) => String::from_utf8_lossy(&read).into_owned(),
+    };
     if cut {
         text.push('\u{2026}');
     }
@@ -374,4 +383,42 @@ pub(crate) fn mount(listener: Listener, state: AppState) -> Router {
         router = router.fallback_service(axum::routing::get(crate::asset));
     }
     router.with_state(state).layer(from_fn(wire_rejections))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Body, REASON_MOST, head_of};
+    use futures_util::stream;
+    use std::convert::Infallible;
+
+    async fn head(chunks: &[&[u8]]) -> String {
+        let chunks: Vec<Result<Vec<u8>, Infallible>> =
+            chunks.iter().map(|chunk| Ok(chunk.to_vec())).collect();
+        head_of(Body::from_stream(stream::iter(chunks))).await
+    }
+
+    #[tokio::test]
+    async fn a_rejection_keeps_its_first_bytes_and_an_ellipsis_only_when_more_followed() {
+        let full = "a".repeat(REASON_MOST);
+        let (head_part, rest) = full.as_bytes().split_at(1000);
+        // Exactly the budget, in one chunk or several, even with an empty one after: nothing was lost.
+        assert_eq!(head(&[full.as_bytes()]).await, full);
+        assert_eq!(head(&[head_part, rest, b""]).await, full);
+        // One byte more, wherever the chunk boundary falls, or a far longer one: cut, and no more is kept.
+        let cut = format!("{full}\u{2026}");
+        assert_eq!(head(&[full.as_bytes(), b"b"]).await, cut);
+        assert_eq!(
+            head(&[head_part, b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]).await,
+            cut
+        );
+        assert_eq!(head(&["a".repeat(5000).as_bytes()]).await, cut);
+        // A character straddling the cutoff is dropped whole, not left as a replacement.
+        let straddling = format!("{}\u{e9}", "a".repeat(REASON_MOST - 1));
+        assert_eq!(
+            head(&[straddling.as_bytes()]).await,
+            format!("{}\u{2026}", "a".repeat(REASON_MOST - 1))
+        );
+        // Nothing to read is nothing.
+        assert_eq!(head(&[]).await, "");
+    }
 }
