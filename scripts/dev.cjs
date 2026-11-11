@@ -1,5 +1,4 @@
-const { observe } = require("./owned-child.cjs");
-const { spawn } = require("node:child_process");
+const { observe, spawnOwned: spawn } = require("./child.cjs");
 const { apiVersion } = require("../desktop/generated/api.json");
 const STARTUP_TIMEOUT_MS = 60_000;
 const PROBE_TIMEOUT_MS = 1000;
@@ -21,7 +20,7 @@ function start(command, args, env = {}) {
     detached: process.platform !== "win32",
     env: { ...process.env, ...env },
   });
-  children.push(observe(child, true));
+  children.push(observe(child));
   child.on("error", (error) => {
     console.error(error.message);
     stop(1);
@@ -108,7 +107,7 @@ async function main() {
       detached: process.platform !== "win32",
       env,
     });
-    children.push(observe(child, true));
+    children.push(observe(child));
     child.on("error", (error) => {
       console.error(error.message);
       stop(1);
@@ -119,6 +118,7 @@ async function main() {
 if (require.main === module) {
   process.on("SIGINT", () => stop());
   process.on("SIGTERM", () => stop());
+  process.on("SIGHUP", () => stop());
   void main().catch((error) => {
     console.error(error.message);
     stop(1);

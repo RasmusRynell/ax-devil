@@ -7,7 +7,7 @@ const events = require("node:events");
 const { PassThrough } = require("node:stream");
 const { test } = require("node:test");
 const { supervise } = require("./smoke-process.cjs");
-const { observe } = require("./owned-child.cjs");
+const { observe, spawnOwned } = require("./child.cjs");
 
 const bounded = (promise) =>
   Promise.race([
@@ -40,6 +40,49 @@ async function gone(pid) {
   );
 }
 
+async function waitFor(check) {
+  await bounded(
+    (async () => {
+      while (!check()) await new Promise((r) => setTimeout(r, 10));
+    })(),
+  );
+}
+function audit(folder) {
+  const log = path.join(folder, "signals");
+  const preload = path.join(folder, "audit.cjs");
+  fs.writeFileSync(
+    preload,
+    `
+    const fs = require('node:fs');
+    const kill = process.kill.bind(process);
+    const log = (target, signal) => fs.appendFileSync(${JSON.stringify(log)}, \`\${JSON.stringify({ target, signal, caller: process.pid, leaderAlive: kill(process.pid, 0) })}\\n\`);
+    process.kill = (target, signal) => {
+      if (signal !== 0) log(target, signal);
+      return kill(target, signal);
+    };
+    const proto = require('node:child_process').ChildProcess.prototype;
+    const childKill = proto.kill;
+    proto.kill = function(signal) { log(this.pid, signal); return childKill.call(this, signal); };
+  `,
+  );
+  return {
+    env: { ...process.env, NODE_OPTIONS: `--require=${preload}` },
+    read: () =>
+      fs.existsSync(log)
+        ? fs
+            .readFileSync(log, "utf8")
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line))
+        : [],
+  };
+}
+function assertSafe(signals) {
+  for (const entry of signals) {
+    if (entry.target < 0) assert.equal(entry.target, -entry.caller, JSON.stringify(entry));
+    assert.equal(entry.leaderAlive, true, JSON.stringify(entry));
+  }
+}
 for (const escaped of [false, true])
   void test(
     `wrapper exit with ${escaped ? "own-session" : "same-group"} survivor`,
@@ -47,8 +90,9 @@ for (const escaped of [false, true])
     async () => {
       const folder = fs.mkdtempSync(path.join(os.tmpdir(), "smoke-owner-"));
       const result = path.join(folder, "result");
-      const signals = [];
-      let wrapper;
+      const release = path.join(folder, "release");
+      const pidFile = path.join(folder, "pid");
+      const signals = audit(folder);
       let descendant;
       try {
         const verdict = supervise(
@@ -56,51 +100,140 @@ for (const escaped of [false, true])
           [
             "-e",
             `
-      const { spawn } = require('node:child_process');
-      const c = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: ${escaped}, stdio: ['ignore', 1, 2] });
-      c.on('spawn', () => process.send(c.pid));
-      process.on('message', () => process.exit(0));
-    `,
+        const fs = require('node:fs');
+        const c = require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: ${escaped}, stdio: ['ignore', 1, 2] });
+        fs.watch(${JSON.stringify(folder)}, () => { if (fs.existsSync(${JSON.stringify(release)})) process.exit(0); });
+        fs.writeFileSync(${JSON.stringify(pidFile)}, String(c.pid));
+      `,
           ],
           result,
           {
+            group: "survivor-probe",
             limitMs: 2500,
             exitGraceMs: 100,
             spawner(command, args, options) {
-              wrapper = spawn(command, args, {
+              return spawnOwned(command, args, {
                 ...options,
-                stdio: ["ignore", "pipe", "pipe", "ipc"],
+                env: { ...options.env, NODE_OPTIONS: signals.env.NODE_OPTIONS },
               });
-              return wrapper;
-            },
-            signalGroup(pid, signal) {
-              signals.push([pid, signal]);
-              process.kill(pid, signal);
             },
           },
         );
-        [descendant] = await bounded(events.once(wrapper, "message"));
+        await waitFor(() => fs.existsSync(pidFile));
+        descendant = Number(fs.readFileSync(pidFile, "utf8"));
         fs.writeFileSync(result, "PASS");
-        wrapper.send("release");
+        fs.writeFileSync(release, "go");
         const outcome = await bounded(verdict);
-        assert.deepEqual(signals, [[-wrapper.pid, "SIGKILL"]]);
+        assertSafe(signals.read());
         if (escaped) {
           assert.equal(outcome.ok, false);
-          assert.match(outcome.reason, /original process group.*another session/);
-          assert.equal(alive(descendant), true, "the reported escape really was not reached");
+          assert.match(outcome.reason, /survivor-probe.*escaped-session survivor/);
+          assert.equal(alive(descendant), true);
+          const before = signals.read();
+          await new Promise((r) => setTimeout(r, 150));
+          assert.deepEqual(signals.read(), before, "no delayed group signal after completion");
         } else {
           assert.equal(outcome.ok, true, outcome.reason);
           await gone(descendant);
         }
       } finally {
         if (descendant && alive(descendant)) process.kill(descendant, "SIGKILL");
-        if (wrapper && wrapper.exitCode === null && wrapper.signalCode === null)
-          wrapper.kill("SIGKILL");
         if (descendant) await gone(descendant);
         fs.rmSync(folder, { recursive: true, force: true });
       }
     },
   );
+
+void test(
+  "live leader signals safely for clean exit, deadline and cancellation; status preserves signals",
+  { timeout: 10000 },
+  async () => {
+    for (const mode of ["clean", "deadline", "cancel", "signal", "escalation"]) {
+      const folder = fs.mkdtempSync(path.join(os.tmpdir(), "leader-status-"));
+      const signals = audit(folder);
+      let child;
+      try {
+        const ready = path.join(folder, "ready");
+        child = spawnOwned(
+          process.execPath,
+          [
+            "-e",
+            mode === "clean"
+              ? "process.exit(0)"
+              : mode === "signal"
+                ? "process.kill(process.pid, 'SIGTERM')"
+                : `process.on("SIGINT", () => {}); require("node:fs").writeFileSync(${JSON.stringify(ready)}, "ready"); setInterval(() => {}, 1000)`,
+          ],
+          { env: signals.env, stdio: "pipe" },
+        );
+        const done = bounded(events.once(child, "exit"));
+        if (mode === "deadline" || mode === "cancel" || mode === "escalation") {
+          const owner = observe(child, { graceMs: 20 });
+          await waitFor(() => fs.existsSync(ready));
+          if (mode === "deadline") await owner.stop();
+          else {
+            const first = owner.stop();
+            assert.equal(owner.stop(), first);
+            await first;
+          }
+        }
+        const [code, signal] = await done;
+        if (mode === "clean") assert.deepEqual([code, signal], [0, null]);
+        else {
+          assert.equal(code, null);
+          assert.equal(signal, mode === "signal" ? "SIGTERM" : "SIGKILL");
+        }
+        assertSafe(signals.read());
+      } finally {
+        if (child && child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+        fs.rmSync(folder, { recursive: true, force: true });
+      }
+    }
+  },
+);
+
+void test(
+  "launcher death disconnects IPC and removes the leader and its command",
+  { timeout: 5000 },
+  async () => {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), "leader-orphan-"));
+    const signals = audit(folder);
+    const info = path.join(folder, "info");
+    let launcher;
+    let ids;
+    try {
+      launcher = spawn(
+        process.execPath,
+        [
+          "-e",
+          `
+      const { spawnOwned } = require(${JSON.stringify(require.resolve("./child.cjs"))});
+      const child = spawnOwned(process.execPath, ['-e', 'require("node:fs").writeFileSync(${JSON.stringify(info)}, JSON.stringify({ leader: process.ppid, command: process.pid })); setInterval(() => {}, 1000)'], { env: process.env, stdio: 'pipe' });
+      child.on('error', () => {});
+    `,
+        ],
+        { env: signals.env, stdio: "ignore" },
+      );
+      await waitFor(() => fs.existsSync(info));
+      ids = JSON.parse(fs.readFileSync(info, "utf8"));
+      const exited = events.once(launcher, "exit");
+      launcher.kill("SIGKILL");
+      await bounded(exited);
+      await gone(ids.leader);
+      await gone(ids.command);
+      assertSafe(signals.read());
+    } finally {
+      if (launcher && launcher.exitCode === null && launcher.signalCode === null)
+        launcher.kill("SIGKILL");
+      if (ids)
+        for (const pid of Object.values(ids)) {
+          if (alive(pid)) process.kill(pid, "SIGKILL");
+          await gone(pid);
+        }
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
+  },
+);
 
 function fake() {
   const child = new events.EventEmitter();
@@ -128,21 +261,18 @@ void test(
       const result = path.join(folder, "result");
       const child = fake();
       const signals = [];
-      const verdict = supervise("fake", [], result, {
-        limitMs: 50,
-        spawner: () => child,
-        signalGroup(_pid, signal) {
-          signals.push(signal);
-          if (signal === "SIGTERM") {
-            fs.writeFileSync(result, "PASS");
-            child.end();
-          }
-        },
-      });
+      child.kill = (signal) => {
+        signals.push(signal);
+        if (signal === "SIGTERM") {
+          fs.writeFileSync(result, "PASS");
+          child.end();
+        }
+      };
+      const verdict = supervise("fake", [], result, { limitMs: 50, spawner: () => child });
       t.mock.timers.tick(50);
       assert.equal((await verdict).ok, false);
       t.mock.timers.tick(20000);
-      assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+      assert.deepEqual(signals, ["SIGTERM"]);
     } finally {
       fs.rmSync(folder, { recursive: true, force: true });
     }
@@ -213,7 +343,7 @@ void test(
         ],
         { timeout: 3000, encoding: "utf8" },
       );
-      assert.equal(probe.status, 1, probe.stdout + probe.stderr);
+      assert.equal(probe.status, 1, `${probe.stdout}${probe.stderr}`);
       assert.match(probe.stdout, /required forced stopping/);
       await gone(Number(fs.readFileSync(path.join(folder, "pid"), "utf8")));
     } finally {
