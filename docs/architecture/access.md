@@ -31,6 +31,8 @@ Every access or settings decision reads exactly one of these. Never derive one f
   reference.
 - Without it an Owner supplies their own logins, and a `$NAME` in their Session is text. A Session reads the server's
   environment only if it was created with Full access; it keeps that when the setting changes.
+- A settings save is admitted before anything expands a `$NAME`, and a caller without Full access is validated and
+  answered as written, so a refusal never carries what the environment holds.
 - The test for anything new: it needs Full access if it can run code on the server's machine, read its
   environment, or change where ax-devil reads or writes files. Otherwise Owner is enough.
 
