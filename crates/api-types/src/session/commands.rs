@@ -7,7 +7,7 @@ use crate::{
 };
 use foundation::ItemId;
 use serde::Deserialize;
-use sessions::session::{ContentRef, Control, ViewerId, Viewport};
+use sessions::session::{ContentRef, Control, Overlay, ViewerId, Viewport};
 use ts_rs::TS;
 
 /// A change to the Doc's content; the backend runs the intake on every item before it applies any.
@@ -151,6 +151,13 @@ pub enum SessionCommand {
         #[serde(default)]
         #[ts(optional)]
         viewport: Option<Viewport>,
+    },
+    /// Turn an overlay on or off in the view this seat shows; a Guest that follows starts exploring.
+    SetOverlay {
+        /// The overlay.
+        overlay: Overlay,
+        /// Whether it is on afterwards.
+        shown: bool,
     },
     /// Change sharing; the owner only.
     Control {

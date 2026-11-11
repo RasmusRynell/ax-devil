@@ -2,7 +2,11 @@ import type { Scope } from "../commands";
 import type { Can, View } from "../generated/api";
 
 /** What the window shows before anyone has chosen anything. */
-export const EMPTY_VIEW: View = { sidebar: { view: "workspace", open: true }, viewers: {} };
+export const EMPTY_VIEW: View = {
+  sidebar: { view: "workspace", open: true },
+  viewers: {},
+  overlays: { objectDetails: true, laneNames: true },
+};
 
 /** A view change the window has applied and numbered, which the backend has not settled yet. */
 export interface Pending {
@@ -13,10 +17,12 @@ export interface Pending {
 /**
  * What the window shows. The latest change this window made that the backend has not settled (`seq > viewsDone`)
  * wins, so a click never waits for the backend, and a refusal advances `viewsDone` so the change stops winning.
- * Otherwise the backend's own: the presenter's view while following, the seat's own while exploring.
+ * Otherwise the backend's own: the presenter's view while following, the seat's own while exploring. The overlays are
+ * always the backend's: only their own command changes them, so a change waiting never carries or reverts them.
  */
 export function shownView(authoritative: View | undefined, pending: Pending | null): View {
-  return pending?.view ?? authoritative ?? EMPTY_VIEW;
+  const backend = authoritative ?? EMPTY_VIEW;
+  return pending ? { ...pending.view, overlays: backend.overlays } : backend;
 }
 
 const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
@@ -40,6 +46,7 @@ export function shareView(previous: View, next: View): View {
     active: next.active,
     viewers: sameViewers ? previous.viewers : viewers,
     layout: same(previous.layout, next.layout) ? previous.layout : next.layout,
+    overlays: same(previous.overlays, next.overlays) ? previous.overlays : next.overlays,
   };
 }
 

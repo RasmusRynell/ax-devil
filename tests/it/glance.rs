@@ -105,7 +105,7 @@ impl World {
         );
         let handle = state
             .sessions
-            .create(true, CursorOptions::default())
+            .create(true, CursorOptions::default(), Default::default())
             .unwrap();
         Self {
             router: app(state.clone()),

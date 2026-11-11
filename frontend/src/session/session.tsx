@@ -19,10 +19,11 @@ import type {
   SeatMode,
   SessionCommand,
   ContentRef,
+  Overlays,
   View,
 } from "../generated/api";
 import { Banner, EndedScreen } from "./Notice";
-import { SettingsNoticeContext } from "../settings";
+import { SettingsNoticeContext, useSettings } from "../settings";
 import type { SessionState } from "./sessionState";
 import { SessionStore } from "./store";
 import { canDo } from "./views";
@@ -132,6 +133,18 @@ export function useView<K extends keyof View>(
     [setView, key],
   );
   return [value, set];
+}
+
+/**
+ * The overlays the window draws: those of the view it shows (the Presenter View for an Owner seat and a following
+ * Guest, the seat's own for an exploring one), and the settings that start a Session while it has no view yet.
+ */
+export function useOverlays(): Overlays {
+  const shown = useSelect((state) => (state.seat ? state.view.overlays : null));
+  const { values } = useSettings();
+  const objectDetails = values["overlays.object_details"] === true;
+  const laneNames = values["overlays.lane_names"] === true;
+  return useMemo(() => shown ?? { objectDetails, laneNames }, [shown, objectDetails, laneNames]);
 }
 
 /** How many viewers the window shows. */

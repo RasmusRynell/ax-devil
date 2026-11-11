@@ -202,6 +202,7 @@ mod tests {
                     show: true,
                     share: true,
                 },
+                Default::default(),
             )
             .unwrap();
         let session = owner.session().to_string();

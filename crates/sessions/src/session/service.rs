@@ -4,8 +4,8 @@
 //! lock is released. A seat's lease doubles as the generation of its grace timer, as in the generic registry.
 
 use super::{
-    Completer, Completion, GrantId, Handle, JobId, Lease, Refusal, Runner, SeatId, SessionState,
-    Spawn, Ticket, Watcher,
+    Completer, Completion, GrantId, Handle, JobId, Lease, Overlays, Refusal, Runner, SeatId,
+    SessionState, Spawn, Ticket, View, Watcher,
     handle::{Entry, StreamLease},
     roster::{Identity, Presence, RosterEntry, build},
     runner::Read,
@@ -326,9 +326,15 @@ impl<C: Clone + Send + 'static> Service<C> {
     }
 
     /// Starts a session for a new window. Its first Owner seat is the returned handle; nothing is shared. With `expands`
-    /// its items' references read the environment. Refused with [`Refusal::Full`] at [`MAX_SESSIONS`], counted under the same lock that inserts, so
+    /// its items' references read the environment. The Presenter View starts with `overlays`.
+    /// Refused with [`Refusal::Full`] at [`MAX_SESSIONS`], counted under the same lock that inserts, so
     /// sessions in their grace period hold a place.
-    pub fn create(&self, expands: bool, cursors: CursorOptions) -> Result<Handle<C>, Refusal> {
+    pub fn create(
+        &self,
+        expands: bool,
+        cursors: CursorOptions,
+        overlays: Overlays,
+    ) -> Result<Handle<C>, Refusal> {
         let mut sessions = common::locked(&self.inner.sessions);
         if sessions.len() >= MAX_SESSIONS {
             return Err(Refusal::Full);
@@ -340,6 +346,10 @@ impl<C: Clone + Send + 'static> Service<C> {
             }
         };
         let mut state = SessionState::new(id, expands);
+        state.presenter = Arc::new(View {
+            overlays,
+            ..View::default()
+        });
         let seat = state.seat_owner();
         let state = Arc::new(state);
         let mut live = Live {

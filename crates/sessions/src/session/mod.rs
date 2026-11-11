@@ -34,7 +34,9 @@ pub use sources::poll as poll_sources;
 pub use state::{Doc, Seat, SeatKind, SessionState, Sharing};
 pub use streams::{TICKET_TTL, Ticket};
 pub use transition::{Effects, Fresh, Input, Outcome, transition};
-pub use views::{Sidebar, SidebarView, View, ViewLane, ViewerView, Viewport, restrict};
+pub use views::{
+    Overlay, Overlays, Sidebar, SidebarView, View, ViewLane, ViewerView, Viewport, restrict,
+};
 
 /// Names a seat in its session. Never reused within the session.
 pub use crate::ParticipantId as SeatId;

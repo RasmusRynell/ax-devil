@@ -5,7 +5,7 @@ import type { LanePolicyWire } from "./api_types.playback.lane";
 import type { HiddenTarget, NewItem } from "./api_types.workspace";
 import type { ContentRef } from "./sessions.session.authorize";
 import type { ControlCommand } from "./sessions.session.commands";
-import type { Viewport } from "./sessions.session.views";
+import type { Overlay, Viewport } from "./sessions.session.views";
 
 /**
  * A change to the Doc's content; the backend runs the intake on every item before it applies any.
@@ -119,7 +119,15 @@ viewer: number,
 /**
  * The part of the video it shows; absent for the whole frame.
  */
-viewport?: Viewport, } | { "type": "control", 
+viewport?: Viewport, } | { "type": "setOverlay", 
+/**
+ * The overlay.
+ */
+overlay: Overlay, 
+/**
+ * Whether it is on afterwards.
+ */
+shown: boolean, } | { "type": "control", 
 /**
  * The change.
  */

@@ -363,8 +363,11 @@ fn set_view(
     }
     match standing {
         Standing::Owner => {
-            let view = keep_viewports(
-                clamp_intents(view, &next.presenter, now_us),
+            let view = keep_overlays(
+                keep_viewports(
+                    clamp_intents(view, &next.presenter, now_us),
+                    &next.presenter,
+                ),
                 &next.presenter,
             );
             let published = restrict(&view, &next.doc);
@@ -376,8 +379,9 @@ fn set_view(
         }
         Standing::Following | Standing::Exploring => {
             let stored = next.seats.get(&seat).and_then(|seat| seat.view.as_ref());
+            let kept = stored.unwrap_or(&next.presenter);
             let own = Arc::new(restrict(
-                &keep_viewports(view, stored.unwrap_or(&next.presenter)),
+                &keep_overlays(keep_viewports(view, kept), kept),
                 &next.doc,
             ));
             if let Some(seat) = next.seats.get_mut(&seat) {
@@ -417,6 +421,12 @@ fn keep_viewports(mut view: View, stored: &View) -> View {
             .filter(|kept| kept.item == viewer.item)
             .and_then(|kept| kept.viewport);
     }
+    view
+}
+
+/// `view` with the overlays `stored` has: they change only through their own command.
+fn keep_overlays(mut view: View, stored: &View) -> View {
+    view.overlays = stored.overlays;
     view
 }
 

@@ -266,7 +266,7 @@ mod tests {
         let like_reference = by_reference.id;
         let session = state
             .sessions
-            .create(true, CursorOptions::default())
+            .create(true, CursorOptions::default(), Default::default())
             .unwrap();
         session
             .command(Command::Content(DocCommand::AddItems {

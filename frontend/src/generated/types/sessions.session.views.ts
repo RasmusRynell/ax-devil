@@ -4,6 +4,24 @@ import type { ClockIntent } from "./playback.authority";
 import type { Layout } from "./sessions.session.layout";
 
 /**
+ * One of the [`Overlays`] toggles.
+ */
+export type Overlay = "objectDetails" | "laneNames";
+
+/**
+ * The two overlays a window can turn off: object details (hover, chip and selection) and lane names.
+ */
+export type Overlays = { 
+/**
+ * Whether hovering or clicking an object shows its details.
+ */
+objectDetails: boolean, 
+/**
+ * Whether a lane's chip shows its name.
+ */
+laneNames: boolean, };
+
+/**
  * What the sidebar shows.
  */
 export type Sidebar = { 
@@ -40,7 +58,12 @@ viewers: { [key in number]?: ViewerView },
 /**
  * Where the viewers are; absent while there are none.
  */
-layout?: Layout, };
+layout?: Layout, 
+/**
+ * The overlays every viewer of the view draws. Only an overlay command sets them: a view sent whole keeps the
+ * ones stored, so a stale copy never reverts another seat's toggle.
+ */
+overlays: Overlays, };
 
 /**
  * What one open viewer shows.

@@ -26,7 +26,14 @@ import { Status } from "../playback/VideoViewer";
 import { useSharedViewport } from "../playback/sharedViewport";
 import { FIT, ZOOM_STEP } from "../playback/viewport";
 import type { Connect } from "../playback/wire";
-import { useAllowed, useCan, useCommand, useFollowing, useStream } from "../session/session";
+import {
+  useAllowed,
+  useCan,
+  useCommand,
+  useFollowing,
+  useOverlays,
+  useStream,
+} from "../session/session";
 import { useSettings } from "../settings";
 import { MediaToolsPanel } from "../tools/MediaToolsPanel";
 import { jump } from "../tools/pageStack";
@@ -51,8 +58,8 @@ function Live({
 }) {
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
   useReportStatus(viewer, item, view);
-  const { values, shortcuts } = useSettings();
-  const objectDetails = values["overlays.object_details"] === true;
+  const { shortcuts } = useSettings();
+  const { objectDetails, laneNames } = useOverlays();
   const allowed = useAllowed();
   const following = useFollowing();
   const pane = useRef<HTMLDivElement>(null);
@@ -151,6 +158,7 @@ function Live({
                 viewport={viewport}
                 onViewport={onViewport}
                 objectDetails={objectDetails}
+                laneNames={laneNames}
                 onHover={(picked) => objects.current?.hover(picked)}
                 onSelect={(selection) =>
                   selection

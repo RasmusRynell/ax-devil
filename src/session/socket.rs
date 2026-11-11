@@ -20,7 +20,7 @@ use axum::{
 use futures_util::{StreamExt, stream::SplitStream};
 use sessions::{
     JoinLink, Secret, SessionId,
-    session::{Handle, Refusal},
+    session::{Handle, Overlays, Refusal},
 };
 use std::net::SocketAddr;
 use tokio::{sync::mpsc, time::timeout};
@@ -73,6 +73,20 @@ async fn run(state: &AppState, mut slot: Slot, socket: WebSocket) {
         handle.leave();
     }
     finish(&mut sink, exit).await;
+}
+
+/// The overlays a new Session's Presenter View starts with: the Owner's settings, each on while the row has no boolean.
+fn starting_overlays(settings: &settings::State) -> Overlays {
+    let on = |key| {
+        settings
+            .resolved(key)
+            .and_then(|value| value.as_bool())
+            .unwrap_or(true)
+    };
+    Overlays {
+        object_details: on("overlays.object_details"),
+        lane_names: on("overlays.lane_names"),
+    }
 }
 
 /// Whether the hello's credential makes the connection an Owner, who is told when settings change. A resumed socket
@@ -140,7 +154,11 @@ async fn hello(
             let principal = member(state, server_password.as_deref())?;
             // Only Full access lets what the Owner types read this machine's environment.
             let handle = sessions
-                .create(principal.full_access(), cursors)
+                .create(
+                    principal.full_access(),
+                    cursors,
+                    starting_overlays(&state.settings.state()),
+                )
                 .map_err(|error| refuse(error, ENDED))?;
             if let Some(rx) = sessions.subscribe(handle.session()) {
                 state.files.attach(handle.session(), rx);

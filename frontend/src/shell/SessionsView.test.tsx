@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { AccessContext } from "../access";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
+import { EMPTY_VIEW } from "../session/views";
 import { SessionsView } from "./SessionsView";
 import { ShareControl } from "./ShareControl";
 
@@ -94,7 +95,7 @@ describe("sessions view", () => {
         can: { view: true, content: true, host: true, control: true },
         mode: "following",
         sharing: { access: "explore", linkProblem: "cannot listen on 0.0.0.0:7340: in use" },
-        view: { sidebar: { view: "workspace", open: true }, viewers: {} },
+        view: EMPTY_VIEW,
         viewsDone: 0,
       }),
     );

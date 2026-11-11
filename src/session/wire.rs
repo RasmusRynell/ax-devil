@@ -63,7 +63,7 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
             | api_types::DocCommand::Bookmark { .. } => Scope::Content,
         }),
         SessionCommand::Follow => Some(Scope::Follow),
-        SessionCommand::SetViewport { .. } => Some(Scope::View),
+        SessionCommand::SetViewport { .. } | SessionCommand::SetOverlay { .. } => Some(Scope::View),
         SessionCommand::Control { .. } => Some(Scope::Control),
         SessionCommand::RequestTicket { .. } => None,
         // New replaces the workspace, which only a seat with the files grant may.
@@ -144,6 +144,9 @@ pub(super) fn command(
         SessionCommand::Follow => Request::Session(Command::Follow, None),
         SessionCommand::SetViewport { viewer, viewport } => {
             Request::Session(Command::SetViewport { viewer, viewport }, None)
+        }
+        SessionCommand::SetOverlay { overlay, shown } => {
+            Request::Session(Command::SetOverlay { overlay, shown }, None)
         }
         SessionCommand::Control { control } => Request::Session(Command::Control(control), None),
         SessionCommand::RequestTicket { key } => {
