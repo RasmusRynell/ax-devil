@@ -19,6 +19,7 @@ const FRONTEND_LAYERS = {
     "api",
     "errors",
     "settings",
+    "secret",
     "deviceSettings",
     "fakeSettings",
     "fakeFullscreen",

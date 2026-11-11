@@ -10,7 +10,8 @@ import type {
   NewLiveWire,
 } from "../generated/api";
 import { SETTINGS, type SettingKey } from "../generated/settings";
-import { isReference, textOf } from "./SettingField";
+import { isReference } from "../secret";
+import { textOf } from "./SettingField";
 
 /** The overlay modes, in the order the `camera.overlay` setting lists them. */
 export type OverlayMode = "none" | "rtsp" | "mqtt" | "datahub";

@@ -42,7 +42,7 @@ function backend(
       current = {
         ...current,
         revision: current.revision + 1,
-        values: { ...current.values, ...patch.set },
+        values: { ...current.values, ...(patch.set as SettingsState["values"]) },
       };
     }
     return { ok: true, json: async () => current };

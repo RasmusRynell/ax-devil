@@ -117,5 +117,4 @@ Each row is removed by the change that makes it true; this section is deleted wi
 
 | Model | Today |
 |-------|-------|
-| Secrets are write-only | A masked value is sent to the client; a records row sends its masked passwords back on save |
 | A remote Owner has a path picker | Folder and file dialogs are refused in remote windows with no replacement |

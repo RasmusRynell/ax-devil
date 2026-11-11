@@ -35,7 +35,7 @@ pub struct Setting {
     pub live: bool,
     /// Whether the value may be a `$NAME` reference to an environment variable.
     pub env: bool,
-    /// Whether the value is a credential: the dialog masks a literal.
+    /// Whether the value is a credential: write-only, a client learns whether it is set, never the literal.
     pub secret: bool,
     /// Whether only a caller with Full access may change it: it reaches outside ax-devil.
     pub full_access: bool,

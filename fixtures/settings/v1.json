@@ -4,6 +4,7 @@
     "ui.theme": "dark",
     "ui.quick_setup_done": true,
     "playback.video_cache": 512,
+    "scan.logins": [{ "user": "root", "password": "pw" }],
     "ui.from_a_later_release": 3
   },
   "shortcuts": {

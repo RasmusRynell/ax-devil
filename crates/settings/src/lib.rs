@@ -25,7 +25,6 @@ pub mod window;
 pub use env::reference;
 pub use kind::{Kind, NoFilter, StickyValue, SyncValue};
 pub use migrate::VERSION;
-pub use secret::MASK;
 use serde_json::{Map, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -65,7 +64,7 @@ type Lookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 /// The file stores only what differs from the defaults.
 #[derive(Clone, Debug, Default)]
 pub struct Patch {
-    /// The settings to set by dotted key, references unresolved. A masked password in a record keeps its stored value.
+    /// The settings to set by dotted key, references unresolved. A list of records is the whole list; a record with an `id` and no password keeps the stored password.
     pub set: BTreeMap<String, Value>,
     /// The settings to put back to their default.
     pub reset: BTreeSet<String>,
@@ -127,9 +126,10 @@ impl State {
                 stored.remove(setting.key);
                 continue;
             }
-            let value = stored
-                .remove(setting.key)
-                .unwrap_or_else(|| setting.kind.default_value());
+            let value = stored.remove(setting.key).map_or_else(
+                || setting.kind.default_value(),
+                |value| setting.kind.with_ids(value),
+            );
             // A reference whose variable is unset or wrong here still loads, as it does in Python, which checks it
             // only when it is saved: `patch` and `update` refuse it, and `resolved` falls back to the default.
             if let Err(reason) = setting.check(&value, &**lookup)
@@ -221,9 +221,9 @@ impl State {
             .filter(|setting| setting.scope != Scope::Device)
     }
 
-    /// Every setting by dotted key, such as `camera.host`, with the default when the file has none, as shown
-    /// to a person: a `$NAME` reference as written, a literal secret masked. See [`resolved`](Self::resolved) for
-    /// the value as it is used.
+    /// Every setting by dotted key, such as `camera.host`, with the default when the file has none, as a
+    /// client reads it: a `$NAME` reference as written, a secret as its state, which never holds the literal. See
+    /// [`resolved`](Self::resolved) for the value as it is used.
     pub fn values(&self) -> BTreeMap<String, Value> {
         self.rows()
             .filter_map(|setting| {
@@ -335,7 +335,7 @@ impl Settings {
     }
 
     /// Applies `patch` to the current state: each key it names changes, every other key keeps its value, so the last
-    /// write to a key wins. A masked password in a record keeps its stored value. Validates the result, writes the
+    /// write to a key wins. Validates the result, writes the
     /// file atomically with only what differs from the defaults (and keeps what this version does not know), then
     /// swaps the state; on any failure nothing changes.
     pub fn patch(&self, patch: &Patch) -> Result<Arc<State>, Error> {
@@ -377,7 +377,7 @@ impl Settings {
                 None => continue,
             };
             let kept = setting
-                .unmasked(&value, current.values.get(setting.key))
+                .applied(&value, current.values.get(setting.key))
                 .map_err(|reason| invalid(setting.key, &reason))?;
             setting
                 .check(&kept, &*current.lookup)

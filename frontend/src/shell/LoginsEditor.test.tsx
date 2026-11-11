@@ -1,9 +1,16 @@
 import { useState } from "react";
-import { afterEach, describe, expect, it } from "vite-plus/test";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { type Login, LoginsEditor } from "./LoginsEditor";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { AccessContext } from "../access";
+import { DEFAULT_SETTINGS } from "../fakeSettings";
+import { SettingsProvider, useSettings } from "../settings";
+import type { Login } from "../secret";
+import { LoginsEditor } from "./LoginsEditor";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe("logins editor", () => {
   it("keeps the password typed while the save of the username is still in flight", async () => {
@@ -31,14 +38,14 @@ describe("logins editor", () => {
     expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("secret");
   });
 
-  it("keeps an edit made during a save whose answer masks the password", async () => {
+  it("keeps an edit made during a save whose answer does not tell the password", async () => {
     let acknowledge = () => {};
     function Host() {
       const [logins, setLogins] = useState<readonly Login[]>([]);
       const onSave = (next: Login[]) =>
         new Promise<string | null>((resolve) => {
           acknowledge = () => {
-            setLogins(next.map((login) => ({ ...login, password: "********" })));
+            setLogins(next.map((login) => ({ ...login, password: { state: "literal" as const } })));
             resolve(null);
           };
         });
@@ -215,5 +222,40 @@ describe("logins editor", () => {
       />,
     );
     expect((screen.getByLabelText("Username") as HTMLInputElement).selectionStart).toBe(0);
+  });
+
+  it("saves a login whose user changed without a password, so the saved one is kept", async () => {
+    const saved = { ...DEFAULT_SETTINGS, revision: 1 };
+    saved.values = {
+      ...saved.values,
+      "scan.logins": [{ id: "a1", user: "root", password: { state: "literal" } }],
+    };
+    const bodies: unknown[] = [];
+    const fetched = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "PATCH") bodies.push(JSON.parse(init.body as string));
+      return { ok: true, json: async () => (url === "/api/info" ? { owner: true } : saved) };
+    });
+    vi.stubGlobal("fetch", fetched);
+    function Logins() {
+      const { values, set } = useSettings();
+      return (
+        <LoginsEditor
+          logins={values["scan.logins"] as never}
+          onSave={(next) => set("scan.logins", next).then((refusal) => refusal?.reason ?? null)}
+        />
+      );
+    }
+    render(
+      <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
+        <SettingsProvider onInfo={() => {}}>
+          <Logins />
+        </SettingsProvider>
+      </AccessContext.Provider>,
+    );
+    const user = await screen.findByLabelText("Username");
+    fireEvent.change(user, { target: { value: "ops" } });
+    fireEvent.keyDown(user, { key: "Enter" });
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toEqual({ set: { "scan.logins": [{ id: "a1", user: "ops" }] } });
   });
 });

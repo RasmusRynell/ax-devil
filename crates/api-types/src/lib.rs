@@ -51,6 +51,48 @@ pub struct AppInfo {
     pub full_access: bool,
 }
 
+/// What a client learns of a secret: whether it is set and, for a `$NAME` reference, its name. Never the literal, its
+/// length or a mask. A client changes a secret by naming it in a [`SettingsPatch`].
+#[derive(Serialize, TS)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum SecretState {
+    /// Nothing is set.
+    Unset,
+    /// A literal is set.
+    Literal,
+    /// The secret is read from the environment variable `name`.
+    Reference {
+        /// The variable's name, without the `$`.
+        name: String,
+    },
+}
+
+/// A login of the `scan.logins` setting as a client reads it.
+#[derive(Serialize, TS)]
+pub struct LoginView {
+    /// Names the login for as long as it is saved; a save refers to it by this.
+    pub id: String,
+    /// The user name, as written.
+    pub user: String,
+    /// The password.
+    pub password: SecretState,
+}
+
+/// A login of the `scan.logins` setting as a client sends it, in the list that is saved whole and in order. With an
+/// `id` it is that saved login, and a missing `password` keeps its saved one; without an `id` it is a new login, which
+/// has a `password`. An unknown `id` is refused, and a saved login left out is removed.
+#[derive(Deserialize, TS)]
+pub struct LoginEdit {
+    /// The saved login this is.
+    #[ts(optional)]
+    pub id: Option<String>,
+    /// The user name, as written.
+    pub user: String,
+    /// The new password, as written.
+    #[ts(optional)]
+    pub password: Option<String>,
+}
+
 /// Every setting and shortcut as the app uses them: the body of `GET /api/settings` and the reply to a save. The keys
 /// and command ids are declared once, in the settings crate, and exported to `generated/settings.ts`.
 #[derive(Serialize, TS)]
@@ -59,10 +101,10 @@ pub struct SettingsState {
     /// notice carries the same number.
     #[ts(type = "number")]
     pub revision: u64,
-    /// Every setting by dotted key, such as `"camera.host"`, with the default when unset, a `$NAME` reference as written
-    /// and a literal secret masked.
+    /// Every setting by dotted key, such as `"camera.host"`, with the default when unset and a `$NAME` reference as
+    /// written. A secret, and the `password` of a login, is a [`SecretState`]: never the literal.
     #[ts(
-        type = "Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<\"score\" | \"confidence\", { min: number | null; max: number | null }>; expression: string }>"
+        type = "Record<SettingKey, string | boolean | number | SecretState | Array<LoginView> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<\"score\" | \"confidence\", { min: number | null; max: number | null }>; expression: string }>"
     )]
     pub values: BTreeMap<String, serde_json::Value>,
     /// What each non-secret setting among `values` that holds a `$NAME` reference gives as it is used (a number for a
@@ -95,8 +137,7 @@ pub struct SettingsFile {
 }
 
 /// The body of `PATCH /api/settings`: the keys to set and to reset. A key that is not named is not touched, so the
-/// last write to a key wins. A masked password in a record of logins keeps the stored password; a text secret is
-/// changed only by naming it.
+/// last write to a key wins. A secret is changed only by naming it; the logins are one list of [`LoginEdit`].
 #[derive(Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsPatch {
@@ -104,7 +145,7 @@ pub struct SettingsPatch {
     #[serde(default)]
     #[ts(
         optional,
-        type = "Partial<Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<\"score\" | \"confidence\", { min: number | null; max: number | null }>; expression: string }>>"
+        type = "Partial<Record<SettingKey, string | boolean | number | Array<LoginEdit> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<\"score\" | \"confidence\", { min: number | null; max: number | null }>; expression: string }>>"
     )]
     pub set: Option<BTreeMap<String, serde_json::Value>>,
     /// The settings to put back to their default.
@@ -136,6 +177,9 @@ pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<SettingsState>();
     types.visit::<SettingsFile>();
     types.visit::<SettingsPatch>();
+    types.visit::<SecretState>();
+    types.visit::<LoginView>();
+    types.visit::<LoginEdit>();
     types.visit::<ApiError>();
     bookmarks::visit_api_types(types);
     catalogs::visit_api_types(types);

@@ -11,8 +11,9 @@ import {
 import { useAccess } from "./access";
 import { apiFetch } from "./api";
 import { deviceStore, useDeviceValues, type DeviceValue } from "./deviceSettings";
-import type { ApiError, AppInfo, SettingsPatch, SettingsState } from "./generated/api";
+import type { ApiError, AppInfo, LoginEdit, SettingsPatch, SettingsState } from "./generated/api";
 import { COMMANDS, SETTINGS, type CommandId, type SettingKey } from "./generated/settings";
+import { type Login, secretStateOf } from "./secret";
 
 /**
  * Every way to store settings resolves to the refusal (its `location` is a setting key or `shortcuts.<id>`, empty when
@@ -22,10 +23,10 @@ import { COMMANDS, SETTINGS, type CommandId, type SettingKey } from "./generated
 export interface SettingsApi extends SettingsState {
   /** Stores one patch: several settings and shortcuts at once, as one write that is refused or taken whole. */
   apply: (patch: SettingsPatch) => Promise<ApiError | null>;
-  /** Sets one setting. */
+  /** Sets one setting; logins carry the passwords typed since, which the backend does not tell. */
   set: <K extends SettingKey>(
     key: K,
-    value: SettingsState["values"][K],
+    value: SettingsState["values"][K] | Login[],
   ) => Promise<ApiError | null>;
   /** Puts one setting back to its default. */
   reset: (key: SettingKey) => Promise<ApiError | null>;
@@ -100,14 +101,24 @@ type Row = (typeof SETTINGS)[number];
 type Values = SettingsState["values"];
 type Shortcuts = SettingsState["shortcuts"];
 
-/** The value of *row* when the backend has none: a list of records is built from its rows of field values. */
+/**
+ * The value of *row* when the backend has none: a list of records is built from its rows of field values, with the
+ * ids the backend gives the defaults, and a secret is its state.
+ */
 function defaultOf(row: Row) {
   const kind = row.kind;
   if (kind.type === "records")
-    return kind.default.map((values) =>
-      Object.fromEntries(kind.fields.map((field, at) => [field, values[at]])),
-    );
-  return "default" in kind ? kind.default : kind.type === "auto_or_whole" ? "auto" : "";
+    return kind.default.map((values, index) => ({
+      id: `default-${index}`,
+      ...Object.fromEntries(
+        kind.fields.map((field, at) => [
+          field,
+          field === "password" ? secretStateOf(values[at] ?? "", row.env) : values[at],
+        ]),
+      ),
+    }));
+  const value = "default" in kind ? kind.default : kind.type === "auto_or_whole" ? "auto" : "";
+  return row.secret ? secretStateOf(typeof value === "string" ? value : "", row.env) : value;
 }
 
 /** Where a page that holds only a join link once kept its own Personal settings; it keeps none now. */
@@ -147,6 +158,14 @@ export function useAppearance(theme: string, textSize: string) {
   useLayoutEffect(() => applyAppearance(theme, textSize), [theme, textSize]);
 }
 
+/** The logins as the backend takes them: a login keeps its saved password unless a new one was typed. */
+export const loginsOnWire = (logins: readonly Login[]): LoginEdit[] =>
+  logins.map(({ id, user, password }) => ({
+    ...(id !== undefined && { id }),
+    user,
+    ...(typeof password === "string" && { password }),
+  }));
+
 /** Splits *patch* into what the device stores (its Device keys) and what the backend stores. */
 function splitPatch(patch: SettingsPatch) {
   const entries = Object.entries(patch.set ?? {});
@@ -154,7 +173,11 @@ function splitPatch(patch: SettingsPatch) {
     set: entries.filter(([key]) => DEVICE_KEYS.has(key)),
     reset: (patch.reset ?? []).filter((key) => DEVICE_KEYS.has(key)),
   };
-  const set = Object.fromEntries(entries.filter(([key]) => !DEVICE_KEYS.has(key)));
+  const set = Object.fromEntries(
+    entries
+      .filter(([key]) => !DEVICE_KEYS.has(key))
+      .map(([key, value]) => [key, Array.isArray(value) ? loginsOnWire(value as Login[]) : value]),
+  );
   const reset = (patch.reset ?? []).filter((key) => !DEVICE_KEYS.has(key));
   // A part left out is not sent.
   const server = {

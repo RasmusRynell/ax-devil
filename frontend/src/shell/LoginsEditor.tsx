@@ -1,22 +1,24 @@
 import { useEffect, useRef, useState } from "react";
-import { SETTINGS } from "../generated/settings";
+import type { SecretState } from "../generated/api";
 import { Button } from "../kit/Button";
 import { FIELD } from "../kit/look";
-import { literalSecret } from "./SettingField";
+import { SET_PASSWORD } from "../live/expansions";
+import { type Login, secretStateOf } from "../secret";
+import { textOf } from "./SettingField";
 import { Refusal } from "../kit/Refusal";
 
-/** A login of the `scan.logins` setting: a user and a password, each as written, so `$NAME` stays a reference. */
-export type Login = Record<string, string>;
-
-const ROW = SETTINGS.find((row) => row.key === "scan.logins");
-
-const text = (login: Login | undefined, field: "user" | "password") => login?.[field] ?? "";
+const stateOf = (login: Login): SecretState =>
+  typeof login.password === "string" ? secretStateOf(login.password, true) : login.password;
 
 /** The logins that are kept: those with a user, the user trimmed. */
 const kept = (logins: readonly Login[]): Login[] =>
   logins
-    .filter((login) => text(login, "user").trim() !== "")
-    .map((login) => ({ user: text(login, "user").trim(), password: text(login, "password") }));
+    .filter((login) => login.user.trim() !== "")
+    .map(({ id, user, password }) => ({
+      ...(id !== undefined && { id }),
+      user: user.trim(),
+      password,
+    }));
 
 /** Whether two lists keep the same logins, whatever order the fields of a login are written in. */
 const same = (a: readonly Login[], b: readonly Login[]) =>
@@ -25,15 +27,16 @@ const same = (a: readonly Login[], b: readonly Login[]) =>
 /** The rows as `held` says the backend has them, with the rows that are not kept (no user yet) where they are. */
 const settled = (rows: readonly Login[], held: readonly Login[]): Login[] => {
   let next = 0;
-  return rows.map((row) => (text(row, "user").trim() === "" ? row : (held[next++] ?? row)));
+  return rows.map((row) => (row.user.trim() === "" ? row : (held[next++] ?? row)));
 };
 
-const literal = (password: string) => ROW !== undefined && literalSecret(ROW, password);
-
-/** The logins without their literal passwords, which the backend answers with a mask: a save and its answer share it. */
+/** The logins without their literal passwords, which the backend never tells: a save and its answer share it. */
 const shape = (logins: readonly Login[]) =>
   JSON.stringify(
-    kept(logins).map(({ user, password }) => [user, literal(password) ? null : password]),
+    kept(logins).map((login) => {
+      const state = stateOf(login);
+      return [login.user, state.state === "literal" ? null : textOf(state)];
+    }),
   );
 
 /** A long value is shown from its start, not its end. */
@@ -56,7 +59,8 @@ type Props = { logins: readonly Login[] } & (
  * The logins the scan tries, in order, a user and a password side by side (one over the other where there is no room); five rows show, more scroll. With `onSave`
  * a finished edit (Enter, or leaving the field) or a removal is saved at once, and a refused save puts the logins
  * back as they were, unless the user has edited on since; with `onChange` every edit is handed on and nothing is
- * saved here. A row without a user is not kept. A literal password shows masked, a `$NAME` reference as it is. Why a
+ * saved here. A row without a user is not kept. A saved literal password shows as dots and stays unless one is typed,
+ * a `$NAME` reference as it is. Why a
  * save was refused shows under the list.
  */
 export function LoginsEditor({ logins, onSave, onChange }: Props) {
@@ -119,14 +123,15 @@ export function LoginsEditor({ logins, onSave, onChange }: Props) {
     <div className="flex flex-col gap-s">
       <div className="flex max-h-logins flex-col gap-s overflow-y-auto">
         {draft.map((login, at) => {
-          const masked = literal(text(login, "password"));
+          const state = stateOf(login);
+          const saved = typeof login.password !== "string" && state.state === "literal";
           return (
             <div key={at} className="flex shrink-0 flex-wrap items-center gap-s">
               <input
                 ref={atStart}
                 aria-label="Username"
                 placeholder="Username"
-                value={text(login, "user")}
+                value={login.user}
                 autoFocus={added === at}
                 autoComplete="off"
                 spellCheck={false}
@@ -138,13 +143,12 @@ export function LoginsEditor({ logins, onSave, onChange }: Props) {
               <input
                 ref={atStart}
                 aria-label="Password"
-                placeholder="Password"
-                type={masked ? "password" : "text"}
-                value={text(login, "password")}
+                type={state.state === "literal" ? "password" : "text"}
+                value={typeof login.password === "string" ? login.password : textOf(state)}
+                // A saved literal is not known here: the dots say it is set, and typing replaces it.
+                placeholder={saved ? SET_PASSWORD : "Password"}
                 autoComplete="off"
                 spellCheck={false}
-                // A masked password stands for the saved one; typing replaces it.
-                onFocus={(event) => masked && event.currentTarget.select()}
                 onChange={(event) => edit(at, "password", event.target.value)}
                 onBlur={() => commit(draft)}
                 onKeyDown={(event) => event.key === "Enter" && commit(draft)}

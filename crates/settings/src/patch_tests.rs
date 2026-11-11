@@ -25,10 +25,11 @@ fn without_full_access_a_save_cannot_change_a_full_access_row_or_add_a_reference
         refuse(&edit).is_ok(),
         "the stored values, references included"
     );
-    let masked = json!([login("a", "$P"), login("$U", MASK)]);
+    let stored = settings.state().values["scan.logins"].clone();
+    let keep = |at: usize, user: &str| json!({"id": stored[at]["id"], "user": user});
     assert!(
-        refuse(&with("scan.logins", masked)).is_ok(),
-        "reordered, one password masked"
+        refuse(&with("scan.logins", json!([keep(1, "a"), keep(0, "$U")]))).is_ok(),
+        "reordered, passwords kept by id"
     );
 
     for (key, value) in [
@@ -36,8 +37,8 @@ fn without_full_access_a_save_cannot_change_a_full_access_row_or_add_a_reference
         ("scan.range", json!("$RANGE")),
         ("camera.overlay", json!("$THEME")),
         ("scan.logins", json!([login("$U", "$NEW")])),
-        ("scan.logins", json!([login("$NEW", MASK)])),
-        ("scan.logins", json!([login("$P", MASK)])),
+        ("scan.logins", json!([keep(0, "$NEW")])),
+        ("scan.logins", json!([keep(1, "$P")])),
     ] {
         let refused = refuse(&with(key, value)).unwrap_err();
         assert!(
