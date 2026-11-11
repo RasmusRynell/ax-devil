@@ -17,6 +17,7 @@ module.exports.run = async ({ window }) => {
     { x: area.x + area.width * 2, y: area.y, width: 900, height: 600 },
     { x: area.x + 100, y: area.y + 50, width: area.width * 2, height: area.height * 2 },
     { x: area.x + area.width - 300, y: area.y + 50, width: 800, height: 600 },
+    { x: area.x + 100, y: area.y + area.height - 45, width: 800, height: 600 },
   ]) {
     const restored = await openWindow(new URL(window.webContents.getURL()).origin, {
       bounds: windowBounds(saved, [area]),
@@ -25,6 +26,7 @@ module.exports.run = async ({ window }) => {
       },
     });
     try {
+      restored.webContents.setZoomFactor(2);
       const driver = page(restored);
       await driver.wait("document.querySelector('[aria-label=Close]')");
       for (const label of ["Minimize", "Maximize", "Close"]) {

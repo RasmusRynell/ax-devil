@@ -58,10 +58,8 @@ function windowBounds(saved, areas) {
     return defaults;
   const bounds = { x: saved.x, y: saved.y, width: saved.width, height: saved.height };
   const holding = areas.find((area) => titleBarInside(bounds, area));
-  if (holding)
-    return bounds.width <= holding.width && bounds.height <= holding.height
-      ? bounds
-      : clampInto(bounds, holding);
+  // Keep the whole restored window in its work area, so controls also fit at larger text sizes and zoom.
+  if (holding) return clampInto(bounds, holding);
   const best = areas.reduce(
     (most, area) => (overlap(bounds, area) > overlap(bounds, most) ? area : most),
     areas[0],
