@@ -4,7 +4,7 @@ import { reasonOf } from "../client/errors";
 import { SETTINGS } from "../generated/settings";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
-import { LABELLED, Select } from "../kit/Fields";
+import { LABELLED } from "../kit/Fields";
 import { Icon } from "../kit/Icon";
 import { SectionCaption } from "../kit/SectionCaption";
 import { Tabs } from "../kit/Tabs";
@@ -64,27 +64,18 @@ export function SettingsDialog({
   return (
     <>
       <Dialog title="Settings" onOk={() => void ok()} onCancel={onClose} busy={saving}>
-        {/* The pages wrap onto further rows when a narrow window or a large text size cannot hold them in one. */}
-        <div className="[&>[role=tablist]]:flex-wrap [@media(max-height:20rem)]:hidden">
-          <Tabs
-            label="Settings pages"
-            tabs={pages}
-            value={page}
-            onChange={setPage}
-            panelId={panel}
-          />
-        </div>
-        <div className="hidden [@media(max-height:20rem)]:block">
-          <Select
-            label="Page"
-            value={page}
-            options={pages.map((name) => [name, name])}
-            onChange={setPage}
-          />
-        </div>
+        <Tabs
+          label="Settings pages"
+          tabs={pages}
+          value={page}
+          onChange={setPage}
+          panelId={panel}
+          scrollable
+        />
         <div
           id={panel}
           role="tabpanel"
+          aria-label={page}
           // Positioned, so the hidden radios of a toggle further down scroll with it instead of stretching the dialog.
           className="relative flex min-h-0 flex-col gap-l overflow-y-auto"
         >

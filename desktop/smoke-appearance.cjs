@@ -5,39 +5,52 @@ const path = require("node:path");
 const fit = require("./fit.cjs");
 const { SCREENSHOTS, page, setView, frames } = require("./smoke-kit.cjs");
 
+const {
+  clickVisible,
+  openSettings,
+  settingsPage,
+  focusedSettingsPage,
+} = require("./settings-smoke-kit.cjs");
+
 module.exports.run = async ({ window }) => {
   const { js, wait } = page(window);
   const click = (selector, text) =>
-    js(
-      `[...document.querySelectorAll(${JSON.stringify(selector)})].find(b => b.textContent === ${JSON.stringify(text)}).click()`,
+    clickVisible(
+      window,
+      `[...document.querySelectorAll(${JSON.stringify(selector)})].find(b => b.textContent === ${JSON.stringify(text)})`,
     );
-  for (const theme of ["light", "dark"]) {
-    for (const zoom of [1, 2]) {
-      await setView(window, [1000, 800], 1);
-      await click("[data-top]", "Help");
-      await wait("document.querySelector('[role=menu]')");
-      await click("[role=menuitem]", "Quick Setup");
-      await wait("document.querySelector('dialog[open]')");
-      await click(
-        '[role=radiogroup][aria-label="Theme"] label',
-        theme === "light" ? "Light" : "Dark",
-      );
-      await click('[role=radiogroup][aria-label="Text size"] label', "AaLarger");
-      await wait("document.documentElement.dataset.textSize === 'larger'");
-      await setView(window, [640, 480], zoom);
-      await frames({ js });
-      await fs.writeFile(
-        path.join(SCREENSHOTS, `appearance-${theme}-${zoom}.png`),
-        (await window.webContents.capturePage()).toPNG(),
-      );
-      assert.deepEqual(
-        await js(`(${fit.dialog.toString()})()`),
-        [],
-        `Quick Setup, ${theme}, ${zoom * 100}%`,
-      );
-      for (const group of ["Theme", "Text size"]) {
-        assert.equal(
-          await js(`(() => {
+  for (const size of ["system", "larger"]) {
+    const suffix = size === "system" ? "-normal" : "";
+    for (const theme of ["light", "dark"]) {
+      for (const zoom of [1, 2]) {
+        await setView(window, [1000, 800], 1);
+        await click("[data-top]", "Help");
+        await wait("document.querySelector('[role=menu]')");
+        await click("[role=menuitem]", "Quick Setup");
+        await wait("document.querySelector('dialog[open]')");
+        await click(
+          '[role=radiogroup][aria-label="Theme"] label',
+          theme === "light" ? "Light" : "Dark",
+        );
+        await clickVisible(
+          window,
+          `document.querySelector('input[value="${size}"]').closest("label")`,
+        );
+        await wait(`document.documentElement.dataset.textSize === "${size}"`);
+        await setView(window, [640, 480], zoom);
+        await frames({ js });
+        await fs.writeFile(
+          path.join(SCREENSHOTS, `appearance-${theme}-${zoom}${suffix}.png`),
+          (await window.webContents.capturePage()).toPNG(),
+        );
+        assert.deepEqual(
+          await js(`(${fit.dialog.toString()})()`),
+          [],
+          `Quick Setup, ${theme}, ${zoom * 100}%`,
+        );
+        for (const group of ["Theme", "Text size"]) {
+          assert.equal(
+            await js(`(() => {
           const row = document.querySelector('[role=radiogroup][aria-label="${group}"]');
           return [...row.querySelectorAll('label')].every(label => {
             label.scrollIntoView({ block: 'nearest' });
@@ -46,40 +59,40 @@ module.exports.run = async ({ window }) => {
             return preview.width > 0 && preview.height > 0 && box.top >= 0 && box.bottom <= innerHeight;
           });
         })()`),
-          true,
-          `${group} previews remain reachable`,
-        );
+            true,
+            `${group} previews remain reachable`,
+          );
+        }
+        await click("dialog button", "Done");
+        await wait("!document.querySelector('dialog')");
+        await openSettings(window);
+        await wait("document.querySelector('dialog[open]')");
+        await settingsPage(window, "Advanced");
+        await setView(window, [900, 700], 1);
+        await focusedSettingsPage(window, "Advanced");
+        await setView(window, [640, 480], zoom);
+        await focusedSettingsPage(window, "Advanced");
+        for (const tab of await js(
+          "[...document.querySelectorAll('[role=tab]')].map(b => b.textContent)",
+        )) {
+          await settingsPage(window, tab);
+          await frames({ js });
+          await fs.writeFile(
+            path.join(
+              SCREENSHOTS,
+              `appearance-settings-${tab.replaceAll(" ", "-")}-${theme}-${zoom}${suffix}.png`,
+            ),
+            (await window.webContents.capturePage()).toPNG(),
+          );
+          assert.deepEqual(
+            await js(`(${fit.dialog.toString()})()`),
+            [],
+            `Settings ${tab}, ${theme}, ${zoom * 100}%`,
+          );
+        }
+        await click("dialog button", "Cancel");
+        await wait("!document.querySelector('dialog')");
       }
-      await click("dialog button", "Done");
-      await wait("!document.querySelector('dialog')");
-      await js("document.querySelector('[aria-label=Settings]').click()");
-      await wait("document.querySelector('dialog[open]')");
-      for (const tab of await js(
-        "[...document.querySelectorAll('[role=tab]')].map(b => b.textContent)",
-      )) {
-        if (zoom === 2) {
-          await js(`(() => {
-            const select = [...document.querySelectorAll('select')].find(e => e.closest('label').textContent.startsWith('Page'));
-            Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, ${JSON.stringify(tab)});
-            select.dispatchEvent(new Event('change', { bubbles: true }));
-          })()`);
-        } else await click("[role=tab]", tab);
-        await frames({ js });
-        await fs.writeFile(
-          path.join(
-            SCREENSHOTS,
-            `appearance-settings-${tab.replaceAll(" ", "-")}-${theme}-${zoom}.png`,
-          ),
-          (await window.webContents.capturePage()).toPNG(),
-        );
-        assert.deepEqual(
-          await js(`(${fit.dialog.toString()})()`),
-          [],
-          `Settings ${tab}, ${theme}, ${zoom * 100}%`,
-        );
-      }
-      await click("dialog button", "Cancel");
-      await wait("!document.querySelector('dialog')");
     }
   }
   await setView(window, [1000, 800], 1);
@@ -87,8 +100,8 @@ module.exports.run = async ({ window }) => {
   await wait("document.querySelector('[role=menu]')");
   await click("[role=menuitem]", "Quick Setup");
   await wait("document.querySelector('dialog[open]')");
-  await js("document.querySelector('input[value=auto]').click()");
-  await js("document.querySelector('input[value=system]').click()");
+  await clickVisible(window, "document.querySelector('input[value=auto]').closest('label')");
+  await clickVisible(window, "document.querySelector('input[value=system]').closest('label')");
   await click("dialog button", "Done");
   await wait("!document.querySelector('dialog')");
 };

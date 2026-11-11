@@ -168,6 +168,11 @@ function dialog() {
     problems.push("dialog scrolls itself");
   const inside = (rect, outer) => rect.left >= outer.left - 1 && rect.right <= outer.right + 1;
 
+  // A tab strip may scroll horizontally; each tab must fit its viewport and the selected tab must be visible.
+  const tabStrip = (element) => {
+    const strip = element.closest("[role=tablist]");
+    return strip && getComputedStyle(strip).overflowX === "auto" ? strip : null;
+  };
   // Every row, scrolled into view or not: no text or control sticks out of the dialog or is cut off by its own box.
   const walker = document.createTreeWalker(form, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -176,17 +181,30 @@ function dialog() {
     range.selectNodeContents(node);
     const rect = range.getBoundingClientRect();
     // Options of a closed select have no box of their own.
-    if (rect.width && !inside(rect, bounds))
+    const strip = tabStrip(node.parentElement);
+    const tab = strip && node.parentElement.closest("[role=tab]");
+    if (rect.width && !inside(rect, tab ? tab.getBoundingClientRect() : bounds))
       problems.push(`text outside the dialog: "${node.textContent.trim()}"`);
   }
   for (const element of form.querySelectorAll("*")) {
     const rect = element.getBoundingClientRect();
-    if (rect.width && !inside(rect, bounds))
+    const strip = tabStrip(element);
+    const tab = strip && element.closest("[role=tab]");
+    const outer = tab ? tab.getBoundingClientRect() : bounds;
+    if (
+      tab &&
+      (tab.getBoundingClientRect().width > strip.clientWidth + 1 ||
+        (tab.getAttribute("aria-selected") === "true" &&
+          !inside(tab.getBoundingClientRect(), strip.getBoundingClientRect())))
+    )
+      problems.push(`tab unreachable: ${tab.textContent}`);
+    if (rect.width && !inside(rect, outer))
       problems.push(
         `outside the dialog: "${(element.ariaLabel || element.textContent).trim().slice(0, 30)}"`,
       );
     // Text inputs scroll their values; their outer bounds were checked above.
     if (
+      element !== strip &&
       element.localName !== "input" &&
       element.clientWidth > 2 &&
       element.scrollWidth > element.clientWidth + 1
