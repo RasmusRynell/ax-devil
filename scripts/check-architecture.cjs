@@ -47,9 +47,9 @@ const FORBIDDEN = [
   })),
   {
     from: "*",
-    except: ["ax-devil"],
+    except: ["live"],
     to: "camera",
-    why: "only the root crate joins the camera crate to the app",
+    why: "only the live crate joins the camera crate to the app",
   },
   {
     from: "media",

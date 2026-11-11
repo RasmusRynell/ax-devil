@@ -10,7 +10,7 @@ use tokio::time::timeout;
 use workspace::LiveOverlay;
 
 use super::{Update, delivering, frame, luma, rig, update};
-use crate::live_sources::fake::{content, damaged, doc, matching, rtsp, unit};
+use crate::fake::{content, damaged, doc, matching, rtsp, unit};
 
 #[tokio::test(start_paused = true)]
 async fn retry_reopens_a_stalled_video_and_leaves_a_live_one_alone() {

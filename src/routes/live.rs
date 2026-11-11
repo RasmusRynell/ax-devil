@@ -6,9 +6,7 @@
 //! that stream's saved login on the backend, for the person at this machine only and under the rule of the intake's
 //! `copy_login`. Nothing here logs or returns a login.
 
-use crate::{
-    AppState, Failure, access::Principal, camera_questions, live_sources, session::live::defaults,
-};
+use crate::{AppState, Failure, access::Principal, session::live::defaults};
 use api_types::{
     Audience, ErrorParams, ErrorWire,
     live::{
@@ -112,8 +110,8 @@ pub(super) async fn resolutions(
     Json(request): Json<ResolutionsRequest>,
 ) -> Result<Json<LiveResolutions>, Failure> {
     let camera = camera(&state, principal, request.connection)?;
-    let timeout = live_sources::timeout(&state.settings.state());
-    camera_questions::resolutions(&camera, timeout)
+    let timeout = live::timeout(&state.settings.state());
+    live::camera_questions::resolutions(&camera, timeout)
         .await
         .map(Json)
         .map_err(camera_failed)
@@ -126,12 +124,12 @@ pub(super) async fn sources(
     Json(request): Json<SourcesRequest>,
 ) -> Result<Json<SourcesAnswer>, Failure> {
     let camera = camera(&state, principal, request.connection)?;
-    let timeout = live_sources::timeout(&state.settings.state());
+    let timeout = live::timeout(&state.settings.state());
     let answer = match request.overlay {
-        SourcesOverlay::Mqtt => camera_questions::analytics_sources(&camera, timeout)
+        SourcesOverlay::Mqtt => live::camera_questions::analytics_sources(&camera, timeout)
             .await
             .map(SourcesAnswer::Mqtt),
-        SourcesOverlay::DataHub => camera_questions::datahub_topics(&camera, timeout)
+        SourcesOverlay::DataHub => live::camera_questions::datahub_topics(&camera, timeout)
             .await
             .map(|topics| SourcesAnswer::DataHub(LiveTopics { topics })),
     };

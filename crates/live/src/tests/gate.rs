@@ -6,7 +6,7 @@ use camera::Status;
 use tokio::time::timeout;
 
 use super::{frame, luma, rig};
-use crate::live_sources::fake::{content, rtsp, unit};
+use crate::fake::{content, rtsp, unit};
 
 #[tokio::test(start_paused = true)]
 async fn a_frame_waits_the_whole_deadline_for_an_overlay_that_never_delivers() {

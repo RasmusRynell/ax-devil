@@ -1,5 +1,6 @@
 use super::*;
-use crate::{access::Policy, network::ScanRequest, plugins::Plugins};
+use crate::{access::Policy, plugins::Plugins};
+use ::live::network::ScanRequest;
 use api_types::{Audience, DocWire};
 use camera::{Found, Identity, Login, ScanLoad, ScanPorts, Scheme, Secret, SignIn, Targets, Web};
 use serde_json::json;
@@ -52,7 +53,7 @@ async fn adding_a_found_camera_uses_the_scan_login_and_never_shows_it() {
     let cache = folder.path().join("cache");
     let videos = crate::video_cache::start(&settings, &cache);
     let (_stop, stopping) = tokio::sync::watch::channel(false);
-    let network = crate::network::Network::with_scanner(|_| {
+    let network = ::live::network::Network::with_scanner(|_| {
         let (tx, rx) = mpsc::channel(4);
         tx.try_send(Ok(found(
             2,

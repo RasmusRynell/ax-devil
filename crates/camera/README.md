@@ -1,7 +1,7 @@
 # camera
 
 Everything that talks to an Axis camera (services layer, no workspace-crate dependencies, runs on tokio). The only
-crate that may use `reqwest`, `http-auth`, `retina`, `rumqttc` or `tokio-tungstenite`, and only the root crate may
+crate that may use `reqwest`, `http-auth`, `retina`, `rumqttc` or `tokio-tungstenite`, and only the `live` crate may
 depend on it (`scripts/check-architecture.cjs`). Feature `fake` adds `CameraError::fake`, for the app's tests.
 
 - Errors are typed where they arise (`ErrorKind`, from statuses and transport errors; never from text), and

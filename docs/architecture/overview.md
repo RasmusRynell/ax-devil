@@ -117,7 +117,7 @@ Dependencies point down only. Numbers are the layers of [02](../rebuild/02-archi
 | 1 | Foundation | Rust crates, `layer = "foundation"` | Workspace crates only; no server crates |
 | 2 | Domain and contracts | Rust crates, `layer = "domain"` | same |
 | 3 | Runtime services | Rust crates, `layer = "services"` | same |
-| 3a | Event-loop adapters: routes, sockets, wire types | `crates/api-types` (`layer = "adapters"`) and the routes in `src/lib.rs` and `src/routes/` | May use the server crates |
+| 3a | Event-loop adapters: routes, sockets, wire types | `crates/api-types` and `crates/live` (`layer = "adapters"`) and the routes in `src/lib.rs` and `src/routes/` | May use the server crates |
 | 4–7 | UI support, generic display, workflows, shell | `frontend/src/` | Folder layers in `FRONTEND_LAYERS` |
 | 8 | Entry and bootstrap | `src/main.rs` (backend), `desktop/` (window and backend lifetime) | The root crate holds the routes and `main.rs`, so it declares `layer = "entry"` |
 

@@ -6,8 +6,8 @@ use workspace::LiveOverlay;
 
 use super::{frame, luma, rig};
 use crate::{
+    fake::{content, unit},
     glance::Glances,
-    live_sources::fake::{content, unit},
 };
 
 #[tokio::test]

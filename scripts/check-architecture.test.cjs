@@ -76,11 +76,11 @@ void test("camera depends on no workspace crate, and only camera may use the cam
   assert.match(problems[3], /sessions depends on tokio-tungstenite/);
 });
 
-void test("only the root crate may depend on camera", () => {
+void test("only the live crate may depend on camera", () => {
   assert.deepEqual(
     problemsOf([
       { name: "camera", layer: "services" },
-      { name: "ax-devil", layer: "entry", deps: ["camera"] },
+      { name: "live", layer: "adapters", deps: ["camera"] },
     ]),
     [],
   );

@@ -1,13 +1,9 @@
 //! The ax-devil backend: HTTP routes for the frontend and, in release builds, the embedded frontend itself.
 
 pub mod access;
-pub mod camera_questions;
 pub mod desktop;
 pub mod disk_cache;
 pub mod exports;
-pub mod glance;
-pub mod live_sources;
-pub mod network;
 pub mod plugins;
 mod prepare;
 pub mod render_host;
@@ -17,7 +13,6 @@ pub mod session;
 pub mod share;
 #[cfg(test)]
 mod test_support;
-pub mod throttled;
 mod thumbnails;
 pub mod video_cache;
 pub mod video_sources;
@@ -78,11 +73,11 @@ pub struct AppState {
     /// Readies the next playlist entry's caches while a viewer plays the one before it.
     pub(crate) preparer: Arc<prepare::Preparer>,
     /// The live camera pipelines, which the playback socket serves live streams from.
-    pub live: Arc<live_sources::LiveSources>,
+    pub live: Arc<live::LiveSources>,
     /// The network scan and what it found.
-    pub network: Arc<network::Network>,
+    pub network: Arc<live::network::Network>,
     /// The snapshots and login checks the sidebar asked cameras for.
-    pub glances: Arc<glance::Glances>,
+    pub glances: Arc<live::glance::Glances>,
     /// Runs the backend's one export at a time.
     pub exports: Arc<exports::ExportService>,
     /// The render catalogs, listed to every viewer and served on request; see [`AppState::with_catalogs`].
@@ -147,8 +142,8 @@ impl AppState {
                 stopping.clone(),
             )),
             overlays,
-            live: Arc::new(live_sources::LiveSources::cameras(cameras)),
-            network: network::Network::new(),
+            live: Arc::new(live::LiveSources::cameras(cameras)),
+            network: live::network::Network::new(),
             glances: Arc::default(),
             exports: Arc::new(exports::ExportService::electron()),
             catalogs: Arc::new(catalogs),
@@ -171,14 +166,14 @@ impl AppState {
 
     /// The same state serving live streams from `live`.
     #[must_use]
-    pub fn with_live(mut self, live: Arc<live_sources::LiveSources>) -> Self {
+    pub fn with_live(mut self, live: Arc<live::LiveSources>) -> Self {
         self.live = live;
         self
     }
 
     /// The same state scanning and reporting through `network`.
     #[must_use]
-    pub fn with_network(mut self, network: Arc<network::Network>) -> Self {
+    pub fn with_network(mut self, network: Arc<live::network::Network>) -> Self {
         self.network = network;
         self
     }
@@ -444,7 +439,7 @@ fn refuse_unscannable_range(
     if text.trim().is_empty() {
         return Ok(());
     }
-    camera::Targets::parse(&text)
+    live::Targets::parse(&text)
         .map(drop)
         .map_err(|error| settings::Error {
             location: "scan.range".to_owned(),

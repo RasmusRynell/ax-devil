@@ -376,7 +376,7 @@ impl OverlayTask {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::live_sources::bridge::sessions;
+    use crate::bridge::sessions;
     use bytes::Bytes;
     use foundation::CancelToken;
     use scene_store::Feed;

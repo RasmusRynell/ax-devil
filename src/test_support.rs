@@ -1,6 +1,6 @@
 //! Shared by the route tests: the app over a private settings file.
 
-use crate::{AppState, access::Policy, app, network::Network, plugins::Plugins};
+use crate::{AppState, access::Policy, app, plugins::Plugins};
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -9,6 +9,7 @@ use axum::{
 };
 use catalogs::Library;
 use handlers::Handlers;
+use live::network::Network;
 use std::{path::Path, sync::Arc};
 use tokio::sync::mpsc;
 use tower::ServiceExt;

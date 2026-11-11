@@ -1,13 +1,13 @@
 //! The live socket, through a fake feed: what a follower and a holder are told, and what each may change.
 
 use super::*;
-use crate::live_sources::{
-    LiveSources,
-    fake::{FakeConnector, Hold, TestDecoder, content, doc, matching, rtsp, unit},
-};
 use api_types::playback::{KIND_FRAME_MAP, KIND_SAMPLE, KIND_VIDEO_FRAME};
 use camera::Status;
 use handlers::Handlers;
+use live::{
+    LiveSources,
+    fake::{FakeConnector, Hold, TestDecoder, content, doc, matching, rtsp, unit},
+};
 use playback::{Authority, ClockIntent};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc;

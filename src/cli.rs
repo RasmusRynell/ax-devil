@@ -257,7 +257,7 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
     logging::init(
         global.log_level,
         log_file.filter(|_| !launcher),
-        camera::retina_log_layer(),
+        ::live::retina_log_layer(),
     );
     ax_devil::runtime::raise_open_files();
     ax_devil::plugins::log_problems(&plugins.info());

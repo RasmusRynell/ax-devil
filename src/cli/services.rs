@@ -5,8 +5,6 @@ use crate::paths::Paths;
 use ax_devil::{
     AppState,
     access::Policy,
-    live_sources::LiveSources,
-    network::{self, Network},
     plugins::Plugins,
     session::{Launch, LaunchQueue, WorkspaceFiles, WorkspaceStorage},
     video_cache,
@@ -14,6 +12,10 @@ use ax_devil::{
 };
 use axum::Router;
 use catalogs::Library;
+use live::{
+    LiveSources,
+    network::{self, Network},
+};
 use std::{
     error::Error,
     future::IntoFuture,
@@ -277,10 +279,10 @@ impl Services {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ax_devil::live_sources::{Connector, Inputs, Transport, UnitDecoder};
     use camera::{Status, VideoCodec};
     use foundation::{ErrorCode, ItemId, UserError};
     use handlers::Handlers;
+    use live::{Connector, Inputs, Transport, UnitDecoder};
     use overlay_sync::MatchPolicy;
     use std::sync::atomic::{AtomicBool, Ordering};
     use workspace::{
@@ -304,12 +306,7 @@ mod tests {
             )
         }
 
-        fn mqtt(
-            &self,
-            _: &ResolvedCamera,
-            _: &ax_devil::live_sources::Broker,
-            _: &str,
-        ) -> Transport {
+        fn mqtt(&self, _: &ResolvedCamera, _: &live::Broker, _: &str) -> Transport {
             unreachable!("the stream has no MQTT overlay")
         }
 

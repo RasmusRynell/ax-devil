@@ -19,6 +19,7 @@ members = [
   "crates/foundation",
   "crates/handler-api",
   "crates/handlers",
+  "crates/live",
   "crates/logging",
   "crates/media",
   "crates/overlay-sync",
@@ -65,6 +66,7 @@ export = { path = "crates/export" }
 foundation = { path = "crates/foundation" }
 handler-api = { path = "crates/handler-api" }
 handlers = { path = "crates/handlers" }
+live = { path = "crates/live" }
 logging = { path = "crates/logging" }
 media = { path = "crates/media" }
 overlay-sync = { path = "crates/overlay-sync" }
@@ -115,7 +117,6 @@ embed-assets = ["dep:rust-embed", "dep:mime_guess"]
 api-types.workspace = true
 axum = { version = "0.8", features = ["ws"] }
 bytes.workspace = true
-camera.workspace = true
 catalogs.workspace = true
 clap = { version = "4", features = ["derive", "string"] }
 export.workspace = true
@@ -123,6 +124,7 @@ foundation.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 handler-api.workspace = true
 handlers.workspace = true
+live.workspace = true
 logging.workspace = true
 media.workspace = true
 overlay-sync.workspace = true
@@ -146,8 +148,10 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sig
 tungstenite = "0.29"
 
 [dev-dependencies]
-# `CameraError::fake`, for the live source tests.
-camera = { workspace = true, features = ["fake"] }
+# Camera values for the tests that build what a scan or a camera answers; only the live crate depends on camera otherwise.
+camera.workspace = true
+# The fake connector of the live source tests.
+live = { workspace = true, features = ["fake"] }
 tokio = { workspace = true, features = ["test-util"] }
 tokio-tungstenite = "0.29"
 tower = { version = "0.5", features = ["util"] }

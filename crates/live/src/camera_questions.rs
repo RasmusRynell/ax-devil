@@ -9,7 +9,7 @@ use api_types::live::{
 use camera::Device;
 use workspace::ResolvedCamera;
 
-use crate::live_sources::{camera_of, reason};
+use crate::{camera_of, reason};
 
 fn device(camera: &ResolvedCamera, timeout: Duration) -> Result<Device, LiveReason> {
     camera_of(camera, timeout)

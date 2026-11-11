@@ -17,10 +17,10 @@ mod picture;
 mod retry;
 
 use super::{
-    LiveSources, LiveViewer, Shown, Spec, Update,
+    LiveSources, LiveViewer, Shown, Update,
     fake::{FakeConnector, Hold, TestDecoder, content, doc, held_back, matching, mqtt, rtsp, unit},
     feed::Feed,
-    source::Slot,
+    source::{Slot, Spec},
 };
 
 struct Rig {
