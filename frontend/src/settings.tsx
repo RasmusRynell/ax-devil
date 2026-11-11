@@ -1,17 +1,8 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, type ReactNode } from "react";
 import { useAccess } from "./access";
-import { apiFetch } from "./api";
 import { deviceStore, useDeviceValues, type DeviceValue } from "./deviceSettings";
-import type { ApiError, AppInfo, LoginEdit, SettingsPatch, SettingsState } from "./generated/api";
+import type { ApiError, LoginEdit, SettingsPatch, SettingsState } from "./generated/api";
+import { fetchJson, refusalOf, useResource } from "./resource";
 import { COMMANDS, SETTINGS, type CommandId, type SettingKey } from "./generated/settings";
 import { type Login, secretStateOf } from "./secret";
 
@@ -84,16 +75,6 @@ export function shortcutsPatch(
   } as SettingsPatch;
 }
 
-/** The session connection tells this when the backend says settings changed; `SettingsProvider` provides it. */
-export const SettingsNoticeContext = createContext<(revision: number, fresh?: boolean) => void>(
-  () => {},
-);
-
-type Load =
-  | { state: "loading" }
-  | { state: "ready"; remote: SettingsState | null }
-  | { state: "failed"; reason: string };
-
 /** Provided by `SettingsProvider`; tests provide their own value. */
 export const SettingsContext = createContext<SettingsApi | null>(null);
 
@@ -132,20 +113,6 @@ export const DEFAULT_VALUES = Object.fromEntries(
 const STANDARD_SHORTCUTS = Object.fromEntries(
   COMMANDS.map((command) => [command.id, command.key]),
 ) as Shortcuts;
-
-async function request(init?: RequestInit): Promise<SettingsState> {
-  const response = await apiFetch("/api/settings", init);
-  if (!response.ok) {
-    const error = (await response.json().catch(() => null)) as ApiError | null;
-    throw error ?? { reason: `the backend answered ${response.status}`, location: "" };
-  }
-  return (await response.json()) as SettingsState;
-}
-
-const refusalOf = (error: unknown): ApiError =>
-  typeof error === "object" && error !== null && "reason" in error
-    ? (error as ApiError)
-    : { reason: error instanceof Error ? error.message : String(error), location: "" };
 
 /** Puts the theme and text size on the document root; tokens.css selects the colours and the body size from them. */
 export function applyAppearance(theme: string, textSize: string) {
@@ -192,32 +159,16 @@ function splitPatch(patch: SettingsPatch) {
  * An Owner's Personal and Server settings come from the backend and go to it; a page that holds only a join link
  * gets the defaults of those and cannot change them. Device settings live on this device for everyone, never on the
  * backend. Children render once the settings are read, with the theme and text size applied live to the document
- * root; a failed read shows its reason instead. The settings are read again only
- * when the session connection reports a revision above the one held, together with `GET /api/info`, which `onInfo`
- * receives so that Full access follows `server.password_full_access`.
+ * root; a failed first read shows its reason instead. The settings are read again when the backend announces
+ * another revision of them (see `useResource`); `App` reads `GET /api/info` on the same notices, since Full access
+ * follows `server.password_full_access`.
  */
-export function SettingsProvider({
-  children,
-  onInfo,
-}: {
-  children: ReactNode;
-  onInfo: (info: AppInfo) => void;
-}) {
+export function SettingsProvider({ children }: { children: ReactNode }) {
   const { owner } = useAccess();
-  const [load, setLoad] = useState<Load>(
-    owner ? { state: "loading" } : { state: "ready", remote: null },
-  );
   const device = useDeviceValues();
-  // The revision of the settings held and of the last info asked for, and how many infos were asked for; a reply
-  // older than what is held is dropped, and so is an info reply once a newer info was asked for.
-  const held = useRef({ settings: 0, info: 0, asks: 0 });
-  const take = useCallback((remote: SettingsState) => {
-    if (remote.revision < held.current.settings) return;
-    held.current.settings = remote.revision;
-    // The first state taken is the one the info was read with.
-    if (held.current.info === 0) held.current.info = remote.revision;
-    setLoad({ state: "ready", remote });
-  }, []);
+  const settings = useResource<SettingsState>("settings", owner ? "/api/settings" : null, {
+    revisionOf: (state) => state.revision,
+  });
   // A page that holds only a join link kept a copy of the Personal settings here; nothing stale stays behind.
   useEffect(() => {
     try {
@@ -226,56 +177,25 @@ export function SettingsProvider({
       // Storage is blocked: nothing was kept.
     }
   }, []);
-  useEffect(() => {
-    if (!owner) return;
-    let current = true;
-    request()
-      .then((remote) => {
-        if (current) take(remote);
-      })
-      .catch((error: unknown) => {
-        if (current) setLoad({ state: "failed", reason: refusalOf(error).reason });
-      });
-    return () => {
-      current = false;
-    };
-  }, [owner, take]);
-  const noticed = useCallback(
-    (revision: number, fresh = false) => {
-      // A restarted backend may count from a lower revision (the clock set back): the first notice of a new
-      // connection resets what is held only then, so a reconnect at the same revision fetches nothing.
-      if (fresh && revision < held.current.settings)
-        held.current = { ...held.current, settings: 0, info: 0 };
-      if (revision > held.current.info) {
-        held.current.info = revision;
-        const ask = ++held.current.asks;
-        apiFetch("/api/info")
-          .then(async (response) => {
-            const info = response.ok ? ((await response.json()) as AppInfo) : null;
-            if (info && ask === held.current.asks) onInfo(info);
-          })
-          // A failed read keeps what is held: the failed state would unmount the whole app.
-          .catch(() => {});
-      }
-      if (revision > held.current.settings) request().then(take, () => {});
-    },
-    [take, onInfo],
-  );
-  const remote = load.state === "ready" ? load.remote : null;
+  const remote = settings.value ?? null;
   const values = { ...DEFAULT_VALUES, ...remote?.values, ...device };
   useAppearance(values["ui.theme"] as string, values["ui.text_size"] as string);
 
-  if (load.state === "failed")
-    return <p role="alert">ax-devil cannot read its settings: {load.reason}</p>;
-  if (load.state === "loading") return <main aria-busy="true" />;
+  if (owner && !remote) {
+    return settings.error ? (
+      <p role="alert">ax-devil cannot read its settings: {refusalOf(settings.error).reason}</p>
+    ) : (
+      <main aria-busy="true" />
+    );
+  }
 
   const apply = async (patch: SettingsPatch) => {
     const { device: mine, server } = splitPatch(patch);
     try {
       if (!isEmpty(server)) {
         if (!owner) return { reason: "Only the Owner can change this", location: "" };
-        take(
-          await request({
+        settings.apply(
+          await fetchJson<SettingsState>("/api/settings", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(server),
@@ -292,20 +212,18 @@ export function SettingsProvider({
   };
   const shortcuts = remote?.shortcuts ?? STANDARD_SHORTCUTS;
   return (
-    <SettingsNoticeContext.Provider value={noticed}>
-      <SettingsContext.Provider
-        value={{
-          revision: remote?.revision ?? 0,
-          values,
-          resolved: remote?.resolved,
-          file: remote?.file,
-          shortcuts,
-          ...through(apply),
-        }}
-      >
-        {children}
-      </SettingsContext.Provider>
-    </SettingsNoticeContext.Provider>
+    <SettingsContext.Provider
+      value={{
+        revision: remote?.revision ?? 0,
+        values,
+        resolved: remote?.resolved,
+        file: remote?.file,
+        shortcuts,
+        ...through(apply),
+      }}
+    >
+      {children}
+    </SettingsContext.Provider>
   );
 }
 

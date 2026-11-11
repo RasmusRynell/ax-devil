@@ -247,7 +247,7 @@ describe("logins editor", () => {
     }
     render(
       <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
-        <SettingsProvider onInfo={() => {}}>
+        <SettingsProvider>
           <Logins />
         </SettingsProvider>
       </AccessContext.Provider>,

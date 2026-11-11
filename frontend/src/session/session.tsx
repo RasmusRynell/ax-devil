@@ -23,7 +23,8 @@ import type {
   View,
 } from "../generated/api";
 import { Banner, EndedScreen } from "./Notice";
-import { SettingsNoticeContext, useSettings } from "../settings";
+import { useNoticeSink } from "../resource";
+import { useSettings } from "../settings";
 import type { SessionState } from "./sessionState";
 import { SessionStore } from "./store";
 import { canDo } from "./views";
@@ -55,11 +56,11 @@ export function SessionProvider({
 }) {
   const [store] = useState(() => given ?? new SessionStore());
   const viewer = useMemo(() => credential()?.kind === "join", []);
-  const settingsNoticed = useContext(SettingsNoticeContext);
+  const noticed = useNoticeSink();
   useEffect(() => {
-    store.onSettings(settingsNoticed);
-    return () => store.onSettings(null);
-  }, [store, settingsNoticed]);
+    store.onChanged(noticed);
+    return () => store.onChanged(null);
+  }, [store, noticed]);
   useEffect(() => {
     store.start();
     return () => store.stop();
@@ -95,11 +96,6 @@ export function SessionProvider({
 /** What the Doc holds, as this seat may see it; `null` until the first one has arrived. */
 export function useDoc(): DocWire | null {
   return useSelect((state) => state.doc);
-}
-
-/** How many workspace commands the backend has answered; it changes when the files they touch have settled. */
-export function useWorkspaceAnswers(): number {
-  return useSelect((state) => state.workspaceAnswers);
 }
 
 /** Changes several parts of what the window shows in one step; see `useView`. */

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ButtonHTMLAttributes } from "react";
 import { useAccess } from "../access";
 import type { ControlCommand, SessionSummary } from "../generated/api";
-import { apiFetch } from "../api";
+import { useResource } from "../resource";
 import { Button } from "../kit/Button";
 import { Chip } from "../kit/Chips";
 import type { IconName } from "../kit/icons";
@@ -15,34 +15,17 @@ import { presenceColor } from "../session/Presence";
 import { useCommand, useParticipants, useSession } from "../session/session";
 import { ConnectDialog } from "./ConnectDialog";
 
-const REFRESH_MS = 2000;
 const COPIED_MS = 1500;
 /** How much of a Session's id names it in the list, which has no other name to show. */
 const SHORT_ID = 6;
 /** What a session without a join link says when the backend did not say why. */
 const NO_LINK = "No join link";
 
-/** The Sessions of this backend, refreshed while `enabled`; empty when there is none or the list is unavailable. */
-function useServerSessions(enabled: boolean): SessionSummary[] {
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  useEffect(() => {
-    if (!enabled) return;
-    const request = new AbortController();
-    const load = () =>
-      apiFetch("/api/sessions", { signal: request.signal })
-        .then(async (response) => {
-          if (response.ok) setSessions((await response.json()) as SessionSummary[]);
-        })
-        // A failed refresh keeps the last list.
-        .catch(() => undefined);
-    void load();
-    const timer = setInterval(load, REFRESH_MS);
-    return () => {
-      request.abort();
-      clearInterval(timer);
-    };
-  }, [enabled]);
-  return enabled ? sessions : [];
+/** The Sessions of this backend, current while `enabled`; empty when there is none or the list is unavailable. */
+function useServerSessions(enabled: boolean): readonly SessionSummary[] {
+  // A failed read keeps the last list.
+  const { value } = useResource<SessionSummary[]>("sessions", enabled ? "/api/sessions" : null);
+  return value ?? [];
 }
 
 /** Puts `text` on the clipboard; false where the page may not (an insecure origin), so the caller can fall back. */

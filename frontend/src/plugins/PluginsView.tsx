@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useAccess } from "../access";
 import { chooseFolder, usePickPath } from "../pickPath";
 import { reasonOf } from "../errors";
+import { useResource } from "../resource";
 import type {
+  ErrorWire,
   HandlerKind,
   HandlerSummary,
   InstallRequest,
@@ -63,43 +65,11 @@ const post = <T,>(
     body: JSON.stringify(body),
   });
 
-/**
- * The plugins the backend lists, fetched on mount and whenever the window gets focus; `reload` fetches again and
- * `apply` shows a newer list than any fetch still pending, which it cancels.
- */
-function usePlugins() {
-  const [info, setInfo] = useState<PluginsInfo | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
-  const latest = useRef<AbortController | null>(null);
-  const reload = useCallback(() => {
-    latest.current?.abort();
-    const request = new AbortController();
-    latest.current = request;
-    ask<PluginsInfo>("/api/plugins", { signal: request.signal }).then(
-      (answer) => {
-        if (request.signal.aborted) return;
-        if (answer.ok) {
-          setInfo(answer.value);
-          setFailure(null);
-        } else setFailure(reasonOf(answer.refusal));
-      },
-      () => undefined, // superseded or unmounted
-    );
-  }, []);
-  const apply = useCallback((value: PluginsInfo) => {
-    latest.current?.abort();
-    setInfo(value);
-  }, []);
-  useEffect(() => {
-    reload();
-    window.addEventListener("focus", reload);
-    return () => {
-      window.removeEventListener("focus", reload);
-      latest.current?.abort();
-    };
-  }, [reload]);
-  return { info, apply, failure, reload };
-}
+/** Lists the plugins; a refusal is thrown as the failure the view shows. */
+const readPlugins = (path: string, signal: AbortSignal): Promise<PluginsInfo> =>
+  ask<PluginsInfo>(path, { signal }).then((answer) =>
+    answer.ok ? answer.value : Promise.reject(answer.refusal),
+  );
 
 /** A plugin's handlers by kind, then the file extensions its decoders read, then the ones it lists that are not used. */
 function Handlers({
@@ -184,7 +154,14 @@ function Row({
 
 /** The sidebar's Plugins view: the plugins that failed, are installed and ship with the app, and installing, updating and removing. */
 export function PluginsView() {
-  const { info, apply, failure, reload } = usePlugins();
+  // `apply` shows a change's answer instead of any read still pending.
+  const {
+    value: info,
+    error,
+    apply,
+    reload,
+  } = useResource("plugins", "/api/plugins", { read: readPlugins });
+  const failure = error ? reasonOf(error as ErrorWire) : null;
   useEffect(() => {
     if (info) reportFailedPlugins(failedIn(info));
   }, [info]);
@@ -259,7 +236,7 @@ export function PluginsView() {
       {refused && <Refusal reason={refused} />}
       {failure && <Refusal reason={failure} />}
       {info?.problem && <Refusal reason={info.problem} />}
-      {info === null && !failure && (
+      {info === undefined && !failure && (
         <p role="status" className="m-0 px-m text-muted">
           Loading…
         </p>

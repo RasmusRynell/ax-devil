@@ -1,51 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
 import { AccessContext } from "./access";
-import { apiFetch } from "./api";
 import type { AppInfo } from "./generated/api";
 import { PathPickerProvider } from "./pickPath";
+import { ChangesProvider, refusalOf, useResource } from "./resource";
 import { SessionProvider } from "./session/session";
 import { SettingsProvider } from "./settings";
 import { SeekProvider } from "./bookmarks/viewerLink";
 import { Shell } from "./shell/Shell";
 
-type Backend =
-  | { state: "connecting" }
-  | { state: "ready"; info: AppInfo }
-  | { state: "failed"; reason: string };
-
-/** The application window: shown once the backend answers, with the reason when it does not. */
-export function App() {
-  const [backend, setBackend] = useState<Backend>({ state: "connecting" });
-  useEffect(() => {
-    const request = new AbortController();
-    apiFetch("/api/info", { signal: request.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`the backend answered ${response.status}`);
-        setBackend({ state: "ready", info: (await response.json()) as AppInfo });
-      })
-      .catch((error: unknown) => {
-        if (!request.signal.aborted)
-          setBackend({
-            state: "failed",
-            reason: error instanceof Error ? error.message : String(error),
-          });
-      });
-    return () => request.abort();
-  }, []);
-  // Full access follows `server.password_full_access` when the settings change: the backend's answer replaces the info.
-  const refreshed = useCallback(
-    (info: AppInfo) =>
-      setBackend((now) => (now.state === "ready" ? { state: "ready", info } : now)),
-    [],
-  );
-  if (backend.state === "ready")
+/** The backend's identity and what this window is to it: shown once the backend answers, with the reason when it does not. */
+function Backend() {
+  // Full access follows `server.password_full_access`, so the info is read again when the settings change.
+  const { value: info, error } = useResource<AppInfo>("settings", "/api/info");
+  if (info)
     return (
-      <AccessContext value={{ owner: backend.info.owner, fullAccess: backend.info.fullAccess }}>
-        <SettingsProvider onInfo={refreshed}>
+      <AccessContext value={{ owner: info.owner, fullAccess: info.fullAccess }}>
+        <SettingsProvider>
           <PathPickerProvider>
             <SessionProvider>
               <SeekProvider>
-                <Shell version={backend.info.version} />
+                <Shell version={info.version} />
               </SeekProvider>
             </SessionProvider>
           </PathPickerProvider>
@@ -53,13 +26,19 @@ export function App() {
       </AccessContext>
     );
   return (
-    <main
-      aria-busy={backend.state === "connecting"}
-      className="flex h-screen items-center justify-center"
-    >
-      {backend.state === "failed" && (
-        <p role="alert">ax-devil cannot reach its backend: {backend.reason}</p>
+    <main aria-busy={error === undefined} className="flex h-screen items-center justify-center">
+      {error !== undefined && (
+        <p role="alert">ax-devil cannot reach its backend: {refusalOf(error).reason}</p>
       )}
     </main>
+  );
+}
+
+/** The application window. */
+export function App() {
+  return (
+    <ChangesProvider>
+      <Backend />
+    </ChangesProvider>
   );
 }

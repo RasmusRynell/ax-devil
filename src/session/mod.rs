@@ -16,6 +16,7 @@ pub mod project;
 mod reader;
 mod saved;
 mod socket;
+mod topics;
 mod wire;
 mod writer;
 

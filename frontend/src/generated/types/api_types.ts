@@ -143,8 +143,8 @@ shortcutsReset?: Array<CommandId>, };
  */
 export type SettingsState = { 
 /**
- * Rises with every write to the settings; a state with a lower one is older. The Session socket's `settings`
- * notice carries the same number.
+ * Rises with every write to the settings; a state with a lower one is older. The `Changed` notice of the
+ * settings topic on the Session socket carries the same number.
  */
 revision: number, 
 /**

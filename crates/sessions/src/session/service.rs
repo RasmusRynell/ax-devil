@@ -199,6 +199,8 @@ pub(super) struct Inner<C> {
     runner: Arc<dyn Runner>,
     epoch: Instant,
     pub(super) sources: Sources,
+    /// What `list` answers, as it was last published; see [`Service::listing_revisions`].
+    pub(super) listed: super::listing::Listed,
 }
 
 /// Every session of one backend.
@@ -214,7 +216,7 @@ impl<C: Clone + Send + 'static> Clone for Service<C> {
     }
 }
 
-type Sessions<C> = HashMap<SessionId, Live<C>>;
+pub(super) type Sessions<C> = HashMap<SessionId, Live<C>>;
 
 /// Applies `input` to session `id`, and takes the session out of the service once it has ended.
 pub(super) fn apply<C: Clone>(
@@ -242,6 +244,7 @@ impl<C: Clone + Send + 'static> Service<C> {
                 runner,
                 epoch: Instant::now(),
                 sources: Sources::default(),
+                listed: super::listing::Listed::default(),
             }),
         }
     }
@@ -255,7 +258,10 @@ impl<C: Clone + Send + 'static> Service<C> {
     /// Runs `change` on the sessions under the lock, then the effects it deferred once the lock is released.
     pub(super) fn locked<R>(&self, change: impl FnOnce(&mut Sessions<C>, &mut Deferred) -> R) -> R {
         let mut deferred = Deferred::default();
-        let result = change(&mut common::locked(&self.inner.sessions), &mut deferred);
+        let mut sessions = common::locked(&self.inner.sessions);
+        let result = change(&mut sessions, &mut deferred);
+        self.publish_listing(&sessions);
+        drop(sessions);
         self.run(deferred);
         result
     }
@@ -363,6 +369,7 @@ impl<C: Clone + Send + 'static> Service<C> {
         let identity = live.new_identity();
         let entry = live.enter(seat, Lease(0), cursors, identity);
         sessions.insert(id, live);
+        self.publish_listing(&sessions);
         Ok(Handle::new(self.clone(), id, seat, entry))
     }
 

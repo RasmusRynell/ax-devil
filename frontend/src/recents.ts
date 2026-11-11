@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
 import { apiFetch } from "./api";
 import type { RecentWorkspace } from "./generated/api";
-import { useCan, useDoc, useWorkspaceAnswers } from "./session/session";
+import { useResource } from "./resource";
+import { useCan } from "./session/session";
 
 /** The id of a menu entry or start-panel row that opens the recent workspace at the path after it. */
 export const RECENT_ID = "recent:";
@@ -50,28 +50,20 @@ export function folderOf(path: string): string {
       : folder;
 }
 
+/** Reads the recent workspaces; a list that cannot be read is empty. */
+const readRecents = (path: string, signal: AbortSignal): Promise<readonly RecentWorkspace[]> =>
+  apiFetch(path, { signal }).then((response) =>
+    response.ok ? (response.json() as Promise<RecentWorkspace[]>) : [],
+  );
+
 /**
- * The recent workspaces, newest first, asked of the backend each time `enabled` turns on, after the workspace
- * changes and after each workspace command is answered (the Doc can change before the files settle). Empty for a seat that may not read the host's files.
+ * The recent workspaces, newest first, asked of the backend each time `enabled` turns on and after each change it
+ * announces. Empty for a seat that may not read the host's files.
  */
 export function useRecents(enabled: boolean): readonly RecentWorkspace[] {
   const host = useCan("host");
-  const workspace = useDoc()?.workspace;
-  const answers = useWorkspaceAnswers();
-  const stamp = `${workspace?.epoch}:${workspace?.modified}:${workspace?.file}:${answers}`;
-  const [recents, setRecents] = useState<readonly RecentWorkspace[]>([]);
-  useEffect(() => {
-    if (!enabled || !host) return;
-    let current = true;
-    apiFetch("/api/workspaces/recent")
-      .then((response) => (response.ok ? (response.json() as Promise<RecentWorkspace[]>) : []))
-      .then(
-        (list) => current && setRecents(list),
-        () => undefined,
-      );
-    return () => {
-      current = false;
-    };
-  }, [enabled, host, stamp]);
-  return recents;
+  const { value } = useResource("recents", enabled && host ? "/api/workspaces/recent" : null, {
+    read: readRecents,
+  });
+  return value ?? [];
 }

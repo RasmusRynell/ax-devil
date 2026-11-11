@@ -8,6 +8,7 @@ import type {
   SessionCommand,
   SessionServerMessage,
   ContentRef,
+  Topic,
   View,
 } from "../generated/api";
 import { OffsetEstimator } from "./timeSync";
@@ -70,7 +71,6 @@ export class SessionStore {
     settled: false,
     synced: false,
     seatings: 0,
-    workspaceAnswers: 0,
   };
   #connection: Connection | null = null;
   /** The connection of an `attach` that is not admitted yet; the window stays in its seat until it is. */
@@ -96,20 +96,15 @@ export class SessionStore {
   #name: string | null = null;
   #nameTimer: ReturnType<typeof setTimeout> | undefined;
   #nameSentAt = -RENAME_EVERY_MS;
-  #onSettings: ((revision: number, fresh: boolean) => void) | null = null;
-  /** Whether no settings notice has come since the last welcome: the first one on a connection starts a new order. */
-  #freshSettings = false;
+  #onChanged: ((topic: Topic, revision: number) => void) | null = null;
 
   constructor(deps: Partial<SessionDeps> = {}) {
     this.#deps = { ...browser, ...deps };
   }
 
-  /**
-   * Runs *listener* with the revision of each settings notice the backend sends an Owner's connection, and whether it
-   * is the first on this connection (revisions are ordered only within one); null stops it.
-   */
-  onSettings(listener: ((revision: number, fresh: boolean) => void) | null): void {
-    this.#onSettings = listener;
+  /** Runs *listener* with each `Changed` notice the backend sends an Owner's connection; null stops it. */
+  onChanged(listener: ((topic: Topic, revision: number) => void) | null): void {
+    this.#onChanged = listener;
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -238,15 +233,7 @@ export class SessionStore {
   /** Asks the backend for a change; settles when it answers and rejects with `CommandRefused` when it refuses. */
   command(command: SessionCommand): Promise<void> {
     this.flushName();
-    const asked = this.#ask(command).then(() => undefined);
-    if (command.type === "workspace") {
-      const answered = () => {
-        this.#state = { ...this.#state, workspaceAnswers: this.#state.workspaceAnswers + 1 };
-        this.#notify();
-      };
-      asked.then(answered, answered);
-    }
-    return asked;
+    return this.#ask(command).then(() => undefined);
   }
 
   /**
@@ -434,11 +421,8 @@ export class SessionStore {
         return this.#synced(message);
       case "cursor":
         return this.cursors.set(message.participant, message.at);
-      case "settings": {
-        const fresh = this.#freshSettings;
-        this.#freshSettings = false;
-        return this.#onSettings?.(message.revision, fresh);
-      }
+      case "changed":
+        return this.#onChanged?.(message.topic, message.revision);
       case "heartbeat":
       case "ended":
         return;
@@ -452,7 +436,6 @@ export class SessionStore {
   }
 
   #welcome(message: Extract<SessionServerMessage, { type: "welcome" }>): void {
-    this.#freshSettings = true;
     if (message.session !== this.#state.session) {
       // Not the Session this window was in: nothing of the old one carries over.
       this.#clear();
