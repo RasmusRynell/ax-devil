@@ -181,13 +181,34 @@ fn a_file_without_login_ids_loads_and_each_record_gets_one() {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
     let old = json!({"version": 1, "settings": {"server.logins": [
-        {"user": "root", "password": "one"}, {"user": "root", "password": "two"}
+        {"user": "root", "password": "one"}, {"id": "position-0", "user": "root", "password": "two"},
+        {"user": "root", "password": "three"}
     ]}});
     fs::write(&path, old.to_string()).unwrap();
     let settings = Settings::open(&path, LOGINS, &[], Arc::new(no_env)).unwrap();
     let shown = settings.state().values()["server.logins"].clone();
     let (first, second) = (shown[0]["id"].clone(), shown[1]["id"].clone());
-    assert!(first.is_string() && first != second);
+    assert_eq!(first, "position-1");
+    // Ids come from position, skipping one already present, and the same file loads to the same ids.
+    let ids = |shown: &Value| {
+        shown
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|record| record["id"].clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        ids(&shown),
+        [
+            json!("position-1"),
+            json!("position-0"),
+            json!("position-2")
+        ]
+    );
+    let again = Settings::open(&path, LOGINS, &[], Arc::new(no_env)).unwrap();
+    assert_eq!(ids(&again.state().values()["server.logins"]), ids(&shown));
+    assert_ne!(first, second);
 
     settings
         .patch(&Patch {

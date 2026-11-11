@@ -310,12 +310,24 @@ impl Kind {
         {
             return Value::Array(default);
         }
-        for record in &mut records {
-            if let Some(fields) = record.as_object_mut() {
-                fields
-                    .entry(ID)
-                    .or_insert_with(|| Value::String(fresh_id()));
+        // Derived from the position, not random, so the same file gives the same ids on every load until a write stores them.
+        let mut taken: BTreeSet<String> = records
+            .iter()
+            .filter_map(|record| record.get(ID)?.as_str().map(str::to_owned))
+            .collect();
+        for (at, record) in records.iter_mut().enumerate() {
+            let Some(fields) = record.as_object_mut() else {
+                continue;
+            };
+            if fields.contains_key(ID) {
+                continue;
             }
+            let id = (at..)
+                .map(|number| format!("position-{number}"))
+                .find(|id| !taken.contains(id))
+                .expect("an unbounded range has a free value");
+            taken.insert(id.clone());
+            fields.insert(ID.into(), Value::String(id));
         }
         Value::Array(records)
     }
