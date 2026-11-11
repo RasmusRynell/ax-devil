@@ -23,8 +23,8 @@ const SHORT_ID = 6;
 /** What a session without a join link says when the backend did not say why. */
 const NO_LINK = "No join link";
 
-/** The shared Sessions of this backend, refreshed while `enabled`; empty when there is none or the list is unavailable. */
-function useSharedSessions(enabled: boolean): SessionSummary[] {
+/** The Sessions of this backend, refreshed while `enabled`; empty when there is none or the list is unavailable. */
+function useServerSessions(enabled: boolean): SessionSummary[] {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   useEffect(() => {
     if (!enabled) return;
@@ -125,15 +125,15 @@ function JoinLink({ link, problem }: { link: string | null; problem: string | nu
   );
 }
 
-/** The sidebar's Sessions view: this window's Session and who is in it, how to connect elsewhere, and the shared Sessions to watch. */
+/** The sidebar's Sessions view: this window's Session and who is in it, how to connect elsewhere, and the server's other Sessions to continue. */
 export function SessionsView() {
-  const { state, session, sharing, watch, leave } = useSession();
+  const { state, attached, session, sharing, attach, leave } = useSession();
   const command = useCommand();
   const { you, participants } = useParticipants();
   const granted = useAccess().owner;
   const owner = state === "owner";
   const unshared = state === "none";
-  const shared = useSharedSessions(granted && !owner).filter((other) => other.id !== session?.id);
+  const others = useServerSessions(granted && !owner).filter((other) => other.id !== session?.id);
   const kind = useServerKind();
   const [connecting, setConnecting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -166,7 +166,7 @@ export function SessionsView() {
               Stop sharing
             </Action>
           )}
-          {state === "watcher" && (
+          {(state === "guest" || attached) && (
             <Action icon="x" data-cursor-id="sessions:leave" onClick={leave}>
               Leave
             </Action>
@@ -185,7 +185,7 @@ export function SessionsView() {
                 )}
               </div>
               <Checkbox
-                label="Let viewers explore on their own"
+                label="Let guests explore on their own"
                 checked={sharing !== null && sharing !== "watch"}
                 onChange={(explore) =>
                   void control({ type: "setAccess", access: explore ? "explore" : "watch" })
@@ -240,11 +240,11 @@ export function SessionsView() {
           {failure}
         </p>
       )}
-      {shared.length > 0 && (
-        <section aria-label="Shared sessions" className="flex flex-col gap-xs">
-          <SectionCaption heading="Shared sessions" />
+      {others.length > 0 && (
+        <section aria-label="Other sessions" className="flex flex-col gap-xs">
+          <SectionCaption heading="Other sessions" />
           <ul className="m-0 flex list-none flex-col p-0">
-            {shared.map((other) => {
+            {others.map((other) => {
               const name = `Session ${other.id.slice(0, SHORT_ID)}`;
               return (
                 <li key={other.id}>
@@ -259,11 +259,11 @@ export function SessionsView() {
                         {other.participants}
                       </span>
                       <Action
-                        aria-label={`Watch ${name}`}
-                        data-cursor-id={`session:${other.id}:watch`}
-                        onClick={() => watch(other.id)}
+                        aria-label={`Continue ${name}`}
+                        data-cursor-id={`session:${other.id}:attach`}
+                        onClick={() => attach(other.id)}
                       >
-                        Watch
+                        Continue
                       </Action>
                     </div>
                   </ContextMenu>

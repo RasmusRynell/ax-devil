@@ -276,23 +276,23 @@ describe("a viewer and its bookmarks", () => {
     expect(screen.getByTestId("view").textContent).toBe("workspace");
   });
 
-  it("leaves a watcher following the presenter when a workspace with bookmarks replaces the one it joined", async () => {
+  it("leaves a Guest following the presenter when a workspace with bookmarks replaces the one it joined", async () => {
     const host = FakeSocket.host("explore");
     host.show(marks, "replaced");
-    function Watcher() {
+    function Guest() {
       useSidebarOnReplace();
-      const { watch } = useSession();
+      const { joinLink } = useSession();
       const [sidebar] = useView("sidebar");
       const following = useFollowing();
       return (
-        <button type="button" onClick={() => watch(host.id)}>
+        <button type="button" onClick={() => joinLink(host.link)}>
           {`${sidebar.view} ${following ? "following" : "exploring"}`}
         </button>
       );
     }
     render(
       <SessionProvider>
-        <Watcher />
+        <Guest />
       </SessionProvider>,
     );
     await act(async () => {});
@@ -306,17 +306,17 @@ describe("a viewer and its bookmarks", () => {
     expect(seen).toEqual([]);
   });
 
-  it("keeps a watcher that chose Follow presenter following when the replacement's Doc arrives before its seat", async () => {
+  it("keeps a Guest that chose Follow presenter following when the replacement's Doc arrives before its seat", async () => {
     const host = FakeSocket.host("explore");
-    function Watcher() {
+    function Guest() {
       useSidebarOnReplace();
-      const { watch, follow } = useSession();
+      const { joinLink, follow } = useSession();
       const [sidebar, setSidebar] = useView("sidebar");
       const following = useFollowing();
       return (
         <>
-          <button type="button" onClick={() => watch(host.id)}>
-            watch
+          <button type="button" onClick={() => joinLink(host.link)}>
+            join
           </button>
           <button type="button" onClick={() => setSidebar({ view: "plugins", open: true })}>
             explore
@@ -330,11 +330,11 @@ describe("a viewer and its bookmarks", () => {
     }
     render(
       <SessionProvider>
-        <Watcher />
+        <Guest />
       </SessionProvider>,
     );
     await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "watch" }));
+    fireEvent.click(screen.getByRole("button", { name: "join" }));
     await act(async () => {});
     fireEvent.click(screen.getByRole("button", { name: "explore" }));
     await waitFor(() => expect(host.seats[1].view).not.toBeNull());

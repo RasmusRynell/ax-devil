@@ -1,7 +1,7 @@
 //! View state: what a window shows of the Doc, and the rules that keep it inside the Doc.
 //!
-//! The presenter's [`View`] is what the owner published; an exploring seat has its own. Both are cut down to what the
-//! Doc has open by [`restrict`] after every Doc change.
+//! The presenter's [`View`] is what the Owner seats published; an exploring seat has its own. Both are cut down to
+//! what the Doc has open by [`restrict`] after every Doc change.
 
 use super::{
     layout::{Layout, ViewerId},

@@ -287,13 +287,13 @@ export class PlaybackSession implements LaneControl {
 
   /**
    * Follows a presenter: puts the clock where the presenter's is by now (`serverNowUs` reads the backend's time) and
-   * at its speed. Call it again when the presenter's intent changes; between two both clocks run alike. A
+   * at its speed. Call it again when the intent changes; between two both clocks run alike. A
    * reconnection puts it back in step.
    */
-  follow(intent: ClockIntent, serverNowUs: () => number): void {
+  follow(intent: ClockIntent, serverNowUs: () => number, own = false): void {
     this.#autoplay = false;
     this.#followed = { intent, serverNowUs };
-    this.#data.files.setOwner(false);
+    this.#data.files.setOwner(own);
     this.#applyFollowed();
   }
 

@@ -1,6 +1,18 @@
 {
   "docs": {
     "initial": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -179,18 +191,6 @@
               "warnings": []
             }
           ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": []
         }
       }
     }

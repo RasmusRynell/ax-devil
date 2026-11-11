@@ -91,7 +91,7 @@ describe("video viewer", () => {
     act(() => room.show(s));
     expect((await slider()).value).toBe("20");
     expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
-    // The watchers' clock is right as it stands: nothing to correct.
+    // The Guests' clock is right as it stands: nothing to correct.
     flushFrames();
     expect(viewsSent()).toHaveLength(0);
     expect(room.presenter.viewers[1]?.clock).toMatchObject({ playing: true });
@@ -128,7 +128,7 @@ describe("video viewer", () => {
       expect(screen.getByRole("slider", { name: "Timeline" })).toBeTruthy();
     });
 
-    it("opens the new stream where playback had got to, the frame the watchers were told", async () => {
+    it("opens the new stream where playback had got to, the frame the Guests were told", async () => {
       const sent: ClientMessage[] = [];
       render(
         <SessionProvider>
@@ -192,18 +192,22 @@ describe("video viewer", () => {
     });
   });
 
-  /** A window that joined a session whose presenter plays frame 10 of "a" (400 ms in) 400 ms of backend time ago. */
-  function follower(access: "watch" | "explore") {
-    const room = FakeSocket.host(access);
+  /**
+   * A window that joined a session by link, or attached to it as an Owner seat, whose presenter plays frame 10 of "a"
+   * (400 ms in) 400 ms of backend time ago.
+   */
+  function follower(access: "watch" | "explore" | "attach") {
+    const room = FakeSocket.host(access === "attach" ? "watch" : access);
     room.show(s);
     FakeSocket.clockOffsetUs = 5_000_000;
     const serverNow = 10_000 * 1000 + FakeSocket.clockOffsetUs;
     const clock = { frame: 10, playing: true, speedCenti: 100, atUs: serverNow - 400_000 };
     room.presenter = { ...room.presenter, ...viewing([s.ids.a, { clock }]) };
-    window.sessionStorage.setItem(
-      "ax-devil.credential",
-      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
-    );
+    if (access !== "attach")
+      window.sessionStorage.setItem(
+        "ax-devil.credential",
+        JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+      );
     // The backend's clock is known at once, because this window's own never moves.
     const store = new SessionStore({ now: () => 10_000 });
     render(
@@ -211,6 +215,7 @@ describe("video viewer", () => {
         <Viewer sent={[]} />
       </SessionProvider>,
     );
+    if (access === "attach") act(() => store.attach(room.id));
     return room;
   }
 
@@ -220,11 +225,24 @@ describe("video viewer", () => {
     await waitFor(() => expect(thumb.value).toBe(frame));
   };
 
-  it("follows the presenter's clock by the backend's time, and a watcher has no controls of its own", async () => {
+  it("follows the presenter's clock by the backend's time, and a Guest has no controls of its own", async () => {
     follower("watch");
     await settled("20");
     expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
     expect((await slider()).disabled).toBe(true);
+  });
+
+  it("shows an Owner seat the clock another Owner seat set, and publishes its own seek for that seat", async () => {
+    const room = follower("attach");
+    await settled("20");
+    expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
+    expect((await slider()).disabled).toBe(false);
+    flushFrames();
+    expect(viewsSent()).toHaveLength(0);
+
+    fireEvent.change(await slider(), { target: { value: "70" } });
+    flushFrames();
+    expect(room.presenter.viewers[1]?.clock).toMatchObject({ frame: 70 });
   });
 
   it("publishes a seek made while following, so the seat explores, and never the presenter's own clock", async () => {

@@ -3,7 +3,7 @@
 //! Every time is microseconds (`server_us` is the backend's monotonic clock; see `TimeSync`). A message that changes
 //! the Doc or a view carries the `seq` the client chose and is settled by its own `Ack` or, for views, by
 //! `views_done`. The only `DocWire` constructor is `project` in the backend's `src/session/project.rs`, so what a
-//! watcher may learn of the Doc is decided in one place.
+//! Guest may learn of the Doc is decided in one place.
 
 use crate::{
     ErrorWire,
@@ -37,8 +37,8 @@ pub enum SessionAuth {
         #[ts(optional)]
         server_password: Option<String>,
     },
-    /// Watch a shared Session by id. Needs the Sessions grant.
-    Watch {
+    /// Attach to a Session by id, as an Owner seat. Needs the Sessions grant.
+    Attach {
         /// The Session's id.
         session: String,
         /// The server password; only a server that has one looks at it.
@@ -46,7 +46,7 @@ pub enum SessionAuth {
         #[ts(optional)]
         server_password: Option<String>,
     },
-    /// Watch the one Session a join link opens.
+    /// Join the one Session a join link opens, as a Guest.
     Join {
         /// The link's `<id>.<secret>`.
         link: String,
@@ -303,7 +303,7 @@ pub enum SessionClientMessage {
         /// This seat's cursor choices.
         cursors: CursorOptions,
     },
-    /// Set this seat's view: the presenter's for the owner, the seat's own for an exploring or editing seat.
+    /// Set this seat's view: the Presenter View for an Owner seat, the seat's own for an exploring Guest.
     View {
         /// Counts this client's views; `views_done` reports the highest one finished.
         #[ts(type = "number")]
@@ -335,7 +335,7 @@ pub enum SessionClientMessage {
         #[ts(type = "number")]
         client_us: i64,
     },
-    /// Leave at once instead of keeping the seat for the grace period. The owner leaving ends the Session.
+    /// Leave at once instead of keeping the seat for the grace period. The last Owner seat leaving ends the Session.
     Leave,
 }
 
@@ -343,14 +343,12 @@ pub enum SessionClientMessage {
 #[derive(Serialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum SeatAccess {
-    /// The Session's owner.
+    /// An Owner seat.
     Owner,
-    /// A watcher that follows the presenter.
+    /// A Guest that follows the presenter.
     Watch,
-    /// A watcher that may explore a view of its own.
+    /// A Guest that may explore a view of its own.
     Explore,
-    /// A watcher that may explore and change the Doc's content.
-    Edit,
 }
 
 impl From<Access> for SeatAccess {
@@ -358,7 +356,6 @@ impl From<Access> for SeatAccess {
         match access {
             Access::Watch => Self::Watch,
             Access::Explore => Self::Explore,
-            Access::Edit => Self::Edit,
         }
     }
 }
@@ -367,19 +364,19 @@ impl From<Access> for SeatAccess {
 #[derive(Serialize, TS, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SharingInfo {
-    /// What every watcher may do.
+    /// What every Guest may do.
     pub access: Access,
-    /// The join link URL; the owner's seat only.
+    /// The join link URL; an Owner seat only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub link: Option<String>,
-    /// Why there is no link, when other machines cannot reach this backend; the owner's seat only.
+    /// Why there is no link, when other machines cannot reach this backend; an Owner seat only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub link_problem: Option<String>,
 }
 
-/// The Doc as a watcher or the owner may see it. Built only by the backend's projection.
+/// The Doc as a Guest or an Owner may see it. Built only by the backend's projection.
 #[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct DocWire {
@@ -523,13 +520,13 @@ pub enum SessionServerMessage {
     },
 }
 
-/// A line of `GET /api/sessions`: a Session that is shared.
+/// A line of `GET /api/sessions`: a Session of this backend.
 #[derive(Serialize, TS, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionSummary {
-    /// What to watch with.
+    /// What to attach with.
     pub id: String,
-    /// Whether the owner is connected.
+    /// Whether an Owner seat is connected.
     pub owner_present: bool,
     /// Seats in the Session, away ones included.
     pub participants: u32,

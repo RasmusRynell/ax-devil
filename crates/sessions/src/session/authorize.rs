@@ -88,40 +88,31 @@ impl fmt::Display for Refusal {
 
 impl std::error::Error for Refusal {}
 
-/// A seat's standing: the row of the role table it is in.
+/// A seat's standing: the row of the role table it is in. Every Owner seat is [`Standing::Owner`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Standing {
     Owner,
     Watching,
     Following,
     Exploring,
-    Editing,
 }
 
 impl Standing {
     fn allows(self, scope: Scope) -> bool {
         match scope {
-            // Back to the presenter's view: a seat that follows, or explores a view it may drop. An editing seat's
-            // view is its own to keep, and a watching seat has none.
+            // Back to the presenter's view: a seat that follows, or explores a view it may drop. A watching seat
+            // has none.
             Scope::Follow => match self {
                 Self::Owner | Self::Following | Self::Exploring => true,
-                Self::Watching | Self::Editing => false,
-            },
-            Scope::View => match self {
-                Self::Owner | Self::Following | Self::Exploring | Self::Editing => true,
                 Self::Watching => false,
             },
-            Scope::Content => match self {
-                Self::Owner | Self::Editing => true,
+            Scope::View => match self {
+                Self::Owner | Self::Following | Self::Exploring => true,
+                Self::Watching => false,
+            },
+            Scope::Content | Scope::Host | Scope::Control => match self {
+                Self::Owner => true,
                 Self::Watching | Self::Following | Self::Exploring => false,
-            },
-            Scope::Host => match self {
-                Self::Owner => true,
-                Self::Watching | Self::Following | Self::Exploring | Self::Editing => false,
-            },
-            Scope::Control => match self {
-                Self::Owner => true,
-                Self::Watching | Self::Following | Self::Exploring | Self::Editing => false,
             },
         }
     }
@@ -129,7 +120,7 @@ impl Standing {
     fn priority(self) -> Priority {
         match self {
             Self::Owner => Priority::High,
-            Self::Watching | Self::Following | Self::Exploring | Self::Editing => Priority::Low,
+            Self::Watching | Self::Following | Self::Exploring => Priority::Low,
         }
     }
 }
@@ -176,7 +167,7 @@ pub(super) fn standing(
         .ok_or(Refusal::SeatGone)?;
     match seat.kind {
         SeatKind::Owner => Ok(Standing::Owner),
-        SeatKind::Watcher { sharing } => {
+        SeatKind::Guest { sharing } => {
             let current = state
                 .sharing
                 .as_ref()
@@ -186,7 +177,6 @@ pub(super) fn standing(
                 Access::Watch => Standing::Watching,
                 Access::Explore if seat.view.is_some() => Standing::Exploring,
                 Access::Explore => Standing::Following,
-                Access::Edit => Standing::Editing,
             })
         }
     }
@@ -215,8 +205,8 @@ pub fn authorize(
 /// What `seat` at `lease` may demand of the stream of the entry `key` names, as it is told and as the route enforces
 /// it: its own priority, or the clock of the presenter's viewer `key` names (paused at the start while the presenter
 /// has not set one). A seat that follows may only stream the entry that viewer shows, and only while it shows the
-/// stream's item. Refused like [`authorize`]
-/// with `Use::Stream`.
+/// stream's item. Every Owner seat chooses its own frames; the clock they share is the Presenter View's, which each
+/// seat's window sets and mirrors. Refused like [`authorize`] with `Use::Stream`.
 pub fn authorize_stream(
     state: &SessionState,
     seat: SeatId,
@@ -247,13 +237,13 @@ pub fn authorize_stream(
         // Recordings stream one entry at a time; a seat that follows gets the presenter's clock.
         Content::SeekableVideo(_) | Content::Playlist(_) => match standing {
             Standing::Watching | Standing::Following => follow(),
-            Standing::Owner | Standing::Exploring | Standing::Editing => Ok(own),
+            Standing::Owner | Standing::Exploring => Ok(own),
         },
         // A live feed has no clock and no entry to present: any seat may watch while the item is open, and one that
         // follows holds `Follow` authority, which only watches. The intent is unused.
         Content::LiveVideo(_) => Ok(match standing {
             Standing::Watching | Standing::Following => Authority::Follow { intent: AT_START },
-            Standing::Owner | Standing::Exploring | Standing::Editing => own,
+            Standing::Owner | Standing::Exploring => own,
         }),
     }
 }

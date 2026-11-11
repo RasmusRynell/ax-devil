@@ -8,7 +8,7 @@ import type {
 /** How a client asks to be seated the first time. */
 export type Entry =
   | { kind: "own" }
-  | { kind: "watch"; session: string }
+  | { kind: "attach"; session: string }
   /** `link` is the join link's `<id>.<secret>`. */
   | { kind: "join"; link: string };
 
@@ -76,7 +76,7 @@ function socketUrl(): string {
 function authOf(entry: Entry | null, serverPassword?: string): SessionAuth {
   // A resume needs no way in: the token alone is the credential.
   if (!entry || entry.kind === "own") return { type: "own", serverPassword };
-  if (entry.kind === "watch") return { type: "watch", session: entry.session, serverPassword };
+  if (entry.kind === "attach") return { type: "attach", session: entry.session, serverPassword };
   return { type: "join", link: entry.link };
 }
 

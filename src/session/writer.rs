@@ -150,16 +150,16 @@ async fn send_parts<S: Sink<Message> + Unpin>(
         presenter_rev: session.presenter_rev,
         access: match (&seat.kind, &session.sharing) {
             (SeatKind::Owner, _) => SeatAccess::Owner,
-            (SeatKind::Watcher { .. }, Some(sharing)) => sharing.access.into(),
-            // A watcher never outlives its sharing; if it somehow did, watching is the least it could do.
-            (SeatKind::Watcher { .. }, None) => SeatAccess::Watch,
+            (SeatKind::Guest { .. }, Some(sharing)) => sharing.access.into(),
+            // A Guest never outlives its sharing; if it somehow did, watching is the least it could do.
+            (SeatKind::Guest { .. }, None) => SeatAccess::Watch,
         },
         // A seat the table no longer knows can do nothing; the feed ends it next.
         can: can(session, handle.seat(), seat.lease).unwrap_or_default(),
         mode: seat.mode(),
         sharing: session.sharing.as_ref().map(|sharing| SharingInfo {
             access: sharing.access,
-            // Only the owner holds the link.
+            // Only an Owner seat holds the link.
             link: owner
                 .then(|| state.hosting.join_url(&sharing.link))
                 .flatten(),

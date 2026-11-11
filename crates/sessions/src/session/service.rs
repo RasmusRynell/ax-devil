@@ -10,11 +10,10 @@ use super::{
     roster::{Identity, Presence, RosterEntry, build},
     runner::Read,
     sources::Sources,
-    state::OWNER_SEAT,
     transition::{Effects, Input, Outcome, transition},
 };
 use crate::{
-    CursorEvent, CursorOptions, JoinLink, MAX_SESSIONS, OwnerId, Secret, SessionId, common,
+    CursorEvent, CursorOptions, JoinLink, MAX_SESSIONS, Secret, SessionId, common,
     cursors::CURSOR_BACKLOG,
 };
 use playback::Authority;
@@ -30,17 +29,17 @@ use tokio::{
 use workspace::{Content, ItemId, WorkspaceItem};
 use workspace_store::Resolution;
 
-/// A line of the list of shared sessions.
+/// A line of the list of sessions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Listing {
     /// Names the session.
     pub id: SessionId,
-    /// Whether the owner is connected.
+    /// Whether an Owner seat is connected.
     pub owner_present: bool,
     /// Seats in the session, away ones included.
     pub seats: usize,
-    /// The current link. Hand it only to callers allowed to see every session.
-    pub link: JoinLink,
+    /// The current link while shared. Hand it only to callers allowed to see every session.
+    pub link: Option<JoinLink>,
 }
 
 /// An item as the session that holds it has it.
@@ -106,7 +105,7 @@ impl<C: Clone> Live<C> {
                 self.streams.insert(*grant, tx);
                 Some(rx)
             }
-            Outcome::None | Outcome::Joined { .. } | Outcome::ViewRefused(_) => None,
+            Outcome::None | Outcome::Seated { .. } | Outcome::ViewRefused(_) => None,
         };
         for grant in revoke {
             // The sender goes with the grant, so `Revoked` is the last value its holders will ever see.
@@ -314,19 +313,19 @@ impl<C: Clone + Send + 'static> Service<C> {
         });
     }
 
-    /// The shared sessions, by id.
+    /// The sessions, by id.
     pub fn list(&self) -> Vec<Listing> {
         let sessions = common::locked(&self.inner.sessions);
         let mut list: Vec<Listing> = sessions
             .iter()
-            .filter_map(|(id, live)| {
+            .map(|(id, live)| {
                 let state = &live.state;
-                Some(Listing {
+                Listing {
                     id: *id,
-                    owner_present: state.seats.get(&OWNER_SEAT)?.present,
+                    owner_present: state.owner_present(),
                     seats: state.seats.len(),
-                    link: state.sharing.as_ref()?.link.clone(),
-                })
+                    link: state.sharing.as_ref().map(|sharing| sharing.link.clone()),
+                }
             })
             .collect();
         list.sort_by_key(|listing| listing.id.to_string());
@@ -358,7 +357,7 @@ impl<C: Clone + Send + 'static> Service<C> {
             .map(|live| live.tx.subscribe())
     }
 
-    /// Starts a session for a new window. Its owner's seat is the returned handle; nothing is shared. With `expands`
+    /// Starts a session for a new window. Its first Owner seat is the returned handle; nothing is shared. With `expands`
     /// its items' references read the environment. Refused with [`Refusal::Full`] at [`MAX_SESSIONS`], counted under the same lock that inserts, so
     /// sessions in their grace period hold a place.
     pub fn create(&self, expands: bool, cursors: CursorOptions) -> Result<Handle<C>, Refusal> {
@@ -372,7 +371,9 @@ impl<C: Clone + Send + 'static> Service<C> {
                 break id;
             }
         };
-        let state = Arc::new(SessionState::new(id, OwnerId::generate(), expands));
+        let mut state = SessionState::new(id, expands);
+        let seat = state.seat_owner();
+        let state = Arc::new(state);
         let mut live = Live {
             tx: watch::channel(Arc::clone(&state)).0,
             state,
@@ -382,33 +383,41 @@ impl<C: Clone + Send + 'static> Service<C> {
             streams: BTreeMap::new(),
         };
         let identity = live.new_identity();
-        let entry = live.enter(OWNER_SEAT, Lease(0), cursors, identity);
+        let entry = live.enter(seat, Lease(0), cursors, identity);
         sessions.insert(id, live);
-        Ok(Handle::new(self.clone(), id, OWNER_SEAT, entry))
+        Ok(Handle::new(self.clone(), id, seat, entry))
     }
 
-    /// Seats a watcher in the session the link opens, if its secret is the current one.
+    /// Seats a Guest in the session the link opens, if its secret is the current one.
     pub fn join(&self, link: &JoinLink, cursors: CursorOptions) -> Result<Handle<C>, Refusal> {
-        self.seat_watcher(link.session, Some(&link.secret), cursors)
+        self.seat(
+            link.session,
+            Input::Join {
+                secret: Some(link.secret.clone()),
+            },
+            cursors,
+        )
     }
 
-    /// Seats a watcher in shared session `id`, for callers allowed to see every session.
-    pub fn watch(&self, id: SessionId, cursors: CursorOptions) -> Result<Handle<C>, Refusal> {
-        self.seat_watcher(id, None, cursors)
-    }
-
-    fn seat_watcher(
+    /// Seats an Owner in session `id`: a Guest instead when it reads the environment and the caller lacks Full access.
+    pub fn attach(
         &self,
         id: SessionId,
-        secret: Option<&Secret>,
+        full_access: bool,
+        cursors: CursorOptions,
+    ) -> Result<Handle<C>, Refusal> {
+        self.seat(id, Input::Attach { full_access }, cursors)
+    }
+
+    fn seat(
+        &self,
+        id: SessionId,
+        input: Input,
         cursors: CursorOptions,
     ) -> Result<Handle<C>, Refusal> {
         self.locked(|sessions, deferred| {
-            let join = Input::Join {
-                secret: secret.cloned(),
-            };
-            let applied = apply(sessions, id, join, deferred)?;
-            let Outcome::Joined { seat, lease } = applied.outcome else {
+            let applied = apply(sessions, id, input, deferred)?;
+            let Outcome::Seated { seat, lease } = applied.outcome else {
                 return Err(Refusal::SeatGone);
             };
             let live = sessions.get_mut(&id).ok_or(Refusal::SeatGone)?;
@@ -501,8 +510,8 @@ impl<C: Clone + Send + 'static> Service<C> {
         ))
     }
 
-    /// The seat's connection dropped: it is away for the grace period, then loses its seat (and an owner ends the
-    /// session). Does nothing for a lease that was replaced.
+    /// The seat's connection dropped: it is away for the grace period, then loses its seat (the last Owner seat ending
+    /// the session). Does nothing for a lease that was replaced.
     pub(super) fn disconnect(&self, session: SessionId, seat: SeatId, lease: Lease) {
         let away = self.locked(|sessions, deferred| {
             let input = Input::Disconnect { seat, lease };

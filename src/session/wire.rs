@@ -16,8 +16,7 @@ use sessions::session::{Command, Refusal, Scope};
 use std::path::Path;
 use tokio::time::Instant;
 use workspace::{
-    BookmarkId, BookmarkKind, BookmarkTarget, Content, LiveRecipe, Secret, Source, Watch,
-    WorkspaceItem,
+    BookmarkId, BookmarkKind, BookmarkTarget, Content, Secret, Source, Watch, WorkspaceItem,
     intake::{LiveDefaults, NewLive, NewOverlay},
 };
 use workspace_store::{BookmarkCommand, DocCommand, HiddenRef};
@@ -213,9 +212,11 @@ fn doc_command(
                     Refusal::Invalid
                 })?;
             // Only the owner can restore a hidden password, so no one else may erase it.
-            if let (Source::Live(new), Some(old), None) =
-                (&edited.recipe.source, saved.recipe(item), saved.live(item))
-                && (old.loses_broker_password(new) || old.loses_url_password(new))
+            if let (Source::Live(new), Some(old), None) = (
+                &edited.recipe.source,
+                saved.recipe(item),
+                saved.recipe(item),
+            ) && (old.loses_broker_password(new) || old.loses_url_password(new))
             {
                 return Err(Refusal::Invalid);
             }
@@ -328,49 +329,13 @@ fn intake(
             let mut new = NewLive::from(*new);
             if let Some(address) = found {
                 scanned(&mut new, &address, network, live)?;
-            } else if let Some(recipe) = like.and_then(|item| saved.live(item)) {
+            } else if let Some(recipe) = like.and_then(|item| saved.recipe(item)) {
                 new.copy_login(recipe, live, workspace::intake::LoginUse::Stream)?;
             }
-            new.bare_kept = saved.guest;
             let item = workspace::intake::live(new, live, handlers)?;
-            let item = saved.labelled(item, label.as_deref());
-            match &item.recipe.source {
-                Source::Live(recipe) if saved.guest => refuse_references(recipe).map(|()| item),
-                _ => Ok(item),
-            }
+            Ok(saved.labelled(item, label.as_deref()))
         }
     }
-}
-
-/// Refuses a stream whose host, login or broker, in the overlay or kept for another mode, is a `$NAME` reference as
-/// it will be stored: it would read the owner's environment for a seat that is not the owner.
-fn refuse_references(recipe: &LiveRecipe) -> Result<(), foundation::UserError> {
-    let mqtt = recipe.mqtt_settings();
-    let broker = match &mqtt {
-        Some(mqtt) => [
-            mqtt.broker_host.as_str(),
-            mqtt.broker_user.as_str(),
-            mqtt.broker_pass.expose(),
-        ],
-        None => [""; 3],
-    };
-    let texts = [
-        recipe.host.as_str(),
-        recipe.username.as_str(),
-        recipe.password.expose(),
-    ];
-    if texts
-        .into_iter()
-        .chain(broker)
-        .any(|text| settings::reference(text).is_some())
-    {
-        return Err(foundation::UserError::new(
-            foundation::ErrorCode::WorkspaceInvalid,
-            "Only the person at this machine can use a $NAME reference.",
-        )
-        .at(foundation::Location::field("host")));
-    }
-    Ok(())
 }
 
 /// Points `new` at the camera the scan signed in to at `address`, with the login that worked as it was written (a

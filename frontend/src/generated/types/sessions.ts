@@ -26,4 +26,4 @@ export type SeatMode = "following" | "exploring";
 /**
  * Which seat a participant holds.
  */
-export type SeatRole = "owner" | "watcher";
+export type SeatRole = "owner" | "guest";

@@ -1,10 +1,10 @@
-//! `GET /api/sessions`: the sessions that are shared.
+//! `GET /api/sessions`: the sessions of this backend, for an Owner to attach to.
 
 use crate::AppState;
 use api_types::SessionSummary;
 use axum::{Json, extract::State};
 
-/// Lists the shared sessions for a caller with the Sessions grant (the route table checks it).
+/// Lists the sessions for a caller with the Sessions grant (the route table checks it).
 pub(crate) async fn list(State(state): State<AppState>) -> Json<Vec<SessionSummary>> {
     Json(
         state
@@ -12,7 +12,7 @@ pub(crate) async fn list(State(state): State<AppState>) -> Json<Vec<SessionSumma
             .list()
             .into_iter()
             .map(|listing| SessionSummary {
-                link: state.hosting.join_url(&listing.link),
+                link: listing.link.and_then(|link| state.hosting.join_url(&link)),
                 link_problem: state.hosting.link_problem(),
                 id: listing.id.to_string(),
                 owner_present: listing.owner_present,

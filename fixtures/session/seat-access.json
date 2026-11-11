@@ -1,10 +1,4 @@
 {
-  "edit": {
-    "content": true,
-    "control": false,
-    "host": false,
-    "view": true
-  },
   "explore": {
     "content": false,
     "control": false,

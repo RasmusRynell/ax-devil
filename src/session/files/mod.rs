@@ -272,12 +272,11 @@ impl WorkspaceFiles {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sessions::OwnerId;
 
     /// Blocking work whose caller is dropped midway still finishes before the next work starts.
     #[tokio::test]
     async fn file_work_outlives_its_cancelled_caller_and_later_work_waits_for_it() {
-        let state = SessionState::new(SessionId::generate(), OwnerId::generate(), true);
+        let state = SessionState::new(SessionId::generate(), true);
         let files = Arc::new(SessionFiles {
             rx: watch::channel(Arc::new(state)).1,
             copy: None,

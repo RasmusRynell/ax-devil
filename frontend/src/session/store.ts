@@ -1,6 +1,7 @@
 import { credential } from "../access";
 import { CommandFailed, CommandRefused } from "../errors";
 import type {
+  ClockIntent,
   CursorOptions,
   CursorPoint,
   DocWire,
@@ -33,6 +34,8 @@ export interface SessionState {
   session: string | null;
   /** This window's seat id. */
   you: number | null;
+  /** Whether the window is in a Session it did not start: one it attached to or joined. */
+  attached: boolean;
   /** `null` until the backend has sent the first Doc. */
   doc: DocWire | null;
   /** What this seat may do and how it shows; `null` until the first part arrives. */
@@ -96,6 +99,7 @@ export class SessionStore {
     ended: null,
     session: null,
     you: null,
+    attached: false,
     doc: null,
     seat: null,
     roster: [],
@@ -112,6 +116,8 @@ export class SessionStore {
   /** A seat part whose Doc has not arrived; the backend sends the Doc first, so this only guards the order. */
   #waiting: SeatPart | null = null;
   #pending: Pending | null = null;
+  /** The last view this window set, settled or not. */
+  #lastSet: View | null = null;
   /** The highest view number this window has used, and the highest it has sent. */
   #seq = 0;
   #sent = 0;
@@ -141,7 +147,7 @@ export class SessionStore {
 
   /**
    * Connects the way this tab is entered: by the join link it holds, else as its own Session, taking back the seat a
-   * reload left behind. A watcher's seat that is gone is not replaced by a Session of its own.
+   * reload left behind. The seat of a Session someone else started, once gone, is not replaced by a Session of its own.
    */
   start(): void {
     const held = credential();
@@ -168,10 +174,10 @@ export class SessionStore {
     this.#refuse(new Error("The window closed."));
   }
 
-  /** Leaves this window's Session for someone else's, with the Sessions grant. */
-  watch(session: string): void {
+  /** Leaves this window's Session to attach to another of the server's, with the Sessions grant. */
+  attach(session: string): void {
     this.#leaveSession();
-    this.#begin({ kind: "watch", session }, undefined, false);
+    this.#begin({ kind: "attach", session }, undefined, false);
   }
 
   /** Leaves this window's Session for the one a join link opens: its `<id>.<secret>`, or the whole link. */
@@ -181,7 +187,7 @@ export class SessionStore {
     this.#begin({ kind: "join", link: secret }, undefined, false);
   }
 
-  /** A watcher's way out, to a new Session of its own. */
+  /** The way out of a Session this window did not start, to a new Session of its own. */
   leave(): void {
     this.#leaveSession();
     this.#begin({ kind: "own" }, undefined, true);
@@ -203,12 +209,18 @@ export class SessionStore {
     const next = change(shown);
     if (next === shown || !canDo(this.#state.seat?.can ?? null, "view")) return;
     this.#seq += 1;
+    this.#lastSet = next;
     this.#pending = { seq: this.#seq, view: next };
     this.#cancelFrame ??= this.#deps.frame(() => {
       this.#cancelFrame = null;
       this.#flush();
     });
     this.#publish();
+  }
+
+  /** The clock of `viewer` in the last view this window set, settled or not. */
+  ownClock(viewer: number): ClockIntent | undefined {
+    return this.#lastSet?.viewers[viewer]?.clock;
   }
 
   /** Back to the presenter's view; a change that was on its way is dropped. */
@@ -321,6 +333,7 @@ export class SessionStore {
     window.sessionStorage.removeItem(STORED_SEAT);
     this.#own = own;
     this.#clear();
+    this.#state = { ...this.#state, attached: !own };
     const held = credential();
     this.#state = { ...this.#state, connection: "connecting", ended: null };
     this.#connection = this.#deps.connect({
@@ -341,6 +354,7 @@ export class SessionStore {
     this.#doc = null;
     this.#waiting = null;
     this.#pending = null;
+    this.#lastSet = null;
     this.#dropName();
     this.#seq = 0;
     this.#sent = 0;

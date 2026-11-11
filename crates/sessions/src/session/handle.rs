@@ -140,7 +140,7 @@ impl<C: Clone + Send + 'static> Handle<C> {
             .locked(|sessions, deferred| apply(sessions, self.session, input, deferred))?;
         match applied.outcome {
             Outcome::ViewRefused(refusal) => Err(refusal),
-            Outcome::None | Outcome::Joined { .. } | Outcome::Opened { .. } => Ok(()),
+            Outcome::None | Outcome::Seated { .. } | Outcome::Opened { .. } => Ok(()),
         }
     }
 

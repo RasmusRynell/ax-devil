@@ -1,8 +1,7 @@
 //! The one pure step: a state and an input make the next state and the effects to run after the lock.
 
 use super::{
-    Access, Command, Completion, GrantId, JobId, Lease, Refusal, SeatId, SessionState, Spawn,
-    Ticket, Use,
+    Command, Completion, GrantId, JobId, Lease, Refusal, SeatId, SessionState, Spawn, Ticket, Use,
     authorize::{Standing, authorize, standing},
     commands::{self, Scope, set_workspace},
     jobs,
@@ -69,10 +68,16 @@ pub enum Input {
         /// The server's clock in microseconds, which bounds the presenter's clock intents.
         now_us: i64,
     },
-    /// A watcher joins. `secret` is the link's; `None` for a caller allowed to join without one.
+    /// A Guest joins. `secret` is the link's; `None` for a caller allowed to join without one.
     Join {
         /// The link's secret.
         secret: Option<Secret>,
+    },
+    /// An Owner attaches to the session. It gets an Owner seat, but a session that reads the server's environment
+    /// is driven only with Full access: without it the caller joins as a Guest, as [`Input::Join`] without a secret.
+    Attach {
+        /// Whether the Owner has Full access.
+        full_access: bool,
     },
     /// A newer connection takes the seat over: its lease is bumped and the old connection's authority ends.
     Resume {
@@ -86,7 +91,7 @@ pub enum Input {
         /// The lease of the connection that dropped.
         lease: Lease,
     },
-    /// The seat leaves at once. The owner leaving ends the session.
+    /// The seat leaves at once. The last Owner seat leaving ends the session.
     Leave {
         /// The seat.
         seat: SeatId,
@@ -132,8 +137,8 @@ pub enum Outcome {
     /// Nothing to report.
     #[default]
     None,
-    /// A watcher joined.
-    Joined {
+    /// A seat was taken, by a Guest or an Owner.
+    Seated {
         /// Its seat.
         seat: SeatId,
         /// Its lease.
@@ -209,6 +214,7 @@ fn apply(next: &mut SessionState, fx: &mut Effects, input: Input) -> Result<(), 
             now_us,
         } => set_view(next, fx, seat, lease, view, seq, now_us),
         Input::Join { secret } => join(next, fx, secret.as_ref()),
+        Input::Attach { full_access } => attach(next, fx, full_access),
         Input::Resume { seat } => {
             let seat = next.seats.get_mut(&seat).ok_or(Refusal::SeatGone)?;
             seat.lease = Lease(seat.lease.0 + 1);
@@ -251,18 +257,22 @@ fn current(next: &mut SessionState, seat: SeatId, lease: Lease) -> Result<&mut S
         .ok_or(Refusal::SeatGone)
 }
 
-/// A watcher leaves, or the owner does and `owner_reason` ends the session.
+/// A seat leaves. The last Owner seat leaving ends the session for `owner_reason`; a Guest never keeps it alive.
 fn leave(
     next: &mut SessionState,
     seat: SeatId,
     lease: Lease,
     owner_reason: EndReason,
 ) -> Result<(), Refusal> {
-    match current(next, seat, lease)?.kind {
-        SeatKind::Owner => next.ended = Some(owner_reason),
-        SeatKind::Watcher { .. } => {
-            next.seats.remove(&seat);
-        }
+    let kind = current(next, seat, lease)?.kind;
+    let another = next
+        .seats
+        .iter()
+        .any(|(id, other)| *id != seat && other.kind == SeatKind::Owner);
+    if kind == SeatKind::Owner && !another {
+        next.ended = Some(owner_reason);
+    } else {
+        next.seats.remove(&seat);
     }
     Ok(())
 }
@@ -280,23 +290,23 @@ fn join(next: &mut SessionState, fx: &mut Effects, secret: Option<&Secret>) -> R
     if next.seats.len() >= MAX_SEATS {
         return Err(Refusal::Full);
     }
-    let view = (sharing.access == Access::Edit).then(|| Arc::clone(&next.presenter));
-    let kind = SeatKind::Watcher {
-        sharing: sharing.generation,
-    };
-    let seat = SeatId(next.next_seat);
-    next.next_seat += 1;
-    next.seats.insert(
+    let seat = next.seat_guest(sharing.generation);
+    fx.outcome = Outcome::Seated {
         seat,
-        Seat {
-            lease: Lease(0),
-            kind,
-            present: true,
-            view,
-            views_done: 0,
-        },
-    );
-    fx.outcome = Outcome::Joined {
+        lease: Lease(0),
+    };
+    Ok(())
+}
+
+fn attach(next: &mut SessionState, fx: &mut Effects, full_access: bool) -> Result<(), Refusal> {
+    if next.expands && !full_access {
+        return join(next, fx, None);
+    }
+    if next.seats.len() >= MAX_SEATS {
+        return Err(Refusal::Full);
+    }
+    let seat = next.seat_owner();
+    fx.outcome = Outcome::Seated {
         seat,
         lease: Lease(0),
     };
@@ -341,7 +351,7 @@ fn set_view(
                 next.presenter_rev += 1;
             }
         }
-        Standing::Following | Standing::Exploring | Standing::Editing => {
+        Standing::Following | Standing::Exploring => {
             let own = Arc::new(restrict(&view, &next.doc));
             if let Some(seat) = next.seats.get_mut(&seat) {
                 seat.view = Some(own);

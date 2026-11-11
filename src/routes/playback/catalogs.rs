@@ -1,7 +1,7 @@
 //! The catalogs a viewer hears about: it asks for a catalog by id and is answered with its document, and from then on
 //! it is sent the new document whenever that changes, and the new list whenever the list of catalogs changes. The
 //! messages are text. The built-ins go to everyone. A user catalog is the host's file: the host's own viewers ask for
-//! the ones their lanes use, and a watcher is shown a user catalog only while a host viewer of its own Session has
+//! the ones their lanes use, and a Guest is shown a user catalog only while a host viewer of its own Session has
 //! asked for it. The host's choice per lane is client state, so "asked for" stands for "draws with".
 
 use super::{Outgoing, text};
@@ -24,9 +24,9 @@ const MAX_KEPT: usize = 16;
 /// What one viewer has been told of the catalogs.
 pub(super) struct CatalogFeed {
     library: Library,
-    /// The Session of a watcher, who is shown only the catalogs that Session's host lanes use; `None` for a host.
-    watcher: Option<String>,
-    /// The Session of a host viewer, whose watchers are shown the user catalogs it asked for while they are held.
+    /// The Session of a Guest, who is shown only the catalogs that Session's host lanes use; `None` for a host.
+    guest: Option<String>,
+    /// The Session of a host viewer, whose Guests are shown the user catalogs it asked for while they are held.
     session: String,
     lends: BTreeMap<String, Lend>,
     changes: watch::Receiver<u64>,
@@ -49,11 +49,11 @@ impl CatalogFeed {
         // Subscribe before listing, so a change between the two is pushed rather than missed.
         let changes = library.changes();
         let session = session.to_string();
-        let watcher = (!audience.host_details).then(|| session.clone());
+        let guest = (!audience.host_details).then(|| session.clone());
         Self {
-            listing: infos(library, watcher.as_deref()),
+            listing: infos(library, guest.as_deref()),
             library: library.clone(),
-            watcher,
+            guest,
             session,
             lends: BTreeMap::new(),
             changes,
@@ -91,7 +91,7 @@ impl CatalogFeed {
             self.unanswered.remove(&dropped);
             self.stale.retain(|stale| *stale != dropped);
         }
-        if self.watcher.is_none()
+        if self.guest.is_none()
             && let Some(parsed) = CatalogId::parse(&id)
         {
             self.lends
@@ -115,7 +115,7 @@ impl CatalogFeed {
             if self.changes.changed().await.is_err() {
                 return std::future::pending().await;
             }
-            let listing = infos(&self.library, self.watcher.as_deref());
+            let listing = infos(&self.library, self.guest.as_deref());
             let listed = (listing != self.listing).then(|| {
                 self.listing = listing.clone();
                 text(&ServerMessage::Catalogs { catalogs: listing }).into()
@@ -124,7 +124,7 @@ impl CatalogFeed {
                 .asked
                 .iter()
                 .filter(|(id, revision)| {
-                    served(&self.library, id, self.watcher.as_deref()).revision() != *revision
+                    served(&self.library, id, self.guest.as_deref()).revision() != *revision
                 })
                 .map(|(id, _)| id.clone())
                 .collect();
@@ -159,7 +159,7 @@ impl CatalogFeed {
 
     /// The message about the catalog `id`, which the viewer is then up to date with.
     fn reply(&mut self, id: String) -> Outgoing {
-        let served = served(&self.library, &id, self.watcher.as_deref());
+        let served = served(&self.library, &id, self.guest.as_deref());
         if let Some((_, revision)) = self.asked.iter_mut().find(|(asked, _)| *asked == id) {
             *revision = served.revision();
         }
@@ -181,16 +181,16 @@ impl CatalogFeed {
     }
 }
 
-/// What `id` names now; nothing for an id that names no catalog here, or, to a watcher, no catalog of the host's lanes.
-fn served(library: &Library, id: &str, watcher: Option<&str>) -> Served {
-    CatalogId::parse(id).map_or(Served::Missing { revision: 0 }, |parsed| match watcher {
+/// What `id` names now; nothing for an id that names no catalog here, or, to a Guest, no catalog of the host's lanes.
+fn served(library: &Library, id: &str, guest: Option<&str>) -> Served {
+    CatalogId::parse(id).map_or(Served::Missing { revision: 0 }, |parsed| match guest {
         Some(session) => library.shared_document(session, &parsed),
         None => library.document(&parsed),
     })
 }
 
-fn infos(library: &Library, watcher: Option<&str>) -> Vec<CatalogInfoWire> {
-    let documents = match watcher {
+fn infos(library: &Library, guest: Option<&str>) -> Vec<CatalogInfoWire> {
+    let documents = match guest {
         Some(session) => library.shared_documents(session),
         None => library.documents(),
     };

@@ -86,12 +86,12 @@ Automated checks cannot cut a real network or open a real LAN listener, so run t
    `ax-devil://open?url=<encoded link>` link as an argument. The app asks before it opens.
 3. Check that the plain HTTP warning was logged on A, that both cursors show on each side, and that follow, explore
    and Follow presenter behave as in the smoke scenario.
-4. Cut a watcher's network for 10 s: it resumes with the same Guest N. Cut it for 60 s (the server notices after 25 s
+4. Cut a Guest's network for 10 s: it resumes with the same Guest N. Cut it for 60 s (the server notices after 25 s
    and holds the seat 30 s more): the owner's list drops the seat.
 5. With the owner in a browser on B and the server on A, cut B's network for 10 s: the session continues, with the
-   watchers seeing the owner away meanwhile. Cut it for 60 s: the session ends and watchers are told the owner
+   Guests seeing the owner away meanwhile. Cut it for 60 s: the session ends and Guests are told the owner
    left (`OwnerGone`).
-6. With a desktop owner, close its window without stopping sharing: watchers must not stay on a live session. They see
+6. With a desktop owner, close its window without stopping sharing: Guests must not stay on a live session. They see
    the owner away and then the session end, or lose the connection once the app's backend has stopped.
 
 ## Fixtures

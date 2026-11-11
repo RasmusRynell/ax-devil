@@ -107,7 +107,7 @@ describe("session", () => {
     expect(FakeSocket.latest.received.filter((message) => message.type === "view")).toHaveLength(1);
   });
 
-  it("shows a following watcher the presenter's view and lets nothing change it", async () => {
+  it("shows a following Guest the presenter's view and lets nothing change it", async () => {
     const room = watch("watch");
     expect(await screen.findByText("bookmarks open read-only")).toBeTruthy();
 
@@ -141,7 +141,7 @@ describe("session", () => {
     click("Hide sidebar");
     flushFrames();
 
-    // The owner stops watchers exploring before the backend gets to the change.
+    // The owner stops Guests exploring before the backend gets to the change.
     act(() => room.allow("watch"));
     expect(screen.getByText("bookmarks closed read-only")).toBeTruthy();
     act(() => FakeSocket.latest.flush());

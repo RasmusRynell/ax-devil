@@ -1,5 +1,5 @@
 //! What makes authority end for good: Stop, close and reopen, a replaced seat, lowered access and the end of the
-//! session. Each is checked on the stream a watcher holds, the seat it sits in and the secrets that could revive it.
+//! session. Each is checked on the stream a guest holds, the seat it sits in and the secrets that could revive it.
 
 use crate::{
     GRACE, Rig, authority, entry_key, key, link, looking, pane, playlist_in, showing, stream,
@@ -20,17 +20,17 @@ const STOP: Command = Command::Control(Control::Stop);
 #[tokio::test(start_paused = true)]
 async fn stopping_ends_every_watcher_and_restarting_revives_nothing() {
     let rig = Rig::new();
-    let (owner, watcher) = rig.shared(Access::Watch);
+    let (owner, guest) = rig.shared(Access::Watch);
     let (_, key) = rig.open_video(&owner, "a.mp4");
-    let first = stream(&rig.service, &watcher, &key).unwrap();
+    let first = stream(&rig.service, &guest, &key).unwrap();
     let Ok(sessions::session::Reply::Ticket(unused)) =
-        watcher.command(Command::RequestTicket(key.clone()))
+        guest.command(Command::RequestTicket(key.clone()))
     else {
         panic!("a ticket")
     };
     let (old_link, old_token, old_seat) =
-        (link(&owner), watcher.resume_token().clone(), watcher.seat());
-    let mut feed = watcher.feed();
+        (link(&owner), guest.resume_token().clone(), guest.seat());
+    let mut feed = guest.feed();
 
     owner.command(STOP).unwrap();
 
@@ -90,9 +90,9 @@ async fn stopping_ends_every_watcher_and_restarting_revives_nothing() {
 #[tokio::test(start_paused = true)]
 async fn closing_a_viewer_ends_its_streams_and_reopening_needs_a_key_of_the_new_generation() {
     let rig = Rig::new();
-    let (owner, watcher) = rig.shared(Access::Watch);
+    let (owner, guest) = rig.shared(Access::Watch);
     let (item, old_key) = rig.open_video(&owner, "a.mp4");
-    let before = stream(&rig.service, &watcher, &old_key).unwrap();
+    let before = stream(&rig.service, &guest, &old_key).unwrap();
 
     owner
         .command(Command::Content(DocCommand::CloseViewer(item)))
@@ -107,10 +107,10 @@ async fn closing_a_viewer_ends_its_streams_and_reopening_needs_a_key_of_the_new_
     let new_key = key(&owner.state(), item);
     assert_ne!(new_key, old_key, "the same Content under a new generation");
     assert!(matches!(
-        stream(&rig.service, &watcher, &old_key),
+        stream(&rig.service, &guest, &old_key),
         Err(Refusal::ContentUnavailable)
     ));
-    let after = stream(&rig.service, &watcher, &new_key).unwrap();
+    let after = stream(&rig.service, &guest, &new_key).unwrap();
     assert!(
         after.grant() > before.grant(),
         "a grant id is never reissued"
@@ -121,12 +121,12 @@ async fn closing_a_viewer_ends_its_streams_and_reopening_needs_a_key_of_the_new_
 #[tokio::test(start_paused = true)]
 async fn a_seat_taken_over_by_a_newer_connection_loses_its_streams_and_its_say() {
     let rig = Rig::new();
-    let (owner, watcher) = rig.shared(Access::Watch);
+    let (owner, guest) = rig.shared(Access::Watch);
     let (_, key) = rig.open_video(&owner, "a.mp4");
-    let old = stream(&rig.service, &watcher, &key).unwrap();
-    let mut feed = watcher.feed();
+    let old = stream(&rig.service, &guest, &key).unwrap();
+    let mut feed = guest.feed();
 
-    let newer = rig.service.resume(watcher.resume_token()).unwrap();
+    let newer = rig.service.resume(guest.resume_token()).unwrap();
 
     assert_eq!(authority(&old), Authority::Revoked);
     assert!(matches!(
@@ -134,19 +134,19 @@ async fn a_seat_taken_over_by_a_newer_connection_loses_its_streams_and_its_say()
         Change::Ended(EndReason::Replaced)
     ));
     assert_eq!(
-        watcher.command(Command::RequestTicket(key.clone())).err(),
+        guest.command(Command::RequestTicket(key.clone())).err(),
         Some(Refusal::SeatGone)
     );
     assert!(stream(&rig.service, &newer, &key).is_ok());
 }
 
 #[tokio::test(start_paused = true)]
-async fn lowering_access_takes_back_exploring_and_editing_at_once() {
+async fn lowering_access_takes_back_exploring_at_once() {
     let rig = Rig::new();
-    let (owner, watcher) = rig.shared(Access::Explore);
+    let (owner, guest) = rig.shared(Access::Explore);
     let (_, key) = rig.open_video(&owner, "a.mp4");
-    watcher.view(View::default(), 1).unwrap();
-    let exploring = stream(&rig.service, &watcher, &key).unwrap();
+    guest.view(View::default(), 1).unwrap();
+    let exploring = stream(&rig.service, &guest, &key).unwrap();
     assert_eq!(
         authority(&exploring),
         Authority::Own {
@@ -162,28 +162,13 @@ async fn lowering_access_takes_back_exploring_and_editing_at_once() {
 
     assert!(matches!(authority(&exploring), Authority::Follow { .. }));
     assert_eq!(
-        watcher.view(View::default(), 2).err(),
+        guest.view(View::default(), 2).err(),
         Some(Refusal::NotAllowed)
     );
 
-    owner
-        .command(Command::Control(Control::SetAccess {
-            access: Access::Edit,
-        }))
-        .unwrap();
     let item = *owner.state().doc.workspace.open.iter().next().unwrap();
-    assert!(
-        watcher
-            .command(Command::Content(DocCommand::CloseViewer(item)))
-            .is_ok()
-    );
-    owner
-        .command(Command::Control(Control::SetAccess {
-            access: Access::Explore,
-        }))
-        .unwrap();
     assert_eq!(
-        watcher
+        guest
             .command(Command::Content(DocCommand::OpenViewer(item)))
             .err(),
         Some(Refusal::NotAllowed)
@@ -193,9 +178,9 @@ async fn lowering_access_takes_back_exploring_and_editing_at_once() {
 #[tokio::test(start_paused = true)]
 async fn the_session_ending_ends_every_stream_job_and_seat() {
     let rig = Rig::new();
-    let (owner, watcher) = rig.shared(Access::Watch);
+    let (owner, guest) = rig.shared(Access::Watch);
     let (_, key) = rig.open_video(&owner, "a.mp4");
-    let held = stream(&rig.service, &watcher, &key).unwrap();
+    let held = stream(&rig.service, &guest, &key).unwrap();
     owner
         .command(Command::Content(DocCommand::AddItems {
             items: vec![rig.video("b.mp4")],
@@ -204,7 +189,7 @@ async fn the_session_ending_ends_every_stream_job_and_seat() {
         .unwrap();
     let pending = rig.jobs.take();
     assert_eq!(pending.len(), 1);
-    let mut feed = watcher.feed();
+    let mut feed = guest.feed();
     let token = owner.resume_token().clone();
 
     drop(owner);
@@ -251,20 +236,20 @@ async fn disconnected_sessions_in_their_grace_period_still_count_against_the_ser
 #[tokio::test(start_paused = true)]
 async fn a_refused_command_and_a_refused_view_change_nothing_a_seat_can_see() {
     let rig = Rig::new();
-    let (owner, watcher) = rig.shared(Access::Watch);
+    let (owner, guest) = rig.shared(Access::Watch);
     let (item, _) = rig.open_video(&owner, "a.mp4");
-    let before = watcher.state();
+    let before = guest.state();
 
-    let refused = watcher.command(Command::Content(DocCommand::CloseViewer(item)));
-    let view = watcher.view(View::default(), 7);
+    let refused = guest.command(Command::Content(DocCommand::CloseViewer(item)));
+    let view = guest.view(View::default(), 7);
 
     assert_eq!(refused.err(), Some(Refusal::NotAllowed));
     assert_eq!(view.err(), Some(Refusal::NotAllowed));
-    let after = watcher.state();
+    let after = guest.state();
     assert_eq!(before.doc_rev, after.doc_rev);
     assert_eq!(before.presenter_rev, after.presenter_rev);
     assert_eq!(
-        after.seats[&watcher.seat()].views_done,
+        after.seats[&guest.seat()].views_done,
         7,
         "a refused view is settled, so the client stops showing it"
     );
@@ -273,18 +258,18 @@ async fn a_refused_command_and_a_refused_view_change_nothing_a_seat_can_see() {
 #[tokio::test(start_paused = true)]
 async fn closing_a_viewer_removes_it_from_every_view() {
     let rig = Rig::new();
-    let (owner, watcher) = rig.shared(Access::Explore);
+    let (owner, guest) = rig.shared(Access::Explore);
     let (item, _) = rig.open_video(&owner, "a.mp4");
-    // The owner's view from opening shows the item; the exploring watcher shows it in its own.
-    watcher.view(showing(item), 1).unwrap();
+    // The owner's view from opening shows the item; the exploring guest shows it in its own.
+    guest.view(showing(item), 1).unwrap();
     assert_eq!(owner.state().presenter.active, Some(ViewerId(1)));
 
     owner
         .command(Command::Content(DocCommand::CloseViewer(item)))
         .unwrap();
 
-    let state = watcher.state();
-    let own = state.seats[&watcher.seat()].view.as_ref().unwrap();
+    let state = guest.state();
+    let own = state.seats[&guest.seat()].view.as_ref().unwrap();
     assert!(own.viewers.is_empty() && own.active.is_none());
     assert!(state.presenter.viewers.is_empty() && state.presenter.active.is_none());
 }
@@ -292,7 +277,7 @@ async fn closing_a_viewer_removes_it_from_every_view() {
 #[tokio::test(start_paused = true)]
 async fn a_new_link_turns_away_the_old_one_and_keeps_the_seats_already_in() {
     let rig = Rig::new();
-    let (owner, watcher) = rig.shared(Access::Watch);
+    let (owner, guest) = rig.shared(Access::Watch);
     let old = link(&owner);
 
     owner
@@ -308,14 +293,14 @@ async fn a_new_link_turns_away_the_old_one_and_keeps_the_seats_already_in() {
             .join(&link(&owner), CursorOptions::default())
             .is_ok()
     );
-    assert!(owner.state().seats.contains_key(&watcher.seat()));
+    assert!(owner.state().seats.contains_key(&guest.seat()));
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_follower_streams_only_the_entry_a_presenter_pane_shows_and_losing_it_leaves_the_other_pane_alone()
  {
     let rig = Rig::new();
-    let (owner, watcher) = rig.shared(Access::Watch);
+    let (owner, guest) = rig.shared(Access::Watch);
     let (item, first) = rig.open(&owner, playlist_in(rig.dir.path(), &["a", "b"]));
     let second = entry_key(&owner.state(), item, 1);
     let beside = ContentRef {
@@ -352,10 +337,10 @@ async fn a_follower_streams_only_the_entry_a_presenter_pane_shows_and_losing_it_
     };
 
     // Until the presenter picks an entry, the first one is shown.
-    let following = stream(&rig.service, &watcher, &first).unwrap();
+    let following = stream(&rig.service, &guest, &first).unwrap();
     assert!(matches!(authority(&following), Authority::Follow { .. }));
     assert_eq!(
-        stream(&rig.service, &watcher, &second).err(),
+        stream(&rig.service, &guest, &second).err(),
         Some(Refusal::ContentUnavailable),
         "a follower gets no ticket for an entry the presenter does not show"
     );
@@ -367,7 +352,7 @@ async fn a_follower_streams_only_the_entry_a_presenter_pane_shows_and_losing_it_
     );
 
     owner.view(panes(None), 2).unwrap();
-    let other = stream(&rig.service, &watcher, &beside).unwrap();
+    let other = stream(&rig.service, &guest, &beside).unwrap();
     assert!(matches!(authority(&following), Authority::Follow { .. }));
     assert!(matches!(authority(&other), Authority::Follow { .. }));
 
@@ -379,11 +364,11 @@ async fn a_follower_streams_only_the_entry_a_presenter_pane_shows_and_losing_it_
         "the other pane of the item keeps its stream"
     );
     assert!(matches!(
-        authority(&stream(&rig.service, &watcher, &second).unwrap()),
+        authority(&stream(&rig.service, &guest, &second).unwrap()),
         Authority::Follow { .. }
     ));
     assert_eq!(
-        stream(&rig.service, &watcher, &first).err(),
+        stream(&rig.service, &guest, &first).err(),
         Some(Refusal::ContentUnavailable)
     );
 }
