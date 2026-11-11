@@ -134,8 +134,9 @@ Rules for Workspace content, viewers, the sidebar, UI lifecycle, plugins and set
 ## Rendering
 
 - The frontend evaluates, lays out and picks per lane; the backend never evaluates a catalog or rasterizes. Evaluation
-  turns a Sample Item into Marks; layout and painting read only Marks. A viewer's viewport (one for all its lanes) and
-  selection (an entity id, shown in every lane of its source, kept across seeks) are client view state, never sent.
+  turns a Sample Item into Marks; layout and painting read only Marks. A viewer's viewport (one for all its lanes) is
+  part of the view, changed only by its own command; selection (an entity id, shown in every lane of its source, kept
+  across seeks) is client view state, never sent.
 - Overlay draw order is the catalog's layer order; inside a layer, rows in sample order, each row's marks in listed
   order.
 - A mark whose evaluation or layout fails at runtime (a null required field, a non-finite result, an invalid length

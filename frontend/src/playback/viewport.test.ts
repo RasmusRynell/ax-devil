@@ -9,7 +9,9 @@ import {
   intersection,
   panBy,
   pictureRect,
+  regionOf,
   toImage,
+  viewportOf,
   zoomAt,
 } from "./viewport";
 
@@ -98,5 +100,23 @@ describe("viewport", () => {
     expect(toImage(picture, picture.x - 1, picture.y + 5)).toBeNull();
     expect(intersection(picture, cell)).toEqual(cell);
     expect(intersection(cell, { x: 2000, y: 0, width: 5, height: 5 })).toBeNull();
+  });
+
+  it("fits a shared region inside a cell of another shape, showing at least that region", () => {
+    const region = regionOf({ zoom: 4, panX: 0.2, panY: -0.1 }, cell, image)!;
+    for (const other of [
+      { x: 0, y: 0, width: 300, height: 600 },
+      { x: 0, y: 0, width: 900, height: 200 },
+      { x: 0, y: 0, width: 400, height: 225 },
+    ]) {
+      const shown = regionOf(viewportOf(region, other, image), other, image)!;
+      const slack = 0.01;
+      expect(shown.x).toBeLessThanOrEqual(region.x + slack);
+      expect(shown.y).toBeLessThanOrEqual(region.y + slack);
+      expect(shown.x + shown.w).toBeGreaterThanOrEqual(region.x + region.w - slack);
+      expect(shown.y + shown.h).toBeGreaterThanOrEqual(region.y + region.h - slack);
+    }
+    expect(regionOf(FIT, cell, image)).toBeUndefined();
+    expect(viewportOf(undefined, cell, image)).toBe(FIT);
   });
 });

@@ -337,7 +337,17 @@ export class FakeSocket {
             expiresMs: 10_000,
           });
     if (cmd.type === "follow") seat.view = null;
-    else if (cmd.type === "control") {
+    else if (cmd.type === "setViewport") {
+      // A Guest that may only watch is refused; one that follows starts exploring with a copy of the presenter's.
+      if (!seat.owner && room.access !== "explore") return refuse();
+      const base = seat.view ?? room.presenter;
+      const shown = base.viewers[cmd.viewer];
+      const viewers = shown
+        ? { ...base.viewers, [cmd.viewer]: { ...shown, viewport: cmd.viewport } }
+        : base.viewers;
+      if (seat.owner) room.publish({ ...base, viewers }, seat.id);
+      else seat.view = { ...base, viewers };
+    } else if (cmd.type === "control") {
       if (!seat.owner) return refuse();
       const control = cmd.control;
       if (control.type === "share" || control.type === "setAccess") room.allow(control.access);

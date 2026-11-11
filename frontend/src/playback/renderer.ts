@@ -33,7 +33,10 @@ type Placed = { lane: number; cell: CellRect; picture: CellRect };
 export type Point = { x: number; y: number };
 
 /** What the renderer knows of where things are on the canvas; valid until the next draw. */
-export type Geometry = Pick<VideoRenderer, "pick" | "pictures" | "boxes" | "zoomAt" | "panBy">;
+export type Geometry = Pick<
+  VideoRenderer,
+  "pick" | "pictures" | "boxes" | "zoomAt" | "panBy" | "reference"
+>;
 
 /** WebGL2 cannot be had: the browser has no support, or has disabled it. */
 export class RendererUnavailable extends Error {
@@ -416,6 +419,12 @@ export class VideoRenderer {
     if (!image || !placed) return viewport;
     const scale = this.#scale();
     return panBy(viewport, placed.cell, image, dx * scale.x, dy * scale.y);
+  }
+
+  /** The first lane's cell and the frame, which a viewport is shared against. */
+  reference() {
+    const placed = this.#placed[0];
+    return this.#picture && placed ? { cell: placed.cell, image: this.#picture } : undefined;
   }
 
   #picked(placed: Placed, frame: LaneFrame, { columns, row }: FoundRow): Picked {

@@ -250,6 +250,7 @@ impl Backend {
             pinned: false,
             clock: None,
             entry: None,
+            viewport: None,
         };
         let showing = View {
             active: Some(key.viewer),

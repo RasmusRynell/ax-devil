@@ -2,10 +2,13 @@
 
 use super::{
     Access, ContentRef, JobOwner, Lease, Refusal, SeatId, SessionState, Sharing, SharingGen, Use,
+    authorize::{Standing, standing},
     jobs::{Work, spawn},
+    layout::ViewerId,
     state::Doc,
     streams,
     transition::{Effects, Fresh},
+    views::{View, Viewport},
 };
 use crate::JoinLink;
 use serde::Deserialize;
@@ -62,6 +65,14 @@ pub enum Command {
     Content(DocCommand),
     /// Go back to following the presenter.
     Follow,
+    /// Change what one viewer of the seat's current view shows of its video. It is applied to the view as it is
+    /// now: the Presenter View for an Owner seat, the seat's own for a Guest, which a following Guest starts.
+    SetViewport {
+        /// The viewer.
+        viewer: ViewerId,
+        /// The part of the video; absent for the whole frame.
+        viewport: Option<Viewport>,
+    },
     /// Change sharing.
     Control(Control),
     /// Ask for a ticket to receive a stream.
@@ -74,6 +85,7 @@ impl Command {
         match self {
             Self::Content(command) => Use::Command(content_scope(command)),
             Self::Follow => Use::Command(Scope::Follow),
+            Self::SetViewport { .. } => Use::Command(Scope::View),
             Self::Control(_) => Use::Command(Scope::Control),
             Self::RequestTicket(key) => Use::Stream(key),
         }
@@ -144,6 +156,9 @@ pub(super) fn run(
             follow(next, seat);
             Ok(())
         }
+        Command::SetViewport { viewer, viewport } => {
+            set_viewport(next, seat, lease, viewer, viewport)
+        }
         Command::Control(control) => self::control(next, control, fresh),
         Command::RequestTicket(key) => streams::request(next, seat, lease, key, fresh),
     }
@@ -174,6 +189,43 @@ fn follow(next: &mut SessionState, seat: SeatId) {
     if let Some(seat) = next.seats.get_mut(&seat) {
         seat.view = None;
     }
+}
+
+/// Sets `viewport` on `viewer` of the view the seat shows now, which is never taken from the client: a seat that
+/// follows starts exploring with a copy of the presenter's. A viewer the view does not have is left alone.
+fn set_viewport(
+    next: &mut SessionState,
+    seat: SeatId,
+    lease: Lease,
+    viewer: ViewerId,
+    viewport: Option<Viewport>,
+) -> Result<(), Refusal> {
+    let standing = standing(next, seat, lease)?;
+    let own = next.seats.get(&seat).and_then(|seat| seat.view.clone());
+    let mut view = View::clone(own.as_ref().unwrap_or(&next.presenter));
+    let Some(shown) = view.viewers.get_mut(&viewer) else {
+        return Ok(());
+    };
+    let viewport = viewport.and_then(Viewport::settled);
+    if shown.viewport == viewport {
+        return Ok(());
+    }
+    shown.viewport = viewport;
+    match standing {
+        Standing::Owner => {
+            next.presenter = Arc::new(view);
+            next.presenter_rev += 1;
+            next.presenter_by = Some(seat);
+        }
+        Standing::Following | Standing::Exploring => {
+            if let Some(seat) = next.seats.get_mut(&seat) {
+                seat.view = Some(Arc::new(view));
+            }
+        }
+        // Refused by `authorize`.
+        Standing::Watching => {}
+    }
+    Ok(())
 }
 
 fn control(next: &mut SessionState, control: Control, fresh: &Fresh) -> Result<(), Refusal> {

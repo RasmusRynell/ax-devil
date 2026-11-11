@@ -9,7 +9,7 @@ import type { Access } from "./sessions.session";
 import type { Can, ContentRef, RefusalCode } from "./sessions.session.authorize";
 import type { ControlCommand } from "./sessions.session.commands";
 import type { SeatInfo } from "./sessions.session.roster";
-import type { View } from "./sessions.session.views";
+import type { View, Viewport } from "./sessions.session.views";
 
 /**
  * How a command ended.
@@ -258,7 +258,15 @@ export type SessionCommand = { "type": "content",
 /**
  * The change.
  */
-command: DocCommand, } | { "type": "follow" } | { "type": "control", 
+command: DocCommand, } | { "type": "follow" } | { "type": "setViewport", 
+/**
+ * The viewer.
+ */
+viewer: number, 
+/**
+ * The part of the video it shows; absent for the whole frame.
+ */
+viewport?: Viewport, } | { "type": "control", 
 /**
  * The change.
  */

@@ -53,6 +53,37 @@ impl Default for Sidebar {
     }
 }
 
+/// The part of a video a window shows: a rectangle in video coordinates, each of `x`, `y`, `w` and `h` a fraction of
+/// the frame. A window fits it inside its own video area, so one of another shape shows at least this region.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, TS)]
+pub struct Viewport {
+    /// Left edge.
+    pub x: f64,
+    /// Top edge.
+    pub y: f64,
+    /// Width.
+    pub w: f64,
+    /// Height.
+    pub h: f64,
+}
+
+// The fields are finite: JSON has no NaN, and `settled` clamps.
+impl Eq for Viewport {}
+
+/// The least a viewport spans of an axis: a tenth is the most zoom a window has.
+const MIN_SPAN: f64 = 0.05;
+
+impl Viewport {
+    /// This rectangle cut down to the frame, or `None` when it shows the whole frame, which is how the whole frame is
+    /// always written.
+    pub fn settled(self) -> Option<Self> {
+        let span = |length: f64| length.clamp(MIN_SPAN, 1.0);
+        let (w, h) = (span(self.w), span(self.h));
+        let (x, y) = (self.x.clamp(0.0, 1.0 - w), self.y.clamp(0.0, 1.0 - h));
+        (w < 1.0 || h < 1.0).then_some(Self { x, y, w, h })
+    }
+}
+
 /// What one open viewer shows.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -72,6 +103,11 @@ pub struct ViewerView {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional, as = "Option<String>")]
     pub entry: Option<ContentId>,
+    /// The part of the video the viewer shows; absent shows the whole frame. Only a viewport change sets it: a view
+    /// sent whole keeps the one stored, so a stale copy never reverts another seat's zoom.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub viewport: Option<Viewport>,
 }
 
 /// What a window shows of the Doc. Items the Doc does not have open are dropped by the backend, with their viewers.
@@ -124,6 +160,7 @@ pub fn restrict(view: &View, doc: &Doc) -> View {
                 pinned,
                 clock,
                 entry,
+                viewport,
             } = viewer;
             // While the item resolves again the entry asked for is kept: whether it is gone is for the new Content
             // to say, so a reload does not send the viewer back to the first entry.
@@ -138,6 +175,7 @@ pub fn restrict(view: &View, doc: &Doc) -> View {
                     pinned: *pinned,
                     clock: *clock,
                     entry,
+                    viewport: *viewport,
                 },
             )
         })
@@ -223,6 +261,7 @@ impl ViewLane {
 pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<SidebarView>();
     types.visit::<Sidebar>();
+    types.visit::<Viewport>();
     types.visit::<ViewerView>();
     types.visit::<View>();
 }
@@ -278,6 +317,7 @@ mod tests {
             pinned: false,
             clock: None,
             entry: None,
+            viewport: None,
         }
     }
 

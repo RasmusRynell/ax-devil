@@ -16,7 +16,7 @@ use sessions::session::{Command, Refusal, Scope};
 use std::path::Path;
 use tokio::time::Instant;
 use workspace::{
-    BookmarkId, BookmarkKind, BookmarkTarget, Content, Secret, Source, Watch, WorkspaceItem,
+    BookmarkId, BookmarkKind, BookmarkTarget, Content, Secret, Watch, WorkspaceItem,
     intake::{LiveDefaults, NewLive, NewOverlay},
 };
 use workspace_store::{BookmarkCommand, DocCommand, HiddenRef};
@@ -63,6 +63,7 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
             | api_types::DocCommand::Bookmark { .. } => Scope::Content,
         }),
         SessionCommand::Follow => Some(Scope::Follow),
+        SessionCommand::SetViewport { .. } => Some(Scope::View),
         SessionCommand::Control { .. } => Some(Scope::Control),
         SessionCommand::RequestTicket { .. } => None,
         // New replaces the workspace, which only a seat with the files grant may.
@@ -141,6 +142,9 @@ pub(super) fn command(
             None,
         ),
         SessionCommand::Follow => Request::Session(Command::Follow, None),
+        SessionCommand::SetViewport { viewer, viewport } => {
+            Request::Session(Command::SetViewport { viewer, viewport }, None)
+        }
         SessionCommand::Control { control } => Request::Session(Command::Control(control), None),
         SessionCommand::RequestTicket { key } => {
             Request::Session(Command::RequestTicket(key), None)
@@ -211,15 +215,6 @@ fn doc_command(
                     tracing::debug!("An edit was refused: {}", error.reason);
                     Refusal::Invalid
                 })?;
-            // Only the owner can restore a hidden password, so no one else may erase it.
-            if let (Source::Live(new), Some(old), None) = (
-                &edited.recipe.source,
-                saved.recipe(item),
-                saved.recipe(item),
-            ) && (old.loses_broker_password(new) || old.loses_url_password(new))
-            {
-                return Err(Refusal::Invalid);
-            }
             DocCommand::EditItem {
                 item: Box::new(WorkspaceItem { id: item, ..edited }),
                 content: None,

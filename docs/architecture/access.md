@@ -117,5 +117,4 @@ Each row is removed by the change that makes it true; this section is deleted wi
 | Saves are per key and pushed | A save replaces the whole set; clients reload by hand |
 | Device scope | Theme and text size are Personal; shortcuts are stored outside the table |
 | Secrets are write-only | A masked value is sent to the client and matched back on save |
-| The viewport is in the Presenter View | It is client state and is never sent |
 | A remote Owner has a path picker | Folder and file dialogs are refused in remote windows with no replacement |

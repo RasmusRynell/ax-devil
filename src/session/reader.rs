@@ -14,7 +14,9 @@ use super::{
     wire::{self, Bucket, Request},
 };
 use crate::AppState;
-use api_types::{AckOutcome, CursorPoint, SessionClientMessage, SessionServerMessage};
+use api_types::{
+    AckOutcome, CursorPoint, SessionClientMessage, SessionCommand, SessionServerMessage,
+};
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{StreamExt, stream::SplitStream};
 use sessions::session::{
@@ -30,6 +32,8 @@ use tokio::{
 const SILENCE_TIMEOUT: Duration = Duration::from_secs(25);
 const CURSORS_PER_SECOND: u32 = 60;
 const COMMANDS_PER_SECOND: u32 = 10;
+/// A zoom or pan sends a viewport every 100 ms, which would use all of the commands' allowance.
+const VIEWPORTS_PER_SECOND: u32 = 20;
 
 /// Applies what the seat sends until it leaves, breaks a rule or goes quiet. Answers go to `replies`.
 pub(super) async fn run(
@@ -40,6 +44,7 @@ pub(super) async fn run(
 ) -> Result<Infallible, Exit> {
     let mut cursors = Bucket::new(CURSORS_PER_SECOND);
     let mut commands = Bucket::new(COMMANDS_PER_SECOND);
+    let mut viewports = Bucket::new(VIEWPORTS_PER_SECOND);
     let mut views = ViewLane::default();
     let mut heard = Instant::now();
     loop {
@@ -97,7 +102,11 @@ pub(super) async fn run(
                 handle.set_cursor_options(options);
             }
             SessionClientMessage::Command { seq, cmd } => {
-                take_command(&mut commands)?;
+                take_command(if matches!(cmd, SessionCommand::SetViewport { .. }) {
+                    &mut viewports
+                } else {
+                    &mut commands
+                })?;
                 // The seat sent its waiting view first, so it applies first: a `Follow` must not be undone by it.
                 if let Some(waiting) = views.flush(Instant::now()) {
                     apply_view(handle, waiting);

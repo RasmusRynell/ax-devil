@@ -15,7 +15,7 @@ use foundation::ItemId;
 use serde::{Deserialize, Serialize};
 use sessions::{
     CursorOptions, EndReason, SeatMode, SeatRole,
-    session::{Access, Can, ContentRef, Control, Refusal, RosterEntry, View},
+    session::{Access, Can, ContentRef, Control, Refusal, RosterEntry, View, ViewerId, Viewport},
 };
 use ts_rs::TS;
 
@@ -185,6 +185,16 @@ pub enum SessionCommand {
     },
     /// Go back to following the presenter.
     Follow,
+    /// Change one viewer's viewport in the view this seat shows; a Guest that follows starts exploring.
+    SetViewport {
+        /// The viewer.
+        #[ts(type = "number")]
+        viewer: ViewerId,
+        /// The part of the video it shows; absent for the whole frame.
+        #[serde(default)]
+        #[ts(optional)]
+        viewport: Option<Viewport>,
+    },
     /// Change sharing; the owner only.
     Control {
         /// The change.

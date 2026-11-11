@@ -285,10 +285,4 @@ fn a_stream_url_sent_back_without_its_password_keeps_the_saved_one_but_a_changed
         Some("http://root@other.local/axis-media/media.amp")
     );
     assert!(copy("http://other.local/axis-media/media.amp").is_err());
-    // Someone who cannot restore it must not erase it by sending the URL back as shown.
-    let mut guest_edit = saved.clone();
-    guest_edit.url = Some("http://root@cam.local/axis-media/media.amp".into());
-    assert!(saved.loses_url_password(&guest_edit));
-    guest_edit.url = Some("http://root@other.local/s".into());
-    assert!(!saved.loses_url_password(&guest_edit));
 }

@@ -78,7 +78,11 @@ afterEach(() => {
 
 /** The geometry of what is drawn: it reports the outlines of the picked objects. */
 const geometry = () =>
-  ({ zoomAt: vi.fn(), boxes: vi.fn(() => []) }) as unknown as Geometry & {
+  ({
+    zoomAt: vi.fn(),
+    boxes: vi.fn(() => []),
+    reference: () => undefined,
+  }) as unknown as Geometry & {
     boxes: ReturnType<typeof vi.fn>;
   };
 

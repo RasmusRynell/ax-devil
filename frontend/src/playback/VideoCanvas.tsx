@@ -213,9 +213,10 @@ export function VideoCanvas({
     hover();
   };
   const change = (next: Viewport) => {
-    if (next === shown.current) return;
+    const ask = live.current.onViewport;
+    if (!ask || next === shown.current) return;
     shown.current = next;
-    live.current.onViewport?.(next);
+    ask(next);
   };
 
   useEffect(() => {

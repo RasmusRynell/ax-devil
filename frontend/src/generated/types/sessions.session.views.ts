@@ -62,4 +62,31 @@ clock?: ClockIntent,
  * The entry of the item's Content the viewer shows. The backend keeps it naming an entry of the Content as it is
  * resolved now; absent while the item is not resolved.
  */
-entry?: string, };
+entry?: string, 
+/**
+ * The part of the video the viewer shows; absent shows the whole frame. Only a viewport change sets it: a view
+ * sent whole keeps the one stored, so a stale copy never reverts another seat's zoom.
+ */
+viewport?: Viewport, };
+
+/**
+ * The part of a video a window shows: a rectangle in video coordinates, each of `x`, `y`, `w` and `h` a fraction of
+ * the frame. A window fits it inside its own video area, so one of another shape shows at least this region.
+ */
+export type Viewport = { 
+/**
+ * Left edge.
+ */
+x: number, 
+/**
+ * Top edge.
+ */
+y: number, 
+/**
+ * Width.
+ */
+w: number, 
+/**
+ * Height.
+ */
+h: number, };
