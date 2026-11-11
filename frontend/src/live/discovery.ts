@@ -58,13 +58,13 @@ export type Discovery<T> =
 
 const IDLE = { phase: "idle" } as const;
 
-/** The failures that are not about what the form holds: the camera's, the caller's and the backend's own. */
-const NOT_THE_FORM = new Set<ErrorCode>(["CameraFailed", "Forbidden", "Internal"]);
+/** The codes live intake gives to what the form holds (a field, or the stream once a reference expands to nothing). */
+const FORM_ERRORS = new Set<ErrorCode>(["WorkspaceInvalid", "UnknownHandler"]);
 
 function stateOf<T>(answer: Answer<T>): Discovery<T> {
   if (answer.ok) return { phase: "ready", value: answer.value };
   const { error } = answer;
-  if (!NOT_THE_FORM.has(error.code)) return { phase: "invalid", error };
+  if (FORM_ERRORS.has(error.code)) return { phase: "invalid", error };
   const camera = error.params.camera;
   return { phase: "failed", text: camera ? reasonText(camera) : reasonOf(error) };
 }

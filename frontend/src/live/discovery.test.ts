@@ -74,4 +74,26 @@ describe("live discovery", () => {
 
     expect(view.result.current.state).toEqual({ phase: "ready", value: sizes(1280) });
   });
+
+  it("marks a field the backend refuses as invalid, and any other failure as failed text", async () => {
+    const calls = stubBackend();
+    const view = hostAsked("a");
+    await settle(600);
+    const field = { code: "WorkspaceInvalid", params: {}, reason: "Bad head", location: "head" };
+    calls[0]?.answer(422, field);
+    await settle(0);
+    expect(view.result.current.state).toEqual({ phase: "invalid", error: field });
+
+    view.rerender({ host: "b" });
+    await settle(600);
+    calls[1]?.answer(429, { code: "InvalidRequest", params: {}, reason: "Too many requests" });
+    await settle(0);
+    expect(view.result.current.state).toEqual({ phase: "failed", text: "Too many requests" });
+
+    view.rerender({ host: "c" });
+    await settle(600);
+    calls[2]?.answer(502, { code: "CameraFailed", params: { camera: "Unreachable" } });
+    await settle(0);
+    expect(view.result.current.state).toEqual({ phase: "failed", text: "Unreachable" });
+  });
 });
