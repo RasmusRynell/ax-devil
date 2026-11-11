@@ -194,6 +194,11 @@ async function remote(local, shell) {
         "onDeviceValuesChange",
         "onFullScreenChange",
         "onMaximizedChange",
+        ...(window.webContents
+          .getLastWebPreferences()
+          .additionalArguments?.includes("--ax-devil-restore-drag")
+          ? ["restoreDrag"]
+          : []),
         "setDeviceValue",
         "toggleFullScreen",
         "toggleMaximize",
