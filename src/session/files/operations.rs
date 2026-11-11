@@ -10,8 +10,9 @@ use workspace_files::{Claim, resolved};
 use workspace_store::{DocCommand, Saved};
 
 /// The Session command that `command` sends once its file work is done, over the workspace that work read or wrote and
-/// the file it names; `None` for a command that sends none. The one place that says which command each is, so the
-/// scope the wire asks of it is checked against what the Session will ask (`Command::needs`).
+/// the file it names; `None` for a command that sends none. The one mapping from a client's workspace command to the
+/// Session command, so the scope the wire asks of it is checked against what the Session will ask (`Command::needs`).
+/// Restoring a recovery copy builds its own `Replace { saved: Recovered }`, which `content_scope` treats as any `Replace`.
 pub(in crate::session) fn sent(
     command: &WorkspaceCommand,
     workspace: Workspace,
@@ -109,6 +110,7 @@ impl WorkspaceFiles {
                 }
             },
         };
+        // Only selects the kind for `sent`: its path is ignored, and the launch path has no real command to pass.
         let open = WorkspaceCommand::Open {
             path: path.to_string_lossy().into_owned(),
         };
