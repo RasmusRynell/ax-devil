@@ -24,8 +24,8 @@ pub mod video_sources;
 
 use access::{Admission, Limits, Policy, Principal, bearer};
 use api_types::{
-    AppInfo, Audience, ErrorWire, SHELL_API, SettingsFile, SettingsPatch, SettingsState, api_version,
-    project,
+    AppInfo, Audience, ErrorWire, SHELL_API, SettingsFile, SettingsPatch, SettingsState,
+    api_version, project,
 };
 use axum::{
     Json, Router,
