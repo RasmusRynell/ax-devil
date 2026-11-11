@@ -23,13 +23,19 @@ export const REGION_EVERY_MS = 100;
 export class RegionSender {
   readonly #send: (region: Region | undefined) => Promise<void>;
   readonly #now: () => number;
+  readonly #settled: () => void;
   #waiting: { region: Region | undefined } | null = null;
   #unanswered = 0;
   #sentAt = -REGION_EVERY_MS;
   #timer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(send: (region: Region | undefined) => Promise<void>, now = () => performance.now()) {
+  constructor(
+    send: (region: Region | undefined) => Promise<void>,
+    settled: () => void,
+    now = () => performance.now(),
+  ) {
     this.#send = send;
+    this.#settled = settled;
     this.#now = now;
   }
 
@@ -55,7 +61,10 @@ export class RegionSender {
     this.#waiting = null;
     this.#sentAt = this.#now();
     this.#unanswered += 1;
-    this.#send(waiting.region).finally(() => (this.#unanswered -= 1));
+    this.#send(waiting.region).finally(() => {
+      this.#unanswered -= 1;
+      if (!this.busy) this.#settled();
+    });
   }
 }
 
@@ -90,11 +99,20 @@ export function useSharedViewport(viewer: number) {
     waiting.current = !next;
     if (next) setViewport((shown) => (same(shown, next) ? shown : next));
   }, []);
+  // Another seat's region that arrived while a change of this window was unanswered, taken once it is answered.
+  const skipped = useRef(false);
+  const byOther = useRef(presenter.byOther);
+  byOther.current = presenter.byOther;
   const sender = useMemo(
     () =>
-      new RegionSender((sent) =>
-        // A change the backend refuses is taken back to the region it has.
-        command({ type: "setViewport", viewer, viewport: sent }).catch(adopt),
+      new RegionSender(
+        (sent) =>
+          // A change the backend refuses is taken back to the region it has.
+          command({ type: "setViewport", viewer, viewport: sent }).catch(adopt),
+        () => {
+          if (skipped.current && byOther.current) adopt();
+          skipped.current = false;
+        },
       ),
     [command, viewer, adopt],
   );
@@ -105,7 +123,9 @@ export function useSharedViewport(viewer: number) {
     const first = !opened.current;
     opened.current = true;
     const takes = ownerSeat && takesPresenter(viewer, presenter.byOther, "viewport");
-    if (!sender.busy && (first || takes || (following && !ownerSeat))) adopt();
+    if (!(first || takes || (following && !ownerSeat))) return;
+    if (sender.busy) skipped.current = true;
+    else adopt();
   }, [
     region,
     ownerSeat,

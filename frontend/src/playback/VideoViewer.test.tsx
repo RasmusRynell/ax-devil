@@ -310,6 +310,12 @@ describe("video viewer", () => {
     expect(room.presenterBy).toBe(2);
     // Its own change coming back is not applied over the window.
     expect(zoom()).toBe("2");
+
+    // Another seat's newer region that arrives while its own change is unanswered is taken once it is answered.
+    await act(() => new Promise((done) => setTimeout(done, 120)));
+    fireEvent.click(screen.getByTestId("canvas"));
+    act(() => room.publish(region(0.25), 1));
+    await waitFor(() => expect(zoom()).toBe("4"));
   });
 
   it("publishes a seek made while following, so the seat explores, and never the presenter's own clock", async () => {
