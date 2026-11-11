@@ -70,24 +70,6 @@ impl FromStr for SessionId {
     }
 }
 
-/// Names whoever owns a session: random per connection, carried by its resume token. Not a login and not a
-/// credential.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct OwnerId([u8; 8]);
-
-impl OwnerId {
-    /// A new random id.
-    pub fn generate() -> Self {
-        Self(random())
-    }
-}
-
-impl fmt::Display for OwnerId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_hex(&self.0, f)
-    }
-}
-
 /// A bearer secret: what a link, a resume token or the server password is made of. Generated ones are 128 random
 /// bits shown as 32 hex digits; the operator may choose the server password instead. Compared in constant time and
 /// never printed by `Debug`.

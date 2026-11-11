@@ -37,7 +37,7 @@ This section describes today's code; [access](access.md) is the model new code f
 
 Each request resolves to an Owner (with or without Full access) or to no credential; [access](access.md) says who may do
 what. A join link or resume secret admits one seat of one Session and is checked by the Session socket, and a playback
-ticket admits one stream and is checked by the playback socket. A watcher never learns a host path. The table in
+ticket admits one stream and is checked by the playback socket. A Guest never learns a host path. The table in
 `src/routes/mod.rs` is the only place a route is mounted: method, path, the listeners that serve it and who may call it. A method it does not list answers
 405, and a conformance test calls every row as every kind of caller. The rules are in
 [13](../rebuild/13-security-packaging-ops.md#sharing-must).
@@ -70,7 +70,7 @@ overlays, a playlist resolver's folders, the overlays its Content names), and a 
 an item nobody has open resolves again, and an open one only counts the change, which its viewer offers to reload,
 because resolving again would end the stream. A playlist resolves to Content with entries, each with its lanes; a
 video is one entry whose id is the Content's id. Each seat is sent the Doc as `project` builds it for its audience,
-sidebar rows included, so a watcher sees open items only, never a path or a failure's reason. Which entry a viewer
+sidebar rows included, so a Guest sees open items only, never a path or a failure's reason. Which entry a viewer
 shows is decided in one place, `restrict`, and a stream is ticketed for one entry of one generation of the Content.
 Opening, saving and recovering a workspace is `src/session/files/` over `workspace-files`: it reads and writes
 files, then tells the Session what happened through `Replace` and `MarkSaved`, and the store only compares the

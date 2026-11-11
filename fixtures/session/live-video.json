@@ -1,6 +1,55 @@
 {
   "docs": {
     "edited": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "live",
+              "label": "Gate",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "Gate",
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "DataHub WebSocket"
+                  ],
+                  "overlay": "datahub",
+                  "recipe": null,
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "Gate",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -111,8 +160,10 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "initial": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -121,18 +172,18 @@
             {
               "id": "00000000-0000-4000-8000-000000000001",
               "kind": "live",
-              "label": "Gate",
+              "label": "Camera",
               "open": true,
               "resolution": {
                 "content": {
-                  "display_name": "Gate",
-                  "generation": 3,
+                  "display_name": "Camera",
+                  "generation": 2,
                   "id": "00000000-0000-4000-8000-000000000001",
                   "kind": "LiveVideo",
                   "lanes": [
-                    "DataHub WebSocket"
+                    "Camera"
                   ],
-                  "overlay": "datahub",
+                  "overlay": "none",
                   "recipe": null,
                   "slot": "live"
                 },
@@ -151,7 +202,7 @@
               "item": "00000000-0000-4000-8000-000000000001",
               "key": "00000000-0000-4000-8000-000000000001",
               "kind": "item",
-              "label": "Gate",
+              "label": "Camera",
               "location": null,
               "status": {
                 "status": "Ready"
@@ -160,9 +211,7 @@
             }
           ]
         }
-      }
-    },
-    "initial": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -248,55 +297,6 @@
               "kind": "item",
               "label": "Camera",
               "location": "camera.local",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "live",
-              "label": "Camera",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "Camera",
-                  "generation": 2,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "LiveVideo",
-                  "lanes": [
-                    "Camera"
-                  ],
-                  "overlay": "none",
-                  "recipe": null,
-                  "slot": "live"
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001",
-              "kind": "item",
-              "label": "Camera",
-              "location": null,
               "status": {
                 "status": "Ready"
               },

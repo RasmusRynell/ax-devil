@@ -152,23 +152,10 @@ async fn answer(
     {
         return refused(refusal);
     }
-    // The owner's passwords in the settings are for the owner's own streams: a seat that only edits the content adds
-    // streams without them.
-    let owner = authorize(
-        &handle.state(),
-        handle.seat(),
-        handle.lease(),
-        Use::Command(Scope::Control),
-    )
-    .is_ok();
-    let mut defaults = live::defaults(&state.settings.state(), owner && handle.state().expands);
-    if !owner {
-        defaults = defaults.without_secrets();
-    }
     let session = handle.state();
+    let defaults = live::defaults(&state.settings.state(), session.expands);
     let saved = saved::Saved::new(
         &session.doc.workspace.workspace,
-        owner,
         session.expands,
         super::project::audience_of(&session, handle.seat(), handle.lease()),
     );

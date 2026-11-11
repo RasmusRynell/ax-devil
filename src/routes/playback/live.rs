@@ -93,7 +93,7 @@ pub(super) struct Setup<'a> {
     pub(super) library: &'a Library,
     /// What the viewer may learn of an error.
     pub(super) audience: Audience,
-    /// The Session the viewer is in, which scopes the user catalogs a watcher is shown.
+    /// The Session the viewer is in, which scopes the user catalogs a Guest is shown.
     pub(super) session: SessionId,
     /// The form the viewer is sent frames in.
     pub(super) wire: Wire,

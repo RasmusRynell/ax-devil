@@ -1,5 +1,5 @@
-//! The Session socket over real WebSockets: a window's session works alone, sharing it admits a watcher who learns
-//! only what a watcher may, and stopping ends the watcher and its video.
+//! The Session socket over real WebSockets: a window's session works alone, sharing it admits a Guest who learns
+//! only what a Guest may, and stopping ends the Guest and its video.
 
 use crate::session_client;
 
@@ -103,7 +103,12 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
         seat["view"]["sidebar"],
         json!({"view": "live", "open": false})
     );
-    assert_eq!(get(&address, "/api/sessions", PASSWORD).await, json!([]));
+    let listed = get(&address, "/api/sessions", PASSWORD).await;
+    assert_eq!(
+        listed[0]["link"],
+        json!(null),
+        "a private session has no link"
+    );
 
     // Two videos with a viewer each: one that plays and one that is missing, whose failure names a host path.
     let add = json!({"type": "content", "command": {"type": "addItems", "open": true, "items": [
@@ -130,7 +135,7 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
         "viewer": 1,
     });
     owner.say(viewing(2, false, &items[0]["id"])).await;
-    // A failed add opens nothing; the viewer of the missing video is asked for, so watchers see how it failed.
+    // A failed add opens nothing; the viewer of the missing video is asked for, so Guests see how it failed.
     let lost = items[1]["id"].clone();
     let open_lost = json!({"type": "content", "command": {"type": "openViewer", "item": lost}});
     owner.say(command(2, open_lost)).await;
@@ -168,31 +173,31 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
     let listed = get(&address, "/api/sessions", PASSWORD).await;
     assert_eq!(listed[0]["id"], json!(session));
 
-    // The watcher sees the Doc without the host's path or reasons, and cannot change anything.
-    let mut watcher = Socket::connect(&address, "/api/session").await;
+    // The Guest sees the Doc without the host's path or reasons, and cannot change anything.
+    let mut guest = Socket::connect(&address, "/api/session").await;
     let hello = json!({"type": "hello", "auth": {"type": "join", "link": link},
                        "cursors": {"show": true, "share": true}});
-    watcher.say(hello).await;
-    let doc = watcher.settled_doc().await;
+    guest.say(hello).await;
+    let doc = guest.settled_doc().await;
     let seen = doc["doc"].to_string();
     for host_only in [
         "SECRET-DIR",
         "reason",
-        // A row's `location` is null for a watcher.
+        // A row's `location` is null for a Guest.
         "\"location\":\"",
         folder.path().to_str().unwrap(),
     ] {
         assert!(
             !seen.contains(host_only),
-            "{host_only} reached the watcher: {seen}"
+            "{host_only} reached the Guest: {seen}"
         );
     }
     assert!(
         seen.contains("FileNotFound"),
-        "the watcher still learns that it failed: {seen}"
+        "the Guest still learns that it failed: {seen}"
     );
-    watcher.say(view(1, false)).await;
-    let seat = watcher
+    guest.say(view(1, false)).await;
+    let seat = guest
         .until(|m| m["type"] == "seat" && m["viewsDone"] == 1)
         .await;
     assert_eq!(seat["access"], json!("watch"));
@@ -201,23 +206,23 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
         json!(false),
         "it follows the presenter, who closed it"
     );
-    watcher
+    guest
         .say(command(
             1,
             json!({"type": "content", "command": {"type": "closeViewer", "item": items[0]["id"]}}),
         ))
         .await;
-    let ack = watcher.until(of_type("ack")).await;
+    let ack = guest.until(of_type("ack")).await;
     assert_eq!(
         ack["outcome"],
         json!({"status": "refused", "code": "NotAllowed"})
     );
 
     // It may stream what is open, and the stream ends with the sharing.
-    watcher
+    guest
         .say(command(2, json!({"type": "requestTicket", "key": key})))
         .await;
-    let ticket = watcher.until(of_type("ticket")).await["ticket"].clone();
+    let ticket = guest.until(of_type("ticket")).await["ticket"].clone();
     let mut playback = Socket::connect(&address, "/api/playback").await;
     playback
         .say(json!({"type": "Open", "ticket": ticket, "data_bytes": 1 << 20}))
@@ -232,9 +237,9 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
             json!({"type": "control", "control": {"type": "stop"}}),
         ))
         .await;
-    let ended = watcher.until(of_type("ended")).await;
+    let ended = guest.until(of_type("ended")).await;
     assert_eq!(ended["reason"], json!("stopped"));
-    assert_eq!(watcher.closed().await, 4404);
+    assert_eq!(guest.closed().await, 4404);
     assert_eq!(playback.closed().await, 4403);
 
     // The owner and its session go on, solo again, and the old link is dead.
@@ -242,7 +247,12 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
     owner
         .until(|m| m["type"] == "seat" && m["viewsDone"] == 3 && m["sharing"].is_null())
         .await;
-    assert_eq!(get(&address, "/api/sessions", PASSWORD).await, json!([]));
+    let listed = get(&address, "/api/sessions", PASSWORD).await;
+    assert_eq!(
+        listed[0]["link"],
+        json!(null),
+        "a private session has no link"
+    );
     let mut late = Socket::connect(&address, "/api/session").await;
     late.say(
         json!({"type": "hello", "auth": {"type": "join", "link": link},
@@ -300,6 +310,48 @@ async fn a_settings_change_is_announced_to_an_owner_connection_and_never_to_a_jo
 }
 
 #[tokio::test]
+async fn an_owner_attached_as_a_guest_seat_is_still_told_of_a_settings_change() {
+    let folder = tempfile::tempdir().unwrap();
+    let on =
+        json!({"version": settings::VERSION, "settings": {"server.password_full_access": true}});
+    std::fs::write(folder.path().join("default.json"), on.to_string()).unwrap();
+    let address = serve(folder.path()).await;
+    // A Session created with Full access reads the server's environment, so an Owner without it attaches as a Guest, if it is shared.
+    let mut creator = Socket::own(&address, Some(PASSWORD)).await;
+    let session = creator.until(of_type("welcome")).await["session"].clone();
+    creator
+        .say(command(
+            1,
+            json!({"type": "control", "control": {"type": "share", "access": "watch"}}),
+        ))
+        .await;
+    creator
+        .until(|m| m["type"] == "seat" && !m["sharing"].is_null())
+        .await;
+    patch_settings(
+        &address,
+        PASSWORD,
+        &json!({"set": {"server.password_full_access": false}}),
+    )
+    .await;
+
+    let mut attached = Socket::connect(&address, "/api/session").await;
+    attached
+        .say(json!({"type": "hello",
+            "auth": {"type": "attach", "session": session, "serverPassword": PASSWORD},
+            "cursors": {"show": true, "share": true}}))
+        .await;
+    let first = attached.until(of_type("settings")).await["revision"]
+        .as_u64()
+        .unwrap();
+    let saved = patch_settings(&address, PASSWORD, &json!({"set": {"ui.theme": "dark"}})).await;
+    let told = attached
+        .until(|m| m["type"] == "settings" && m["revision"].as_u64() != Some(first))
+        .await;
+    assert_eq!(told["revision"], saved["revision"]);
+}
+
+#[tokio::test]
 async fn a_follow_sent_after_a_waiting_view_is_not_undone_by_it() {
     let folder = tempfile::tempdir().unwrap();
     let address = serve(folder.path()).await;
@@ -313,16 +365,16 @@ async fn a_follow_sent_after_a_waiting_view_is_not_undone_by_it() {
     let link = seat["sharing"]["link"].as_str().unwrap();
     let link = link.split("join=").nth(1).unwrap();
 
-    let mut watcher = Socket::connect(&address, "/api/session").await;
+    let mut guest = Socket::connect(&address, "/api/session").await;
     let hello = json!({"type": "hello", "auth": {"type": "join", "link": link},
                        "cursors": {"show": true, "share": true}});
-    watcher.say(hello).await;
+    guest.say(hello).await;
     // Sent in one burst: the second view waits for the lane's rate, and the follow arrives while it does.
-    watcher.say(view(1, false)).await;
-    watcher.say(view(2, false)).await;
-    watcher.say(command(1, json!({"type": "follow"}))).await;
+    guest.say(view(1, false)).await;
+    guest.say(view(2, false)).await;
+    guest.say(command(1, json!({"type": "follow"}))).await;
 
-    let seat = watcher
+    let seat = guest
         .until(|m| m["type"] == "seat" && m["viewsDone"] == 2)
         .await;
     assert_eq!(seat["mode"], json!("following"));
@@ -334,7 +386,7 @@ async fn a_seat_without_the_files_grant_is_refused_alike_whatever_it_asks_to_add
     let address = serve(folder.path()).await;
     let mut owner = Socket::own(&address, Some(PASSWORD)).await;
     owner.until(of_type("seat")).await;
-    let share = json!({"type": "control", "control": {"type": "share", "access": "edit"}});
+    let share = json!({"type": "control", "control": {"type": "share", "access": "explore"}});
     owner.say(command(1, share)).await;
     let seat = owner
         .until(|m| m["type"] == "seat" && !m["sharing"].is_null())
@@ -386,31 +438,31 @@ async fn a_watcher_whose_network_is_cut_takes_its_seat_back_but_not_after_the_sh
     let link = seat["sharing"]["link"].as_str().unwrap();
     let link = link.split("join=").nth(1).unwrap();
 
-    // The watcher reaches the backend through a proxy that can be cut.
+    // The Guest reaches the backend through a proxy that can be cut.
     let proxy = Proxy::to(&address).await;
-    let mut watcher = Socket::connect(proxy.address(), "/api/session").await;
+    let mut guest = Socket::connect(proxy.address(), "/api/session").await;
     let hello = json!({"type": "hello", "auth": {"type": "join", "link": link},
                        "cursors": {"show": true, "share": true}});
-    watcher.say(hello).await;
-    let welcome = watcher.until(of_type("welcome")).await;
+    guest.say(hello).await;
+    let welcome = guest.until(of_type("welcome")).await;
     let (seat_id, token) = (
         welcome["seat"].clone(),
         welcome["resume"].as_str().unwrap().to_owned(),
     );
 
-    // The connection drops while the presenter moves on; the watcher resumes the same seat and catches up.
+    // The connection drops while the presenter moves on; the Guest resumes the same seat and catches up.
     proxy.cut();
-    assert_eq!(watcher.closed().await, 0, "cut, not closed");
+    assert_eq!(guest.closed().await, 0, "cut, not closed");
     owner.say(view(1, true)).await;
     owner
         .until(|m| m["type"] == "seat" && m["viewsDone"] == 1)
         .await;
-    let mut watcher = resumed(proxy.address(), &token).await;
-    let welcome = watcher.until(of_type("welcome")).await;
+    let mut guest = resumed(proxy.address(), &token).await;
+    let welcome = guest.until(of_type("welcome")).await;
     assert_eq!(welcome["seat"], seat_id, "the same seat");
     let again = welcome["resume"].as_str().unwrap().to_owned();
     assert_ne!(again, token, "each welcome brings a new token");
-    let seat = watcher.until(of_type("seat")).await;
+    let seat = guest.until(of_type("seat")).await;
     assert_eq!(
         seat["view"]["sidebar"]["open"],
         json!(true),
@@ -421,7 +473,7 @@ async fn a_watcher_whose_network_is_cut_takes_its_seat_back_but_not_after_the_sh
     let mut stale = resumed(proxy.address(), &token).await;
     assert_eq!(stale.closed().await, 4404);
     proxy.cut();
-    assert_eq!(watcher.closed().await, 0);
+    assert_eq!(guest.closed().await, 0);
     let stop = json!({"type": "control", "control": {"type": "stop"}});
     owner.say(command(2, stop)).await;
     owner

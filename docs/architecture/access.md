@@ -49,7 +49,9 @@ No handler checks an address, a listener or a list of grants itself.
 - A Guest seat follows the Presenter View, or explores its own view when the Sharing options allow it.
 - Sharing options are what the Owner allows every Guest of a Session (Watch or Explore). They are Session state,
   never settings.
-- An Owner who opens a server attaches to one of its Sessions as an Owner seat, or starts a new one.
+- An Owner who opens a server attaches to one of its Sessions as an Owner seat, or starts a new one; the one
+  exception is a Session that reads the server's environment, which an Owner without Full access attaches to as a
+  Guest.
 - A Session lives while an Owner seat is attached. When the last one disconnects the grace period runs; when the
   last one leaves, the Session ends. A Guest never keeps a Session alive.
 - A Guest receives a projection of the Session: never a setting, a credential, a reference, a host path or the
@@ -113,9 +115,7 @@ Each row is removed by the change that makes it true; this section is deleted wi
 
 | Model | Today |
 |-------|-------|
-| Roles are Owner and Guest | The frontend and the glossary still call a Guest a Watcher |
 | Device scope | Theme and text size are Personal; shortcuts are stored outside the table |
 | Secrets are write-only | A masked value is sent to the client; a records row sends its masked passwords back on save |
-| Any number of Owner seats share the Presenter View | The Owner is the seat that created the Session; a Server Password holder who opens an existing Session gets a Guest seat; an Edit sharing level exists that no UI offers |
 | The viewport is in the Presenter View | It is client state and is never sent |
 | A remote Owner has a path picker | Folder and file dialogs are refused in remote windows with no replacement |

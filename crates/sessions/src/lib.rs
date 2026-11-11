@@ -1,8 +1,8 @@
-//! Sessions: what one window shows, held by the backend from the window's first connect, and the watchers it is
+//! Sessions: what a window shows, held by the backend from the window's first connect, and the Guests it is
 //! shared with.
 //!
 //! [`session::Service`] holds every session of one backend. A [`session::Handle`] is one seat's connection: the
-//! owner's, which exists from the first connect, or a watcher's once the owner turns sharing on. A seat whose handle
+//! Owner's, from the first connect or by attaching to a Session, or a Guest's once an Owner turns sharing on. A seat whose handle
 //! is dropped is away for the grace period and can be taken back with [`session::Service::resume`]. Every seat has a
 //! lease that resuming bumps; a handle, a drop or a grace timer from an older lease does nothing.
 //!
@@ -16,12 +16,12 @@ mod secret;
 pub mod session;
 
 pub use cursors::{CursorEvent, Cursors};
-pub use secret::{JoinLink, OwnerId, Secret, SessionId};
+pub use secret::{JoinLink, Secret, SessionId};
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Seats one session holds, owner included.
+/// Seats one session holds, Owner seats included.
 pub const MAX_SEATS: usize = 32;
 
 /// Sessions one server holds, those in their grace period included.
@@ -36,9 +36,9 @@ pub struct ParticipantId(pub u32);
 #[serde(rename_all = "camelCase")]
 #[ts(rename = "EndedReason")]
 pub enum EndReason {
-    /// The owner stopped sharing.
+    /// The last Owner seat left on purpose.
     Stopped,
-    /// The owner was away longer than the grace period.
+    /// The last Owner seat was away longer than the grace period.
     OwnerGone,
     /// A newer connection took this seat; this tab stops for good.
     Replaced,
@@ -48,17 +48,17 @@ pub enum EndReason {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum SeatRole {
-    /// Created the Session; the only one who changes what it shows.
+    /// Drives the Presenter View.
     Owner,
-    /// Anyone else.
-    Watcher,
+    /// Anyone in by Join Link.
+    Guest,
 }
 
 /// Whose view a seat shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum SeatMode {
-    /// The presenter's. Owners are always following themselves.
+    /// The Presenter View. Owner seats always show it.
     Following,
     /// The seat's own, limited to what the Doc has open.
     Exploring,

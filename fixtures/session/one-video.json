@@ -1,6 +1,60 @@
 {
   "docs": {
     "changed-1": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "changed": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "a.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "a.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "a.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "a.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "a.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -53,60 +107,6 @@
               "kind": "item",
               "label": "a.mp4",
               "location": "/data/a/a.mp4",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "changed": 1,
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "video",
-              "label": "a.mp4",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "a.mp4",
-                  "entry": {
-                    "handlers": [],
-                    "id": "00000000-0000-4000-8000-000000000001",
-                    "label": "a.mp4",
-                    "lane_metadata": [],
-                    "lanes": [
-                      "a.mp4"
-                    ],
-                    "metadata": []
-                  },
-                  "generation": 2,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "SeekableVideo"
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001",
-              "kind": "item",
-              "label": "a.mp4",
-              "location": null,
               "status": {
                 "status": "Ready"
               },
@@ -117,6 +117,60 @@
       }
     },
     "changed-2": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "changed": 2,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "a.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "a.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "a.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "a.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "a.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -169,60 +223,6 @@
               "kind": "item",
               "label": "a.mp4",
               "location": "/data/a/a.mp4",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "changed": 2,
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "video",
-              "label": "a.mp4",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "a.mp4",
-                  "entry": {
-                    "handlers": [],
-                    "id": "00000000-0000-4000-8000-000000000001",
-                    "label": "a.mp4",
-                    "lane_metadata": [],
-                    "lanes": [
-                      "a.mp4"
-                    ],
-                    "metadata": []
-                  },
-                  "generation": 2,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "SeekableVideo"
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001",
-              "kind": "item",
-              "label": "a.mp4",
-              "location": null,
               "status": {
                 "status": "Ready"
               },
@@ -233,6 +233,47 @@
       }
     },
     "failed": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "a.mp4",
+              "open": true,
+              "resolution": {
+                "code": "FileNotFound",
+                "params": {},
+                "status": "Failed"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "a.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "params": {},
+                "status": "Unavailable"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -283,8 +324,10 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "initial": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -296,9 +339,23 @@
               "label": "a.mp4",
               "open": true,
               "resolution": {
-                "code": "FileNotFound",
-                "params": {},
-                "status": "Failed"
+                "content": {
+                  "display_name": "a.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "a.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "a.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
               }
             }
           ],
@@ -308,7 +365,7 @@
           "rows": [
             {
               "detail": "",
-              "entry": null,
+              "entry": "00000000-0000-4000-8000-000000000001",
               "hidden": false,
               "item": "00000000-0000-4000-8000-000000000001",
               "key": "00000000-0000-4000-8000-000000000001",
@@ -316,17 +373,13 @@
               "label": "a.mp4",
               "location": null,
               "status": {
-                "code": "FileNotFound",
-                "params": {},
-                "status": "Unavailable"
+                "status": "Ready"
               },
               "warnings": []
             }
           ]
         }
-      }
-    },
-    "initial": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -385,63 +438,10 @@
             }
           ]
         }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "video",
-              "label": "a.mp4",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "a.mp4",
-                  "entry": {
-                    "handlers": [],
-                    "id": "00000000-0000-4000-8000-000000000001",
-                    "label": "a.mp4",
-                    "lane_metadata": [],
-                    "lanes": [
-                      "a.mp4"
-                    ],
-                    "metadata": []
-                  },
-                  "generation": 2,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "SeekableVideo"
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001",
-              "kind": "item",
-              "label": "a.mp4",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
       }
     },
     "pending": {
-      "owner": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -452,12 +452,6 @@
               "kind": "video",
               "label": "a.mp4",
               "open": true,
-              "recipe": {
-                "label": "a.mp4",
-                "overlays": [],
-                "path": "/data/a/a.mp4",
-                "type": "Video"
-              },
               "resolution": {
                 "status": "Pending"
               }
@@ -484,7 +478,7 @@
           ]
         }
       },
-      "watcher": {
+      "owner": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -495,6 +489,12 @@
               "kind": "video",
               "label": "a.mp4",
               "open": true,
+              "recipe": {
+                "label": "a.mp4",
+                "overlays": [],
+                "path": "/data/a/a.mp4",
+                "type": "Video"
+              },
               "resolution": {
                 "status": "Pending"
               }
@@ -523,6 +523,66 @@
       }
     },
     "reload-failed-1": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "a.mp4",
+              "open": true,
+              "reload_failure": {
+                "attempt": 3,
+                "error": {
+                  "code": "FileNotFound",
+                  "params": {}
+                }
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "a.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "a.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "a.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "a.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -583,66 +643,6 @@
               "kind": "item",
               "label": "a.mp4",
               "location": "/data/a/a.mp4",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "video",
-              "label": "a.mp4",
-              "open": true,
-              "reload_failure": {
-                "attempt": 3,
-                "error": {
-                  "code": "FileNotFound",
-                  "params": {}
-                }
-              },
-              "resolution": {
-                "content": {
-                  "display_name": "a.mp4",
-                  "entry": {
-                    "handlers": [],
-                    "id": "00000000-0000-4000-8000-000000000001",
-                    "label": "a.mp4",
-                    "lane_metadata": [],
-                    "lanes": [
-                      "a.mp4"
-                    ],
-                    "metadata": []
-                  },
-                  "generation": 2,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "SeekableVideo"
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001",
-              "kind": "item",
-              "label": "a.mp4",
-              "location": null,
               "status": {
                 "status": "Ready"
               },
@@ -653,6 +653,66 @@
       }
     },
     "reload-failed-2": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "a.mp4",
+              "open": true,
+              "reload_failure": {
+                "attempt": 4,
+                "error": {
+                  "code": "FileNotFound",
+                  "params": {}
+                }
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "a.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "a.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "a.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "a.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -720,8 +780,10 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "reloaded": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -732,13 +794,6 @@
               "kind": "video",
               "label": "a.mp4",
               "open": true,
-              "reload_failure": {
-                "attempt": 4,
-                "error": {
-                  "code": "FileNotFound",
-                  "params": {}
-                }
-              },
               "resolution": {
                 "content": {
                   "display_name": "a.mp4",
@@ -752,7 +807,7 @@
                     ],
                     "metadata": []
                   },
-                  "generation": 2,
+                  "generation": 3,
                   "id": "00000000-0000-4000-8000-000000000001",
                   "kind": "SeekableVideo"
                 },
@@ -780,9 +835,7 @@
             }
           ]
         }
-      }
-    },
-    "reloaded": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -841,63 +894,10 @@
             }
           ]
         }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "video",
-              "label": "a.mp4",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "a.mp4",
-                  "entry": {
-                    "handlers": [],
-                    "id": "00000000-0000-4000-8000-000000000001",
-                    "label": "a.mp4",
-                    "lane_metadata": [],
-                    "lanes": [
-                      "a.mp4"
-                    ],
-                    "metadata": []
-                  },
-                  "generation": 3,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "SeekableVideo"
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001",
-              "kind": "item",
-              "label": "a.mp4",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
       }
     },
     "removed": {
-      "owner": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -909,7 +909,7 @@
           "rows": []
         }
       },
-      "watcher": {
+      "owner": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -923,7 +923,7 @@
       }
     },
     "removed-at-once": {
-      "owner": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -935,7 +935,7 @@
           "rows": []
         }
       },
-      "watcher": {
+      "owner": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,

@@ -31,6 +31,7 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 struct Mine {
     doc_rev: u64,
     presenter_rev: u64,
+    presenter_by: Option<u32>,
     access: SeatAccess,
     can: Can,
     mode: SeatMode,
@@ -161,18 +162,19 @@ async fn send_parts<S: Sink<Message> + Unpin>(
     let mine = Mine {
         doc_rev: session.doc_rev,
         presenter_rev: session.presenter_rev,
+        presenter_by: session.presenter_by.map(|seat| seat.0),
         access: match (&seat.kind, &session.sharing) {
             (SeatKind::Owner, _) => SeatAccess::Owner,
-            (SeatKind::Watcher { .. }, Some(sharing)) => sharing.access.into(),
-            // A watcher never outlives its sharing; if it somehow did, watching is the least it could do.
-            (SeatKind::Watcher { .. }, None) => SeatAccess::Watch,
+            (SeatKind::Guest { .. }, Some(sharing)) => sharing.access.into(),
+            // A Guest never outlives its sharing; if it somehow did, watching is the least it could do.
+            (SeatKind::Guest { .. }, None) => SeatAccess::Watch,
         },
         // A seat the table no longer knows can do nothing; the feed ends it next.
         can: can(session, handle.seat(), seat.lease).unwrap_or_default(),
         mode: seat.mode(),
         sharing: session.sharing.as_ref().map(|sharing| SharingInfo {
             access: sharing.access,
-            // Only the owner holds the link.
+            // Only an Owner seat holds the link.
             link: owner
                 .then(|| state.hosting.join_url(&sharing.link))
                 .flatten(),
@@ -188,6 +190,7 @@ async fn send_parts<S: Sink<Message> + Unpin>(
         rev: session.revision,
         doc_rev: mine.doc_rev,
         presenter_rev: mine.presenter_rev,
+        presenter_by: mine.presenter_by,
         access: mine.access,
         can: mine.can,
         mode: mine.mode,

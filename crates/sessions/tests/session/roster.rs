@@ -30,7 +30,7 @@ async fn seats_are_named_and_colored_with_what_is_free_and_keep_both_for_life() 
     );
     assert_eq!(roster.borrow()[0].kind, SeatRole::Owner);
 
-    // The first watcher leaves; the next one takes the free name and color. A resumed seat keeps its own.
+    // The first guest leaves; the next one takes the free name and color. A resumed seat keeps its own.
     first.leave();
     let resumed = rig.service.resume(second.resume_token()).unwrap();
     let third = rig.join(&owner);
@@ -41,10 +41,10 @@ async fn seats_are_named_and_colored_with_what_is_free_and_keep_both_for_life() 
 #[tokio::test(start_paused = true)]
 async fn switching_the_cursor_off_reaches_the_roster() {
     let rig = Rig::new();
-    let (owner, watcher) = rig.shared(Access::Watch);
+    let (owner, guest) = rig.shared(Access::Watch);
     let mut roster = owner.roster();
     roster.mark_unchanged();
-    watcher.set_cursor_options(CursorOptions {
+    guest.set_cursor_options(CursorOptions {
         show: true,
         share: false,
     });

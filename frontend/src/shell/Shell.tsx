@@ -69,7 +69,7 @@ type Dialog =
 
 /**
  * The application layout: menu bar over the activity bar, sidebar and central area. What the window shows comes from
- * the session's view, so a watcher that follows the presenter shows the presenter's. `version` is the backend's.
+ * the session's view, so a Guest that follows the presenter shows the presenter's. `version` is the backend's.
  */
 export function Shell({ version }: { version: string }) {
   const [sidebar, setSidebar] = useView("sidebar");

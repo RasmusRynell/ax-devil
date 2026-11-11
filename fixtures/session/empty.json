@@ -1,7 +1,7 @@
 {
   "docs": {
     "discarded": {
-      "owner": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 2,
@@ -13,7 +13,7 @@
           "rows": []
         }
       },
-      "watcher": {
+      "owner": {
         "workspace": {
           "bookmarks": [],
           "epoch": 2,
@@ -27,7 +27,7 @@
       }
     },
     "initial": {
-      "owner": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -39,7 +39,7 @@
           "rows": []
         }
       },
-      "watcher": {
+      "owner": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -53,7 +53,7 @@
       }
     },
     "kept": {
-      "owner": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 1,
@@ -65,7 +65,7 @@
           "rows": []
         }
       },
-      "watcher": {
+      "owner": {
         "workspace": {
           "bookmarks": [],
           "epoch": 1,
@@ -79,7 +79,7 @@
       }
     },
     "recovered": {
-      "owner": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 1,
@@ -91,7 +91,7 @@
           "rows": []
         }
       },
-      "watcher": {
+      "owner": {
         "workspace": {
           "bookmarks": [],
           "epoch": 1,
@@ -105,7 +105,7 @@
       }
     },
     "review-0": {
-      "owner": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -117,7 +117,7 @@
           "rows": []
         }
       },
-      "watcher": {
+      "owner": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -131,7 +131,7 @@
       }
     },
     "review-29": {
-      "owner": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -143,7 +143,7 @@
           "rows": []
         }
       },
-      "watcher": {
+      "owner": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,

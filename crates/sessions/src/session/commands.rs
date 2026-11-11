@@ -23,13 +23,13 @@ pub enum Scope {
     Follow,
     /// Change the Doc's content.
     Content,
-    /// Read the host's files. Only the owner may.
+    /// Read the host's files. Only an Owner seat may.
     Host,
     /// Change who the session is shared with.
     Control,
 }
 
-/// The owner's control of sharing.
+/// An Owner seat's control of sharing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, TS)]
 #[serde(
     tag = "type",
@@ -38,19 +38,19 @@ pub enum Scope {
 )]
 #[ts(rename = "ControlCommand")]
 pub enum Control {
-    /// "Start sharing": watchers may join, with `access`.
+    /// "Start sharing": Guests may join, with `access`.
     Share {
-        /// What every watcher may do.
+        /// What every Guest may do.
         access: Access,
     },
-    /// Change what every watcher may do.
+    /// Change what every Guest may do.
     SetAccess {
-        /// What every watcher may do.
+        /// What every Guest may do.
         access: Access,
     },
     /// Replace the join link; seats already in stay.
     RegenerateLink,
-    /// Stop sharing: every watcher is removed. The Session and its owner continue.
+    /// Stop sharing: every Guest is removed. The Session and its Owner seats continue.
     Stop,
 }
 
@@ -194,18 +194,11 @@ fn control(next: &mut SessionState, control: Control, fresh: &Fresh) -> Result<(
         }
         Control::SetAccess { access } => {
             next.sharing.as_mut().ok_or(Refusal::NotSharing)?.access = access;
-            let presenter = Arc::clone(&next.presenter);
-            let watchers = next
-                .seats
-                .values_mut()
-                .filter(|seat| seat.kind.sharing().is_some());
-            for seat in watchers {
-                seat.view = match access {
-                    // Watchers only follow.
-                    Access::Watch => None,
-                    Access::Explore => seat.view.take(),
-                    Access::Edit => seat.view.take().or_else(|| Some(Arc::clone(&presenter))),
-                };
+            if access == Access::Watch {
+                // Guests only follow.
+                for seat in next.seats.values_mut() {
+                    seat.view = None;
+                }
             }
         }
         Control::RegenerateLink => {

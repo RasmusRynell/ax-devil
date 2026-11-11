@@ -23,7 +23,8 @@ import type {
 } from "../generated/api";
 import { Banner, EndedScreen } from "./Notice";
 import { SettingsNoticeContext } from "../settings";
-import { SessionStore, type SessionState } from "./store";
+import type { SessionState } from "./sessionState";
+import { SessionStore } from "./store";
 import { canDo } from "./views";
 
 const StoreContext = createContext<SessionStore | null>(null);
@@ -65,10 +66,10 @@ export function SessionProvider({
   const connection = useSyncExternalStore(store.subscribe, () => store.getSnapshot().connection);
   const ended = useSyncExternalStore(store.subscribe, () => store.getSnapshot().ended);
   const seated = useSyncExternalStore(store.subscribe, () => store.getSnapshot().seat !== null);
-  const ownerAway = useSyncExternalStore(
-    store.subscribe,
-    () => store.getSnapshot().roster.find((seat) => seat.role === "owner")?.present === false,
-  );
+  const ownerAway = useSyncExternalStore(store.subscribe, () => {
+    const owners = store.getSnapshot().roster.filter((seat) => seat.role === "owner");
+    return owners.length > 0 && owners.every((seat) => !seat.present);
+  });
   if (viewer && ended) return <EndedScreen why={ended} />;
   return (
     <StoreContext.Provider value={store}>
@@ -189,6 +190,27 @@ export function useStream(key: ContentRef): () => Promise<string> {
   return useCallback(() => store.requestTicket(key), [store, key, seatings]);
 }
 
+/** Whether this window is an Owner seat, which drives the Presenter View with every other Owner seat. */
+export function useOwnerSeat(): boolean {
+  return useSelect((state) => state.seat?.access === "owner");
+}
+
+/** Whether the window takes the Presenter View for a viewer now; see `SessionStore.takesPresenter`. */
+export function useTakesPresenter(): (viewer: number, byOther: boolean) => boolean {
+  const store = useStore();
+  return useCallback((viewer, byOther) => store.takesPresenter(viewer, byOther), [store]);
+}
+
+/**
+ * Which change of the Presenter View is the latest and whether another seat made it: the revision, and whether its
+ * author is not this window's seat. The server stamps the author, so a window never has to guess by comparing values.
+ */
+export function usePresenterChange(): { rev: number; byOther: boolean } {
+  const rev = useSelect((state) => state.seat?.presenterRev ?? -1);
+  const byOther = useSelect((state) => state.seat?.presenterBy !== state.you);
+  return { rev, byOther };
+}
+
 /** The backend's clock, for following a presenter: `nowUs` is undefined until it has answered. */
 export function useServerClock(): { synced: boolean; nowUs: () => number | undefined } {
   const store = useStore();
@@ -198,28 +220,30 @@ export function useServerClock(): { synced: boolean; nowUs: () => number | undef
 
 /** What the controls around the session need: where the connection is, what this seat is, and the ways out. */
 export interface SessionApi {
-  /** `none` while the Session is not shared, `owner` while it is, `watcher` in someone else's. */
-  state: "none" | "owner" | "watcher";
+  /** `none` while the Session is not shared, `owner` while it is, `guest` for a seat that joined by link. */
+  state: "none" | "owner" | "guest";
+  /** Whether the window is an Owner seat in a Session it did not start. */
+  attached: boolean;
   /** Where the connection is. */
   connection: SessionState["connection"];
   /** Why the last session ended for this window, until it is dismissed. */
   ended: SessionState["ended"];
   /** The Session this window is in, its join link when it is shared and this backend can be reached, and why not. */
   session: { id: string; you: number; link: string | null; linkProblem: string | null } | null;
-  /** What watchers may do while sharing is on. */
+  /** What Guests may do while sharing is on. */
   sharing: Access | null;
   /** Whether the window follows the presenter or explores. */
   mode: SeatMode | null;
   cursorOptions: CursorOptions;
-  /** Leaves this window's Session for someone else's, with the Sessions grant. */
-  watch: (session: string) => void;
+  /** Leaves this window's Session to attach to another of the server's, with the Sessions grant. */
+  attach: (session: string) => Promise<void>;
   /** Leaves this window's Session for the one a join link opens. */
   joinLink: (link: string) => void;
-  /** A watcher's way out, to a Session of its own. */
+  /** The way out of a Session this window did not start, to a Session of its own. */
   leave: () => void;
   /** Forgets the notice about how the last session ended. */
   dismiss: () => void;
-  /** Exploring watcher: goes back to the presenter's view. */
+  /** Exploring Guest: goes back to the presenter's view. */
   follow: () => Promise<void>;
   setCursorOptions: (options: CursorOptions) => void;
   /** Tells the others where this cursor is, or `null` when it left the window. */
@@ -236,19 +260,21 @@ export function useSession(): SessionApi {
   const mode = useSelect((state) => state.seat?.mode ?? null);
   const id = useSelect((state) => state.session);
   const you = useSelect((state) => state.you);
+  const attached = useSelect((state) => state.attached && state.seat?.access === "owner");
   const connection = useSelect((state) => state.connection);
   const ended = useSelect((state) => state.ended);
   const cursorOptions = useSelect((state) => state.cursorOptions);
   return useMemo(
     () => ({
-      state: access === "owner" ? (sharing ? "owner" : "none") : access ? "watcher" : "none",
+      state: access === "owner" ? (sharing ? "owner" : "none") : access ? "guest" : "none",
+      attached,
       connection,
       ended,
       session: id !== null && you !== null ? { id, you, link, linkProblem } : null,
       sharing,
       mode,
       cursorOptions,
-      watch: (session) => store.watch(session),
+      attach: (session) => store.attach(session),
       joinLink: (text) => store.joinLink(text),
       leave: () => store.leave(),
       dismiss: () => store.dismiss(),
@@ -256,7 +282,20 @@ export function useSession(): SessionApi {
       setCursorOptions: (options) => store.setCursorOptions(options),
       moveCursor: (at) => store.moveCursor(at),
     }),
-    [store, access, sharing, link, linkProblem, mode, id, you, connection, ended, cursorOptions],
+    [
+      store,
+      access,
+      attached,
+      sharing,
+      link,
+      linkProblem,
+      mode,
+      id,
+      you,
+      connection,
+      ended,
+      cursorOptions,
+    ],
   );
 }
 

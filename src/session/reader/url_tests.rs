@@ -3,7 +3,6 @@ use crate::{access::Policy, plugins::Plugins};
 use api_types::{Audience, DocWire};
 use serde_json::json;
 use sessions::CursorOptions;
-use sessions::session::{Access, Control};
 use std::sync::Arc;
 use tokio::sync::watch;
 use workspace::Source;
@@ -50,11 +49,9 @@ fn app(
 }
 
 /// A stream URL's password never reaches a client, in any spelling that makes one. The owner who sends the URL back as
-/// shown keeps the password; a seat that may edit but cannot restore it is refused rather than left to erase it, and
-/// may still change the URL to something else.
+/// shown keeps the password.
 #[tokio::test]
-async fn a_stream_urls_password_is_hidden_from_clients_and_only_the_owner_can_keep_it_through_an_edit()
- {
+async fn a_stream_urls_password_is_hidden_from_clients_and_kept_through_an_edit() {
     scenario(
         &format!("http:root:{PASSWORD}@cam.local/s"),
         "http://root@cam.local/s",
@@ -223,33 +220,7 @@ async fn scenario(saved_url: &str, shown: &str, spellings: &[&str]) {
             "type": "Live", "host": "cam.local", "url": url, "overlay": {"mode": "none"},
             "kept_mqtt": kept()}}))
     };
-    owner
-        .command(sessions::session::Command::Control(Control::Share {
-            access: Access::Edit,
-        }))
-        .unwrap();
-    let link = owner.state().sharing.as_ref().unwrap().link.clone();
-    let guest = state
-        .sessions
-        .join(&link, CursorOptions::default())
-        .unwrap();
-
-    // The guest sends the URL as it was shown: refused, nothing changes. Another spelling of the same is no way round.
-    for (seq, sent) in (2..).zip(spellings) {
-        let reply = answer(&state, &guest, seq, edit(sent)).await;
-        assert!(
-            matches!(
-                reply,
-                SessionServerMessage::Ack {
-                    outcome: AckOutcome::Refused { .. },
-                    ..
-                }
-            ),
-            "{sent}"
-        );
-        assert_eq!(stored(), saved_url);
-    }
-    // The owner who sends the URL as shown keeps the saved password, in any spelling of it.
+    // An Owner who sends the URL as shown keeps the saved password, in any spelling of it.
     for (seq, sent) in (10..).zip(spellings) {
         assert!(
             is_ok(&answer(&state, &owner, seq, edit(sent)).await),
@@ -257,15 +228,10 @@ async fn scenario(saved_url: &str, shown: &str, spellings: &[&str]) {
         );
         assert_eq!(stored(), saved_url, "{sent}");
     }
-    // A different URL is the guest's own to set.
-    let reply = answer(&state, &guest, 20, edit("http://other.local/s")).await;
-    assert!(is_ok(&reply), "{}", serde_json::to_string(&reply).unwrap());
-    assert_eq!(stored(), "http://other.local/s");
 }
 
 /// A saved URL no connection can be made to is shown as a placeholder. The owner who renames the stream sends that
-/// back and keeps the URL and every password; replacing it with a connectable URL keeps the camera's login; a seat that
-/// cannot restore the password is refused.
+/// back and keeps the URL and every password; replacing it with a connectable URL keeps the camera's login.
 #[tokio::test]
 async fn an_unusable_saved_url_survives_a_rename_and_is_replaced_by_a_good_one_without_losing_the_login()
  {
@@ -300,26 +266,6 @@ async fn an_unusable_saved_url_survives_a_rename_and_is_replaced_by_a_good_one_w
             "type": "Live", "host": "cam.local", "url": url, "label": label,
             "overlay": {"mode": "none"}, "kept_mqtt": kept()}}))
     };
-
-    owner
-        .command(sessions::session::Command::Control(Control::Share {
-            access: Access::Edit,
-        }))
-        .unwrap();
-    let link = owner.state().sharing.as_ref().unwrap().link.clone();
-    let guest = state
-        .sessions
-        .join(&link, CursorOptions::default())
-        .unwrap();
-    let refused = answer(&state, &guest, 2, edit("(unusable URL)", "Guest")).await;
-    assert!(matches!(
-        refused,
-        SessionServerMessage::Ack {
-            outcome: AckOutcome::Refused { .. },
-            ..
-        }
-    ));
-    assert_eq!(stored(), (hostless.clone(), "camera-pw".to_owned()));
 
     // A rename that sends the URL back as shown changes nothing else.
     assert!(is_ok(

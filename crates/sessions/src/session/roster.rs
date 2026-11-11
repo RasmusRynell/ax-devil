@@ -46,7 +46,7 @@ pub struct RosterEntry {
     pub name: String,
     /// An index into the UI's palette of participant colors.
     pub color: u8,
-    /// Owner or watcher.
+    /// Owner or Guest.
     #[serde(rename = "role")]
     pub kind: SeatRole,
     /// Following or exploring.
@@ -80,7 +80,7 @@ pub(super) fn build<'a>(
                 color: presence.identity.color,
                 kind: match state.kind {
                     super::SeatKind::Owner => SeatRole::Owner,
-                    super::SeatKind::Watcher { .. } => SeatRole::Watcher,
+                    super::SeatKind::Guest { .. } => SeatRole::Guest,
                 },
                 mode: state.mode(),
                 present: state.present,

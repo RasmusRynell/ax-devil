@@ -1,6 +1,18 @@
 {
   "docs": {
     "initial": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -292,21 +304,163 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "mot-open": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
           "file": null,
-          "items": [],
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
           "modified": true,
           "name": null,
           "recovered": false,
-          "rows": []
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
         }
-      }
-    },
-    "mot-open": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -591,160 +745,6 @@
               "kind": "item",
               "label": "v.mp4",
               "location": "/data/v/v.mp4",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "playlist",
-              "label": "mot",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "mot",
-                  "entries": [
-                    {
-                      "handlers": [
-                        "MOT_FILE",
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
-                      "label": "A",
-                      "lane_metadata": [
-                        [],
-                        []
-                      ],
-                      "lanes": [
-                        "GT",
-                        "DPM"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
-                      "label": "B",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "GT"
-                      ],
-                      "metadata": []
-                    }
-                  ],
-                  "generation": 4,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "Playlist",
-                  "playlists": [
-                    {
-                      "entries": 2,
-                      "id": "00000000-0000-4000-8000-000000000001/Train",
-                      "label": "mot",
-                      "metadata": []
-                    }
-                  ]
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/Train",
-              "kind": "playlist",
-              "label": "mot",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/Train/A",
-              "kind": "entry",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
-              "kind": "lane",
-              "label": "GT",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
-              "kind": "lane",
-              "label": "DPM",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/Train/B",
-              "kind": "entry",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
-              "kind": "lane",
-              "label": "GT",
-              "location": null,
               "status": {
                 "status": "Ready"
               },
@@ -755,6 +755,280 @@
       }
     },
     "open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "other",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "other",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/other/X",
+                      "label": "X",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/other",
+                      "label": "other",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000003",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 6,
+                  "id": "00000000-0000-4000-8000-000000000003",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/other/X",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/other",
+              "kind": "playlist",
+              "label": "other",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/other/X",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/other/X",
+              "kind": "entry",
+              "label": "X",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/other/X",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/other/X\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000003",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -1039,280 +1313,6 @@
               "kind": "item",
               "label": "v.mp4",
               "location": "/data/v/v.mp4",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "playlist",
-              "label": "mot",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "mot",
-                  "entries": [
-                    {
-                      "handlers": [
-                        "MOT_FILE",
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
-                      "label": "A",
-                      "lane_metadata": [
-                        [],
-                        []
-                      ],
-                      "lanes": [
-                        "GT",
-                        "DPM"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
-                      "label": "B",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "GT"
-                      ],
-                      "metadata": []
-                    }
-                  ],
-                  "generation": 4,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "Playlist",
-                  "playlists": [
-                    {
-                      "entries": 2,
-                      "id": "00000000-0000-4000-8000-000000000001/Train",
-                      "label": "mot",
-                      "metadata": []
-                    }
-                  ]
-                },
-                "status": "Resolved"
-              }
-            },
-            {
-              "id": "00000000-0000-4000-8000-000000000002",
-              "kind": "playlist",
-              "label": "other",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "other",
-                  "entries": [
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000002/other/X",
-                      "label": "X",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "GT"
-                      ],
-                      "metadata": []
-                    }
-                  ],
-                  "generation": 5,
-                  "id": "00000000-0000-4000-8000-000000000002",
-                  "kind": "Playlist",
-                  "playlists": [
-                    {
-                      "entries": 1,
-                      "id": "00000000-0000-4000-8000-000000000002/other",
-                      "label": "other",
-                      "metadata": []
-                    }
-                  ]
-                },
-                "status": "Resolved"
-              }
-            },
-            {
-              "id": "00000000-0000-4000-8000-000000000003",
-              "kind": "video",
-              "label": "v.mp4",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "v.mp4",
-                  "entry": {
-                    "handlers": [],
-                    "id": "00000000-0000-4000-8000-000000000003",
-                    "label": "v.mp4",
-                    "lane_metadata": [],
-                    "lanes": [
-                      "v.mp4"
-                    ],
-                    "metadata": []
-                  },
-                  "generation": 6,
-                  "id": "00000000-0000-4000-8000-000000000003",
-                  "kind": "SeekableVideo"
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/Train",
-              "kind": "playlist",
-              "label": "mot",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/Train/A",
-              "kind": "entry",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
-              "kind": "lane",
-              "label": "GT",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
-              "kind": "lane",
-              "label": "DPM",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/Train/B",
-              "kind": "entry",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
-              "kind": "lane",
-              "label": "GT",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000002/other/X",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000002",
-              "key": "00000000-0000-4000-8000-000000000002/other",
-              "kind": "playlist",
-              "label": "other",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000002/other/X",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000002",
-              "key": "00000000-0000-4000-8000-000000000002/other/X",
-              "kind": "entry",
-              "label": "X",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000002/other/X",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000002",
-              "key": "00000000-0000-4000-8000-000000000002/other/X\u001fGT",
-              "kind": "lane",
-              "label": "GT",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000003",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000003",
-              "key": "00000000-0000-4000-8000-000000000003",
-              "kind": "item",
-              "label": "v.mp4",
-              "location": null,
               "status": {
                 "status": "Ready"
               },
@@ -1323,6 +1323,18 @@
       }
     },
     "reread-a": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -1614,8 +1626,10 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "reread-b": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -1626,9 +1640,7 @@
           "recovered": false,
           "rows": []
         }
-      }
-    },
-    "reread-b": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -1861,8 +1873,10 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "resolving": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -1873,9 +1887,7 @@
           "recovered": false,
           "rows": []
         }
-      }
-    },
-    "resolving": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -2049,18 +2061,6 @@
               "warnings": []
             }
           ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": []
         }
       }
     }

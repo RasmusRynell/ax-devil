@@ -19,7 +19,7 @@ name: string,
  */
 color: number, 
 /**
- * Owner or watcher.
+ * Owner or Guest.
  */
 role: SeatRole, 
 /**

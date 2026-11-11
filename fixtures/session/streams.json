@@ -1,6 +1,90 @@
 {
   "docs": {
     "both-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "live",
+              "label": "Lobby",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "Lobby",
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Lobby"
+                  ],
+                  "overlay": "none",
+                  "recipe": null,
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "live",
+              "label": "Dock",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "Dock",
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Dock"
+                  ],
+                  "overlay": "none",
+                  "recipe": null,
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "Lobby",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "Dock",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -165,90 +249,6 @@
               "kind": "item",
               "label": "Dock",
               "location": "10.0.0.4",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "live",
-              "label": "Lobby",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "Lobby",
-                  "generation": 4,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "LiveVideo",
-                  "lanes": [
-                    "Lobby"
-                  ],
-                  "overlay": "none",
-                  "recipe": null,
-                  "slot": "live"
-                },
-                "status": "Resolved"
-              }
-            },
-            {
-              "id": "00000000-0000-4000-8000-000000000002",
-              "kind": "live",
-              "label": "Dock",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "Dock",
-                  "generation": 3,
-                  "id": "00000000-0000-4000-8000-000000000002",
-                  "kind": "LiveVideo",
-                  "lanes": [
-                    "Dock"
-                  ],
-                  "overlay": "none",
-                  "recipe": null,
-                  "slot": "live"
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001",
-              "kind": "item",
-              "label": "Lobby",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000002",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000002",
-              "key": "00000000-0000-4000-8000-000000000002",
-              "kind": "item",
-              "label": "Dock",
-              "location": null,
               "status": {
                 "status": "Ready"
               },
@@ -259,6 +259,55 @@
       }
     },
     "dock-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "live",
+              "label": "Dock",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "Dock",
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Dock"
+                  ],
+                  "overlay": "none",
+                  "recipe": null,
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "Dock",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -430,58 +479,21 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "initial": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
           "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000002",
-              "kind": "live",
-              "label": "Dock",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "Dock",
-                  "generation": 3,
-                  "id": "00000000-0000-4000-8000-000000000002",
-                  "kind": "LiveVideo",
-                  "lanes": [
-                    "Dock"
-                  ],
-                  "overlay": "none",
-                  "recipe": null,
-                  "slot": "live"
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
+          "items": [],
           "modified": true,
           "name": null,
           "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000002",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000002",
-              "key": "00000000-0000-4000-8000-000000000002",
-              "kind": "item",
-              "label": "Dock",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
+          "rows": []
         }
-      }
-    },
-    "initial": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -574,8 +586,10 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "lobby-closed": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -586,9 +600,7 @@
           "recovered": false,
           "rows": []
         }
-      }
-    },
-    "lobby-closed": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -681,21 +693,58 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "lobby-open": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
           "file": null,
-          "items": [],
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "live",
+              "label": "Lobby",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "Lobby",
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Lobby"
+                  ],
+                  "overlay": "none",
+                  "recipe": null,
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
           "modified": true,
           "name": null,
           "recovered": false,
-          "rows": []
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "Lobby",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
         }
-      }
-    },
-    "lobby-open": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -788,59 +837,10 @@
             }
           ]
         }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "live",
-              "label": "Lobby",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "Lobby",
-                  "generation": 2,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "LiveVideo",
-                  "lanes": [
-                    "Lobby"
-                  ],
-                  "overlay": "none",
-                  "recipe": null,
-                  "slot": "live"
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001",
-              "kind": "item",
-              "label": "Lobby",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
       }
     },
     "open-removed": {
-      "owner": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -852,7 +852,7 @@
           "rows": []
         }
       },
-      "watcher": {
+      "owner": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -866,7 +866,7 @@
       }
     },
     "removed": {
-      "owner": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -878,7 +878,7 @@
           "rows": []
         }
       },
-      "watcher": {
+      "owner": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,

@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { Can, DocWire, EntryInfo, SeatAccess, SessionCommand } from "../generated/api";
 
-/** Which part of a Session a Doc is projected for: the owner, or a watcher. */
-export type Audience = "owner" | "watcher";
+/** Which part of a Session a Doc is projected for: the owner, or a Guest. */
+export type Audience = "owner" | "guest";
 
 /** One recorded command: sent in state `from`, the backend ends up in state `to`. */
 export interface Step {
@@ -89,7 +89,7 @@ export class Showing {
 
   /** The Doc a seat receives, as the backend wrote it. */
   doc(owner: boolean): DocWire {
-    return this.scenario.doc(this.state, owner ? "owner" : "watcher");
+    return this.scenario.doc(this.state, owner ? "owner" : "guest");
   }
 
   /** Moves to the state a recorded step leads to; false when no step matches this command here. */

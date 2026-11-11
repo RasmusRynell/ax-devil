@@ -4,7 +4,7 @@ import type { BookmarkCommand } from "./api_types.bookmarks";
 import type { ErrorWire } from "./api_types.error";
 import type { LanePolicyWire } from "./api_types.playback.lane";
 import type { HiddenTarget, NewItem, WorkspaceState } from "./api_types.workspace";
-import type { CursorOptions, EndedReason, SeatMode } from "./sessions";
+import type { CursorOptions, EndedReason, SeatMode, SeatRole } from "./sessions";
 import type { Access } from "./sessions.session";
 import type { Can, ContentRef, RefusalCode } from "./sessions.session.authorize";
 import type { ControlCommand } from "./sessions.session.commands";
@@ -170,7 +170,7 @@ epoch: number, } | { "type": "bookmark",
 command: BookmarkCommand, };
 
 /**
- * The Doc as a watcher or the owner may see it. Built only by the backend's projection.
+ * The Doc as a Guest or an Owner may see it. Built only by the backend's projection.
  */
 export type DocWire = { 
 /**
@@ -181,7 +181,7 @@ workspace: WorkspaceState, };
 /**
  * What this seat is allowed to do, in the rows of the role table.
  */
-export type SeatAccess = "owner" | "watch" | "explore" | "edit";
+export type SeatAccess = "owner" | "watch" | "explore";
 
 /**
  * How a client asks to be admitted; part of the first message of every socket.
@@ -190,7 +190,7 @@ export type SessionAuth = { "type": "own",
 /**
  * The server password; only a server that has one looks at it.
  */
-serverPassword?: string, } | { "type": "watch", 
+serverPassword?: string, } | { "type": "attach", 
 /**
  * The Session's id.
  */
@@ -317,6 +317,10 @@ docRev: number,
  */
 presenterRev: number, 
 /**
+ * The seat whose change made the presenter's view as it is; absent when the server did.
+ */
+presenterBy?: number, 
+/**
  * What this seat may do.
  */
 access: SeatAccess, 
@@ -398,21 +402,25 @@ at: CursorPoint | null, } | { "type": "ended",
 reason: EndedReason, };
 
 /**
- * A line of `GET /api/sessions`: a Session that is shared.
+ * A line of `GET /api/sessions`: a Session of this backend.
  */
 export type SessionSummary = { 
 /**
- * What to watch with.
+ * What to attach with.
  */
 id: string, 
 /**
- * Whether the owner is connected.
+ * Whether an Owner seat is connected.
  */
 ownerPresent: boolean, 
 /**
  * Seats in the Session, away ones included.
  */
 participants: number, 
+/**
+ * The seat attaching would give the caller now; a Session that would give none is not listed.
+ */
+seat: SeatRole, 
 /**
  * The join link URL; absent when this backend cannot be reached by other machines.
  */
@@ -427,15 +435,15 @@ linkProblem?: string, };
  */
 export type SharingInfo = { 
 /**
- * What every watcher may do.
+ * What every Guest may do.
  */
 access: Access, 
 /**
- * The join link URL; the owner's seat only.
+ * The join link URL; an Owner seat only.
  */
 link?: string, 
 /**
- * Why there is no link, when other machines cannot reach this backend; the owner's seat only.
+ * Why there is no link, when other machines cannot reach this backend; an Owner seat only.
  */
 linkProblem?: string, };
 

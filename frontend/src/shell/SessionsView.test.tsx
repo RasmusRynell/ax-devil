@@ -15,7 +15,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async () => ({
       ok: true,
-      json: async () => [{ id: "ann", ownerPresent: true, participants: 1 }],
+      json: async () => [{ id: "ann", ownerPresent: true, participants: 1, seat: "owner" }],
     })),
   );
 });
@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe("sessions view", () => {
-  it("starts sharing, copies the join link, lets viewers explore, and stopping makes the window private again", async () => {
+  it("starts sharing, copies the join link, lets guests explore, and stopping makes the window private again", async () => {
     render(
       <AccessContext value={{ owner: true, fullAccess: false }}>
         <SessionProvider>
@@ -38,7 +38,7 @@ describe("sessions view", () => {
         </SessionProvider>
       </AccessContext>,
     );
-    expect(await screen.findByRole("button", { name: "Watch Session ann" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Continue Session ann" })).toBeTruthy();
     // Connecting to a server is the desktop shell's: a plain browser is not offered it.
     expect(screen.queryByRole("button", { name: "Connect to server" })).toBeNull();
 
@@ -54,8 +54,8 @@ describe("sessions view", () => {
     fireEvent.click(session.getByRole("button", { name: "Copy join link" }));
     expect(writeText).toHaveBeenCalledWith(link);
 
-    // Viewers explore only while the owner allows it; the backend's answer is what the box shows.
-    fireEvent.click(session.getByRole("checkbox", { name: "Let viewers explore on their own" }));
+    // Guests explore only while the owner allows it; the backend's answer is what the box shows.
+    fireEvent.click(session.getByRole("checkbox", { name: "Let guests explore on their own" }));
     await act(async () => {});
     expect(FakeSocket.rooms.get("room-1")?.access).toBe("explore");
     expect((session.getByRole("checkbox") as HTMLInputElement).checked).toBe(true);
@@ -63,14 +63,14 @@ describe("sessions view", () => {
     // The owner sees which guest explores, and none once exploring is off (everyone follows then).
     const room = FakeSocket.rooms.get("room-1")!;
     act(() => {
-      room.seat(null);
-      room.seat(null).view = room.presenter;
+      room.seat(null, false);
+      room.seat(null, false).view = room.presenter;
       room.share();
     });
     const exploring = session.getAllByText("Exploring");
     expect(exploring.map((tag) => tag.closest("li")?.textContent)).toEqual(["Guest 3Exploring"]);
     expect(screen.getByRole("button", { name: "Session" }).title).toBe("2 watching, 1 exploring");
-    fireEvent.click(session.getByRole("checkbox", { name: "Let viewers explore on their own" }));
+    fireEvent.click(session.getByRole("checkbox", { name: "Let guests explore on their own" }));
     await act(async () => {});
     expect(session.queryByText("Exploring")).toBeNull();
 
@@ -107,7 +107,60 @@ describe("sessions view", () => {
     expect(await own().findByRole("button", { name: "Start sharing" })).toBeTruthy();
   });
 
-  it("shows a watcher whose presentation it is, offers Follow presenter while it explores, and never offers editing", async () => {
+  it("continues another Session as an Owner seat with its full controls, and Leave goes back to one of its own", async () => {
+    const room = FakeSocket.host("watch");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => [{ id: room.id, ownerPresent: true, participants: 1, seat: "owner" }],
+      })),
+    );
+    render(
+      <AccessContext value={{ owner: true, fullAccess: false }}>
+        <SessionProvider>
+          <SessionsView />
+        </SessionProvider>
+      </AccessContext>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: `Continue Session ${room.id}` }));
+    expect(await screen.findByRole("button", { name: "Stop sharing" })).toBeTruthy();
+    expect(room.seats.filter((seat) => seat.owner)).toHaveLength(2);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Let guests explore on their own" }));
+    await act(async () => {});
+    expect(room.access).toBe("explore");
+
+    fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+    expect(await screen.findByRole("button", { name: "Start sharing" })).toBeTruthy();
+    expect(room.seats.filter((seat) => seat.owner)).toHaveLength(1);
+  });
+
+  it("stays in its own Session when continuing another is refused", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => [{ id: "gone", ownerPresent: true, participants: 1, seat: "owner" }],
+      })),
+    );
+    render(
+      <AccessContext value={{ owner: true, fullAccess: false }}>
+        <SessionProvider>
+          <SessionsView />
+        </SessionProvider>
+      </AccessContext>,
+    );
+    const own = await screen.findByRole("button", { name: "Start sharing" });
+    fireEvent.click(await screen.findByRole("button", { name: "Continue Session gone" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "That session is no longer available.",
+    );
+    expect(own.isConnected).toBe(true);
+    expect(FakeSocket.rooms.get("room-1")?.seats).toHaveLength(1);
+    expect(FakeSocket.sockets[0]!.received.some((message) => message.type === "leave")).toBe(false);
+  });
+
+  it("shows a Guest whose presentation it is and offers Follow presenter while it explores", async () => {
     const room = FakeSocket.host("explore");
     window.sessionStorage.setItem(
       "ax-devil.credential",
@@ -132,7 +185,7 @@ describe("sessions view", () => {
     await act(async () => {});
     expect(screen.queryByRole("button", { name: "Follow presenter" })).toBeNull();
   });
-  it("opens the watcher's join link in the app and closes the menu, with nothing said if no app takes the link", async () => {
+  it("opens the Guest's join link in the app and closes the menu, with nothing said if no app takes the link", async () => {
     const room = FakeSocket.host("explore");
     const secret = `${room.id}.${room.secret}`;
     window.sessionStorage.setItem(

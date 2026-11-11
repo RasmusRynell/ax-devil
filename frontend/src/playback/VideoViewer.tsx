@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ContentInfo, ContentRef, EntryInfo, LanePolicyWire } from "../generated/api";
-import { useCan, useFollowing, useServerClock, useStream, useView } from "../session/session";
+import {
+  useCan,
+  useFollowing,
+  useTakesPresenter,
+  usePresenterChange,
+  useOwnerSeat,
+  useServerClock,
+  useStream,
+  useView,
+} from "../session/session";
 import { useSettings } from "../settings";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { usePaneBudget } from "./budget";
@@ -41,11 +50,14 @@ export type VideoViewerProps = {
   connect?: Connect;
 };
 
+/** What a clock intent sets, apart from the time it was stamped. */
+
 /**
  * Plays one entry from the backend: its lanes in a grid with the transport over their bottom edge, or why there is no picture
  * yet. What the clock does is the window's view of this item, for the entry that view names. Whatever the viewer does
  * with the controls is published when the seat may change its view, also while following: that is what makes the
- * backend let the seat explore. The presenter's clock drives a following window and is never published back. Lane
+ * backend let the seat explore. The presenter's clock drives a following window and is never published back; an Owner
+ * seat follows a clock another Owner seat set, and is the one that sets it when it acts. Lane
  * settings (catalog, classes, sticky) belong to this window's own stream and are not shared.
  */
 export function VideoViewer({
@@ -70,7 +82,12 @@ export function VideoViewer({
   const intent = shown?.entry === undefined || shown.entry === entry.id ? shown?.clock : undefined;
   const canChange = useCan("view");
   const following = useFollowing();
+  const ownerSeat = useOwnerSeat();
   const clock = useServerClock();
+  const presenter = usePresenterChange();
+  const takesPresenter = useTakesPresenter();
+  // The session and Presenter View revision this window last took the clock from.
+  const adopted = useRef<{ session: PlaybackSession; rev: number } | undefined>(undefined);
   const [session, setSession] = useState<PlaybackSession | null>(null);
   // How the pictures are zoomed belongs to the viewer, so it stays across entries and reconnections.
   const [viewport, setViewport] = useState<Viewport>(FIT);
@@ -138,7 +155,7 @@ export function VideoViewer({
       speed: heldSpeed.current ?? carried?.speed ?? (anchor && anchor.speedCenti / 100),
     };
     // A window that reloads and takes its seat back finds its clock still running in the accepted intent, which
-    // the watchers keep following: it picks the clock up where it is by now, as a following window does.
+    // the Guests keep following: it picks the clock up where it is by now, as a following window does.
     const running =
       !handed && !carried && !latest.current.following && anchor?.playing ? anchor : undefined;
     const created = new PlaybackSession({
@@ -205,6 +222,18 @@ export function VideoViewer({
   useEffect(() => {
     if (session && following && intent) session.follow(intent, () => clock.nowUs() ?? intent.atUs);
   }, [session, following, intent, clock]);
+  // Every Owner seat shows the one Presenter View, so a change another Owner seat made is this window's too, until the
+  // user acts here. The server says who made each change; this window's own come back as its own and are not applied.
+  // The window's first look at a viewer in its Session adopts the view whoever made it, and a change of its own that
+  // the backend has not settled yet is never overwritten.
+  useEffect(() => {
+    if (!session || !ownerSeat) return;
+    const takes = takesPresenter(viewer, presenter.byOther);
+    const last = adopted.current;
+    if (!intent || (last?.session === session && last.rev === presenter.rev)) return;
+    adopted.current = { session, rev: presenter.rev };
+    if (takes) session.follow(intent, () => clock.nowUs() ?? intent.atUs, true);
+  }, [session, ownerSeat, intent, clock, viewer, takesPresenter, presenter.rev, presenter.byOther]);
 
   return (
     session && (

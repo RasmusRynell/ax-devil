@@ -3,7 +3,7 @@
 use crate::{Rig, authority, entry_key, looking, pane, playlist_in, stream};
 use playback::{Authority, ClockIntent, Priority};
 use sessions::{
-    CursorOptions,
+    CursorOptions, SeatRole,
     session::{
         Access, Axis, Command, Completion, ContentRef, Control, Layout, Refusal, Reply, Sidebar,
         SidebarView, View, ViewLane, ViewerId, ViewerView,
@@ -17,12 +17,9 @@ use workspace_store::{DocCommand, Resolution};
 #[tokio::test(start_paused = true)]
 async fn a_ticket_opens_one_stream_once_and_only_for_the_seat_and_key_it_was_issued_for() {
     let rig = Rig::new();
-    let (owner, watcher) = rig.shared(Access::Watch);
+    let (owner, guest) = rig.shared(Access::Watch);
     let (_, key) = rig.open_video(&owner, "a.mp4");
-    let Reply::Ticket(ticket) = watcher
-        .command(Command::RequestTicket(key.clone()))
-        .unwrap()
-    else {
+    let Reply::Ticket(ticket) = guest.command(Command::RequestTicket(key.clone())).unwrap() else {
         panic!("a ticket");
     };
 
@@ -34,10 +31,7 @@ async fn a_ticket_opens_one_stream_once_and_only_for_the_seat_and_key_it_was_iss
         "single use"
     );
 
-    let Reply::Ticket(late) = watcher
-        .command(Command::RequestTicket(key.clone()))
-        .unwrap()
-    else {
+    let Reply::Ticket(late) = guest.command(Command::RequestTicket(key.clone())).unwrap() else {
         panic!("a ticket");
     };
     advance(Duration::from_secs(11)).await;
@@ -47,13 +41,10 @@ async fn a_ticket_opens_one_stream_once_and_only_for_the_seat_and_key_it_was_iss
         "expired"
     );
 
-    let Reply::Ticket(bound) = watcher
-        .command(Command::RequestTicket(key.clone()))
-        .unwrap()
-    else {
+    let Reply::Ticket(bound) = guest.command(Command::RequestTicket(key.clone())).unwrap() else {
         panic!("a ticket");
     };
-    let newer = rig.service.resume(watcher.resume_token()).unwrap();
+    let newer = rig.service.resume(guest.resume_token()).unwrap();
     assert_eq!(
         rig.service.redeem(&bound).err(),
         Some(Refusal::BadTicket),
@@ -87,15 +78,15 @@ async fn a_seat_holds_eight_streams_and_a_session_sixty_four() {
         }))
         .unwrap();
     let (_, key) = rig.open_video(&owner, "a.mp4");
-    let watchers: Vec<_> = (0..8).map(|_| rig.join(&owner)).collect();
+    let guests: Vec<_> = (0..8).map(|_| rig.join(&owner)).collect();
     let mut leases = Vec::new();
 
-    for watcher in &watchers {
+    for guest in &guests {
         for _ in 0..8 {
-            leases.push(stream(&rig.service, watcher, &key).unwrap());
+            leases.push(stream(&rig.service, guest, &key).unwrap());
         }
         assert_eq!(
-            stream(&rig.service, watcher, &key).err(),
+            stream(&rig.service, guest, &key).err(),
             Some(Refusal::TooManyStreams)
         );
     }
@@ -115,13 +106,13 @@ async fn a_seat_holds_eight_streams_and_a_session_sixty_four() {
 #[tokio::test(start_paused = true)]
 async fn a_following_seat_gets_the_clock_and_entry_of_the_presenter_pane_it_streams() {
     let rig = Rig::new();
-    let (owner, watcher) = rig.shared(Access::Watch);
+    let (owner, guest) = rig.shared(Access::Watch);
     let (item, key) = rig.open(&owner, playlist_in(rig.dir.path(), &["a", "b"]));
     let second = ContentRef {
         viewer: ViewerId(2),
         ..entry_key(&owner.state(), item, 1)
     };
-    let following = stream(&rig.service, &watcher, &key).unwrap();
+    let following = stream(&rig.service, &guest, &key).unwrap();
     let own = stream(&rig.service, &owner, &key).unwrap();
     assert_eq!(
         authority(&following),
@@ -142,7 +133,7 @@ async fn a_following_seat_gets_the_clock_and_entry_of_the_presenter_pane_it_stre
         }
     );
     assert_eq!(
-        stream(&rig.service, &watcher, &second).err(),
+        stream(&rig.service, &guest, &second).err(),
         Some(Refusal::ContentUnavailable),
         "the presenter has no second pane yet"
     );
@@ -191,7 +182,7 @@ async fn a_following_seat_gets_the_clock_and_entry_of_the_presenter_pane_it_stre
             intent: first_clock
         }
     );
-    let beside = stream(&rig.service, &watcher, &second).unwrap();
+    let beside = stream(&rig.service, &guest, &second).unwrap();
     assert_eq!(
         authority(&beside),
         Authority::Follow {
@@ -203,7 +194,7 @@ async fn a_following_seat_gets_the_clock_and_entry_of_the_presenter_pane_it_stre
         ..second
     };
     assert_eq!(
-        stream(&rig.service, &watcher, &crossed).err(),
+        stream(&rig.service, &guest, &crossed).err(),
         Some(Refusal::ContentUnavailable),
         "a pane's stream is its own entry, not the item's other pane's"
     );
@@ -213,9 +204,9 @@ async fn a_following_seat_gets_the_clock_and_entry_of_the_presenter_pane_it_stre
 async fn a_presenter_view_change_keeps_the_stored_clock_and_a_new_intent_is_stamped_within_two_seconds()
  {
     let rig = Rig::new();
-    let (owner, watcher) = rig.shared(Access::Watch);
+    let (owner, guest) = rig.shared(Access::Watch);
     let (item, key) = rig.open_video(&owner, "a.mp4");
-    let following = stream(&rig.service, &watcher, &key).unwrap();
+    let following = stream(&rig.service, &guest, &key).unwrap();
     let playing = ClockIntent {
         frame: 120,
         playing: true,
@@ -345,14 +336,20 @@ async fn a_session_of_one_works_without_sharing() {
     let rig = Rig::new();
     let owner = rig.service.create(true, CursorOptions::default()).unwrap();
     assert!(owner.state().sharing.is_none());
+    assert!(rig.service.list(true)[0].link.is_none(), "it has no link");
+    assert_eq!(rig.service.list(true)[0].seat, SeatRole::Owner);
     assert!(
-        rig.service.list().is_empty(),
-        "a private session is not listed"
+        rig.service.list(false).is_empty(),
+        "an Owner without Full access has no seat to attach to, so the session is not listed"
     );
-    assert!(matches!(
-        rig.service.watch(owner.session(), CursorOptions::default()),
-        Err(Refusal::NotSharing)
-    ));
+    assert!(
+        matches!(
+            rig.service
+                .attach(owner.session(), false, CursorOptions::default()),
+            Err(Refusal::NotSharing)
+        ),
+        "an Owner without Full access is a Guest of a session that expands, and there is no room for one"
+    );
 
     let (_, key) = rig.open_video(&owner, "a.mp4");
     let lease = stream(&rig.service, &owner, &key).unwrap();
@@ -375,7 +372,7 @@ async fn a_session_of_one_works_without_sharing() {
 #[tokio::test(start_paused = true)]
 async fn a_live_stream_is_named_by_its_content_and_stops_when_its_viewer_closes() {
     let rig = Rig::new();
-    let (owner, watcher) = rig.shared(Access::Watch);
+    let (owner, guest) = rig.shared(Access::Watch);
     let id = ItemId::generate();
     let recipe = LiveRecipe {
         host: "camera.local".into(),
@@ -415,7 +412,7 @@ async fn a_live_stream_is_named_by_its_content_and_stops_when_its_viewer_closes(
     };
 
     let own = stream(&rig.service, &owner, &key).unwrap();
-    let watching = stream(&rig.service, &watcher, &key).unwrap();
+    let watching = stream(&rig.service, &guest, &key).unwrap();
     assert!(own.entry().is_none() && watching.entry().is_none());
     assert!(matches!(authority(&own), Authority::Own { .. }));
     assert!(matches!(authority(&watching), Authority::Follow { .. }));

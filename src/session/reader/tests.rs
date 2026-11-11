@@ -173,7 +173,7 @@ fn add_live(fields: serde_json::Value) -> api_types::SessionCommand {
 /// Another stream of a camera whose saved login is a literal password takes that login on the server, only for the
 /// owner and only for the same camera; the password is in no answer and nothing the Doc shows.
 #[tokio::test]
-async fn another_stream_of_a_camera_copies_its_saved_login_for_the_owner_only() {
+async fn another_stream_of_a_camera_copies_its_saved_login() {
     let folder = tempfile::tempdir().unwrap();
     let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
     let cache = folder.path().join("cache");
@@ -238,44 +238,7 @@ async fn another_stream_of_a_camera_copies_its_saved_login_for_the_owner_only() 
         )
         .await,
     );
-    owner
-        .command(sessions::session::Command::Control(Control::Share {
-            access: sessions::session::Access::Edit,
-        }))
-        .unwrap();
-    let link = owner.state().sharing.as_ref().unwrap().link.clone();
-    let watcher = state
-        .sessions
-        .join(&link, CursorOptions::default())
-        .unwrap();
-    acks.push(
-        answer(
-            &state,
-            &watcher,
-            4,
-            like(json!({"host": "cam.local", "username": "root"})),
-        )
-        .await,
-    );
     assert!(acks.iter().all(ok));
-    // A reference would read this machine's environment for the owner's session, which a watcher may not ask for.
-    let refused = answer(
-        &state,
-        &watcher,
-        5,
-        add_live(json!({"host": "cam.local", "username": "$PATH"})),
-    )
-    .await;
-    assert!(matches!(
-        refused,
-        SessionServerMessage::Ack {
-            outcome: AckOutcome::Refused {
-                code: sessions::session::Refusal::Invalid
-            },
-            ..
-        }
-    ));
-
     let doc = owner.state().doc.clone();
     let logins: Vec<_> = doc
         .workspace
@@ -298,7 +261,6 @@ async fn another_stream_of_a_camera_copies_its_saved_login_for_the_owner_only() 
             ("cam.local".into(), "root".into(), true),
             ("cam.local".into(), "root".into(), true),
             ("other.local".into(), "root".into(), false),
-            ("cam.local".into(), "root".into(), false),
         ]
     );
     let shown: DocWire = crate::session::project::project(&doc, Audience::HOST, false);
@@ -397,8 +359,7 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
     }
 }
 
-/// An edit that names no overlay keeps the saved one with its hidden broker password for the owner; a guest who may
-/// edit is refused rather than left to clear a password only the owner can restore.
+/// An edit that names no overlay keeps the saved one with its hidden broker password.
 #[tokio::test]
 async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
     let folder = tempfile::tempdir().unwrap();
@@ -447,25 +408,6 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
         .unwrap()
     };
     let relabel = |label: &str| edit(json!({"label": label}));
-    owner
-        .command(sessions::session::Command::Control(Control::Share {
-            access: sessions::session::Access::Edit,
-        }))
-        .unwrap();
-    let link = owner.state().sharing.as_ref().unwrap().link.clone();
-    let guest = state
-        .sessions
-        .join(&link, CursorOptions::default())
-        .unwrap();
-
-    let refused = answer(&state, &guest, 2, relabel("Guest")).await;
-    assert!(matches!(
-        refused,
-        SessionServerMessage::Ack {
-            outcome: AckOutcome::Refused { .. },
-            ..
-        }
-    ));
     let kept = answer(&state, &owner, 3, relabel("Gate")).await;
     assert!(matches!(
         kept,
@@ -480,7 +422,7 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
     );
 
     // The same with the overlay named and its password left blank, and with the broker kept for another mode: the
-    // guest is refused each time, the owner's blank password is the saved one.
+    // blank password is the saved one.
     let broker = json!({"broker_host": "b.local", "broker_user": "mqtt", "source_key": "k"});
     let mut explicit = broker.clone();
     explicit["mode"] = json!("mqtt");
@@ -494,15 +436,6 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
         // The password now saved only as kept.
         json!({"overlay": rtsp, "kept_mqtt": broker, "kept_datahub": hub, "label": "Again"}),
     ] {
-        seq += 1;
-        let reply = answer(&state, &guest, seq, edit(fields.clone())).await;
-        assert!(matches!(
-            reply,
-            SessionServerMessage::Ack {
-                outcome: AckOutcome::Refused { .. },
-                ..
-            }
-        ));
         seq += 1;
         let reply = answer(&state, &owner, seq, edit(fields)).await;
         assert!(matches!(
@@ -518,29 +451,6 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
         );
     }
 
-    // A guest may not keep a `$NAME` reference for a mode the owner could later choose, though it types a password,
-    // and not behind padding that the stored host loses.
-    for kept_mqtt in [
-        json!({"broker_pass": "$SOME_SECRET", "broker_host": "b.local", "broker_user": "mqtt"}),
-        json!({"broker_pass": "literal", "broker_host": " $MQTT_HOST ", "broker_user": "guest"}),
-    ] {
-        seq += 1;
-        let reply = answer(
-            &state,
-            &guest,
-            seq,
-            edit(json!({"overlay": rtsp, "kept_mqtt": kept_mqtt})),
-        )
-        .await;
-        assert!(matches!(
-            reply,
-            SessionServerMessage::Ack {
-                outcome: AckOutcome::Refused { .. },
-                ..
-            }
-        ));
-    }
-
     // A relabel that sends no overlay or kept settings, of a stream whose MQTT is kept, changes none of them.
     let kept = || match &owner.state().doc.workspace.parts().workspace.items[0]
         .recipe
@@ -552,15 +462,6 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
     let before = kept();
     assert_eq!(before.datahub.as_ref().map(|hub| hub.channel), Some(7));
     seq += 1;
-    let reply = answer(&state, &guest, seq, relabel("Guest")).await;
-    assert!(matches!(
-        reply,
-        SessionServerMessage::Ack {
-            outcome: AckOutcome::Refused { .. },
-            ..
-        }
-    ));
-    seq += 1;
     let reply = answer(&state, &owner, seq, relabel("Owner")).await;
     assert!(matches!(
         reply,
@@ -570,21 +471,4 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
         }
     ));
     assert_eq!(kept(), before);
-
-    // A guest's stream keeps nothing the owner configured for a mode it does not use: with the broker user set to
-    // a reference, the kept user stays blank.
-    state
-        .settings
-        .update("broker.user", |_| Some("$SOME_SECRET".into()))
-        .unwrap();
-    let added = json!({"host": "cam.local", "username": "guest", "overlay": {"mode": "none"},
-        "kept_mqtt": {"broker_host": "attacker.example", "broker_pass": "literal"}});
-    seq += 1;
-    answer(&state, &guest, seq, add_live(added)).await;
-    let items = owner.state().doc.workspace.parts().workspace.items.clone();
-    let Source::Live(second) = &items[1].recipe.source else {
-        panic!("the guest's stream was added");
-    };
-    let mqtt = second.kept.mqtt.as_ref().expect("MQTT is kept");
-    assert_eq!(mqtt.broker_user, "");
 }
