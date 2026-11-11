@@ -3,7 +3,7 @@
 use crate::{Rig, authority, entry_key, looking, pane, playlist_in, stream};
 use playback::{Authority, ClockIntent, Priority};
 use sessions::{
-    CursorOptions,
+    CursorOptions, SeatRole,
     session::{
         Access, Axis, Command, Completion, ContentRef, Control, Layout, Refusal, Reply, Sidebar,
         SidebarView, View, ViewLane, ViewerId, ViewerView,
@@ -336,7 +336,12 @@ async fn a_session_of_one_works_without_sharing() {
     let rig = Rig::new();
     let owner = rig.service.create(true, CursorOptions::default()).unwrap();
     assert!(owner.state().sharing.is_none());
-    assert!(rig.service.list()[0].link.is_none(), "it has no link");
+    assert!(rig.service.list(true)[0].link.is_none(), "it has no link");
+    assert_eq!(rig.service.list(true)[0].seat, SeatRole::Owner);
+    assert!(
+        rig.service.list(false).is_empty(),
+        "an Owner without Full access has no seat to attach to, so the session is not listed"
+    );
     assert!(
         matches!(
             rig.service

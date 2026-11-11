@@ -12,7 +12,6 @@ import type { Scope } from "../commands";
 import { credential } from "../access";
 import type {
   Access,
-  ClockIntent,
   CursorOptions,
   CursorPoint,
   DocWire,
@@ -23,7 +22,8 @@ import type {
   View,
 } from "../generated/api";
 import { Banner, EndedScreen } from "./Notice";
-import { SessionStore, type SessionState } from "./store";
+import type { SessionState } from "./sessionState";
+import { SessionStore } from "./store";
 import { canDo } from "./views";
 
 const StoreContext = createContext<SessionStore | null>(null);
@@ -189,10 +189,20 @@ export function useOwnerSeat(): boolean {
   return useSelect((state) => state.seat?.access === "owner");
 }
 
-/** The clock this window last set for a viewer: one that differs from it was set by another Owner seat. */
-export function useOwnClock(): (viewer: number) => ClockIntent | undefined {
+/** Whether the window takes the Presenter View for a viewer now; see `SessionStore.takesPresenter`. */
+export function useTakesPresenter(): (viewer: number, byOther: boolean) => boolean {
   const store = useStore();
-  return useCallback((viewer) => store.ownClock(viewer), [store]);
+  return useCallback((viewer, byOther) => store.takesPresenter(viewer, byOther), [store]);
+}
+
+/**
+ * Which change of the Presenter View is the latest and whether another seat made it: the revision, and whether its
+ * author is not this window's seat. The server stamps the author, so a window never has to guess by comparing values.
+ */
+export function usePresenterChange(): { rev: number; byOther: boolean } {
+  const rev = useSelect((state) => state.seat?.presenterRev ?? -1);
+  const byOther = useSelect((state) => state.seat?.presenterBy !== state.you);
+  return { rev, byOther };
 }
 
 /** The backend's clock, for following a presenter: `nowUs` is undefined until it has answered. */
@@ -220,7 +230,7 @@ export interface SessionApi {
   mode: SeatMode | null;
   cursorOptions: CursorOptions;
   /** Leaves this window's Session to attach to another of the server's, with the Sessions grant. */
-  attach: (session: string) => void;
+  attach: (session: string) => Promise<void>;
   /** Leaves this window's Session for the one a join link opens. */
   joinLink: (link: string) => void;
   /** The way out of a Session this window did not start, to a Session of its own. */

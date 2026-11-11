@@ -1,15 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type {
-  ClockIntent,
-  ContentInfo,
-  ContentRef,
-  EntryInfo,
-  LanePolicyWire,
-} from "../generated/api";
+import type { ContentInfo, ContentRef, EntryInfo, LanePolicyWire } from "../generated/api";
 import {
   useCan,
   useFollowing,
-  useOwnClock,
+  useTakesPresenter,
+  usePresenterChange,
   useOwnerSeat,
   useServerClock,
   useStream,
@@ -56,7 +51,6 @@ export type VideoViewerProps = {
 };
 
 /** What a clock intent sets, apart from the time it was stamped. */
-const settingOf = (intent: ClockIntent) => `${intent.frame}/${intent.playing}/${intent.speedCenti}`;
 
 /**
  * Plays one entry from the backend: its lanes in a grid with the transport over their bottom edge, or why there is no picture
@@ -90,7 +84,10 @@ export function VideoViewer({
   const following = useFollowing();
   const ownerSeat = useOwnerSeat();
   const clock = useServerClock();
-  const setBefore = useOwnClock();
+  const presenter = usePresenterChange();
+  const takesPresenter = useTakesPresenter();
+  // The session and Presenter View revision this window last took the clock from.
+  const adopted = useRef<{ session: PlaybackSession; rev: number } | undefined>(undefined);
   const [session, setSession] = useState<PlaybackSession | null>(null);
   // How the pictures are zoomed belongs to the viewer, so it stays across entries and reconnections.
   const [viewport, setViewport] = useState<Viewport>(FIT);
@@ -225,14 +222,18 @@ export function VideoViewer({
   useEffect(() => {
     if (session && following && intent) session.follow(intent, () => clock.nowUs() ?? intent.atUs);
   }, [session, following, intent, clock]);
-  // Every Owner seat shows the one Presenter View, so a clock another Owner seat set is this window's too, until the
-  // user acts here.
+  // Every Owner seat shows the one Presenter View, so a change another Owner seat made is this window's too, until the
+  // user acts here. The server says who made each change; this window's own come back as its own and are not applied.
+  // The window's first look at a viewer in its Session adopts the view whoever made it, and a change of its own that
+  // the backend has not settled yet is never overwritten.
   useEffect(() => {
-    const mine = setBefore(viewer);
-    if (!session || !ownerSeat || !intent || (mine && settingOf(mine) === settingOf(intent)))
-      return;
-    session.follow(intent, () => clock.nowUs() ?? intent.atUs, true);
-  }, [session, ownerSeat, intent, clock, viewer, setBefore]);
+    if (!session || !ownerSeat) return;
+    const takes = takesPresenter(viewer, presenter.byOther);
+    const last = adopted.current;
+    if (!intent || (last?.session === session && last.rev === presenter.rev)) return;
+    adopted.current = { session, rev: presenter.rev };
+    if (takes) session.follow(intent, () => clock.nowUs() ?? intent.atUs, true);
+  }, [session, ownerSeat, intent, clock, viewer, takesPresenter, presenter.rev, presenter.byOther]);
 
   return (
     session && (

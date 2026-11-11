@@ -299,18 +299,36 @@ fn join(next: &mut SessionState, fx: &mut Effects, secret: Option<&Secret>) -> R
 }
 
 fn attach(next: &mut SessionState, fx: &mut Effects, full_access: bool) -> Result<(), Refusal> {
-    if next.expands && !full_access {
-        return join(next, fx, None);
-    }
-    if next.seats.len() >= MAX_SEATS {
-        return Err(Refusal::Full);
-    }
-    let seat = next.seat_owner();
+    let seat = match admission(next, full_access)? {
+        SeatKind::Owner => next.seat_owner(),
+        SeatKind::Guest { sharing } => next.seat_guest(sharing),
+    };
     fx.outcome = Outcome::Seated {
         seat,
         lease: Lease(0),
     };
     Ok(())
+}
+
+/// The seat an Owner attaching to the session would get now, or why none: an Owner seat, except in a session that
+/// reads the server's environment and a caller without Full access, who gets a Guest seat if the session is shared.
+/// [`Input::Attach`] and the list of sessions both ask this, so they cannot disagree.
+pub(super) fn admission(state: &SessionState, full_access: bool) -> Result<SeatKind, Refusal> {
+    let guest = if state.expands && !full_access {
+        Some(
+            state
+                .sharing
+                .as_ref()
+                .ok_or(Refusal::NotSharing)?
+                .generation,
+        )
+    } else {
+        None
+    };
+    if state.seats.len() >= MAX_SEATS {
+        return Err(Refusal::Full);
+    }
+    Ok(guest.map_or(SeatKind::Owner, |sharing| SeatKind::Guest { sharing }))
 }
 
 /// Settles `seq` and applies the view if the seat may set one, else reports the refusal in the outcome. Only a seat
@@ -349,6 +367,7 @@ fn set_view(
             if published != *next.presenter {
                 next.presenter = Arc::new(published);
                 next.presenter_rev += 1;
+                next.presenter_by = Some(seat);
             }
         }
         Standing::Following | Standing::Exploring => {
@@ -399,6 +418,7 @@ fn settle(next: &mut SessionState, fx: &mut Effects, old_doc_rev: u64) {
         if presenter != *next.presenter {
             next.presenter = Arc::new(presenter);
             next.presenter_rev += 1;
+            next.presenter_by = None;
         }
         let doc = Arc::clone(&next.doc);
         for seat in next.seats.values_mut() {

@@ -29,19 +29,6 @@ use tokio::{
 use workspace::{Content, ItemId, WorkspaceItem};
 use workspace_store::Resolution;
 
-/// A line of the list of sessions.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Listing {
-    /// Names the session.
-    pub id: SessionId,
-    /// Whether an Owner seat is connected.
-    pub owner_present: bool,
-    /// Seats in the session, away ones included.
-    pub seats: usize,
-    /// The current link while shared. Hand it only to callers allowed to see every session.
-    pub link: Option<JoinLink>,
-}
-
 /// An item as the session that holds it has it.
 #[derive(Clone, Debug)]
 pub struct HeldItem {
@@ -311,25 +298,6 @@ impl<C: Clone + Send + 'static> Service<C> {
                 self.inner.sources.record(session, item, watch);
             }
         });
-    }
-
-    /// The sessions, by id.
-    pub fn list(&self) -> Vec<Listing> {
-        let sessions = common::locked(&self.inner.sessions);
-        let mut list: Vec<Listing> = sessions
-            .iter()
-            .map(|(id, live)| {
-                let state = &live.state;
-                Listing {
-                    id: *id,
-                    owner_present: state.owner_present(),
-                    seats: state.seats.len(),
-                    link: state.sharing.as_ref().map(|sharing| sharing.link.clone()),
-                }
-            })
-            .collect();
-        list.sort_by_key(|listing| listing.id.to_string());
-        list
     }
 
     /// The item `id` of whichever session holds it. Item ids are unique across sessions.

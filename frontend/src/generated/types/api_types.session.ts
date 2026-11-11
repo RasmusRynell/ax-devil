@@ -4,7 +4,7 @@ import type { BookmarkCommand } from "./api_types.bookmarks";
 import type { ErrorWire } from "./api_types.error";
 import type { LanePolicyWire } from "./api_types.playback.lane";
 import type { HiddenTarget, NewItem, WorkspaceState } from "./api_types.workspace";
-import type { CursorOptions, EndedReason, SeatMode } from "./sessions";
+import type { CursorOptions, EndedReason, SeatMode, SeatRole } from "./sessions";
 import type { Access } from "./sessions.session";
 import type { Can, ContentRef, RefusalCode } from "./sessions.session.authorize";
 import type { ControlCommand } from "./sessions.session.commands";
@@ -317,6 +317,10 @@ docRev: number,
  */
 presenterRev: number, 
 /**
+ * The seat whose change made the presenter's view as it is; absent when the server did.
+ */
+presenterBy?: number, 
+/**
  * What this seat may do.
  */
 access: SeatAccess, 
@@ -409,6 +413,10 @@ ownerPresent: boolean,
  * Seats in the Session, away ones included.
  */
 participants: number, 
+/**
+ * The seat attaching would give the caller now; a Session that would give none is not listed.
+ */
+seat: SeatRole, 
 /**
  * The join link URL; absent when this backend cannot be reached by other machines.
  */

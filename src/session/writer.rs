@@ -31,6 +31,7 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 struct Mine {
     doc_rev: u64,
     presenter_rev: u64,
+    presenter_by: Option<u32>,
     access: SeatAccess,
     can: Can,
     mode: SeatMode,
@@ -148,6 +149,7 @@ async fn send_parts<S: Sink<Message> + Unpin>(
     let mine = Mine {
         doc_rev: session.doc_rev,
         presenter_rev: session.presenter_rev,
+        presenter_by: session.presenter_by.map(|seat| seat.0),
         access: match (&seat.kind, &session.sharing) {
             (SeatKind::Owner, _) => SeatAccess::Owner,
             (SeatKind::Guest { .. }, Some(sharing)) => sharing.access.into(),
@@ -175,6 +177,7 @@ async fn send_parts<S: Sink<Message> + Unpin>(
         rev: session.revision,
         doc_rev: mine.doc_rev,
         presenter_rev: mine.presenter_rev,
+        presenter_by: mine.presenter_by,
         access: mine.access,
         can: mine.can,
         mode: mine.mode,

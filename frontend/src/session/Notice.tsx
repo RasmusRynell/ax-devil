@@ -6,7 +6,7 @@ import { TextField } from "../kit/Fields";
 import { Banner as Card } from "../kit/Banner";
 import { useServerKind } from "../windowBridge";
 import type { Ending } from "./connection";
-import type { SessionState } from "./store";
+import type { SessionState } from "./sessionState";
 
 /** What each way a session or a connection can end says to the person in it. */
 export const ENDINGS: Record<Ending, string> = {

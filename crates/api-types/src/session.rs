@@ -14,7 +14,7 @@ use crate::{
 use foundation::ItemId;
 use serde::{Deserialize, Serialize};
 use sessions::{
-    CursorOptions, EndReason, SeatMode,
+    CursorOptions, EndReason, SeatMode, SeatRole,
     session::{Access, Can, ContentRef, Control, Refusal, RosterEntry, View},
 };
 use ts_rs::TS;
@@ -448,6 +448,10 @@ pub enum SessionServerMessage {
         /// The presenter's view revision.
         #[ts(type = "number")]
         presenter_rev: u64,
+        /// The seat whose change made the presenter's view as it is; absent when the server did.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional, type = "number")]
+        presenter_by: Option<u32>,
         /// What this seat may do.
         access: SeatAccess,
         /// What this seat may do, from the same role table the backend enforces.
@@ -530,6 +534,8 @@ pub struct SessionSummary {
     pub owner_present: bool,
     /// Seats in the Session, away ones included.
     pub participants: u32,
+    /// The seat attaching would give the caller now; a Session that would give none is not listed.
+    pub seat: SeatRole,
     /// The join link URL; absent when this backend cannot be reached by other machines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]

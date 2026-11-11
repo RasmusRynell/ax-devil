@@ -75,6 +75,11 @@ fn a_second_owner_seat_drives_the_presenter_view_the_first_shows() {
     step(&mut state, view);
     assert_eq!(state.presenter_rev, before + 1);
     assert_eq!(
+        state.presenter_by,
+        Some(second),
+        "the server stamps who set it"
+    );
+    assert_eq!(
         state.seats[&first].view, None,
         "the first seat shows the Presenter View"
     );

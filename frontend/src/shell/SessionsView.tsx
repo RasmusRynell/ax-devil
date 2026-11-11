@@ -261,7 +261,7 @@ export function SessionsView() {
                       <Action
                         aria-label={`Continue ${name}`}
                         data-cursor-id={`session:${other.id}:attach`}
-                        onClick={() => attach(other.id)}
+                        onClick={() => attach(other.id).then(() => setFailure(null), report)}
                       >
                         Continue
                       </Action>

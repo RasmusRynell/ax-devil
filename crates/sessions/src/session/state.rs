@@ -97,6 +97,9 @@ pub struct SessionState {
     pub presenter: Arc<View>,
     /// Counts changes to the presenter's view.
     pub presenter_rev: u64,
+    /// The Owner seat whose command made the current presenter view; `None` when the server did, such as when an item
+    /// the view shows is removed. Stamped where the view changes, never taken from a client.
+    pub presenter_by: Option<SeatId>,
     /// Every seat, away ones included.
     pub seats: BTreeMap<SeatId, Seat>,
     /// `Some` while an Owner shares the session.
@@ -124,6 +127,7 @@ impl SessionState {
             doc_rev: 0,
             presenter: Arc::default(),
             presenter_rev: 0,
+            presenter_by: None,
             seats: BTreeMap::new(),
             sharing: None,
             ended: None,

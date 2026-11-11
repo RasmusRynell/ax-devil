@@ -59,6 +59,9 @@ export class Room {
   shown = new Showing(FakeSocket.launch.scenario, FakeSocket.launch.state);
   docRev = 0;
   presenter: View = EMPTY_VIEW;
+  /** Counts changes to the presenter's view, and the seat that made the last one (none: the backend). */
+  presenterRev = 0;
+  presenterBy: number | undefined;
   /** What Guests may do while sharing is on; null while it is off. */
   access: Access | null = null;
   secret = "s3cret";
@@ -85,9 +88,11 @@ export class Room {
     this.share();
   }
 
-  /** An Owner seat shows another view. */
-  publish(view: View) {
+  /** The Owner seat `by` shows another view. */
+  publish(view: View, by?: number) {
     this.presenter = view;
+    this.presenterRev += 1;
+    this.presenterBy = by;
     this.share();
   }
 
@@ -247,7 +252,8 @@ export class FakeSocket {
       type: "seat",
       rev: room.docRev,
       docRev: room.docRev,
-      presenterRev: 0,
+      presenterRev: room.presenterRev,
+      presenterBy: room.presenterBy,
       access,
       can: seatAccess()[access],
       mode: seat.view ? "exploring" : "following",
@@ -277,7 +283,7 @@ export class FakeSocket {
         if (message.seq <= seat.viewsDone) return;
         seat.viewsDone = message.seq;
         // A seat that may only watch has its view refused; the number is finished all the same.
-        if (seat.owner) room.presenter = message.view;
+        if (seat.owner) room.publish(message.view, seat.id);
         else if (room.access && room.access !== "watch") seat.view = message.view;
         room.share();
         break;

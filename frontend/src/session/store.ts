@@ -1,7 +1,6 @@
 import { credential } from "../access";
 import { CommandFailed, CommandRefused } from "../errors";
 import type {
-  ClockIntent,
   CursorOptions,
   CursorPoint,
   DocWire,
@@ -14,53 +13,15 @@ import type {
 import { OffsetEstimator } from "./timeSync";
 import { connect, type Connection, type Ending, type Entry, type Status } from "./connection";
 import { Cursors } from "./cursors";
+import { STORED_SEAT, readStoredSeat } from "./storedSeat";
+import type { SeatPart, SessionState } from "./sessionState";
 import { EMPTY_VIEW, canDo, shareView, shownView, type Pending } from "./views";
 
-/** The tab's seat (its session and resume token), so a reload within the grace period takes it back. Another tab has its own. */
-const STORED_SEAT = "ax-devil.seat";
 /** Round trips at each connect, then one per period. */
 const SYNC_BURST = 5;
 const SYNC_EVERY_MS = 10_000;
 /** The least time between two renames sent: the session takes ten commands a second and closes the socket above it. */
 const RENAME_EVERY_MS = 200;
-
-type SeatPart = Extract<SessionServerMessage, { type: "seat" }>;
-
-/** Everything a component may read of the window's session; each part keeps its identity until it changes. */
-export interface SessionState {
-  connection: Exclude<Status["state"], "ended">;
-  /** Why the session is over for this window, until it is dismissed. */
-  ended: Ending | null;
-  session: string | null;
-  /** This window's seat id. */
-  you: number | null;
-  /** Whether the window is in a Session it did not start: one it attached to or joined. */
-  attached: boolean;
-  /** `null` until the backend has sent the first Doc. */
-  doc: DocWire | null;
-  /** What this seat may do and how it shows; `null` until the first part arrives. */
-  seat: SeatPart | null;
-  roster: readonly SeatInfo[];
-  cursorOptions: CursorOptions;
-  /** What the window shows now, including a change the backend has not settled yet. */
-  view: View;
-  /** Whether the window shows the presenter's view and nothing of its own. */
-  following: boolean;
-  /**
-   * Whether the seat is the one the backend derived from this Doc. A Doc is published as it arrives, before the seat
-   * that goes with it, so until then `seat` (and `following`) still describe the Doc before.
-   */
-  settled: boolean;
-  /** Whether the backend's clock is known well enough to follow the presenter's. */
-  synced: boolean;
-  /**
-   * How many times the backend has seated this window, first connection and every resume alike. A playback stream is
-   * granted to one of them: a stream opened under an earlier one is ended.
-   */
-  seatings: number;
-  /** How many workspace commands the backend has answered, whatever the answer: the files they touch have settled. */
-  workspaceAnswers: number;
-}
 
 export interface SessionDeps {
   connect: typeof connect;
@@ -112,16 +73,18 @@ export class SessionStore {
     workspaceAnswers: 0,
   };
   #connection: Connection | null = null;
+  /** The connection of an `attach` that is not admitted yet; the window stays in its seat until it is. */
+  #candidate: Connection | null = null;
   #doc: { rev: number; wire: DocWire } | null = null;
   /** A seat part whose Doc has not arrived; the backend sends the Doc first, so this only guards the order. */
   #waiting: SeatPart | null = null;
   #pending: Pending | null = null;
-  /** The last view this window set, settled or not. */
-  #lastSet: View | null = null;
   /** The highest view number this window has used, and the highest it has sent. */
   #seq = 0;
   #sent = 0;
   #commandSeq = 0;
+  /** The viewers the window has looked at in this Session. */
+  #seen = new Set<number>();
   #cancelFrame: (() => void) | null = null;
   #own = true;
   #estimator = new OffsetEstimator();
@@ -167,6 +130,8 @@ export class SessionStore {
   stop(): void {
     this.#connection?.close();
     this.#connection = null;
+    this.#candidate?.close();
+    this.#candidate = null;
     this.#cancelFrame?.();
     this.#cancelFrame = null;
     clearTimeout(this.#syncTimer);
@@ -174,10 +139,32 @@ export class SessionStore {
     this.#refuse(new Error("The window closed."));
   }
 
-  /** Leaves this window's Session to attach to another of the server's, with the Sessions grant. */
-  attach(session: string): void {
-    this.#leaveSession();
-    this.#begin({ kind: "attach", session }, undefined, false);
+  /** Attaches to another of the server's Sessions. The window keeps its seat until the new one is admitted; a refusal rejects. */
+  attach(session: string): Promise<void> {
+    this.#candidate?.close();
+    return new Promise((resolve, reject) => {
+      const held = credential();
+      const candidate: Connection = this.#deps.connect({
+        entry: { kind: "attach", session },
+        password: held?.kind === "password" ? held.password : undefined,
+        cursors: () => this.#state.cursorOptions,
+        onMessage: (message) => {
+          if (candidate !== this.#connection && message.type === "welcome") {
+            this.#candidate = null;
+            this.#leaveSession();
+            this.#adopt(candidate);
+            resolve();
+          }
+          if (candidate === this.#connection) this.#receive(message);
+        },
+        onStatus: (status) => {
+          if (candidate === this.#connection) this.#onStatus(status);
+          else if (status.state === "ended")
+            reject(new Error("That session is no longer available."));
+        },
+      });
+      this.#candidate = candidate;
+    });
   }
 
   /** Leaves this window's Session for the one a join link opens: its `<id>.<secret>`, or the whole link. */
@@ -209,7 +196,6 @@ export class SessionStore {
     const next = change(shown);
     if (next === shown || !canDo(this.#state.seat?.can ?? null, "view")) return;
     this.#seq += 1;
-    this.#lastSet = next;
     this.#pending = { seq: this.#seq, view: next };
     this.#cancelFrame ??= this.#deps.frame(() => {
       this.#cancelFrame = null;
@@ -218,9 +204,14 @@ export class SessionStore {
     this.#publish();
   }
 
-  /** The clock of `viewer` in the last view this window set, settled or not. */
-  ownClock(viewer: number): ClockIntent | undefined {
-    return this.#lastSet?.viewers[viewer]?.clock;
+  /**
+   * Whether the window takes the Presenter View as it is for `viewer`: on its first look in this Session, or when
+   * another seat made the change; never over a change of its own the backend has not settled.
+   */
+  takesPresenter(viewer: number, byOther: boolean): boolean {
+    const first = !this.#seen.has(viewer);
+    this.#seen.add(viewer);
+    return !this.#pending && (first || byOther);
   }
 
   /** Back to the presenter's view; a change that was on its way is dropped. */
@@ -327,13 +318,7 @@ export class SessionStore {
   }
 
   #begin(entry: Entry | null, resume: string | undefined, own: boolean): void {
-    this.#connection?.close();
-    clearTimeout(this.#syncTimer);
-    this.#refuse(new Error("The session changed."));
-    window.sessionStorage.removeItem(STORED_SEAT);
-    this.#own = own;
-    this.#clear();
-    this.#state = { ...this.#state, attached: !own };
+    this.#reset(own);
     const held = credential();
     this.#state = { ...this.#state, connection: "connecting", ended: null };
     this.#connection = this.#deps.connect({
@@ -347,6 +332,26 @@ export class SessionStore {
     this.#publish();
   }
 
+  /** Makes an admitted `attach` connection the window's, in place of the one it leaves. */
+  #adopt(connection: Connection): void {
+    this.#reset(false);
+    this.#state = { ...this.#state, connection: "online", ended: null };
+    this.#connection = connection;
+  }
+
+  /** Drops the window's connection and Session, for the one that replaces it. */
+  #reset(own: boolean): void {
+    this.#candidate?.close();
+    this.#candidate = null;
+    this.#connection?.close();
+    clearTimeout(this.#syncTimer);
+    this.#refuse(new Error("The session changed."));
+    window.sessionStorage.removeItem(STORED_SEAT);
+    this.#own = own;
+    this.#clear();
+    this.#state = { ...this.#state, attached: !own };
+  }
+
   /** Forgets everything of the session this window was in. */
   #clear(): void {
     this.#cancelFrame?.();
@@ -354,8 +359,8 @@ export class SessionStore {
     this.#doc = null;
     this.#waiting = null;
     this.#pending = null;
-    this.#lastSet = null;
     this.#dropName();
+    this.#seen.clear();
     this.#seq = 0;
     this.#sent = 0;
     this.#estimator = new OffsetEstimator();
@@ -523,16 +528,4 @@ export class SessionStore {
   #notify(): void {
     this.#listeners.forEach((listener) => listener());
   }
-}
-
-interface StoredSeat {
-  session: string;
-  token: string;
-  /** Whether it is the tab's own Session rather than one it watches. */
-  own: boolean;
-}
-
-function readStoredSeat(): StoredSeat | null {
-  const stored = window.sessionStorage.getItem(STORED_SEAT);
-  return stored ? (JSON.parse(stored) as StoredSeat) : null;
 }

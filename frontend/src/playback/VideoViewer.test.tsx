@@ -215,7 +215,7 @@ describe("video viewer", () => {
         <Viewer sent={[]} />
       </SessionProvider>,
     );
-    if (access === "attach") act(() => store.attach(room.id));
+    if (access === "attach") act(() => void store.attach(room.id));
     return room;
   }
 
@@ -243,6 +243,26 @@ describe("video viewer", () => {
     fireEvent.change(await slider(), { target: { value: "70" } });
     flushFrames();
     expect(room.presenter.viewers[1]?.clock).toMatchObject({ frame: 70 });
+  });
+
+  it("takes another Owner seat's change even when it equals the window's own last one", async () => {
+    const room = follower("attach");
+    await settled("20");
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    fireEvent.change(await slider(), { target: { value: "70" } });
+    flushFrames();
+    const own = room.presenter.viewers[1]!.clock!;
+    expect(room.presenterBy).toBe(2);
+
+    // The other seat (1) seeks elsewhere, then back to what this window had set: it must follow both.
+    const clockOf = (clock: typeof own) => ({
+      ...room.presenter,
+      ...viewing([s.ids.a, { clock }]),
+    });
+    act(() => room.publish(clockOf({ ...own, frame: 40, playing: false, atUs: own.atUs + 1 }), 1));
+    await settled("40");
+    act(() => room.publish(clockOf({ ...own, atUs: own.atUs + 2 }), 1));
+    await settled(String(own.frame));
   });
 
   it("publishes a seek made while following, so the seat explores, and never the presenter's own clock", async () => {

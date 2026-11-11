@@ -15,7 +15,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async () => ({
       ok: true,
-      json: async () => [{ id: "ann", ownerPresent: true, participants: 1 }],
+      json: async () => [{ id: "ann", ownerPresent: true, participants: 1, seat: "owner" }],
     })),
   );
 });
@@ -113,7 +113,7 @@ describe("sessions view", () => {
       "fetch",
       vi.fn(async () => ({
         ok: true,
-        json: async () => [{ id: room.id, ownerPresent: true, participants: 1 }],
+        json: async () => [{ id: room.id, ownerPresent: true, participants: 1, seat: "owner" }],
       })),
     );
     render(
@@ -133,6 +133,31 @@ describe("sessions view", () => {
     fireEvent.click(screen.getByRole("button", { name: "Leave" }));
     expect(await screen.findByRole("button", { name: "Start sharing" })).toBeTruthy();
     expect(room.seats.filter((seat) => seat.owner)).toHaveLength(1);
+  });
+
+  it("stays in its own Session when continuing another is refused", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => [{ id: "gone", ownerPresent: true, participants: 1, seat: "owner" }],
+      })),
+    );
+    render(
+      <AccessContext value={{ owner: true, fullAccess: false }}>
+        <SessionProvider>
+          <SessionsView />
+        </SessionProvider>
+      </AccessContext>,
+    );
+    const own = await screen.findByRole("button", { name: "Start sharing" });
+    fireEvent.click(await screen.findByRole("button", { name: "Continue Session gone" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "That session is no longer available.",
+    );
+    expect(own.isConnected).toBe(true);
+    expect(FakeSocket.rooms.get("room-1")?.seats).toHaveLength(1);
+    expect(FakeSocket.sockets[0]!.received.some((message) => message.type === "leave")).toBe(false);
   });
 
   it("shows a Guest whose presentation it is and offers Follow presenter while it explores", async () => {
