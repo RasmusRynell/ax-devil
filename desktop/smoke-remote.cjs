@@ -182,12 +182,23 @@ async function remote(local, shell) {
     await wait("!document.querySelector('dialog') && document.querySelector('canvas')");
 
     // The server's page is not the local app: it has none of this machine's native methods, so it cannot reconnect the
-    // window, and it cannot leave its origin.
-    assert.equal(
-      await js(
-        "['connect', 'pickVideo', 'pickFolder', 'openLogs', 'restart'].filter((name) => name in window.axDevilWindow).join()",
-      ),
-      "",
+    // window, and it cannot leave its origin. Its bridge is exactly this set, so a method added or leaked fails here.
+    assert.deepEqual(
+      JSON.parse(await js("JSON.stringify(Object.keys(window.axDevilWindow).sort())")),
+      [
+        "appVersion",
+        "close",
+        "deviceValues",
+        "disconnect",
+        "minimize",
+        "onDeviceValuesChange",
+        "onFullScreenChange",
+        "onMaximizedChange",
+        "setDeviceValue",
+        "toggleFullScreen",
+        "toggleMaximize",
+        "zoomFactor",
+      ],
     );
     const count = BrowserWindow.getAllWindows().length;
     const navigating = new Promise((resolve) => window.webContents.once("will-navigate", resolve));
