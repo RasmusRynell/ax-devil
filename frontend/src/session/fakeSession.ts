@@ -337,7 +337,14 @@ export class FakeSocket {
             expiresMs: 10_000,
           });
     if (cmd.type === "follow") seat.view = null;
-    else if (cmd.type === "setViewport") {
+    else if (cmd.type === "setOverlay") {
+      // As for a viewport: refused for a Guest that may only watch, applied to the view the seat shows now.
+      if (!seat.owner && room.access !== "explore") return refuse();
+      const base = seat.view ?? room.presenter;
+      const view = { ...base, overlays: { ...base.overlays, [cmd.overlay]: cmd.shown } };
+      if (seat.owner) room.publish(view, seat.id);
+      else seat.view = view;
+    } else if (cmd.type === "setViewport") {
       // A Guest that may only watch is refused; one that follows starts exploring with a copy of the presenter's.
       if (!seat.owner && room.access !== "explore") return refuse();
       const base = seat.view ?? room.presenter;

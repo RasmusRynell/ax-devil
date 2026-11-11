@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
+import { FakeSettings } from "../fakeSettings";
 import type { LaneStatusWire } from "../generated/api";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { LaneChip } from "./LaneChip";
@@ -163,21 +163,22 @@ describe("lane chip", () => {
     expect(panel.textContent).toContain("/rules/1: no field");
   });
 
-  it("drops the name but keeps the lane's controls when Show Lane Names is off", () => {
-    const chip = (names: boolean) => (
-      <FakeSettings
-        state={{
-          ...DEFAULT_SETTINGS,
-          values: { ...DEFAULT_SETTINGS.values, "overlays.lane_names": names },
-        }}
-      >
-        <LaneChip lane={lane({ status: READY })} catalogs={[]} cadence={null} onChange={() => {}} />
+  it("drops the name but keeps the lane's controls when asked to hide it", () => {
+    const chip = (hideName: boolean) => (
+      <FakeSettings>
+        <LaneChip
+          lane={lane({ status: READY })}
+          catalogs={[]}
+          cadence={null}
+          onChange={() => {}}
+          hideName={hideName}
+        />
       </FakeSettings>
     );
-    const { unmount } = render(chip(true));
+    const { unmount } = render(chip(false));
     expect(screen.queryByText("DET")).not.toBeNull();
     unmount();
-    render(chip(false));
+    render(chip(true));
     expect(screen.queryByText("DET")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "DET: settings" }));
     expect(screen.getByRole("dialog", { name: "DET: settings" })).toBeTruthy();

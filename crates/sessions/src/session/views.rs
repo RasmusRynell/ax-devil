@@ -84,6 +84,51 @@ impl Viewport {
     }
 }
 
+/// The two overlays a window can turn off: object details (hover, chip and selection) and lane names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Overlays {
+    /// Whether hovering or clicking an object shows its details.
+    pub object_details: bool,
+    /// Whether a lane's chip shows its name.
+    pub lane_names: bool,
+}
+
+impl Default for Overlays {
+    fn default() -> Self {
+        Self {
+            object_details: true,
+            lane_names: true,
+        }
+    }
+}
+
+/// One of the [`Overlays`] toggles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum Overlay {
+    /// Hover, chip and selection of objects.
+    ObjectDetails,
+    /// The name on a lane's chip.
+    LaneNames,
+}
+
+impl Overlays {
+    /// These toggles with `overlay` set to `shown`.
+    pub fn with(self, overlay: Overlay, shown: bool) -> Self {
+        match overlay {
+            Overlay::ObjectDetails => Self {
+                object_details: shown,
+                ..self
+            },
+            Overlay::LaneNames => Self {
+                lane_names: shown,
+                ..self
+            },
+        }
+    }
+}
+
 /// What one open viewer shows.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -127,6 +172,10 @@ pub struct View {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub layout: Option<Layout>,
+    /// The overlays every viewer of the view draws. Only an overlay command sets them: a view sent whole keeps the
+    /// ones stored, so a stale copy never reverts another seat's toggle.
+    #[serde(default)]
+    pub overlays: Overlays,
 }
 
 /// `view` cut down to what `doc` has open: no viewer, and no pane, for an item that is not open, and no viewer outside
@@ -139,6 +188,7 @@ pub fn restrict(view: &View, doc: &Doc) -> View {
         active,
         viewers,
         layout,
+        overlays,
     } = view;
     let Doc { workspace } = doc;
     let open = &workspace.open;
@@ -186,6 +236,7 @@ pub fn restrict(view: &View, doc: &Doc) -> View {
         active: active.filter(|id| viewers.contains_key(id)),
         viewers,
         layout,
+        overlays: *overlays,
     }
 }
 
@@ -262,6 +313,8 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<SidebarView>();
     types.visit::<Sidebar>();
     types.visit::<Viewport>();
+    types.visit::<Overlays>();
+    types.visit::<Overlay>();
     types.visit::<ViewerView>();
     types.visit::<View>();
 }
@@ -291,6 +344,7 @@ mod tests {
                 "first": { "type": "pane", "viewer": 1 },
                 "second": { "type": "pane", "viewer": 2 },
             },
+            "overlays": { "objectDetails": true, "laneNames": false },
         });
         let view: View = serde_json::from_str(&message.to_string()).unwrap();
         assert_eq!(view.sidebar.view, SidebarView::Sessions);
@@ -298,6 +352,7 @@ mod tests {
         assert_eq!(view.viewers[&ViewerId(1)].item, behind);
         assert!(view.viewers[&ViewerId(2)].pinned);
         assert_eq!(view.viewers[&ViewerId(2)].clock.unwrap().speed_centi, 150);
+        assert!(!view.overlays.lane_names);
         assert_eq!(serde_json::to_value(&view).unwrap(), message);
 
         let mut bad = message;

@@ -118,7 +118,10 @@ impl Rig {
 
     /// An owner that shares with `access`, and a guest that joined.
     pub(crate) fn shared(&self, access: Access) -> (Handle<u8>, Handle<u8>) {
-        let owner = self.service.create(true, CursorOptions::default()).unwrap();
+        let owner = self
+            .service
+            .create(true, CursorOptions::default(), Default::default())
+            .unwrap();
         owner
             .command(Command::Control(Control::Share { access }))
             .unwrap();

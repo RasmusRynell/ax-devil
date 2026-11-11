@@ -1,3 +1,4 @@
+import { EMPTY_VIEW } from "../session/views";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { CommandId } from "../generated/settings";
@@ -366,7 +367,7 @@ describe("a Guest", () => {
 
   it("cannot open a workspace with Enter, as the greyed-out button cannot", async () => {
     const room = FakeSocket.host();
-    room.publish({ sidebar: { view: "workspace", open: true }, viewers: {} });
+    room.publish(EMPTY_VIEW);
     window.sessionStorage.setItem(
       "ax-devil.credential",
       JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),

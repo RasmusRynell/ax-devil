@@ -90,7 +90,7 @@ async fn adding_a_found_camera_uses_the_scan_login_and_never_shows_it() {
         .unwrap();
     let handle = state
         .sessions
-        .create(true, CursorOptions::default())
+        .create(true, CursorOptions::default(), Default::default())
         .unwrap();
 
     // Only the owner has the scan's logins.
@@ -189,7 +189,7 @@ async fn another_stream_of_a_camera_copies_its_saved_login() {
     );
     let owner = state
         .sessions
-        .create(true, CursorOptions::default())
+        .create(true, CursorOptions::default(), Default::default())
         .unwrap();
     let ok = |ack: &SessionServerMessage| {
         matches!(
@@ -291,7 +291,7 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
     );
     let owner = state
         .sessions
-        .create(true, CursorOptions::default())
+        .create(true, CursorOptions::default(), Default::default())
         .unwrap();
     let mut acks = vec![
         answer(
@@ -377,7 +377,7 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
     );
     let owner = state
         .sessions
-        .create(true, CursorOptions::default())
+        .create(true, CursorOptions::default(), Default::default())
         .unwrap();
     let mqtt = json!({"mode": "mqtt", "handler": "ADF_V1_FRAME", "broker_host": "b.local", "broker_user": "mqtt",
         "broker_pass": PASSWORD, "source_key": "k"});

@@ -102,7 +102,8 @@ and the rest of the rules: [invariants](invariants.md).
   works with). Everyone reads and writes Device rows, which live on the device and never reach the server; an Owner
   reads and writes the others, and a page that holds only a join link gets their defaults. A masked password sent back
   in a records row means unchanged.
-- On/off overlay preferences are one closed set; adding a member adds it to the View menu, Settings and the config.
+- On/off overlay toggles are one closed set (`Overlays` in the Session view, so every Guest sees the presenter's); adding a
+  member adds it to the View menu, Settings, which starts a new Session from it, and the config.
 - All shortcuts are defined in one table; persistence is override-only, so no overrides means all defaults apply. An
   override wins over any default with the same key, which becomes unbound.
 - Settings are defaults, not references: nothing created from them refers back to them or embeds a value or credential.

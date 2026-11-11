@@ -48,6 +48,7 @@ export function LaneGrid({
   viewport,
   onViewport,
   objectDetails,
+  laneNames = true,
   onHover,
   onSelect,
   onDrawn,
@@ -80,6 +81,8 @@ export function LaneGrid({
   onViewport?: (viewport: Viewport) => void;
   /** Whether pointing at an object reports it (hover and click); on unless false. */
   objectDetails?: boolean;
+  /** Whether each lane's chip shows its name; on unless false. */
+  laneNames?: boolean;
   onHover?: (picked: Picked | null) => void;
   onSelect?: (selection: Selection) => void;
   /** Called after every draw with the pictures' geometry, to place outlines over the objects. */
@@ -156,7 +159,9 @@ export function LaneGrid({
                 lane={lanes[index]}
                 catalogs={view.catalogs}
                 cadence={view.cadence}
-                hideName={info || (shown.length === 1 && lanes[index].label === title)}
+                hideName={
+                  !laneNames || info || (shown.length === 1 && lanes[index].label === title)
+                }
                 live={live}
                 stage={{ position: shown.indexOf(index) + 1, count: shown.length }}
                 onChange={(change) => session.setLane(index, change)}

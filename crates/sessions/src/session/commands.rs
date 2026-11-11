@@ -8,7 +8,7 @@ use super::{
     state::Doc,
     streams,
     transition::{Effects, Fresh},
-    views::{View, Viewport},
+    views::{Overlay, View, Viewport},
 };
 use crate::JoinLink;
 use serde::Deserialize;
@@ -73,6 +73,13 @@ pub enum Command {
         /// The part of the video; absent for the whole frame.
         viewport: Option<Viewport>,
     },
+    /// Turn an overlay on or off in the seat's current view, as for [`Command::SetViewport`].
+    SetOverlay {
+        /// The overlay.
+        overlay: Overlay,
+        /// Whether it is on afterwards.
+        shown: bool,
+    },
     /// Change sharing.
     Control(Control),
     /// Ask for a ticket to receive a stream.
@@ -85,7 +92,7 @@ impl Command {
         match self {
             Self::Content(command) => Use::Command(content_scope(command)),
             Self::Follow => Use::Command(Scope::Follow),
-            Self::SetViewport { .. } => Use::Command(Scope::View),
+            Self::SetViewport { .. } | Self::SetOverlay { .. } => Use::Command(Scope::View),
             Self::Control(_) => Use::Command(Scope::Control),
             Self::RequestTicket(key) => Use::Stream(key),
         }
@@ -159,6 +166,7 @@ pub(super) fn run(
         Command::SetViewport { viewer, viewport } => {
             set_viewport(next, seat, lease, viewer, viewport)
         }
+        Command::SetOverlay { overlay, shown } => set_overlay(next, seat, lease, overlay, shown),
         Command::Control(control) => self::control(next, control, fresh),
         Command::RequestTicket(key) => streams::request(next, seat, lease, key, fresh),
     }
@@ -191,8 +199,7 @@ fn follow(next: &mut SessionState, seat: SeatId) {
     }
 }
 
-/// Sets `viewport` on `viewer` of the view the seat shows now, which is never taken from the client: a seat that
-/// follows starts exploring with a copy of the presenter's. A viewer the view does not have is left alone.
+/// Sets `viewport` on `viewer` of the view the seat shows now. A viewer the view does not have is left alone.
 fn set_viewport(
     next: &mut SessionState,
     seat: SeatId,
@@ -200,17 +207,48 @@ fn set_viewport(
     viewer: ViewerId,
     viewport: Option<Viewport>,
 ) -> Result<(), Refusal> {
+    let viewport = viewport.and_then(Viewport::settled);
+    change_view(next, seat, lease, |view| {
+        let Some(shown) = view.viewers.get_mut(&viewer) else {
+            return false;
+        };
+        let changed = shown.viewport != viewport;
+        shown.viewport = viewport;
+        changed
+    })
+}
+
+/// Turns `overlay` on or off in the view the seat shows now.
+fn set_overlay(
+    next: &mut SessionState,
+    seat: SeatId,
+    lease: Lease,
+    overlay: Overlay,
+    shown: bool,
+) -> Result<(), Refusal> {
+    change_view(next, seat, lease, |view| {
+        let overlays = view.overlays.with(overlay, shown);
+        let changed = overlays != view.overlays;
+        view.overlays = overlays;
+        changed
+    })
+}
+
+/// Applies `edit`, which says whether it changed anything, to the view the seat shows now, which is never taken from
+/// the client: a seat that follows starts exploring with a copy of the presenter's. An Owner seat's change is the
+/// Presenter View's next one.
+fn change_view(
+    next: &mut SessionState,
+    seat: SeatId,
+    lease: Lease,
+    edit: impl FnOnce(&mut View) -> bool,
+) -> Result<(), Refusal> {
     let standing = standing(next, seat, lease)?;
     let own = next.seats.get(&seat).and_then(|seat| seat.view.clone());
     let mut view = View::clone(own.as_ref().unwrap_or(&next.presenter));
-    let Some(shown) = view.viewers.get_mut(&viewer) else {
-        return Ok(());
-    };
-    let viewport = viewport.and_then(Viewport::settled);
-    if shown.viewport == viewport {
+    if !edit(&mut view) {
         return Ok(());
     }
-    shown.viewport = viewport;
     match standing {
         Standing::Owner => {
             next.presenter = Arc::new(view);

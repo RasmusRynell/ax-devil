@@ -173,7 +173,7 @@ async fn camera_accepts(
     );
     let handle = state
         .sessions
-        .create(true, CursorOptions::default())
+        .create(true, CursorOptions::default(), Default::default())
         .unwrap();
     let item = intake::live(
         new,

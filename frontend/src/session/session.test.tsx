@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { SidebarView, View } from "../generated/api";
 import { scenario, seatAccess } from "./fakeScenario";
+import { EMPTY_VIEW } from "./views";
 import { FakeSocket, type Room } from "./fakeSession";
 import {
   SessionProvider,
@@ -60,8 +61,8 @@ const app = (
 );
 const click = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
 const view = (sidebar: SidebarView): View => ({
+  ...EMPTY_VIEW,
   sidebar: { view: sidebar, open: true },
-  viewers: {},
 });
 
 /** Someone else's session, which this tab joined by its link. */

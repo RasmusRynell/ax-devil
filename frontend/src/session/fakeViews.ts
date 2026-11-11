@@ -1,4 +1,5 @@
 import type { Layout, View, ViewerView } from "../generated/api";
+import { EMPTY_VIEW } from "./views";
 
 /**
  * The part of a view that shows `items`, one viewer each side by side, numbered from 1 with the first in front. An
@@ -6,7 +7,7 @@ import type { Layout, View, ViewerView } from "../generated/api";
  */
 export function viewing(
   ...items: (string | readonly [item: string, viewer: Partial<ViewerView>])[]
-): Pick<View, "active" | "viewers" | "layout"> {
+): Pick<View, "active" | "viewers" | "layout" | "overlays"> {
   const viewers: View["viewers"] = {};
   let layout: Layout | undefined;
   items.forEach((shown, index) => {
@@ -24,5 +25,10 @@ export function viewing(
         }
       : pane;
   });
-  return { active: items.length > 0 ? 1 : undefined, viewers, layout };
+  return {
+    active: items.length > 0 ? 1 : undefined,
+    viewers,
+    layout,
+    overlays: EMPTY_VIEW.overlays,
+  };
 }

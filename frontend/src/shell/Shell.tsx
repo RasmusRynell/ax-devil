@@ -11,7 +11,7 @@ import { shortcutOf } from "../kit/shortcut";
 import type { Scopes } from "../session/cursor";
 import { Presence } from "../session/Presence";
 import { useSidebarOnReplace } from "../bookmarks/viewerLink";
-import { useAllowed, useCommand, useDoc, useView } from "../session/session";
+import { useAllowed, useCommand, useDoc, useOverlays, useView } from "../session/session";
 import { useSettings } from "../settings";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
 import { MAX_PANES } from "../session/views";
@@ -49,10 +49,10 @@ function viewerOwnsPlainKeys(target: EventTarget | null): boolean {
   return !typing && (target === document.body || target.closest("main") !== null);
 }
 
-/** The View menu checks that are saved settings, by command. */
-const SETTING_CHECKS = {
-  "object-details": "overlays.object_details",
-  "lane-names": "overlays.lane_names",
+/** The View menu checks that are overlays of the Session's view, by command, and the setting each starts a Session from. */
+const OVERLAY_CHECKS = {
+  "object-details": { overlay: "objectDetails", setting: "overlays.object_details" },
+  "lane-names": { overlay: "laneNames", setting: "overlays.lane_names" },
 } as const;
 
 type Dialog =
@@ -88,6 +88,7 @@ export function Shell({ version }: { version: string }) {
   const [refused, setRefused] = useState<{ title: string; message: string } | null>(null);
   const [viewerActions, setViewerActions] = useState<ViewerActions>(NO_ACTIONS);
   const { values, shortcuts, set } = useSettings();
+  const overlays = useOverlays();
   const { owner } = useAccess();
   // Settings arrive before the shell renders, so a first run is known here.
   const [dialog, setDialog] = useState<Dialog | null>(
@@ -156,20 +157,26 @@ export function Shell({ version }: { version: string }) {
     "save-workspace-as": saveAs,
     "add-live-stream": () => setDialog("add-live-stream"),
     "add-playlist": () => setDialog("add-playlist"),
-    ...Object.fromEntries(
-      (owner ? Object.entries(SETTING_CHECKS) : []).map(([id, key]) => [
-        id,
-        () =>
-          void set(key, values[key] !== true).then(
-            (refusal) =>
-              refusal &&
-              setRefused({
-                title: "Settings",
-                message: `Could not save this preference: ${refusal.reason}`,
-              }),
-          ),
-      ]),
-    ),
+    // The Session's view takes the change; an Owner's choice also starts the next Session the same way.
+    ...(allowed.view &&
+      Object.fromEntries(
+        Object.entries(OVERLAY_CHECKS).map(([id, { overlay, setting }]) => [
+          id,
+          () => {
+            const shown = !overlays[overlay];
+            command({ type: "setOverlay", overlay, shown }).catch(fail);
+            if (owner)
+              void set(setting, shown).then(
+                (refusal) =>
+                  refusal &&
+                  setRefused({
+                    title: "Settings",
+                    message: `Could not save this preference: ${refusal.reason}`,
+                  }),
+              );
+          },
+        ]),
+      )),
   };
   // A modal dialog owns the keyboard and the window: no command, from a shortcut or a menu, runs while one is open.
   const find = (id: string) =>
@@ -267,8 +274,8 @@ export function Shell({ version }: { version: string }) {
                 ...checked,
                 ...(fullscreen ? ["fullscreen"] : []),
                 ...(sidebar.open ? ["sidebar"] : []),
-                ...Object.entries(SETTING_CHECKS)
-                  .filter(([, key]) => values[key] === true)
+                ...Object.entries(OVERLAY_CHECKS)
+                  .filter(([, { overlay }]) => overlays[overlay])
                   .map(([id]) => id),
               ])
             }

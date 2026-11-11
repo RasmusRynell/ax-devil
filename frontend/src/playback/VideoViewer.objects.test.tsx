@@ -2,7 +2,6 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { installFakeFullscreen } from "../fakeFullscreen";
-import { DEFAULT_SETTINGS } from "../fakeSettings";
 import { FakeSocket } from "../session/fakeSession";
 import { scenario } from "../session/fakeScenario";
 import { SessionProvider } from "../session/session";
@@ -43,10 +42,8 @@ const PICKED: Picked = {
   category: 5,
   box: { x: 10, y: 20, width: 30, height: 40 },
 };
-const OFF = {
-  ...DEFAULT_SETTINGS,
-  values: { ...DEFAULT_SETTINGS.values, "overlays.object_details": false },
-};
+/** The overlays of a view that turned object details off. */
+const DETAILS_OFF = { objectDetails: false, laneNames: true };
 
 const registry = { current: NO_ACTIONS };
 const offer = (next: ViewerActions | ((now: ViewerActions) => ViewerActions)) => {
@@ -59,12 +56,12 @@ const tree = (viewer: ReactNode) => (
   </SessionProvider>
 );
 
-/** The viewer of an open video; `show` renders it again with other settings or another entry. */
-async function mount(settings?: typeof OFF, lanes?: LaneInfo[]) {
+/** The viewer of an open video; `show` renders it again with other lanes. */
+async function mount(lanes?: LaneInfo[]) {
   registry.current = NO_ACTIONS;
   // One array for the life of the viewer: another would give it a new connection and restart playback.
   const sent: ClientMessage[] = [];
-  const view = render(tree(<Viewer sent={sent} settings={settings} lanes={lanes} />));
+  const view = render(tree(<Viewer sent={sent} lanes={lanes} />));
   await act(async () => {});
   act(() => FakeSocket.rooms.get("room-1")?.show(s));
   await slider();
@@ -93,7 +90,7 @@ const tools = () => screen.getByRole("complementary", { name: "Media tools" });
 
 describe("video viewer objects", () => {
   it("shows the page of an object picked on the video when the media tools open, and keeps it when the selection is cleared there", async () => {
-    const { props, run } = await mount(undefined, OBJECTS);
+    const { props, run } = await mount(OBJECTS);
     const shown = geometry();
     act(() => props().onDrawn?.(shown));
     act(() => props().onSelect?.(SELECTION));
@@ -116,7 +113,7 @@ describe("video viewer objects", () => {
       { label: "DPM", slot: "DPM", source: 0 },
       { label: "GT", slot: "GT", source: 1 },
     ];
-    const { props, run, sent } = await mount(undefined, lanes);
+    const { props, run, sent } = await mount(lanes);
     expect(props().cells?.map(({ lane }) => lane)).toEqual([0, 1]);
 
     run("lane-fullscreen");
@@ -154,7 +151,7 @@ describe("video viewer objects", () => {
       { label: "DPM", slot: "DPM", source: 0 },
       { label: "GT", slot: "GT", source: 1 },
     ];
-    const { props, run } = await mount(undefined, lanes);
+    const { props, run } = await mount(lanes);
     const grid = document.querySelector("[data-chrome-idle] .inset-0.flex") as HTMLElement;
     fireEvent.pointerMove(grid, { clientX: 50, clientY: 50 });
     act(() => focusLane(1, s.ids["list/A"], "GT"));
@@ -172,7 +169,7 @@ describe("video viewer objects", () => {
       { label: "DPM", slot: "DPM", source: null },
       { label: "GT", slot: "GT", source: null },
     ];
-    const { props } = await mount(undefined, lanes);
+    const { props } = await mount(lanes);
     const shown = geometry();
     act(() => props().onDrawn?.(shown));
     act(() => props().onSelect?.(SELECTION));
@@ -245,9 +242,10 @@ describe("video viewer objects", () => {
   });
 
   it("shows no chip, outline or page while object details are off, and forgets the selection", async () => {
-    const { props, run, show } = await mount(undefined, OBJECTS);
+    const { props, run } = await mount(OBJECTS);
     act(() => props().onSelect?.(SELECTION));
-    show({ settings: OFF, lanes: OBJECTS });
+    const room = FakeSocket.rooms.get("room-1");
+    act(() => room?.publish({ ...room.presenter, overlays: DETAILS_OFF }));
     expect(props().objectDetails).toBe(false);
     run("media-tools");
     expect(page()).toBeNull();
@@ -258,8 +256,24 @@ describe("video viewer objects", () => {
     });
     expect(screen.queryByRole("tooltip")).toBeNull();
     expect(document.querySelector("[data-outline]")).toBeNull();
-    show({});
+    act(() =>
+      room?.publish({ ...room.presenter, overlays: { ...DETAILS_OFF, objectDetails: true } }),
+    );
+    expect(props().objectDetails).toBe(true);
     expect(page()).toBeNull();
+  });
+
+  it("draws a following Guest's video with the presenter's overlays, not its own settings", async () => {
+    const room = FakeSocket.host("watch");
+    room.show(s);
+    room.presenter = { ...room.presenter, overlays: DETAILS_OFF };
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+    );
+    render(tree(<Viewer sent={[]} />));
+    await slider();
+    expect(canvas.props?.objectDetails).toBe(false);
   });
 
   it("places outlines where the pictures' geometry puts them", async () => {

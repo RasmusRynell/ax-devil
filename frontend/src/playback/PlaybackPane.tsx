@@ -14,7 +14,7 @@ import { ContextMenu } from "../kit/ContextMenu";
 import { Icon } from "../kit/Icon";
 import { NoticeList } from "../kit/NoticeList";
 import { Popover } from "../kit/Popover";
-import { useAllowed } from "../session/session";
+import { useAllowed, useOverlays } from "../session/session";
 import { useSettings } from "../settings";
 import { MediaToolsPanel } from "../tools/MediaToolsPanel";
 import { jump } from "../tools/pageStack";
@@ -73,8 +73,8 @@ export function Playback({
   onInspector: (memory: InspectorMemory) => void;
 }) {
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
-  const { values, shortcuts } = useSettings();
-  const objectDetails = values["overlays.object_details"] === true;
+  const { shortcuts } = useSettings();
+  const { objectDetails, laneNames } = useOverlays();
   const allowed = useAllowed();
   const pane = useRef<HTMLDivElement>(null);
   const objects = useRef<ObjectLayerHandle>(null);
@@ -239,6 +239,7 @@ export function Playback({
                 viewport={viewport}
                 onViewport={onViewport}
                 objectDetails={objectDetails}
+                laneNames={laneNames}
                 onHover={hover}
                 onSelect={(selection) =>
                   selection

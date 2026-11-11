@@ -3,7 +3,6 @@ import { reasonOf } from "../errors";
 import { Icon } from "../kit/Icon";
 import { NoticeList, noticeOf, type Notice } from "../kit/NoticeList";
 import { Popover } from "../kit/Popover";
-import { useSettings } from "../settings";
 import { LaneMenu } from "./LaneMenu";
 import { alignmentTone } from "./LaneMenuTiming";
 import type { LaneSettings, LaneState } from "./lanes";
@@ -61,7 +60,7 @@ function chipTone(lane: LaneState): string {
 /**
  * The name tag over a lane's top-left corner: its label, that it is loading, a button for what there is to report,
  * and the button that opens the lane's menu. A lane without a source has neither warnings nor settings.
- * With Show Lane Names off, or with `hideName` while the info HUD covers the picture, the label goes and the rest stays.
+ * With `hideName` (Show Lane Names off, or the info HUD covering the picture), the label goes and the rest stays.
  * Without `onHide` the menu cannot hide the lane, without `onApplyAll` it cannot copy to the others.
  */
 export function LaneChip({
@@ -93,7 +92,7 @@ export function LaneChip({
   /** Where the lane is among the lanes shown; while the backend reads its file the chip names that stage. */
   stage?: { position: number; count: number };
 }) {
-  const showName = useSettings().values["overlays.lane_names"] === true && !hideName;
+  const showName = !hideName;
   const notices = laneNotices(lane);
   const loadingStatus = lane.status !== "plain" && lane.status.status === "Loading";
   // A file that is still being read has a Ready lane, but parsing goes on.
