@@ -21,9 +21,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use ts_rs::TS;
 
-/// The version of the generated contract: a hash `export-types` computes over every file it writes for the frontend
-/// and stores in `desktop/generated/api.json`, so a wire change changes it with no edit. A client that expects
-/// another one refuses the backend.
+/// The version of the generated contract: a hash `export-types` computes over every TypeScript file it writes for the
+/// frontend (the types, the constants and the settings tables, with their doc comments, so a comment-only edit
+/// changes it) and stores in `desktop/generated/api.json`. A change to those changes it with no edit; the route
+/// table lives in the root crate, which this one cannot read, so a changed route path or method does not. A client
+/// that expects another version refuses the backend.
 pub fn api_version() -> &'static str {
     static VERSION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     VERSION.get_or_init(|| {

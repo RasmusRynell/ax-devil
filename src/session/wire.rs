@@ -23,9 +23,13 @@ use workspace_store::{BookmarkCommand, DocCommand, HiddenRef};
 
 /// The scope a wire command needs, known without looking at what it names, so the seat is authorized before the
 /// command's content is checked and a refusal never tells a seat whether a path or resolver exists. `None` for a
-/// ticket request, which the Session authorizes against the Content it names. Mirrors `Command::needs`, which decides
-/// (a test keeps them equal), except that a scanned camera's stream needs `Control` here: its `found` address is gone
-/// once the command is converted.
+/// ticket request, which the Session authorizes against the Content it names. Mirrors `Command::needs`, which decides;
+/// a test keeps them equal except for these, which only the wire can decide:
+/// - a scanned camera's stream needs `Control`: its `found` address is gone once the command is converted;
+/// - `AddResolved` and `EditResolved` always need `Host`: the staged item came from a resolve that read the host's
+///   files, though `needs` says `Content` for a live recipe;
+/// - a workspace command is run by the files adapter, which asks `needs` of the Session commands it sends after its
+///   file work; `ExportBookmarks` sends none.
 pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
     match wire {
         SessionCommand::Content { command } => Some(match command {
