@@ -1,24 +1,64 @@
 use super::*;
 
+type Asked = (ScanLoad, Vec<(String, String)>);
+
+async fn next(requests: &mut mpsc::UnboundedReceiver<Asked>) -> Option<Asked> {
+    tokio::time::timeout(std::time::Duration::from_secs(1), requests.recv())
+        .await
+        .unwrap()
+}
+
 #[tokio::test]
-async fn the_scan_at_launch_sends_no_login_but_a_pressed_scan_does() {
+async fn the_scan_at_launch_signs_in_with_the_saved_logins_as_the_settings_say() {
     let folder = tempfile::tempdir().unwrap();
-    let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
-    let state = settings.state();
     let (asked, mut requests) = mpsc::unbounded_channel();
     let network = Network::with_scanner(move |request| {
-        asked.send(request.logins.len()).unwrap();
+        let logins = request
+            .logins
+            .iter()
+            .map(|login| (login.user.clone(), login.password.expose().to_owned()))
+            .collect::<Vec<_>>();
+        asked.send((request.load, logins)).unwrap();
         mpsc::channel(1).1
     });
-
-    scan_on_startup(&network, &state);
-    assert_eq!(requests.recv().await, Some(0));
-    let pressed = request_from_settings(&state, None, None, ScanLoad::Normal).unwrap();
-    network.rescan(pressed);
-    assert_eq!(requests.recv().await, Some(1));
-    // The footer's choice for one scan wins over the setting, either way, and leaves the setting alone.
-    let off = request_from_settings(&state, None, Some(false), ScanLoad::Normal).unwrap();
-    assert!(off.logins.is_empty());
+    let state = |on: bool, sign_in: bool| {
+        let path = folder.path().join(format!("{on}-{sign_in}.json"));
+        std::fs::write(
+            &path,
+            format!(
+                r#"{{"version": 1, "settings": {{"scan.on_startup": {on}, "scan.sign_in": {sign_in},
+                "scan.logins": [{{"user": "root", "password": "first"}}, {{"user": "root", "password": "second"}}]}}}}"#
+            ),
+        )
+        .unwrap();
+        settings::Settings::load(&path).unwrap().state()
+    };
+    scan_on_startup(&network, &state(true, true));
+    let both = vec![
+        ("root".to_owned(), "first".to_owned()),
+        ("root".to_owned(), "second".to_owned()),
+    ];
+    assert_eq!(next(&mut requests).await, Some((ScanLoad::Startup, both)));
+    scan_on_startup(&network, &state(true, false));
+    assert_eq!(
+        next(&mut requests).await,
+        Some((ScanLoad::Startup, Vec::new()))
+    );
+    let started = network.snapshot().scan;
+    scan_on_startup(&network, &state(false, true));
+    assert_eq!(
+        network.snapshot().scan,
+        started,
+        "off means no scan at launch"
+    );
+    // The footer's choice for one scan wins over the setting, either way.
+    let on = state(true, true);
+    assert!(
+        request_from_settings(&on, None, Some(false), ScanLoad::Normal)
+            .unwrap()
+            .logins
+            .is_empty()
+    );
 }
 
 #[test]
