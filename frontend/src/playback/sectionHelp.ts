@@ -10,7 +10,7 @@ export const SECTION_HELP = {
   details:
     "Details: Which overlay features are drawn. Hidden drawing features do not remove object data.",
   Objects:
-    "Objects: Search by id, class, state or attribute; ? explains the syntax. File scope dims objects absent from this frame.",
+    "Objects: Search frame objects by id, class, state or attribute; ? explains syntax. File scope dims objects absent from this frame.",
   Events:
-    "Events: File events are placed on video frames. Events on the displayed frame are highlighted. Live events are logged as they arrive. Times are video position for files and UTC for live streams. Search by kind, object or label; ? explains the syntax.",
+    "Events: File events are placed on video frames. Events on the displayed frame are highlighted. Live events are logged. Times are video position for files and UTC for live streams. Search by kind, object or label; ? explains the syntax.",
 } as const;
