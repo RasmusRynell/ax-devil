@@ -12,7 +12,7 @@ import { LiveBar, NoPicture } from "../live/LiveBar";
 import { LiveSession } from "../live/session";
 import { useReportStatus } from "../live/streamState";
 import { ContextMenu } from "../kit/ContextMenu";
-import type { LaneSettings, Viewport } from "../playback/contract";
+import type { LaneSettings } from "../playback/contract";
 import { connectWorker } from "../playback/connect";
 import { FRESH_MEMORY, type InspectorMemory } from "../playback/fields";
 import { shownLanes } from "../playback/laneCells";
@@ -23,6 +23,7 @@ import { LaneGrid } from "../playback/LaneGrid";
 import { ObjectLayer, type ObjectLayerHandle } from "../playback/ObjectLayer";
 import type { Geometry } from "../playback/renderer";
 import { Status } from "../playback/VideoViewer";
+import { useSharedViewport } from "../playback/sharedViewport";
 import { FIT, ZOOM_STEP } from "../playback/viewport";
 import type { Connect } from "../playback/wire";
 import { useAllowed, useCan, useCommand, useFollowing, useStream } from "../session/session";
@@ -58,7 +59,7 @@ function Live({
   const objects = useRef<ObjectLayerHandle>(null);
   const geometry = useRef<Geometry | null>(null);
   const [tools, setTools] = useState(false);
-  const [viewport, setViewport] = useState<Viewport>(FIT);
+  const { viewport, onViewport, onDrawn } = useSharedViewport(viewer);
   const [inspector, setInspector] = useState<InspectorMemory>(FRESH_MEMORY);
   // The media tools' pages, lists and width, kept while they are closed; the selected object is the page on top.
   const { pages, outlined, setOutlined, navigate, panel } = useMediaTools(session, objectDetails);
@@ -79,12 +80,15 @@ function Live({
   }, []);
   // The selected object's page is what the media tools show, so its fields are asked for only while they are open.
   useEffect(() => session.showInspector(tools), [session, tools]);
-  const zoom = useCallback((factor: number) => {
-    const next = geometry.current?.zoomAt(shownViewport.current, factor);
-    if (!next || next === shownViewport.current) return;
-    shownViewport.current = next;
-    setViewport(next);
-  }, []);
+  const zoom = useCallback(
+    (factor: number) => {
+      const next = geometry.current?.zoomAt(shownViewport.current, factor);
+      if (!onViewport || !next || next === shownViewport.current) return;
+      shownViewport.current = next;
+      onViewport(next);
+    },
+    [onViewport],
+  );
   const togglePause = useCallback(() => {
     if (!controllable) return;
     if (session.getSnapshot().paused) session.resume();
@@ -95,12 +99,12 @@ function Live({
       () => ({
         "zoom-in": () => zoom(ZOOM_STEP),
         "zoom-out": () => zoom(1 / ZOOM_STEP),
-        "zoom-reset": () => setViewport(FIT),
+        "zoom-reset": () => onViewport?.(FIT),
         "play-pause": togglePause,
         "media-tools": () => setTools((open) => !open),
         "lane-fullscreen": fullscreen.toggle,
       }),
-      [zoom, togglePause, fullscreen.toggle],
+      [zoom, onViewport, togglePause, fullscreen.toggle],
     ),
   );
   return (
@@ -145,7 +149,7 @@ function Live({
                 onPoint={fullscreen.point}
                 onPick={fullscreen.pick}
                 viewport={viewport}
-                onViewport={setViewport}
+                onViewport={onViewport}
                 objectDetails={objectDetails}
                 onHover={(picked) => objects.current?.hover(picked)}
                 onSelect={(selection) =>
@@ -156,6 +160,7 @@ function Live({
                 onDrawn={(next) => {
                   geometry.current = next;
                   objects.current?.drawn(next);
+                  onDrawn(next);
                 }}
               />
             </ContextMenu>

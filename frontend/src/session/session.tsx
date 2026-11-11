@@ -196,9 +196,16 @@ export function useOwnerSeat(): boolean {
 }
 
 /** Whether the window takes the Presenter View for a viewer now; see `SessionStore.takesPresenter`. */
-export function useTakesPresenter(): (viewer: number, byOther: boolean) => boolean {
+export function useTakesPresenter(): (
+  viewer: number,
+  byOther: boolean,
+  part?: "clock" | "viewport",
+) => boolean {
   const store = useStore();
-  return useCallback((viewer, byOther) => store.takesPresenter(viewer, byOther), [store]);
+  return useCallback(
+    (viewer, byOther, part) => store.takesPresenter(viewer, byOther, part),
+    [store],
+  );
 }
 
 /**

@@ -363,7 +363,11 @@ fn set_view(
     }
     match standing {
         Standing::Owner => {
-            let published = restrict(&clamp_intents(view, &next.presenter, now_us), &next.doc);
+            let view = keep_viewports(
+                clamp_intents(view, &next.presenter, now_us),
+                &next.presenter,
+            );
+            let published = restrict(&view, &next.doc);
             if published != *next.presenter {
                 next.presenter = Arc::new(published);
                 next.presenter_rev += 1;
@@ -371,7 +375,11 @@ fn set_view(
             }
         }
         Standing::Following | Standing::Exploring => {
-            let own = Arc::new(restrict(&view, &next.doc));
+            let stored = next.seats.get(&seat).and_then(|seat| seat.view.as_ref());
+            let own = Arc::new(restrict(
+                &keep_viewports(view, stored.unwrap_or(&next.presenter)),
+                &next.doc,
+            ));
             if let Some(seat) = next.seats.get_mut(&seat) {
                 seat.view = Some(own);
             }
@@ -395,6 +403,19 @@ fn clamp_intents(mut view: View, published: &View, now_us: i64) -> View {
                 .at_us
                 .clamp(now_us.saturating_sub(INTENT_MAX_AGE_US), now_us);
         }
+    }
+    view
+}
+
+/// Every viewer of `view` shows the viewport `stored` has for the same item: a viewport changes only through its own
+/// command, and a view sent whole is built from a copy that may be older than another seat's zoom.
+fn keep_viewports(mut view: View, stored: &View) -> View {
+    for (id, viewer) in &mut view.viewers {
+        viewer.viewport = stored
+            .viewers
+            .get(id)
+            .filter(|kept| kept.item == viewer.item)
+            .and_then(|kept| kept.viewport);
     }
     view
 }

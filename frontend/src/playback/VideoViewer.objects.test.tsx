@@ -83,6 +83,7 @@ const geometry = (outlines: ReturnType<Geometry["boxes"]> = []) =>
   ({
     zoomAt: vi.fn((viewport, factor) => ({ ...viewport, zoom: viewport.zoom * factor })),
     boxes: vi.fn(() => outlines),
+    reference: () => undefined,
   }) as unknown as Geometry & { boxes: ReturnType<typeof vi.fn> };
 
 /** One lane that reads a source, as an object can only be picked on one. */

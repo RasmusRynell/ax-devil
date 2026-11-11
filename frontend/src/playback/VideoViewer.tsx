@@ -14,7 +14,7 @@ import { useSettings } from "../settings";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { usePaneBudget } from "./budget";
 import { connectWorker } from "./connect";
-import type { LaneSettings, Viewport } from "./contract";
+import type { LaneSettings } from "./contract";
 import { FRESH_MEMORY, type InspectorMemory } from "./fields";
 import { savedDefaults } from "./lanes";
 import { Playback } from "./PlaybackPane";
@@ -24,7 +24,7 @@ import type { PreparedEntry } from "./nextEntry";
 import { PlaybackSession } from "./session";
 import type { PlaybackIntent, ResumeState } from "./sessionDeps";
 import { useFileScopeOwner } from "./useFileScopeOwner";
-import { FIT } from "./viewport";
+import { useSharedViewport } from "./sharedViewport";
 import type { Connect } from "./wire";
 
 export { Status };
@@ -89,8 +89,9 @@ export function VideoViewer({
   // The session and Presenter View revision this window last took the clock from.
   const adopted = useRef<{ session: PlaybackSession; rev: number } | undefined>(undefined);
   const [session, setSession] = useState<PlaybackSession | null>(null);
-  // How the pictures are zoomed belongs to the viewer, so it stays across entries and reconnections.
-  const [viewport, setViewport] = useState<Viewport>(FIT);
+  // How the pictures are zoomed belongs to the viewer, so it stays across entries and reconnections; the Presenter View
+  // shares it.
+  const { viewport, onViewport, onDrawn } = useSharedViewport(viewer);
   // The speed belongs to the viewer too: the entry that opens next plays at the speed the last one left.
   const heldSpeed = useRef<number | undefined>(undefined);
   // Pinned fields and folded groups belong to the viewer too: they follow the user from object to object.
@@ -248,7 +249,8 @@ export function VideoViewer({
         canChange={canChange}
         onHideLane={onHideLane}
         viewport={viewport}
-        onViewport={setViewport}
+        onViewport={onViewport}
+        onDrawn={onDrawn}
         inspector={inspector}
         onInspector={setInspector}
       />

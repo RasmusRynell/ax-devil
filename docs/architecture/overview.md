@@ -100,7 +100,7 @@ Per lane, `frontend/src/present/` compiles the lane's catalog document (served o
 changed user file is pushed to the sockets that asked for it), filters rows, evaluates Marks from the Sample Item, lays
 them out for the lane's cell, and paints them through one WebGL2 context per viewer. A lane's Lane Style (catalog,
 theme, hidden features, filters, sticky opacity) stays in the client and its Lane Policy in its socket; neither is
-shared with followers; an export carries the style frozen. The viewer's viewport and selection are client state;
+shared with followers; an export carries the style frozen. The viewer's viewport is part of the view and its selection is client state;
 picking runs over the lane's filtered rows. Export runs the same code in the Render Page, a hidden
 offscreen Electron page (`desktop/render.cjs`, no display) that Rust talks to over a private loopback socket: Rust
 freezes the job's inputs, sends the page each frame's picture and Sample Items, and encodes the pixels it returns.

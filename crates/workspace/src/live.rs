@@ -260,27 +260,6 @@ fn invalid(field: &str, reason: impl Into<String>) -> UserError {
 }
 
 impl LiveRecipe {
-    /// Whether replacing this recipe by `edited` would erase a literal broker password, which a client is never sent
-    /// and so cannot send back: the MQTT settings, in the overlay or kept, had one and the edited ones have none.
-    pub fn loses_broker_password(&self, edited: &LiveRecipe) -> bool {
-        let literal = |pass: &Secret| !pass.expose().is_empty() && pass.as_reference().is_none();
-        self.mqtt_settings()
-            .is_some_and(|saved| literal(&saved.broker_pass))
-            && edited
-                .mqtt_settings()
-                .is_some_and(|new| new.broker_pass.expose().is_empty())
-    }
-
-    /// Whether replacing this recipe by `edited` would erase the password of the stream URL's login, which a client is
-    /// never sent: `edited` has the URL as the client was shown it. Like `loses_broker_password`, it is for an edit
-    /// by someone who cannot restore the password.
-    pub fn loses_url_password(&self, edited: &LiveRecipe) -> bool {
-        match (&self.url, &edited.url) {
-            (Some(saved), Some(sent)) => url_password_dropped(saved, sent),
-            _ => false,
-        }
-    }
-
     /// The MQTT settings the stream holds: the overlay's, or else the ones kept while another mode is chosen.
     pub fn mqtt_settings(&self) -> Option<MqttSettings> {
         match &self.overlay {

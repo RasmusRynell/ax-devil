@@ -5,6 +5,7 @@
  * clamp than the stored pan allows is clamped when it is drawn, without changing what is stored.
  */
 
+import type { Viewport as Region } from "../generated/api";
 import type { CellRect } from "../overlay/painter";
 import type { Viewport } from "./contract";
 
@@ -123,4 +124,55 @@ export function intersection(rect: CellRect, clip: CellRect): CellRect | null {
   return right > left && bottom > top
     ? { x: left, y: top, width: right - left, height: bottom - top }
     : null;
+}
+
+/**
+ * The part of the video `v` shows in `cell`, as a rectangle of the frame: what a window shares so a window of another
+ * shape can show the same region. Absent when the whole frame is shown.
+ */
+export function regionOf(v: Viewport, cell: CellRect, image: Size): Region | undefined {
+  const picture = pictureRect(cell, image, v);
+  const shown = intersection(picture, cell);
+  if (!shown) return undefined;
+  const w = shown.width / picture.width;
+  const h = shown.height / picture.height;
+  if (w >= 1 && h >= 1) return undefined;
+  return {
+    x: (shown.x - picture.x) / picture.width,
+    y: (shown.y - picture.y) / picture.height,
+    w,
+    h,
+  };
+}
+
+/**
+ * The viewport that fits `region` inside `cell`, centred on it: the zoom is the least that fills the cell along one
+ * axis, so a cell of another shape shows at least the region, bounded by `ZOOM_MAX`.
+ */
+export function viewportOf(region: Region | undefined, cell: CellRect, image: Size): Viewport {
+  if (!region) return FIT;
+  const base = fitPicture(cell, image);
+  const zoom = Math.min(
+    ZOOM_MAX,
+    cell.width / (base.width * region.w),
+    cell.height / (base.height * region.h),
+  );
+  if (zoom <= 1) return FIT;
+  // The picture's centre sits at `pan` of its zoomed length from the cell's; the region's centre goes there.
+  const pan = (
+    cell: number,
+    cellLength: number,
+    base: number,
+    baseLength: number,
+    centre: number,
+  ) => (cell + cellLength / 2 - (base + baseLength / 2)) / (baseLength * zoom) + 0.5 - centre;
+  return settled(
+    {
+      zoom,
+      panX: pan(cell.x, cell.width, base.x, base.width, region.x + region.w / 2),
+      panY: pan(cell.y, cell.height, base.y, base.height, region.y + region.h / 2),
+    },
+    cell,
+    image,
+  );
 }

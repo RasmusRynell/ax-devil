@@ -9,6 +9,7 @@ mod roster;
 mod runner;
 mod sources;
 mod streams;
+mod viewport;
 
 use foundation::{CancelToken, Interrupt, UserError};
 use handlers::Handlers;
@@ -162,6 +163,7 @@ pub(crate) fn looking(item: ItemId) -> ViewerView {
         pinned: false,
         clock: None,
         entry: None,
+        viewport: None,
     }
 }
 

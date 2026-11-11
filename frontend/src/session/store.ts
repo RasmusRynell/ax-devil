@@ -83,8 +83,8 @@ export class SessionStore {
   #seq = 0;
   #sent = 0;
   #commandSeq = 0;
-  /** The viewers the window has looked at in this Session. */
-  #seen = new Set<number>();
+  /** The parts of the Presenter View (`clock`, `viewport`) the window has looked at, by viewer, in this Session. */
+  #seen = new Set<string>();
   #cancelFrame: (() => void) | null = null;
   #own = true;
   #estimator = new OffsetEstimator();
@@ -211,12 +211,13 @@ export class SessionStore {
   }
 
   /**
-   * Whether the window takes the Presenter View as it is for `viewer`: on its first look in this Session, or when
-   * another seat made the change; never over a change of its own the backend has not settled.
+   * Whether the window takes `part` of the Presenter View as it is for `viewer`: on its first look in this Session, or
+   * when another seat made the change; never over a change of its own the backend has not settled.
    */
-  takesPresenter(viewer: number, byOther: boolean): boolean {
-    const first = !this.#seen.has(viewer);
-    this.#seen.add(viewer);
+  takesPresenter(viewer: number, byOther: boolean, part: "clock" | "viewport" = "clock"): boolean {
+    const key = `${part}/${viewer}`;
+    const first = !this.#seen.has(key);
+    this.#seen.add(key);
     return !this.#pending && (first || byOther);
   }
 

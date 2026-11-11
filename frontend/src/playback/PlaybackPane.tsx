@@ -50,6 +50,7 @@ export function Playback({
   onHideLane,
   viewport,
   onViewport,
+  onDrawn,
   inspector,
   onInspector,
 }: {
@@ -64,7 +65,10 @@ export function Playback({
   canChange: boolean;
   onHideLane?: (label: string) => void;
   viewport: Viewport;
-  onViewport: (viewport: Viewport) => void;
+  /** Asks for another viewport; absent when this window may not zoom or pan. */
+  onViewport?: (viewport: Viewport) => void;
+  /** Called with the geometry of the pictures after every draw. */
+  onDrawn?: (geometry: Geometry) => void;
   inspector: InspectorMemory;
   onInspector: (memory: InspectorMemory) => void;
 }) {
@@ -117,7 +121,7 @@ export function Playback({
   const zoom = useCallback(
     (factor: number) => {
       const next = geometry.current?.zoomAt(shownViewport.current, factor);
-      if (!next || next === shownViewport.current) return;
+      if (!onViewport || !next || next === shownViewport.current) return;
       shownViewport.current = next;
       onViewport(next);
     },
@@ -127,10 +131,14 @@ export function Playback({
     (picked: Parameters<ObjectLayerHandle["hover"]>[0]) => objects.current?.hover(picked),
     [],
   );
-  const drawn = useCallback((next: Geometry) => {
-    geometry.current = next;
-    objects.current?.drawn(next);
-  }, []);
+  const drawn = useCallback(
+    (next: Geometry) => {
+      geometry.current = next;
+      objects.current?.drawn(next);
+      onDrawn?.(next);
+    },
+    [onDrawn],
+  );
   // An export covers the lanes the action is for; while a catalog of one is loading it only says so and starts nothing.
   const exportLane = useCallback(
     (lane: number | null) => {
@@ -160,7 +168,7 @@ export function Playback({
       () => ({
         "zoom-in": () => zoom(ZOOM_STEP),
         "zoom-out": () => zoom(1 / ZOOM_STEP),
-        "zoom-reset": () => onViewport(FIT),
+        "zoom-reset": () => onViewport?.(FIT),
         "play-pause": () => session.togglePlay(),
         "step-forward": () => session.step(1),
         "step-back": () => session.step(-1),

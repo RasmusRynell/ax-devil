@@ -22,8 +22,34 @@ import {
   viewsSent,
 } from "./videoViewerHarness";
 
-// The picture needs WebGL; this suite is about the session behind it.
-vi.mock("./VideoCanvas", () => ({ VideoCanvas: () => null }));
+// The picture needs WebGL; this suite is about the session behind it. The canvas stands in with a one-lane geometry,
+// and shows the zoom it is given; a click on it zooms to 2.
+vi.mock("./VideoCanvas", async () => {
+  const { FIT } = await import("./viewport");
+  const { useEffect } = await import("react");
+  const cell = { x: 0, y: 0, width: 160, height: 90 };
+  const geometry = { reference: () => ({ cell, image: cell }), boxes: () => [] };
+  return {
+    VideoCanvas: ({
+      viewport,
+      onViewport,
+      onDrawn,
+    }: {
+      viewport: { zoom: number };
+      onViewport?: (next: { zoom: number; panX: number; panY: number }) => void;
+      onDrawn?: (geometry: unknown) => void;
+    }) => {
+      useEffect(() => onDrawn?.(geometry));
+      return (
+        <div
+          data-testid="canvas"
+          data-zoom={viewport.zoom}
+          onClick={() => onViewport?.({ zoom: 2, panX: 0, panY: 0 })}
+        />
+      );
+    },
+  };
+});
 
 installViewerHarness();
 const s = scenario("one-video");
@@ -263,6 +289,33 @@ describe("video viewer", () => {
     await settled("40");
     act(() => room.publish(clockOf({ ...own, atUs: own.atUs + 2 }), 1));
     await settled(String(own.frame));
+  });
+
+  it("shows an Owner seat the viewport another Owner seat set and sends its own, whose echo it ignores", async () => {
+    const room = follower("attach");
+    await settled("20");
+    const zoom = () => screen.getByTestId("canvas").dataset.zoom;
+    const region = (w: number) => ({
+      ...room.presenter,
+      viewers: { 1: { ...room.presenter.viewers[1]!, viewport: { x: 0, y: 0, w, h: w } } },
+    });
+    expect(zoom()).toBe("1");
+
+    act(() => room.publish(region(0.25), 1));
+    await waitFor(() => expect(zoom()).toBe("4"));
+
+    fireEvent.click(screen.getByTestId("canvas"));
+    expect(zoom()).toBe("2");
+    await waitFor(() => expect(room.presenter.viewers[1]?.viewport).toMatchObject({ w: 0.5 }));
+    expect(room.presenterBy).toBe(2);
+    // Its own change coming back is not applied over the window.
+    expect(zoom()).toBe("2");
+
+    // Another seat's newer region that arrives while its own change is unanswered is taken once it is answered.
+    await act(() => new Promise((done) => setTimeout(done, 120)));
+    fireEvent.click(screen.getByTestId("canvas"));
+    act(() => room.publish(region(0.25), 1));
+    await waitFor(() => expect(zoom()).toBe("4"));
   });
 
   it("publishes a seek made while following, so the seat explores, and never the presenter's own clock", async () => {
