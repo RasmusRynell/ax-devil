@@ -35,12 +35,26 @@ export function DialogFrame({
 }: FrameProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  const opener = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     const element = dialog.current;
-    if (element && !element.open) element.showModal();
-    if (focusSubmit) element?.querySelector<HTMLElement>("[type=submit]")?.focus();
-    // Close before React removes the modal, so the browser restores its previous focus target.
-    return () => element?.close();
+    if (!element) return;
+    if (!element.open) {
+      opener.current = document.activeElement as HTMLElement | null;
+      element.showModal();
+    }
+    return () => {
+      // StrictMode replays effects while the node stays mounted. Wait for actual removal before closing;
+      // a detached dialog cannot restore browser focus itself, so retain the original opener across replays.
+      queueMicrotask(() => {
+        if (element.isConnected) return;
+        element.close();
+        opener.current?.focus();
+      });
+    };
+  }, []);
+  useLayoutEffect(() => {
+    if (focusSubmit) dialog.current?.querySelector<HTMLElement>("[type=submit]")?.focus();
   }, [focusSubmit]);
   return (
     <dialog

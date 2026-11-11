@@ -29,6 +29,7 @@ module.exports.run = async ({ window }) => {
     press("n", ["control"]);
     await wait("document.querySelector('dialog[open] h2')?.textContent === 'Add Video'");
     await wait("document.activeElement?.closest('dialog')");
+    assert.equal(await js("document.querySelector('dialog[open]').matches(':modal')"), true);
     if (close === "Cancel") await answer(close);
     else {
       press("Escape");
