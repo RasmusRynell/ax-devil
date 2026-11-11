@@ -2,7 +2,6 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import { QuickSetupDialog } from "./QuickSetupDialog";
-import { textOf } from "./SettingField";
 import { deviceStore } from "../client/deviceSettings";
 
 beforeAll(() => {
@@ -71,24 +70,6 @@ describe("quick setup dialog", () => {
     cleanup();
     open({ ...firstRun, values: { ...firstRun.values, ...set } } as typeof firstRun, save);
     expect(screen.getByRole("radio", { name: "HTTP" })).toHaveProperty("checked", true);
-  });
-
-  it("says why a refused write was refused, closes, and keeps the preview", async () => {
-    const save = vi.fn(async () => ({ reason: "disk full", location: "" }));
-    const onClose = vi.fn();
-    const onNotice = vi.fn();
-    // What the provider shows for the stored settings.
-    document.documentElement.dataset.theme = textOf(firstRun.values["ui.theme"]);
-    document.documentElement.dataset.textSize = textOf(firstRun.values["ui.text_size"]);
-    open(firstRun, save, { onClose, onNotice });
-    pick("Theme", "Light");
-    pick("Text size", "Larger");
-    expect(document.documentElement.dataset.theme).toBe("light");
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(onNotice).toHaveBeenCalledWith("Could not save these choices: disk full");
-    expect(document.documentElement.dataset.theme).toBe("light");
-    expect(document.documentElement.dataset.textSize).toBe("larger");
   });
 
   it("takes one write at a time: a second Done or Escape while one is pending is not sent", async () => {

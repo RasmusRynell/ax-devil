@@ -31,14 +31,14 @@ export function SettingsDialog({
   onClose: () => void;
   onRestartNeeded: () => void;
 }) {
-  const { values, file } = useSettings();
+  const { values, savedValues, file } = useSettings();
   // A page that holds only a join link has only the Device settings.
   const { owner, fullAccess } = useAccess();
   const shown = PAGED.filter((row) => owner || row.scope === "device");
   const pages = [...new Set(shown.flatMap((row) => row.page ?? [])), ...(file ? ["Advanced"] : [])];
   // What the dialog opened with: only the settings changed from it are sent, so another window's change to the rest stays.
-  const [base] = useState(values);
-  const [draft, setDraft] = useState(base);
+  const [base] = useState(savedValues);
+  const [draft, setDraft] = useState(values);
   const [page, setPage] = useState(pages[0] ?? "");
   const [editingShortcuts, setEditingShortcuts] = useState(false);
   const { saving, refusal, submit } = useSaveDialog(onClose);

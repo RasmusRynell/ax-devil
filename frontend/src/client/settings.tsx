@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, type ReactNode } from "react";
 import { useAccess } from "./access";
 import { ask } from "./ask";
-import { deviceStore, useDeviceValues, type DeviceValue } from "./deviceSettings";
+import { deviceStore, useDeviceValues, useSavedDeviceValues, type DeviceValue } from "./deviceSettings";
 import { reasonOf } from "./errors";
 import type { ErrorWire, LoginEdit, SettingsPatch, SettingsState } from "../generated/api";
 import { refusalOf, useResource } from "./resource";
@@ -14,9 +14,11 @@ import { type Login, secretStateOf } from "./secret";
  * now, whoever wrote it.
  */
 export interface SettingsApi extends SettingsState {
+  /** Baseline for edits: confirmed values without Quick Setup previews; Device persistence is best effort. */
+  savedValues: SettingsState["values"];
   /** Previews a Device choice without storing it; Quick Setup keeps it on refusal. */
   previewDevice: (key: SettingKey, value: DeviceValue) => void;
-  /** Stores one patch: several settings and shortcuts at once, as one write that is refused or taken whole. */
+  /** Saves the server part atomically, then confirms Device changes with best-effort persistence; not atomic across scopes. */
   apply: (patch: SettingsPatch) => Promise<ErrorWire | null>;
   /** Sets one setting; logins carry the passwords typed since, which the backend does not tell. */
   set: <K extends SettingKey>(
@@ -173,6 +175,7 @@ function splitPatch(patch: SettingsPatch) {
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const { owner } = useAccess();
   const device = useDeviceValues();
+  const savedDevice = useSavedDeviceValues();
   const settings = useResource<SettingsState>("settings", owner ? "/api/settings" : null, {
     revisionOf: (state) => state.revision,
   });
@@ -216,6 +219,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       value={{
         revision: remote?.revision ?? 0,
         values,
+        savedValues: { ...DEFAULT_VALUES, ...remote?.values, ...savedDevice },
         resolved: remote?.resolved,
         file: remote?.file,
         shortcuts,
@@ -227,7 +231,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** The stored settings, the effective shortcuts, and the ways to store new ones; only inside a `SettingsProvider`. */
+/** The effective and confirmed settings, the effective shortcuts, and the ways to store new ones; only inside a `SettingsProvider`. */
 export function useSettings(): SettingsApi {
   const settings = useContext(SettingsContext);
   if (!settings) throw new Error("useSettings needs a SettingsProvider");

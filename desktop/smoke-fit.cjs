@@ -21,9 +21,10 @@ const row = (width, ...kids) => ({ style: `display:flex;width:${width}`, kids })
 const date = { tag: "span", text: "today" };
 
 /** A fixture as the DOM it stands for; it runs in the page. */
-function make({ tag = "div", style = "", title, text, shows, ellipsis, kids = [] }) {
+function make({ tag = "div", style = "", title, text, shows, ellipsis, attrs = {}, kids = [] }) {
   const element = document.createElement(tag);
   element.style.cssText = style;
+  for (const [key, value] of Object.entries(attrs)) element.setAttribute(key, value);
   if (title) element.title = title;
   if (text) element.textContent = text;
   if (shows) element.dataset.shows = `${shows}${ellipsis ? "…" : ""}`;
@@ -114,6 +115,59 @@ const CASES = [
   ],
 ];
 
+const tabs = (overflow) => ({
+  attrs: { role: "tablist" },
+  style: `display:flex;width:12ch;overflow-x:${overflow}`,
+  kids: ["First", "Second", "Third"].map((text, at) => ({
+    tag: "button",
+    text,
+    style: "flex:none;width:8ch",
+    attrs: { role: "tab", "aria-selected": String(at === 0) },
+  })),
+});
+const input = (width) => ({ tag: "input", style: `width:${width}`, attrs: { value: LONG } });
+/** @type {[string, object, boolean][]} */
+const DIALOG_CASES = [
+  ["collapsed label", { style: "width:0;overflow:hidden", text: LONG }, true],
+  [
+    "clipped whole row",
+    { style: "width:6ch;overflow:hidden", kids: [row("25ch", date, name("flex:none"))] },
+    true,
+  ],
+  [
+    "overlapping text",
+    {
+      style: "position:relative;height:3em",
+      kids: [
+        { style: "position:absolute", text: "first label" },
+        { style: "position:absolute;left:2ch", text: "second label" },
+      ],
+    },
+    true,
+  ],
+  ["overflowing text", { style: "white-space:nowrap", text: LONG }, true],
+  ["tabs clipped without scrolling", tabs("clip"), true],
+  ["scrolling tabs", tabs("auto"), false],
+  [
+    "scrolling body above footer",
+    { style: "height:2em;overflow:auto", kids: [{ style: "width:20ch", text: LONG }] },
+    false,
+  ],
+  [
+    "hidden alternate panel",
+    {
+      style: "position:relative",
+      kids: [
+        { text: "Visible panel" },
+        { style: "position:absolute;top:0;visibility:hidden", text: "Hidden panel" },
+      ],
+    },
+    false,
+  ],
+  ["input outside dialog", input("80ch"), true],
+  ["input scrolling its own content", input("12ch"), false],
+];
+
 module.exports.fitChecker = async (window) => {
   const { js } = page(window);
   for (const [description, fixture, problem] of CASES) {
@@ -131,5 +185,18 @@ module.exports.fitChecker = async (window) => {
         found.some((line) => problem.test(line)),
         `${description}: ${found}`,
       );
+  }
+  for (const [description, fixture, broken] of DIALOG_CASES) {
+    const found = await js(`(() => {
+      ${make.toString()}
+      const box = make({ tag: "dialog", style: "width:30ch;max-width:none;padding:1ch", kids: [
+        { tag: "form", kids: [${JSON.stringify(fixture)}, { kids: [{ tag: "button", text: "OK" }] }] }
+      ] });
+      document.body.append(box);
+      box.showModal();
+      try { return (${fit.dialog.toString()})(); } finally { box.remove(); }
+    })()`);
+    if (broken) assert.ok(found.length, `${description} must fail the dialog checker`);
+    else assert.deepEqual(found, [], description);
   }
 };

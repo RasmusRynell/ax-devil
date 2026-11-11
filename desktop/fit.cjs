@@ -168,11 +168,26 @@ function dialog() {
     problems.push("dialog scrolls itself");
   const inside = (rect, outer) => rect.left >= outer.left - 1 && rect.right <= outer.right + 1;
 
-  // A tab strip may scroll horizontally; each tab must fit its viewport and the selected tab must be visible.
+  // An overflow declaration alone does not prove that the content can actually be reached.
+  const scrolls = (element) => {
+    const before = element.scrollLeft;
+    element.scrollLeft = element.scrollWidth;
+    const moved = element.scrollLeft > 0;
+    element.scrollLeft = before;
+    return moved;
+  };
+  const strips = new Map();
   const tabStrip = (element) => {
     const strip = element.closest("[role=tablist]");
-    return strip && getComputedStyle(strip).overflowX === "auto" ? strip : null;
+    if (!strip) return null;
+    if (!strips.has(strip))
+      strips.set(
+        strip,
+        /^(auto|scroll)$/.test(getComputedStyle(strip).overflowX) && scrolls(strip),
+      );
+    return strips.get(strip) ? strip : null;
   };
+  const texts = [];
   // Every row, scrolled into view or not: no text or control sticks out of the dialog or is cut off by its own box.
   const walker = document.createTreeWalker(form, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -183,9 +198,62 @@ function dialog() {
     // Options of a closed select have no box of their own.
     const strip = tabStrip(node.parentElement);
     const tab = strip && node.parentElement.closest("[role=tab]");
+    if (rect.width && rect.height && !node.parentElement.closest(".sr-only")) {
+      // Compare only painted line fragments: scrolled-out text and hidden panels cannot overlap a footer.
+      if (getComputedStyle(node.parentElement).visibility === "visible") {
+        for (const line of range.getClientRects()) {
+          const visible = {
+            left: line.left,
+            right: line.right,
+            top: line.top,
+            bottom: line.bottom,
+          };
+          for (
+            let parent = node.parentElement;
+            parent && parent !== box;
+            parent = parent.parentElement
+          ) {
+            if (!parent.getClientRects().length) continue;
+            const clip = parent.getBoundingClientRect(),
+              style = getComputedStyle(parent);
+            if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
+              visible.left = Math.max(visible.left, clip.left);
+              visible.right = Math.min(visible.right, clip.right);
+            }
+            if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
+              visible.top = Math.max(visible.top, clip.top);
+              visible.bottom = Math.min(visible.bottom, clip.bottom);
+            }
+          }
+          if (visible.right > visible.left && visible.bottom > visible.top)
+            texts.push({ rect: visible, text: node.textContent.trim() });
+        }
+      }
+      for (
+        let parent = node.parentElement;
+        parent && parent !== form;
+        parent = parent.parentElement
+      ) {
+        if (parent === strip || parent.getClientRects().length === 0) continue;
+        const clip = parent.getBoundingClientRect();
+        if (
+          (clip.width === 0 || /hidden|clip/.test(getComputedStyle(parent).overflowX)) &&
+          !inside(rect, clip)
+        )
+          problems.push(`text clipped: "${node.textContent.trim()}"`);
+      }
+    }
     if (rect.width && !inside(rect, tab ? tab.getBoundingClientRect() : bounds))
       problems.push(`text outside the dialog: "${node.textContent.trim()}"`);
   }
+  texts.forEach((a, index) => {
+    for (const b of texts.slice(index + 1))
+      if (
+        Math.min(a.rect.right, b.rect.right) - Math.max(a.rect.left, b.rect.left) > 1 &&
+        Math.min(a.rect.bottom, b.rect.bottom) - Math.max(a.rect.top, b.rect.top) > 1
+      )
+        problems.push(`text overlaps: "${a.text}" and "${b.text}"`);
+  });
   for (const element of form.querySelectorAll("*")) {
     const rect = element.getBoundingClientRect();
     const strip = tabStrip(element);
@@ -205,7 +273,7 @@ function dialog() {
     // Text inputs scroll their values; their outer bounds were checked above.
     if (
       element !== strip &&
-      element.localName !== "input" &&
+      !(element.localName === "input" && scrolls(element)) &&
       element.clientWidth > 2 &&
       element.scrollWidth > element.clientWidth + 1
     )

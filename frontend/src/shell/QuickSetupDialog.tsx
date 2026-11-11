@@ -98,9 +98,9 @@ export function QuickSetupDialog({
   onClose: () => void;
   onNotice: (message: string) => void;
 }) {
-  const { values, previewDevice } = useSettings();
-  const [base] = useState(values);
-  const [draft, setDraft] = useState(base);
+  const { values, savedValues, previewDevice } = useSettings();
+  const [base] = useState(savedValues);
+  const [draft, setDraft] = useState(values);
   const theme = values["ui.theme"];
   const textSize = values["ui.text_size"];
   useEffect(() => {

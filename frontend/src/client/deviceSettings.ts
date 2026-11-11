@@ -102,6 +102,8 @@ export function createDeviceStore(backing: Backing) {
   return {
     /** The effective Device values, including unsaved Quick Setup previews. */
     read: () => values,
+    /** Last confirmed values, excluding previews; backing writes remain best effort. */
+    readSaved: () => stored,
     /** Previews one choice without writing it. Later choices for this key supersede it. */
     preview: (key: SettingKey, value: DeviceValue) => publish(key, value),
     /** Stores one value. */
@@ -150,4 +152,9 @@ export const deviceStore = createDeviceStore(
 /** The Device values, and a re-render when they change. */
 export function useDeviceValues(): DeviceValues {
   return useSyncExternalStore(deviceStore.subscribe, deviceStore.read);
+}
+
+/** Device values confirmed by a save or broadcast, without unsaved previews. */
+export function useSavedDeviceValues(): DeviceValues {
+  return useSyncExternalStore(deviceStore.subscribe, deviceStore.readSaved);
 }
