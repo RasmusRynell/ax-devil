@@ -309,6 +309,9 @@ fn page_field(item: scene::inspection::PageField) -> FieldWire {
     wire.cut = item
         .cut
         .map(|(ordinal, bytes)| [ordinal as u64, bytes as u64]);
+    wire.path_cut = item
+        .path_cut
+        .map(|(ordinal, bytes)| [ordinal as u64, bytes as u64]);
     wire
 }
 

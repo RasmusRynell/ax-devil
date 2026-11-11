@@ -359,3 +359,46 @@ async fn a_cursor_cannot_cross_sockets_or_outlast_its_held_sample() {
     assert_eq!(reason, "Inspection expired; select the object again");
     assert_eq!(frames, None);
 }
+
+#[test]
+fn an_abbreviated_path_advertises_how_to_retrieve_its_last_byte() {
+    use scene::{
+        BoundingBox, Entity, EntityId, Geometry, Name, Observation, SceneTime, TimeSlice, Value,
+    };
+
+    let time = SceneTime::Frame(0);
+    let path = "p".repeat(9 * 1024 * 1024);
+    let observation = Observation::new(
+        time,
+        Geometry::Box(BoundingBox::new(0.0, 0.0, 1.0, 1.0).unwrap()),
+    )
+    .with_details(vec![(Name::Owned(path), Value::Int(1))], Vec::new())
+    .unwrap();
+    let mut entity = Entity::new(EntityId::from(7_i64));
+    entity.push_observation(observation);
+    let scene = Scene::new(TimeSlice::at(time))
+        .with_entities(vec![entity])
+        .unwrap();
+    let InspectionWire::Found { fields, .. } = inspection(&scene, "7", "held") else {
+        panic!("inspection");
+    };
+    let [ordinal, bytes] = fields
+        .iter()
+        .find_map(|field| field.path_cut)
+        .expect("full path access");
+    assert_eq!(bytes, 9 * 1024 * 1024);
+    let read = InspectionRead {
+        token: "held".into(),
+        request: 1,
+        field: Some(ordinal as u32),
+        path: true,
+        offset: (bytes - 1) as u32,
+    };
+    let InspectionReadResult::Chunk { text, total, next } = continued(Some(&scene), "7", &read)
+    else {
+        panic!("path chunk");
+    };
+    assert_eq!(text, "p");
+    assert_eq!(u64::from(total), bytes);
+    assert_eq!(next, None);
+}
