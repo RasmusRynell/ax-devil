@@ -242,8 +242,10 @@ export function SettingsProvider({
   }, [owner, take]);
   const noticed = useCallback(
     (revision: number, fresh = false) => {
-      // Revisions are ordered only within one connection: the first notice of a new one is always taken.
-      if (fresh) held.current = { ...held.current, settings: 0, info: 0 };
+      // A restarted backend may count from a lower revision (the clock set back): the first notice of a new
+      // connection resets what is held only then, so a reconnect at the same revision fetches nothing.
+      if (fresh && revision < held.current.settings)
+        held.current = { ...held.current, settings: 0, info: 0 };
       if (revision > held.current.info) {
         held.current.info = revision;
         const ask = ++held.current.asks;

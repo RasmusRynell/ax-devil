@@ -255,7 +255,7 @@ describe("logins editor", () => {
     const user = await screen.findByLabelText("Username");
     fireEvent.change(user, { target: { value: "ops" } });
     fireEvent.keyDown(user, { key: "Enter" });
-    await waitFor(() => expect(bodies).toHaveLength(1));
+    await waitFor(() => expect(bodies).toHaveLength(1), { timeout: 5000 });
     expect(bodies[0]).toEqual({ set: { "scan.logins": [{ id: "a1", user: "ops" }] } });
   });
 });

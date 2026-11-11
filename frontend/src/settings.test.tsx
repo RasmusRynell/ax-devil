@@ -80,6 +80,7 @@ describe("settings", () => {
         <button onClick={() => noticed(5)}>Notice</button>
         <button onClick={() => noticed(6)}>Newer notice</button>
         <button onClick={() => noticed(2, true)}>Reconnected</button>
+        <button onClick={() => noticed(9, true)}>Reconnected at the same revision</button>
         <button onClick={() => void set("storage.cache_dir", "/saved")}>Save</button>
         <p>{`folder ${values["storage.cache_dir"] as string}`}</p>
       </>
@@ -160,6 +161,21 @@ describe("settings", () => {
     await screen.findByText("folder /before");
     fireEvent.click(screen.getByRole("button", { name: "Reconnected" }));
     await screen.findByText("folder /after");
+  });
+
+  it("fetches nothing on a fresh notice whose revision is the one already held", async () => {
+    const fetched = vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () =>
+        url === "/api/info" ? { owner: true } : { ...DEFAULT_SETTINGS, revision: 9 },
+    }));
+    vi.stubGlobal("fetch", fetched);
+    asOwner();
+    await screen.findByText(/^folder/);
+    const asked = fetched.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Reconnected at the same revision" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetched).toHaveBeenCalledTimes(asked);
   });
 
   it("drops an info reply that a newer info request overtook", async () => {
