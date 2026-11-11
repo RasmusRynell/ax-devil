@@ -13,11 +13,11 @@ async fn the_scan_at_launch_sends_no_login_but_a_pressed_scan_does() {
 
     scan_on_startup(&network, &state);
     assert_eq!(requests.recv().await, Some(0));
-    let pressed = request_from_settings(&state, None, None, ScanLoad::Normal, true).unwrap();
+    let pressed = request_from_settings(&state, None, None, ScanLoad::Normal).unwrap();
     network.rescan(pressed);
     assert_eq!(requests.recv().await, Some(1));
     // The footer's choice for one scan wins over the setting, either way, and leaves the setting alone.
-    let off = request_from_settings(&state, None, Some(false), ScanLoad::Normal, true).unwrap();
+    let off = request_from_settings(&state, None, Some(false), ScanLoad::Normal).unwrap();
     assert!(off.logins.is_empty());
 }
 
@@ -32,17 +32,11 @@ fn the_saved_range_is_scanned_as_the_variable_it_names_holds_it() {
     )
     .unwrap();
     let state = settings::Settings::load(&path).unwrap().state();
-    let Err(refused) = request_from_settings(&state, None, None, ScanLoad::Normal, true) else {
+    let Err(refused) = request_from_settings(&state, None, None, ScanLoad::Normal) else {
         panic!("a variable that holds no range is no range to scan");
     };
     assert!(!refused.reason.contains("$PATH"), "{}", refused.reason);
     assert_eq!(refused.location, Some(Location::field("scan.range")));
-    // Without Full access the reference is not expanded, so the refusal cannot carry what the variable holds.
-    let Err(refused) = request_from_settings(&state, None, None, ScanLoad::Normal, false) else {
-        panic!("a reference is no range");
-    };
-    let held = std::env::var("PATH").unwrap();
-    assert!(!refused.reason.contains(&held), "{}", refused.reason);
 }
 
 #[test]

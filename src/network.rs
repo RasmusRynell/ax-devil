@@ -340,22 +340,19 @@ fn configured_logins(state: &settings::State) -> Vec<Login> {
 /// reference; blank is the local network. It asks each host over `camera.protocol` first. Its logins are `scan.logins`
 /// unless sign-in is off, which `sign_in` says for this scan and else `scan.sign_in` does; each field is as written,
 /// a `$NAME` reference expanded when the scan starts. A range that cannot be scanned is refused with the field named.
-/// `references` is whether the caller may read the environment (Full access): without it a `$NAME` range is not
-/// expanded, so the refusal cannot carry what the variable holds.
+/// The expansion reads the environment, which only Full access may: the caller checks that first (the scan route
+/// refuses a stored reference without it), and the scan at launch is the server's own.
 pub fn request_from_settings(
     state: &settings::State,
     range: Option<&str>,
     sign_in: Option<bool>,
     load: ScanLoad,
-    references: bool,
 ) -> Result<ScanRequest, UserError> {
-    // A `$NAME` reference in the setting is expanded here, where the scan starts.
-    let range_setting = if references {
-        state.resolved("scan.range")
-    } else {
-        state.written("scan.range")
-    }
-    .and_then(|value| value.as_str().map(str::to_owned));
+    // A `$NAME` reference in the setting is expanded here, where the scan starts; the caller has Full access if there is
+    // one.
+    let range_setting = state
+        .resolved("scan.range")
+        .and_then(|value| value.as_str().map(str::to_owned));
     let (text, field) = match range {
         Some(text) => (text, "range"),
         None => (range_setting.as_deref().unwrap_or_default(), "scan.range"),
@@ -401,7 +398,7 @@ pub fn scan_on_startup(network: &Arc<Network>, state: &settings::State) {
     if !on {
         return;
     }
-    match request_from_settings(state, None, None, ScanLoad::Startup, true) {
+    match request_from_settings(state, None, None, ScanLoad::Startup) {
         Ok(request) => {
             network.rescan(ScanRequest {
                 logins: Vec::new(),

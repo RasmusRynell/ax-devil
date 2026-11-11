@@ -19,7 +19,9 @@ use std::convert::Infallible;
 
 /// Starts a scan of the range, ending the one that is running; its cameras start from none. Answers with the scan's
 /// number, which its snapshots carry. Signing in uses the logins configured on the server, which only Full access may:
-/// an Owner without it is refused when it asks to, and a scan that does not say scans without.
+/// an Owner without it is refused when it asks to, and a scan that does not say scans without. A `$NAME` reference is
+/// read only with Full access, so without it a scan that would use a range stored as one is refused; a range in the
+/// request is scanned as given.
 pub(super) async fn scan(
     State(state): State<AppState>,
     principal: Principal,
@@ -34,8 +36,23 @@ pub(super) async fn scan(
         )
         .into_response();
     }
+    let settings = state.settings.state();
+    if !full_access
+        && request.range.is_none()
+        && let Some(name) = settings
+            .stored("scan.range")
+            .and_then(|value| value.as_str())
+            .and_then(settings::reference)
+    {
+        return failure(
+            StatusCode::FORBIDDEN,
+            "scan.range",
+            format!("Scanning the range from ${name} needs full access"),
+        )
+        .into_response();
+    }
     match request_from_settings(
-        &state.settings.state(),
+        &settings,
         request.range.as_deref(),
         if full_access {
             request.sign_in
@@ -43,7 +60,6 @@ pub(super) async fn scan(
             Some(false)
         },
         ScanLoad::Normal,
-        full_access,
     ) {
         Ok(scan) => Json(ScanStarted {
             scan: state.network.rescan(scan),
@@ -150,6 +166,7 @@ mod tests {
         let videos = crate::video_cache::start(&settings, &cache);
         let (_stop, stopping) = tokio::sync::watch::channel(false);
         let (asked, mut logins) = mpsc::unbounded_channel();
+        let held = Arc::clone(&settings);
         let state = crate::AppState::new(
             Arc::clone(&settings),
             crate::access::Policy::Shared {
@@ -190,6 +207,25 @@ mod tests {
             let asked = timeout(Duration::from_secs(10), logins.recv()).await;
             assert_eq!(asked.unwrap(), Some(0), "{body}");
         }
+
+        // A stored `$NAME` range is the server's environment: refused by name without Full access, unless the request
+        // brings its own range.
+        held.update("scan.range", |_| Some("$PATH".into())).unwrap();
+        let refused = send("{}").await.unwrap();
+        assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+        let body = axum::body::to_bytes(refused.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(
+            text.contains("scan.range") && text.contains("$PATH"),
+            "{text}"
+        );
+        assert!(!text.contains(&std::env::var("PATH").unwrap()), "{text}");
+        assert_eq!(
+            send(r#"{"range":"10.9.9.0/30"}"#).await.unwrap().status(),
+            StatusCode::OK
+        );
     }
 
     #[tokio::test]
