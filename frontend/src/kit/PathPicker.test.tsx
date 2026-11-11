@@ -48,6 +48,10 @@ function pick(mode: PickMode, extra: Partial<Parameters<typeof PathPicker>[0]> =
     <PathPicker
       mode={mode}
       list={source}
+      // The server's answer: it knows a hidden file the listing leaves out.
+      exists={(asked) =>
+        Promise.resolve(asked === "/home/me/notes.txt" || asked === "/home/me/.hidden.csv")
+      }
       title="Pick"
       onChoose={onChoose}
       onCancel={() => {}}
@@ -106,15 +110,31 @@ describe("path picker", () => {
     const choose = pick("save", { extensions: [".csv"], name: "marks" });
     await screen.findByRole("option", { name: "clips" });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(choose).toHaveBeenCalledExactlyOnceWith("/home/me/marks.csv");
+    await vi.waitFor(() => expect(choose).toHaveBeenCalledExactlyOnceWith("/home/me/marks.csv"));
     cleanup();
 
     const again = pick("save", { extensions: [".txt"], name: "notes" });
     await screen.findByRole("option", { name: "notes.txt" });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(again).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Replace" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Replace" }));
     expect(again).toHaveBeenCalledExactlyOnceWith("/home/me/notes.txt");
+    cleanup();
+
+    // A file the listing does not show asks too; a question that fails returns no path.
+    const hidden = pick("save", { extensions: [".csv"], name: ".hidden" });
+    await screen.findByRole("option", { name: "clips" });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Replace" }));
+    expect(hidden).toHaveBeenCalledExactlyOnceWith("/home/me/.hidden.csv");
+    cleanup();
+    const failed = pick("save", {
+      name: "marks",
+      exists: () => Promise.reject(new Error("Cannot check that file")),
+    });
+    await screen.findByRole("option", { name: "clips" });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Cannot check that file");
+    expect(failed).not.toHaveBeenCalled();
     cleanup();
 
     // A typed path to a new file opens its folder with the name filled; with no folder, Save stays off.

@@ -25,9 +25,14 @@ export class FolderProblem extends Error {
 /** Lists a folder of the backend's machine, or where to start when `path` is absent; rejects with a `FolderProblem`. */
 export type ListFolder = (path: string | undefined, signal: AbortSignal) => Promise<FolderListing>;
 
+/** Whether anything, hidden or named in another case, is at `path` on the backend's machine; rejects with an `Error`. */
+export type CheckExists = (path: string) => Promise<boolean>;
+
 interface Props {
   mode: PickMode;
   list: ListFolder;
+  /** Asked before `save` returns a path, which the user then agreed to replace when something is there. */
+  exists: CheckExists;
   title: string;
   /** Where it opens: a folder, or for `save` the path of the file it offers to write. */
   start?: string;
@@ -60,6 +65,7 @@ function join(folder: string, name: string): string {
 export function PathPicker({
   mode,
   list,
+  exists,
   title,
   start,
   extensions = [],
@@ -80,6 +86,9 @@ export function PathPicker({
   const wanted = useRef<string | null>(null);
   // The existing file the user was asked about; asking again returns it.
   const [replacing, setReplacing] = useState<string | null>(null);
+  // The path whose existence is being asked; an answer for any other is stale.
+  const asked = useRef<string | null>(null);
+  const [asking, setAsking] = useState(false);
   const id = useId();
   const nameField = useRef<HTMLDivElement>(null);
 
@@ -122,6 +131,11 @@ export function PathPicker({
   const named = (file: string) =>
     extension && !file.toLowerCase().endsWith(extension) ? `${file}${extension}` : file;
 
+  const forget = () => {
+    asked.current = null;
+    setAsking(false);
+  };
+
   // A new listing starts on the file a typed path named, else on its first row.
   useEffect(() => {
     const at = shown.findIndex((entry) => entry.name === wanted.current);
@@ -132,6 +146,7 @@ export function PathPicker({
     } else setActive(0);
     wanted.current = null;
     setReplacing(null);
+    forget();
     // `shown` follows the listing; only a new listing resets the row.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listing]);
@@ -151,14 +166,29 @@ export function PathPicker({
     if (entry.folder) setFolder(join(listing.path, entry.name));
     else if (mode === "save") {
       setFileName(entry.name);
-      write(named(entry.name));
+      void write(named(entry.name));
     } else choose(entry.name);
   };
-  // Writing over a file in the folder asks first, in the Save button, which then reads Replace.
-  const write = (file: string) => {
-    if (replacing !== file && listing?.entries.some((entry) => entry.name === file))
-      setReplacing(file);
-    else choose(file);
+  // Writing over a file asks first, in the Save button, which then reads Replace; the server says whether it is there.
+  const write = async (file: string) => {
+    if (!listing?.path || asked.current) return;
+    const target = join(listing.path, file);
+    if (replacing === file) return onChoose(target);
+    asked.current = target;
+    setAsking(true);
+    setError(null);
+    let there: boolean;
+    try {
+      there = await exists(target);
+    } catch (failure) {
+      if (asked.current !== target) return;
+      forget();
+      return setError(failure instanceof Error ? failure.message : String(failure));
+    }
+    if (asked.current !== target) return;
+    forget();
+    if (there) setReplacing(file);
+    else onChoose(target);
   };
   const move = (to: number) => {
     const next = Math.min(Math.max(to, 0), shown.length - 1);
@@ -184,7 +214,7 @@ export function PathPicker({
   const ok = () => {
     if (!listing?.path) return;
     if (mode === "folder") onChoose(listing.path);
-    else if (mode === "save") write(named(fileName.trim()));
+    else if (mode === "save") void write(named(fileName.trim()));
     else open(active);
   };
 
@@ -200,7 +230,7 @@ export function PathPicker({
       }
       onOk={ok}
       onCancel={onCancel}
-      busy={!ready}
+      busy={!ready || asking}
     >
       <DialogBody>
         <div className="flex items-center gap-s">
@@ -262,7 +292,14 @@ export function PathPicker({
         </div>
         {mode === "save" && (
           <div ref={nameField}>
-            <TextField label="Name" value={fileName} onChange={setFileName} />
+            <TextField
+              label="Name"
+              value={fileName}
+              onChange={(value) => {
+                forget();
+                setFileName(value);
+              }}
+            />
           </div>
         )}
       </DialogBody>

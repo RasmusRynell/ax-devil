@@ -408,6 +408,7 @@ export function Gallery() {
         <PathPicker
           mode="save"
           list={listing}
+          exists={() => Promise.resolve(false)}
           title="Save as"
           extensions={[".csv"]}
           name="marks.csv"

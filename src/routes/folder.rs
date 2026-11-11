@@ -4,7 +4,7 @@
 //! more than the Owner role.
 
 use super::handlers::{Refusal, refuse};
-use api_types::workspace::{FolderEntry, FolderListing, FolderPlace};
+use api_types::workspace::{FolderEntry, FolderListing, FolderPlace, PathExists};
 use axum::{Json, extract::Query, http::StatusCode};
 use foundation::{ErrorCode, UserError};
 use serde::Deserialize;
@@ -32,6 +32,27 @@ pub(super) async fn list(Query(params): Query<Params>) -> Result<Json<FolderList
             )
         })?
         .map(Json)
+}
+
+/// Whether anything is at the absolute path asked, as the filesystem names it: hidden entries count, and on a
+/// case-insensitive filesystem so does another spelling. A link that leads nowhere is still there.
+pub(super) async fn exists(Query(params): Query<Params>) -> Result<Json<PathExists>, Refusal> {
+    let path = PathBuf::from(params.path.unwrap_or_default());
+    if !path.is_absolute() {
+        return Err(refuse(
+            StatusCode::BAD_REQUEST,
+            &UserError::new(ErrorCode::InvalidPath, "Not an absolute path"),
+        ));
+    }
+    tokio::task::spawn_blocking(move || fs::symlink_metadata(path).is_ok())
+        .await
+        .map(|exists| Json(PathExists { exists }))
+        .map_err(|error| {
+            refuse(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &UserError::new(ErrorCode::Internal, error.to_string()),
+            )
+        })
 }
 
 fn listing(path: Option<&str>) -> Result<FolderListing, Refusal> {
@@ -210,6 +231,27 @@ mod tests {
             answer["parent"],
             canonical.parent().unwrap().to_string_lossy().as_ref()
         );
+    }
+
+    #[tokio::test]
+    async fn exists_counts_hidden_files_and_not_missing_ones() {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::write(folder.path().join(".hidden.ax-devil.workspace"), "x").unwrap();
+        let test = TestApp::new();
+        let mut answers = Vec::new();
+        for name in [".hidden.ax-devil.workspace", "gone.ax-devil.workspace"] {
+            let path = folder.path().join(name);
+            let uri = format!(
+                "/api/files/exists?path={}",
+                path.to_string_lossy().replace('/', "%2F")
+            );
+            let (status, body) = test
+                .send(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                .await;
+            assert_eq!(status, StatusCode::OK);
+            answers.push(json(&body)["exists"].clone());
+        }
+        assert_eq!(answers, [json!(true), json!(false)]);
     }
 
     #[tokio::test]

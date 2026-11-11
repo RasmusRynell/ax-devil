@@ -220,6 +220,15 @@ label: string | null,
 options: Record<string, unknown>, };
 
 /**
+ * What `GET /api/files/exists` answers: whether anything, hidden or not, is at a path on the backend's machine.
+ */
+export type PathExists = { 
+/**
+ * Whether a file or folder is there.
+ */
+exists: boolean, };
+
+/**
  * A workspace file opened or saved lately.
  */
 export type RecentWorkspace = { 

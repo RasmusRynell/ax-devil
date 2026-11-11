@@ -1,15 +1,15 @@
 import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 import { useAccess } from "./access";
 import { apiFetch } from "./api";
-import type { ErrorWire, FolderListing } from "./generated/api";
-import { FolderProblem, PathPicker } from "./kit/PathPicker";
+import type { ErrorWire, FolderListing, PathExists } from "./generated/api";
+import { FolderProblem, PathPicker, type CheckExists } from "./kit/PathPicker";
 import { SUFFIX } from "./recents";
 import { nativeBridge, type WindowBridge } from "./windowBridge";
 
 /** What to choose: how the shell's own dialog does it, and how the path picker does it where there is none. */
 export interface PathRequest {
   native: (bridge: WindowBridge) => Promise<string | null>;
-  picker: Omit<Parameters<typeof PathPicker>[0], "list" | "onChoose" | "onCancel">;
+  picker: Omit<Parameters<typeof PathPicker>[0], "list" | "exists" | "onChoose" | "onCancel">;
 }
 
 /** One video file. */
@@ -68,6 +68,14 @@ async function listFolder(path: string | undefined, signal: AbortSignal): Promis
   throw new FolderProblem(wire?.reason ?? "Cannot open that folder", response.status === 400);
 }
 
+/** Whether the backend's machine has anything at `path`, hidden files and other-case names included. */
+const pathExists: CheckExists = async (path) => {
+  const response = await apiFetch(`/api/files/exists?path=${encodeURIComponent(path)}`);
+  if (response.ok) return ((await response.json()) as PathExists).exists;
+  const wire = (await response.json().catch(() => null)) as ErrorWire | null;
+  throw new Error(wire?.reason ?? "Cannot check that file");
+};
+
 /** Resolves to the absolute path chosen on the backend's machine; null when cancelled. */
 export type PickPath = (request: PathRequest) => Promise<string | null>;
 
@@ -106,6 +114,7 @@ export function PathPickerProvider({ children }: { children: ReactNode }) {
           <PathPicker
             {...asking.request.picker}
             list={listFolder}
+            exists={pathExists}
             onChoose={done}
             onCancel={() => done(null)}
           />

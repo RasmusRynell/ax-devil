@@ -281,6 +281,13 @@ pub struct FolderListing {
     pub places: Vec<FolderPlace>,
 }
 
+/// What `GET /api/files/exists` answers: whether anything, hidden or not, is at a path on the backend's machine.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+pub struct PathExists {
+    /// Whether a file or folder is there.
+    pub exists: bool,
+}
+
 /// One entry of a listed folder.
 #[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
 pub struct FolderEntry {
@@ -329,6 +336,7 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<CheckFilesRequest>();
     types.visit::<FileCheck>();
     types.visit::<FolderListing>();
+    types.visit::<PathExists>();
     types.visit::<FolderEntry>();
     types.visit::<FolderPlace>();
     types.visit::<HiddenTarget>();

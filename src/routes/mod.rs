@@ -246,6 +246,13 @@ pub(crate) const ROUTES: &[Route] = &[
     },
     Route {
         method: MethodFilter::GET,
+        path: "/api/files/exists",
+        listeners: MEMBERS,
+        who: Who::Owner,
+        handler: |method| on(method, folder::exists),
+    },
+    Route {
+        method: MethodFilter::GET,
         path: "/api/network",
         listeners: MEMBERS,
         who: Who::Owner,
