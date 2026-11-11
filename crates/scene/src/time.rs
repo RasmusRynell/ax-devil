@@ -63,16 +63,6 @@ impl ObservationTime {
         self.timestamp
     }
 
-    /// Total observation order: frame-only sightings first, then timestamp-bearing sightings.
-    /// Within each group use the supplied value; timestamps take precedence when both exist.
-    pub fn order_key(&self) -> SceneTime {
-        match self.timestamp {
-            Some(time) => SceneTime::Timestamp(time),
-            // Construction requires at least one clock, so a missing timestamp proves a frame exists.
-            None => SceneTime::Frame(self.frame.expect("a frame without a timestamp")),
-        }
-    }
-
     /// The time on the `kind` clock, if the observation has one.
     pub fn on(&self, kind: TimeKind) -> Option<SceneTime> {
         match kind {

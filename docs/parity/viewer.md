@@ -44,7 +44,7 @@ Row format: [parity](../parity.md). Deviations: [viewer deviations](viewer-devia
 
 ## Scene model
 
-SCN-003 — done: observation clocks and deterministic order. Proved by `crates/scene/src/scene.rs`
-(`mixed_observations_have_a_stable_total_order`), `crates/scene/src/serial/tests.rs`
-(`every_model_value_survives_json_and_postcard`) and `crates/plugins/tests/it/fixtures.rs`
-(`a_plugin_keeps_an_observation_on_another_clock`).
+SCN-003 — done: observations retain their clocks; each arrival moves before strictly greater comparable
+neighbours, stopping at a missing clock or an equal/smaller value. Proved against Python's insertion by
+`crates/scene/src/order_tests.rs` (`observation_order_matches_python_for_random_clock_shapes_and_ties`), with
+round trips in `crates/scene/src/serial/tests.rs` and real ingestion in `crates/plugins/tests/it/fixtures.rs`.

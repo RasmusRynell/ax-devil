@@ -11,6 +11,9 @@ mod filter;
 mod geometry;
 pub mod inspection;
 mod observation;
+mod order;
+#[cfg(test)]
+mod order_tests;
 mod scene;
 pub mod serial;
 mod time;

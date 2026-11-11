@@ -234,7 +234,7 @@ fn every_model_value_survives_json_and_postcard() {
         .iter()
         .map(|o| o.geometry.bounds().left())
         .collect();
-    assert_eq!(order, [0.3, 0.4, 0.2, 0.1]);
+    assert_eq!(order, [0.2, 0.1, 0.3, 0.4]);
     let scenes = [
         rich_scene(),
         mot_frame(7, &[("1", 0.5)]),

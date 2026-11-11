@@ -7,7 +7,7 @@ use crate::{
     EntityId, Fields, Image, MotionState, Name, Observation, SceneError, TimeKind, TimeSlice,
 };
 
-/// One tracked or untracked thing, with its observations in time order once it is in a Scene.
+/// One tracked or untracked thing, with its observations in insertion order once it is in a Scene.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Entity {
     id: EntityId,
@@ -37,18 +37,18 @@ impl Entity {
         &self.id
     }
 
-    /// Where and what the entity was, in time order inside a Scene; in the order added before that.
+    /// Where and what the entity was, in Scene insertion order; in the order added before that.
     pub fn observations(&self) -> &[Observation] {
         &self.observations
     }
 
-    /// The last observation in the deterministic order established by the Scene.
+    /// The last observation after applying arrival insertion at the Scene boundary.
     pub fn latest_observation(&self) -> Option<&Observation> {
         self.observations.last()
     }
 
-    /// Adds an observation after the others. The order in time is made once, by [`Scene::with_entities`], using
-    /// [`crate::ObservationTime::order_key`].
+    /// Adds an observation after the others. The final order is made once, by [`Scene::with_entities`], using
+    /// Python's arrival insertion rule.
     pub fn push_observation(&mut self, observation: Observation) {
         if self.observations.is_empty() {
             // Most entities of a Scene have one observation; do not reserve the default four.
@@ -247,7 +247,8 @@ impl Scene {
         }
     }
 
-    /// Sets the entities, sorting observations by [`crate::ObservationTime::order_key`], with stable ties.
+    /// Sets the entities. Each arriving observation moves before strictly greater neighbours on its timestamp
+    /// clock (when supplied), otherwise its frame clock, stopping at a missing, equal or smaller value.
     /// Observation clocks are independent of the Scene key and are never synthesized.
     ///
     /// An id given twice keeps the position of its first entity and the value of its last.
@@ -255,10 +256,7 @@ impl Scene {
         let mut slots: HashMap<EntityId, usize> = HashMap::with_capacity(entities.len());
         let mut unique: Vec<Entity> = Vec::with_capacity(entities.len());
         for mut entity in entities {
-            let clock = |o: &Observation| o.time.order_key();
-            if !entity.observations.is_sorted_by_key(clock) {
-                entity.observations.sort_by_key(clock);
-            }
+            crate::order::order(&mut entity.observations);
             match slots.entry(entity.id.clone()) {
                 Entry::Occupied(slot) => unique[*slot.get()] = entity,
                 Entry::Vacant(slot) => {
@@ -489,44 +487,6 @@ mod tests {
         assert_eq!(
             scene().with_events(vec![late]),
             Err(SceneError::TimeKindMismatch)
-        );
-    }
-
-    #[test]
-    fn mixed_observations_have_a_stable_total_order() {
-        let timestamp = |us| SceneTime::Timestamp(MediaTime(us));
-        let mut entity = Entity::new(id("a"));
-        for (time, x) in [
-            (timestamp(100), 0.1),
-            (SceneTime::Frame(3), 0.3),
-            (timestamp(50), 0.5),
-        ] {
-            entity.push_observation(observation(time, x));
-        }
-        let scene = Scene::new(TimeSlice::at(SceneTime::Frame(0)))
-            .with_entities(vec![entity])
-            .expect("mixed clocks");
-        let entity = &scene.entities()[0];
-        assert_eq!(
-            entity
-                .observations()
-                .iter()
-                .map(|o| o.time)
-                .collect::<Vec<_>>(),
-            [
-                SceneTime::Frame(3).into(),
-                timestamp(50).into(),
-                timestamp(100).into()
-            ]
-        );
-        assert_eq!(
-            entity
-                .latest_observation()
-                .unwrap()
-                .geometry
-                .bounds()
-                .left(),
-            0.1
         );
     }
 
