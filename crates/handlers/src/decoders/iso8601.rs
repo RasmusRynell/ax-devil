@@ -259,25 +259,37 @@ mod tests {
     }
     #[test]
     fn decided_malformed_timestamps_are_rejected() {
-        // Each JSON string is followed by its measured CPython 3.12.15 UTC value.
-        for table in [
-            include_str!("../../../fixtures/timestamp-rejections/owner-1.txt"),
-            include_str!("../../../fixtures/timestamp-rejections/ai-1.txt"),
-            include_str!("../../../fixtures/timestamp-rejections/ai-2.txt"),
-            include_str!("../../../fixtures/timestamp-rejections/ai-3.txt"),
-            include_str!("../../../fixtures/timestamp-rejections/ai-4.txt"),
+        // UTC microseconds from the Python plugin chain on CPython 3.12.15.
+        for text in [
+            // NUL after a clock prefix.
+            "2024-01-01T12\u{0000}", // CPython: 1704110400000000
+            "2028-08-09T12:34:56.789012\u{0000}+03:04", // CPython: 1849426256789012
+            // NUL after a zone.
+            "2028-08-09T12:34:56.789012+03:04\u{0000}", // CPython: 1849426256789012
+            "2024-01-01T12-0230\u{0000}",               // CPython: 1704119400000000
+            // Whitespace before Z.
+            "2024-01-01T123456\tZ",              // CPython: 1704112496000000
+            "2024-01-01T123456,789012\u{2003}Z", // CPython: 1704112496789012
+            // Whitespace before a numeric offset.
+            "2028-08-09T12:34:56.789012 +03:04", // CPython: 1849426256789012
+            "2024-01-01T123456,789012\u{2003}+02:30", // CPython: 1704103496789012
+            // Other controls before a zone.
+            "2024-01-01T123456\u{0001}+02:30", // CPython: 1704103496000000
+            "2024-01-01T123456,789012\u{0080}+02:30", // CPython: 1704103496789012
+            // Extra digit after colon-separated seconds.
+            "2028-08-09T12:34:561Z",   // CPython: 1849437296000000
+            "2028-08-09T12:34:569-00", // CPython: 1849437296000000
+            // Extra colon field after seconds.
+            "2028-08-09T12:34:56:789012+03:04", // CPython: 1849426256789012
+            "2024-01-01T12:34:56:0",            // CPython: 1704112496000000
+            // Junk after a complete fraction.
+            "2028-08-09T12:34:56.789012t+03:04", // CPython: 1849426256789012
+            "2028-08-09T12:34:56.789012.+03:04", // CPython: 1849426256789012
+            // Junk after a complete clock.
+            "2028-W01-112345tZ", // CPython: 1830511425000000
+            "2028-W01-112345:Z", // CPython: 1830511425000000
         ] {
-            for line in table.lines() {
-                let (input, python) = line
-                    .split_once(" # Python ")
-                    .expect("recorded Python value");
-                let text: String = serde_json::from_str(input).expect("JSON timestamp");
-                assert_eq!(
-                    parse_timestamp(&text),
-                    None,
-                    "{input}; Python reads {python}"
-                );
-            }
+            assert_eq!(parse_timestamp(text), None, "{text:?}");
         }
     }
 }
