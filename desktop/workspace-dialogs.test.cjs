@@ -67,7 +67,10 @@ const electron = {
       return { response: answer };
     },
   },
-  ipcMain: { on: () => {}, handle: (channel, listener) => handlers.set(channel, listener) },
+  ipcMain: {
+    on: (channel, listener) => handlers.set(channel, listener),
+    handle: (channel, listener) => handlers.set(channel, listener),
+  },
   shell: {
     openPath: async (folder) => {
       calls.folders.push(folder);
@@ -89,7 +92,8 @@ function withFakeElectron(load) {
 }
 
 const { installIpc, openWindow } = withFakeElectron(() => require("./window.cjs"));
-installIpc({ connect: () => {}, disconnect: () => {}, restart: () => {} });
+let restarts = 0;
+installIpc({ connect: () => {}, disconnect: () => {}, restart: () => restarts++ });
 
 async function pageContents(options = {}) {
   const window = await openWindow(origin, options);
@@ -269,4 +273,25 @@ void test("the logs folder opens for the backend's one log file name, and nothin
     await assert.rejects(async () => openLogs(event, other), /log file/);
   }
   assert.equal(calls.folders.length, 1);
+});
+
+void test("a window on another machine's server is refused this machine's channels, and a local one the way back", async () => {
+  const remote = await pageContents({ remote: true });
+  const local = await pageContents();
+  const ask = (page, channel, ...args) =>
+    handlers.get(channel)({ sender: page, senderFrame: page.mainFrame }, ...args);
+  const channels = {
+    "workspace:pick-file": ["video"],
+    "export:pick-file": ["v.mp4", "mp4"],
+    "workspace:pick-open": [],
+    "workspace:pick-save": ["Untitled"],
+    "settings:pick-folder": [],
+    "logs:open": ["/state/logs/ax-devil.log"],
+    "window:connect": ["http://host:7340"],
+  };
+  for (const [channel, args] of Object.entries(channels))
+    await assert.rejects(async () => ask(remote, channel, ...args), /Not allowed/, channel);
+  await assert.rejects(async () => ask(local, "window:disconnect"), /Not allowed/);
+  ask(remote, "app:restart");
+  assert.deepEqual([restarts, calls.opens, calls.saves, calls.folders], [0, [], [], []]);
 });

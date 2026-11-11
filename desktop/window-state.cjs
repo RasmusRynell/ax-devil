@@ -1,4 +1,7 @@
-// The saved position and size of the main window, as the shell keeps them in its device file.
+// The saved position and size of the main window. They live in a file of their own that only the shell reads: the
+// device file is served to every window's page, a remote one included, and the window is this machine's.
+const fs = require("node:fs");
+const path = require("node:path");
 
 const DEFAULT_SIZE = { width: 1280, height: 800 };
 
@@ -65,4 +68,25 @@ function windowBounds(saved, areas) {
   return best && overlap(bounds, best) > 0 ? clampInto(bounds, best) : { ...DEFAULT_SIZE };
 }
 
-module.exports = { windowBounds };
+/** The state saved in `file`, or undefined when there is none or it cannot be read. */
+function readWindow(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
+/** Saves `state` in `file`, whole or not at all; a failure only costs the next start its position. */
+function writeWindow(file, state) {
+  const partial = `${file}.partial`;
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(partial, JSON.stringify(state));
+    fs.renameSync(partial, file);
+  } catch (error) {
+    console.error(`Could not save the window position: ${error.message}`);
+  }
+}
+
+module.exports = { readWindow, windowBounds, writeWindow };

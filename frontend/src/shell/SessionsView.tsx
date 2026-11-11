@@ -14,7 +14,6 @@ import { SectionCaption } from "../kit/SectionCaption";
 import { presenceColor } from "../session/Presence";
 import { useCommand, useParticipants, useSession } from "../session/session";
 import { ConnectDialog } from "./ConnectDialog";
-import { useServerKind } from "../windowBridge";
 
 const REFRESH_MS = 2000;
 const COPIED_MS = 1500;
@@ -134,7 +133,7 @@ export function SessionsView() {
   const owner = state === "owner";
   const unshared = state === "none";
   const others = useServerSessions(granted && !owner).filter((other) => other.id !== session?.id);
-  const kind = useServerKind();
+  const bridge = window.axDevilWindow;
   const [connecting, setConnecting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const report = (error: unknown) =>
@@ -221,16 +220,16 @@ export function SessionsView() {
           )}
         </section>
       )}
-      {unshared && kind === "local" && (
+      {unshared && bridge?.connect && (
         <Action icon="plug" data-cursor-id="sessions:connect" onClick={() => setConnecting(true)}>
           Connect to server
         </Action>
       )}
-      {unshared && kind === "remote" && (
+      {unshared && bridge?.disconnect && (
         <Action
           icon="plug"
           data-cursor-id="sessions:disconnect"
-          onClick={() => void window.axDevilWindow?.disconnect?.().catch(report)}
+          onClick={() => void bridge.disconnect?.().catch(report)}
         >
           Disconnect
         </Action>

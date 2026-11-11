@@ -12,7 +12,7 @@ const { confirmLink, linkTarget, registerLinks, singleInstance } = require("./li
 const { askAfterFailure, explainFailure, parseTarget, verifyServer } = require("./remote.cjs");
 const { installUncaughtHandler } = require("./uncaught.cjs");
 const { installIpc, localWindows, openWindow } = require("./window.cjs");
-const { windowBounds } = require("./window-state.cjs");
+const { readWindow, windowBounds, writeWindow } = require("./window-state.cjs");
 
 const smoke = process.argv.includes("--smoke-test");
 // The smoke test always starts its own backend and never attaches to a running session.
@@ -60,10 +60,11 @@ if (smoke) {
 // Electron's own data (Chromium profile, crash dumps) is browser state, not ax-devil data: the backend owns the
 // app's folders, so keep Electron out of them.
 app.setPath("userData", path.join(app.getPath("cache"), "ax-devil-chromium"));
-// The theme and text size of this device and the last window's position, kept beside the backend's own files and apart
-// from Chromium's cache.
-const device = createDeviceValues(path.join(app.getPath("appData"), "ax-devil", "device.json"));
-// The first local window of this run is remembered: where it was and how big, in the device file.
+// The theme and text size of this device, kept beside the backend's own files and apart from Chromium's cache.
+const shellFolder = path.join(app.getPath("appData"), "ax-devil");
+const device = createDeviceValues(path.join(shellFolder, "device.json"));
+// The first local window of this run is remembered: where it was and how big, in a file no page can reach.
+const windowFile = path.join(shellFolder, "window.json");
 let localOrigin;
 let remembered;
 let windowState;
@@ -151,7 +152,7 @@ async function showLocal(replace) {
   const origin = devUrl || localOrigin;
   if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) throw new Error("Invalid local desktop URL");
   const first = !replace && !smoke && !remembered;
-  const saved = first ? device.read().window : undefined;
+  const saved = first ? readWindow(windowFile) : undefined;
   const bounds = windowBounds(
     saved,
     screen.getAllDisplays().map((display) => display.workArea),
@@ -274,7 +275,7 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   if (stopping) return;
   stopping = true;
-  if (windowState) device.set("window", windowState);
+  if (windowState) writeWindow(windowFile, windowState);
   void backend.stop().then(() => {
     stopped = true;
     app.exit(exitCode);
