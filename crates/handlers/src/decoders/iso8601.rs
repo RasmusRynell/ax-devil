@@ -258,16 +258,26 @@ mod tests {
         }
     }
     #[test]
-    fn owner_decided_malformed_timestamps_are_rejected() {
-        for text in [
-            "2028-08-09T12:34:561Z",
-            "2028-08-09T12:34:56.789012 +03:04",
-            "2028-08-09T12:34:56.789012\0+03:04",
-            "2028-08-09T12:34:56:789012+03:04",
-            "2028-W01-112345tZ",
-            "2028-08-09T12:34:56.789012+03:04\0",
+    fn decided_malformed_timestamps_are_rejected() {
+        // Each JSON string is followed by its measured CPython 3.12.15 UTC value.
+        for table in [
+            include_str!("../../../fixtures/timestamp-rejections/owner-1.txt"),
+            include_str!("../../../fixtures/timestamp-rejections/ai-1.txt"),
+            include_str!("../../../fixtures/timestamp-rejections/ai-2.txt"),
+            include_str!("../../../fixtures/timestamp-rejections/ai-3.txt"),
+            include_str!("../../../fixtures/timestamp-rejections/ai-4.txt"),
         ] {
-            assert_eq!(parse_timestamp(text), None, "{text:?}");
+            for line in table.lines() {
+                let (input, python) = line
+                    .split_once(" # Python ")
+                    .expect("recorded Python value");
+                let text: String = serde_json::from_str(input).expect("JSON timestamp");
+                assert_eq!(
+                    parse_timestamp(&text),
+                    None,
+                    "{input}; Python reads {python}"
+                );
+            }
         }
     }
 }

@@ -4,6 +4,7 @@ Committed test inputs, shared by Rust and frontend tests. Each one records where
 
 | File | Source | License |
 |------|--------|---------|
+| `timestamp-rejections/` | CPython 3.12.15 comparison; [provenance and full list](timestamp-rejections/README.md) | Generated for this repository (MIT) |
 | `decoders/onvif_xml/sample_frame.xml` | One ONVIF analytics scene-description frame, carried unchanged from `tests/plugins/decoders/onvif_xml/data/` at the reference commit (`docs/rebuild/README.md`) | Repository license (MIT) |
 | `decoders/onvif_xml/frames.xml` | Written by hand for `crates/handlers/tests/decoders/onvif_xml.rs`: three documents among blank, whitespace-only and CRLF lines, one nested in a metadata stream and one malformed | Generated for this repository (MIT) |
 | `decoders/cvat/sample.xml` | A two-frame CVAT task with a box track and a polygon track, carried unchanged from `tests/plugins/decoders/cvat/sample_data.py` at the reference commit (`docs/rebuild/README.md`) | Repository license (MIT) |
