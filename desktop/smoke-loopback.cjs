@@ -7,7 +7,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { createInterface } = require("node:readline");
-const { page, frames, settled, SCREENSHOTS, SMOKE_ROOT } = require("./smoke-kit.cjs");
+const { page, frames, settled, saveFailure, SCREENSHOTS, SMOKE_ROOT } = require("./smoke-kit.cjs");
 const { inBackendWindow } = require("./smoke-twice.cjs");
 
 module.exports.run = async () => {
@@ -105,11 +105,18 @@ module.exports.run = async () => {
           const row = `[...document.querySelectorAll('[role=treeitem]')].filter(r => r.textContent.includes('Loopback')).at(-1)`;
           const toolbar = `document.querySelector('[role=toolbar][aria-label=Live]')`;
           const hover = async () => {
+            // The other Owner can take focus; blur ends a preview. Re-enter the row, since a
+            // move at the old coordinates does not start a hover that was cancelled.
+            window.focus();
+            await wait("document.hasFocus()");
+            window.webContents.sendInputEvent({ type: "mouseMove", x: 0, y: 0 });
+            await wait(`!(${row}).matches(':hover')`);
             const point = await settled(
               window,
               `(() => { const r = (${row}).getBoundingClientRect(); return {x: Math.round(r.x + 30), y: Math.round(r.y + r.height / 2)}; })()`,
             );
             window.webContents.sendInputEvent({ type: "mouseMove", ...point });
+            await wait(`(${row}).matches(':hover')`);
           };
           const shoot = async (state) => {
             for (const shown of ["light", "dark"]) {
@@ -137,7 +144,9 @@ module.exports.run = async () => {
               await frames({ js });
               if (await colour(channel, hover)) return;
             }
-            throw new Error(`No ${channel} picture rendered`);
+            throw new Error(
+              `No ${channel} ${hover ? "hover preview" : "viewer"} picture rendered\n${await saveFailure(window)}`,
+            );
           };
           await fs.mkdir(SCREENSHOTS, { recursive: true });
           await wait(row);
@@ -185,8 +194,6 @@ module.exports.run = async () => {
           await second.wait(`${toolbar}?.textContent.includes('Unsupported')`);
           await js(`document.querySelector('button[aria-label="Close this pane"]').click()`);
           await wait(`!${toolbar}`);
-          window.webContents.sendInputEvent({ type: "mouseMove", x: 1000, y: 500 });
-          await frames({ js });
           await hover();
           await picture("blue", true);
           await shoot("closed");
