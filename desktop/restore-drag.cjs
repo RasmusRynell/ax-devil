@@ -17,6 +17,9 @@ function cancel(window) {
   window.removeListener("unmaximize", held.restored);
   window.removeListener("blur", held.cancel);
   window.removeListener("closed", held.cancel);
+  window.webContents.removeListener("did-start-navigation", held.navigate);
+  window.webContents.removeListener("render-process-gone", held.cancel);
+  window.webContents.removeListener("destroyed", held.cancel);
 }
 
 function restoreDrag(window, phase, titleHeight) {
@@ -36,10 +39,16 @@ function restoreDrag(window, phase, titleHeight) {
       ready: false,
       restored: () => {},
       cancel: () => cancel(window),
+      navigate: (_event, _url, _inPlace, mainFrame) => {
+        if (mainFrame) cancel(window);
+      },
     };
     gestures.set(window, held);
     window.once("blur", held.cancel);
     window.once("closed", held.cancel);
+    window.webContents.on("did-start-navigation", held.navigate);
+    window.webContents.once("render-process-gone", held.cancel);
+    window.webContents.once("destroyed", held.cancel);
     return;
   }
   const held = gestures.get(window);

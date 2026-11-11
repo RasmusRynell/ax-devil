@@ -14,14 +14,26 @@ function overlap(bounds, area) {
   return across > 0 && down > 0 ? across * down : 0;
 }
 
-/** Whether the whole title-bar band, including the right-hand window controls, is on this display. */
-function titleBarInside(bounds, area) {
-  return (
-    bounds.x >= area.x &&
-    bounds.x + bounds.width <= area.x + area.width &&
-    bounds.y >= area.y &&
-    bounds.y + Math.min(40, bounds.height) <= area.y + area.height
-  );
+/** Whether the desktop's work-area union covers the saved rectangle, including monitor seams but not gaps.
+ * Electron supplies these coordinates in DIP; applying display scale factors again would distort the union.
+ */
+function fullyVisible(bounds, areas) {
+  const right = bounds.x + bounds.width;
+  const bottom = bounds.y + bounds.height;
+  const edges = [...new Set([bounds.x, right, ...areas.flatMap((a) => [a.x, a.x + a.width])])]
+    .filter((x) => x >= bounds.x && x <= right)
+    .sort((a, b) => a - b);
+  return edges.slice(1).every((x, index) => {
+    const strips = areas
+      .filter((a) => a.x <= edges[index] && a.x + a.width >= x)
+      .sort((a, b) => a.y - b.y);
+    let covered = bounds.y;
+    for (const strip of strips) {
+      if (strip.y > covered) break;
+      covered = Math.max(covered, strip.y + strip.height);
+    }
+    return covered >= bottom;
+  });
 }
 
 /** `bounds` moved into `area`, and shrunk to fit it when larger. */
@@ -36,10 +48,8 @@ function clampInto(bounds, area) {
   };
 }
 
-/**
- * The window options for a saved state: its bounds when the title bar is wholly on one of the `areas` (the displays' work
- * areas) and they fit it, else the bounds moved into the display they overlap most, else the default size, which Electron
- * centers. Anything that is not a state with whole-number bounds counts as nothing saved.
+/** Preserve fully visible saved bounds; recover unreachable bounds onto the best-overlapping display.
+ * Missing or invalid bounds use a screen-bounded default size, which Electron centers.
  */
 function windowBounds(saved, areas) {
   const defaults = areas[0]
@@ -57,9 +67,7 @@ function windowBounds(saved, areas) {
   )
     return defaults;
   const bounds = { x: saved.x, y: saved.y, width: saved.width, height: saved.height };
-  const holding = areas.find((area) => titleBarInside(bounds, area));
-  // Keep the whole restored window in its work area, so controls also fit at larger text sizes and zoom.
-  if (holding) return clampInto(bounds, holding);
+  if (fullyVisible(bounds, areas)) return bounds;
   const best = areas.reduce(
     (most, area) => (overlap(bounds, area) > overlap(bounds, most) ? area : most),
     areas[0],

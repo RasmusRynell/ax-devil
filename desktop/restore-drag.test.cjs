@@ -46,7 +46,7 @@ void test("ending or replacing a gesture retires its pending unmaximize callback
     isDestroyed: () => false,
     getBounds: () => ({ x: 0, y: 0, width: 1280, height: 1000 }),
     getNormalBounds: () => ({ x: 100, y: 100, width: 800, height: 600 }),
-    webContents: { getZoomFactor: () => 1 },
+    webContents: Object.assign(new EventEmitter(), { getZoomFactor: () => 1 }),
     unmaximize: () => {}, // Explicit gate: the test releases the WM event below.
     setBounds: (bounds) => writes.push(bounds),
   });
@@ -57,13 +57,33 @@ void test("ending or replacing a gesture retires its pending unmaximize callback
     restoreDrag(window, "move");
     return window.listeners("unmaximize")[0];
   };
-  for (const exit of ["end", "replace", "blur", "closed"]) {
+  for (const exit of [
+    "end",
+    "replace",
+    "blur",
+    "closed",
+    "navigation",
+    "render-process-gone",
+    "destroyed",
+  ]) {
     const stale = pending();
     assert.equal(typeof stale, "function");
     if (exit === "replace") restoreDrag(window, "start", 30);
     else if (exit === "end") restoreDrag(window, "end");
+    else if (exit === "navigation") {
+      window.webContents.emit("did-start-navigation", {}, "about:blank", false, false);
+      assert.equal(window.listenerCount("unmaximize"), 1, "subframe keeps the current gesture");
+      window.webContents.emit("did-start-navigation", {}, "about:blank", false, true);
+    } else if (exit === "render-process-gone" || exit === "destroyed")
+      window.webContents.emit(exit);
     else window.emit(exit);
     assert.equal(window.listenerCount("unmaximize"), 0, exit);
+    for (const name of ["did-start-navigation", "render-process-gone", "destroyed"])
+      assert.equal(
+        window.webContents.listenerCount(name),
+        exit === "replace" ? 1 : 0,
+        `${exit}: ${name} retired`,
+      );
     window.emit("unmaximize");
     stale(); // Even a callback already queued before cancellation must not write bounds.
     assert.deepEqual(writes, [], exit);

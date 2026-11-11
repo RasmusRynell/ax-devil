@@ -1,8 +1,7 @@
-const { spawn } = require("node:child_process");
 const path = require("node:path");
 const assert = require("node:assert/strict");
-const { SMOKE_ROOT, openAddVideo, page, setView, until } = require("./smoke-kit.cjs");
-const { input, point } = require("./smoke-x11.cjs");
+const { SMOKE_ROOT, openAddVideo, page, setView } = require("./smoke-kit.cjs");
+const { input, point, focus, withUnfocused } = require("./smoke-x11.cjs");
 const ROW = "document.querySelector('[role=treeitem]')";
 const CARD = "document.querySelector('[aria-hidden] > canvas')";
 
@@ -21,12 +20,14 @@ module.exports.run = async ({ window }) => {
   await wait(`${add}?.disabled === false`);
   await js(`${add}.click()`);
   await wait(`!document.querySelector('dialog') && ${ROW}`);
-  const hover = async () => {
-    await input("move", 1200, 950);
-    const at = await point(window, ROW);
-    await input("move", at.x, at.y);
-    await wait(CARD);
-  };
+  const hover = () =>
+    withUnfocused(window, async () => {
+      await focus(window);
+      await input("move", 1200, 950);
+      const at = await point(window, ROW);
+      await input("move", at.x, at.y);
+      await wait(CARD);
+    });
   // Switching away from the browser and hiding its tree must dispose the floating card even without pointerleave.
   for (const action of [
     "document.querySelector('[aria-label=Plugins]')",
@@ -45,21 +46,9 @@ module.exports.run = async ({ window }) => {
   }
   await hover();
   assert.ok(window.isFocused(), "the hovered app starts active");
-  const other = spawn("python3", [path.join(SMOKE_ROOT, "scripts/private-x11.py"), "competitor"], {
-    stdio: ["pipe", "inherit", "inherit"],
-  });
-  const closed = new Promise((resolve, reject) => {
-    other.once("error", reject);
-    other.once("exit", resolve);
-  });
-  try {
-    await until(() => !window.isFocused(), "native activation transfer to another X client");
+  await withUnfocused(window, async () => {
     await wait(`!${CARD}`);
-    window.focus();
-    await until(() => window.isFocused(), "return to the app");
+    await focus(window);
     assert.equal(await js(`Boolean(${CARD})`), false, "reactivation does not revive the old hover");
-  } finally {
-    other.stdin.end();
-    await closed;
-  }
+  });
 };

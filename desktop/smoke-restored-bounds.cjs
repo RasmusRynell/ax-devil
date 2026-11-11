@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const { openWindow } = require("./window.cjs");
 const { windowBounds } = require("./window-state.cjs");
 const { page, until, frames, SMOKE_ROOT } = require("./smoke-kit.cjs");
-const { input, point } = require("./smoke-x11.cjs");
+const { input, point, focus, withUnfocused } = require("./smoke-x11.cjs");
 
 module.exports.run = async ({ window }) => {
   const shots = path.join(SMOKE_ROOT, "artifacts/window-behavior/shots");
@@ -47,17 +47,20 @@ module.exports.run = async ({ window }) => {
         path.join(shots, `restored-bounds-${++index}.png`),
         (await restored.webContents.capturePage()).toPNG(),
       );
-      const close = await point(restored, "document.querySelector('[aria-label=Close]')");
-      await input("move", close.x, close.y);
-      try {
-        await input("down");
-      } finally {
-        await input("up");
-      }
-      await until(
-        () => restored.isDestroyed(),
-        "the restored Close control to work through native input",
-      );
+      await withUnfocused(restored, async () => {
+        await focus(restored);
+        const close = await point(restored, "document.querySelector('[aria-label=Close]')");
+        await input("move", close.x, close.y);
+        try {
+          await input("down");
+        } finally {
+          await input("up");
+        }
+        await until(
+          () => restored.isDestroyed(),
+          "the restored Close control to work through native input",
+        );
+      });
     } finally {
       if (!restored.isDestroyed()) restored.destroy();
     }
