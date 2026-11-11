@@ -14,7 +14,6 @@ mod bridge;
 pub mod camera_questions;
 mod connector;
 #[cfg(any(test, feature = "fake"))]
-#[allow(missing_docs, reason = "test doubles, named by what they do")]
 pub mod fake;
 mod feed;
 pub mod glance;
