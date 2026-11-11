@@ -111,6 +111,8 @@ async function gallery(window) {
   const answer = () =>
     js("document.querySelector('output[aria-label=\"Last choice\"]').textContent");
   const dialogOpen = () => js("Boolean(document.querySelector('dialog[open]'))");
+  const pickerOpener =
+    "[...document.querySelectorAll('button')].find((b) => b.textContent === 'Open path picker')";
   const clickButton = async (text) => {
     const target = `[...document.querySelectorAll('button')].find(b => b.textContent === ${JSON.stringify(text)})`;
     await js(`${target}?.scrollIntoView({block: 'center'})`);
@@ -120,7 +122,18 @@ async function gallery(window) {
     await setView(window, [1280, 1000], 1);
     await clickButton("Open path picker");
     await wait("document.querySelector('dialog[open] [role=group] button')");
+    await wait("document.activeElement?.labels?.[0]?.textContent === 'Name'");
     await frames({ js });
+  };
+
+  const closePicker = async () => {
+    key(window, "Escape");
+    await wait("!document.querySelector('dialog[open]')");
+    assert.equal(
+      await js(`document.activeElement === ${pickerOpener}`),
+      true,
+      "the path picker restores its opener's focus",
+    );
   };
 
   for (const theme of ["light", "dark"]) {
@@ -154,8 +167,7 @@ async function gallery(window) {
     // The path picker lists the server's folders; Escape cancels it.
     await openPicker();
     await shoot(`kit-path-picker-${theme}.png`);
-    key(window, "Escape");
-    await wait("!document.querySelector('dialog[open]')");
+    await closePicker();
   }
 
   // The dialog's long message scrolls and its choices stay in view at the window minimum and 200% zoom.
@@ -172,8 +184,7 @@ async function gallery(window) {
   await setView(window, [640, 480], 2);
   await frames({ js });
   assert.deepEqual(await js(`(${fit.dialog.toString()})()`), [], "the path picker at 200% zoom");
-  key(window, "Escape");
-  await wait("!document.querySelector('dialog[open]')");
+  await closePicker();
   for (const theme of ["light", "dark"]) {
     nativeTheme.themeSource = theme;
     await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
