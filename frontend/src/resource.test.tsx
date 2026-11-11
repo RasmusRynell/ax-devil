@@ -101,6 +101,22 @@ describe("useResource", () => {
     expect(read).toHaveBeenCalledTimes(3);
   });
 
+  it("gives the read that follows an applied answer its own retries, after the earlier ones are used up", async () => {
+    vi.useFakeTimers();
+    const { read, answer, fail, apply } = harness("plugins", false);
+    await fail(0);
+    for (const [index, wait] of [1000, 2000, 4000].entries()) {
+      await act(() => vi.advanceTimersByTimeAsync(wait));
+      await fail(1 + index);
+    }
+    expect(read).toHaveBeenCalledTimes(4);
+    await apply("delayed answer", 0);
+    await fail(4);
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    await answer(5, "recovered", 0);
+    expect(screen.getByText("recovered")).toBeTruthy();
+  });
+
   it("tries a failed read again with waits, and again for a repeated notice once those are used up", async () => {
     vi.useFakeTimers();
     const { read, answer, fail, notice } = harness();

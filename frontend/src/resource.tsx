@@ -156,8 +156,9 @@ export function useResource<T>(
   }, []);
 
   const begin = useCallback(
-    (path: string) => {
+    (path: string, retrying = false) => {
       stop();
+      if (!retrying) retry.current.attempt = 0;
       const request = new AbortController();
       running.current = { path, request };
       const started = newest.current;
@@ -168,7 +169,6 @@ export function useResource<T>(
           running.current = null;
           const own = revisionOf?.(value);
           held.current = { path, started, own, backend: revisions?.backends() ?? 0 };
-          retry.current.attempt = 0;
           setShown({ path, value });
           // Notices that came during the read: one more for the newest.
           if (newest.current !== started) begin(path);
@@ -178,7 +178,7 @@ export function useResource<T>(
           running.current = null;
           setShown((now) => ({ path, value: now.path === path ? now.value : undefined, error }));
           const wait = RETRY_MS[retry.current.attempt++];
-          if (wait !== undefined) retry.current.timer = setTimeout(() => begin(path), wait);
+          if (wait !== undefined) retry.current.timer = setTimeout(() => begin(path, true), wait);
         },
       );
     },
@@ -192,7 +192,6 @@ export function useResource<T>(
       return;
     }
     if (reflects(held.current, path, noticed) || running.current?.path === path) return;
-    retry.current.attempt = 0;
     begin(path);
   }, [path, noticed, notices, reloads, begin, stop]);
   useEffect(() => stop, [stop]);
