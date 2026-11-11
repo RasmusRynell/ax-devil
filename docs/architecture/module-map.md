@@ -23,9 +23,7 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `crates/workspace/` | Layer 2: workspace items, recipes, Content (videos and playlists of entries and lanes) and the intake. Resolving checks the files only; opening media is the viewer's job |
 | `crates/scene/` | Layer 2: the Scene model decoders produce, the class filter policy and the Sample Item columns encoder and the grouped fields of an entity for inspection |
 | `crates/handler-api/` | Layer 2: what a handler is: the `Decoder` and `PlaylistResolver` traits, the `Input` and `SceneSink` they run against, the `Form` of options and settings both declare and validate, and the overlay and video references |
-| `crates/scene-decoders/` | Layer 2: built-in decoders from overlay records to Scenes (MOT, UVG-VCM, ONVIF XML, CVAT, ADF) |
-| `crates/playlist-resolvers/` | Layer 2: built-in resolvers from settings to playlists of videos and overlay files (folder pair, MOT Challenge) |
-| `crates/handlers/` | Layer 2: the one registry of decoders and playlist resolvers (the built-ins and the installed plugins' handlers), and the swappable set of it that running work takes snapshots of |
+| `crates/handlers/` | Layer 2: the built-in decoders from overlay records to Scenes (`decoders`: MOT, UVG-VCM, ONVIF XML, CVAT, ADF) and playlist resolvers from settings to playlists of videos and overlay files (`resolvers`: folder pair, MOT Challenge), and the one registry of them with the installed plugins' handlers, with the swappable set of it that running work takes snapshots of |
 | `crates/overlay-sync/` | Layer 2: Overlay Lookup, the pure choice of the sample that belongs to a frame (matching, coverage, sticky) |
 | `crates/media/` | Layer 3: video file or image sequence to frame index and frames (FFmpeg); the only crate that links it ([README](../../crates/media/README.md)) |
 | `crates/playback/` | Layer 3: what to decode and cache around each viewer's playhead, and its delivery; never depends on `media` ([README](../../crates/playback/README.md)) |

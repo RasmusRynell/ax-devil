@@ -2,7 +2,7 @@
 //!
 //! Resolvers read folders only; opening the media and decoding the overlays belong to their own crates, and item
 //! and content ids are assigned by the host. They implement [`handler_api::PlaylistResolver`]; the registry that
-//! finds them by id is `handlers`.
+//! finds them by id is [`crate::Handlers`].
 
 mod folder_pair;
 mod mot_challenge;

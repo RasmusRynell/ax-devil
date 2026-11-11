@@ -7,7 +7,7 @@ use crate::common;
 
 #[test]
 fn every_live_decoder_gives_its_header_before_reading_a_record() {
-    let live: Vec<_> = scene_decoders::decoders()
+    let live: Vec<_> = handlers::decoders::decoders()
         .into_iter()
         .filter(|decoder| decoder.reads_live())
         .collect();
@@ -36,7 +36,7 @@ fn every_live_decoder_gives_its_header_before_reading_a_record() {
 
 #[test]
 fn adf_frames_take_a_live_source_and_consolidated_tracks_do_not() {
-    let live: Vec<_> = scene_decoders::decoders()
+    let live: Vec<_> = handlers::decoders::decoders()
         .into_iter()
         .filter(|decoder| decoder.spec().plugin.starts_with("adf") && decoder.reads_live())
         .map(|decoder| decoder.spec().id.clone())

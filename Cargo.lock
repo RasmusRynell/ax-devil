@@ -947,10 +947,14 @@ dependencies = [
 name = "handlers"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "foundation",
  "handler-api",
- "playlist-resolvers",
- "scene-decoders",
+ "memchr",
+ "quick-xml",
+ "scene",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -1651,16 +1655,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "playlist-resolvers"
-version = "0.1.0"
-dependencies = [
- "foundation",
- "handler-api",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "plugins"
 version = "0.1.0"
 dependencies = [
@@ -2152,20 +2146,6 @@ dependencies = [
  "serde",
  "serde_json",
  "ts-rs",
-]
-
-[[package]]
-name = "scene-decoders"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "foundation",
- "handler-api",
- "memchr",
- "quick-xml",
- "scene",
- "serde_json",
- "tempfile",
 ]
 
 [[package]]

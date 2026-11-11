@@ -15,7 +15,7 @@ use handler_api::{
     VideoRef, invalid_field,
 };
 
-use crate::resolved_file_type;
+use crate::resolvers::resolved_file_type;
 
 const DETECTOR_SUFFIXES: [&str; 3] = ["DPM", "FRCNN", "SDP"];
 const NOT_LISTED: &str = "They are not in the playlist.";

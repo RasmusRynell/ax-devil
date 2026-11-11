@@ -9,7 +9,7 @@ A plugin is a program in the user's own folder, outside this repository, with a 
 provides. For an overlay format that is a decoder handler: ax-devil runs the program on an overlay file, reads Scenes
 from its stdout and draws them like any built-in format. For a dataset layout it does not know that is a playlist
 resolver handler: the program turns settings (a folder, choices it scans for) into videos with their overlay files.
-A handler shipped with ax-devil is a built-in in `crates/scene-decoders` or `crates/playlist-resolvers` and is
+A handler shipped with ax-devil is a built-in in `crates/handlers` (`decoders` or `resolvers`) and is
 development work. The contract is in
 [reference.md](reference.md); `docs/plugins.md` says what installing one means for the user's safety.
 

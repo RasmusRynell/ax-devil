@@ -1,7 +1,7 @@
 //! Built-in Scene decoders: overlay files and records turned into Scenes (MOT, UVG-VCM, ONVIF XML, CVAT, ADF).
 //!
 //! They implement [`handler_api::Decoder`]; these are not the playback crate's video decoders. The registry that
-//! finds them by id or file name is `handlers`.
+//! finds them by id or file name is [`crate::Handlers`].
 
 mod adf;
 mod cvat;

@@ -10,7 +10,7 @@ use handler_api::{
     ResolvedPlaylist, ResolvedPlaylists, ResolverSpec, ScanCount, Values, VideoRef, invalid_field,
 };
 
-use crate::resolved_file_type;
+use crate::resolvers::resolved_file_type;
 
 const COMPRESSION_SUFFIXES: [&str; 4] = ["bz2", "gz", "xz", "zst"];
 

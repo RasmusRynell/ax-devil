@@ -7,7 +7,7 @@ use handler_api::{
     Choice, ImageSequence, PlaylistResolver, ResolvedEntry, ResolvedPlaylists, Settings, Values,
     VideoRef,
 };
-use playlist_resolvers::resolvers;
+use handlers::resolvers::resolvers;
 use serde_json::json;
 
 fn resolver() -> Arc<dyn PlaylistResolver> {

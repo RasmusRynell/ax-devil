@@ -4,7 +4,7 @@ use std::{fs, path::Path, sync::Arc};
 
 use foundation::{CancelToken, HostPath, Interrupt, Location};
 use handler_api::{PlaylistResolver, ResolvedPlaylists, Settings, VideoRef};
-use playlist_resolvers::resolvers;
+use handlers::resolvers::resolvers;
 use serde_json::json;
 
 fn resolver() -> Arc<dyn PlaylistResolver> {

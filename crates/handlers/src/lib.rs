@@ -1,7 +1,11 @@
-//! The one registry of decoders and playlist resolvers.
+//! The built-in decoders and playlist resolvers, and the one registry of them.
 //!
-//! The built-ins come from their crates; installed plugins are added behind the same type. Everything that picks
-//! a decoder or resolver by id or by file name asks a [`Handlers`], never the crates' own lists.
+//! [`decoders`] and [`resolvers`] hold the built-ins; installed plugins are added behind the same [`Handlers`] type.
+//! Everything that picks a decoder or resolver by id or by file name asks a [`Handlers`], never the modules' own
+//! lists.
+
+pub mod decoders;
+pub mod resolvers;
 
 use std::{
     path::Path,
@@ -22,9 +26,9 @@ impl Handlers {
     pub fn built_in() -> Self {
         Self {
             decoders: Vec::new(),
-            resolvers: playlist_resolvers::resolvers(),
+            resolvers: resolvers::resolvers(),
         }
-        .with_decoders(scene_decoders::decoders())
+        .with_decoders(decoders::decoders())
     }
 
     /// These handlers plus `decoders`, after the built-ins, in the order given.

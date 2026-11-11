@@ -12,7 +12,7 @@ use scene::Scene;
 
 /// The built-in decoder with this id.
 pub fn decoder(id: &str) -> Arc<dyn Decoder> {
-    scene_decoders::decoders()
+    handlers::decoders::decoders()
         .into_iter()
         .find(|decoder| decoder.spec().id == id)
         .unwrap_or_else(|| panic!("{id} is built in"))
