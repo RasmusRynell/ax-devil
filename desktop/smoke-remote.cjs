@@ -6,6 +6,7 @@ const http = require("node:http");
 const path = require("node:path");
 const { backendExecutable, startProcess } = require("./backend.cjs");
 const { apiVersion, shellApi } = require("./generated/api.json");
+const { supportsRestoreDrag } = require("./restore-drag.cjs");
 const fit = require("./fit.cjs");
 const {
   SCREENSHOTS,
@@ -194,9 +195,11 @@ async function remote(local, shell) {
         "onDeviceValuesChange",
         "onFullScreenChange",
         "onMaximizedChange",
-        ...(window.webContents
-          .getLastWebPreferences()
-          .additionalArguments?.includes("--ax-devil-restore-drag")
+        ...(supportsRestoreDrag(
+          process.platform,
+          app.commandLine.getSwitchValue("ozone-platform"),
+          process.env,
+        )
           ? ["restoreDrag"]
           : []),
         "setDeviceValue",
