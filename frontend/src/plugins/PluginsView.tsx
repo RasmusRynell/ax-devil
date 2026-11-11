@@ -139,12 +139,7 @@ function Row({
 /** The sidebar's Plugins view: the plugins that failed, are installed and ship with the app, and installing, updating and removing. */
 export function PluginsView() {
   // `apply` shows a change's answer instead of any read still pending.
-  const {
-    value: info,
-    error,
-    apply,
-    reload,
-  } = useResource<PluginsInfo>("plugins", "/api/plugins");
+  const { value: info, error, apply, reload } = useResource<PluginsInfo>("plugins", "/api/plugins");
   const failure = error ? reasonOf(error as ErrorWire) : null;
   useEffect(() => {
     if (info) reportFailedPlugins(failedIn(info));
