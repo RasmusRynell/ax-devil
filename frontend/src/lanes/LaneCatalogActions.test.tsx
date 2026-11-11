@@ -121,12 +121,29 @@ describe("catalog copy and delete", () => {
     expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
   });
 
-  it("makes the backend read the file again, then asks for the document anew", async () => {
-    const calls = routes({ ok: true });
-    const { onReload } = setup("user:night.json", "built-in:standard");
+  it("reloads only the current selection and ignores superseded reload failures", async () => {
+    const replies: ((response: Response) => void)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>((resolve) => replies.push(resolve))),
+    );
+    const { onReload, moveTo } = setup("user:night.json", "built-in:standard");
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
-    await waitFor(() => expect(onReload).toHaveBeenCalledOnce());
-    expect(calls).toEqual([["/api/catalogs/reload", { id: "user:night.json" }]]);
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await act(async () => {
+      replies[1](new Response(null, { status: 204 }));
+    });
+    await act(async () => {
+      replies[0](Response.json({ code: "CatalogInvalid", reason: "old failure" }, { status: 400 }));
+    });
+    expect(onReload).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    moveTo("built-in:tracking");
+    await act(async () => {
+      replies[2](new Response(null, { status: 204 }));
+    });
+    expect(onReload).toHaveBeenCalledOnce();
   });
 
   it("says why a copy was refused and keeps the name for another try", async () => {

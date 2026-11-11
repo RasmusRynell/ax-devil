@@ -120,7 +120,7 @@ describe("lane menu", () => {
         vi.fn(async () => Response.json({ revision: 2, document: "{}" })),
       );
       fireEvent.click(screen.getByRole("button", { name: "Use as default" }));
-      await screen.findByText(/Error:/);
+      await screen.findByRole("alert");
       expect(save).not.toHaveBeenCalled();
       vi.stubGlobal(
         "fetch",

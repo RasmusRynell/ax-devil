@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { useAccess } from "./access";
 import { ask } from "./ask";
 import {
@@ -19,6 +19,11 @@ import { type Login, secretStateOf } from "./secret";
  * now, whoever wrote it.
  */
 export interface SettingsApi extends SettingsState {
+  /** Validates a default choice; the newest request across menus wins. */
+  saveCatalogDefault: (
+    id: string,
+    validate: () => Promise<number | undefined>,
+  ) => Promise<ErrorWire | null>;
   /** Baseline for edits: confirmed values without Quick Setup previews; Device persistence is best effort. */
   savedValues: SettingsState["values"];
   /** Previews a Device choice without storing it; Quick Setup keeps it on refusal. */
@@ -224,7 +229,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   };
   const shortcuts = remote?.shortcuts ?? STANDARD_SHORTCUTS;
   return (
-    <SettingsContext.Provider
+    <SettingsScope
       value={{
         revision: remote?.revision ?? 0,
         values,
@@ -236,8 +241,35 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-    </SettingsContext.Provider>
+    </SettingsScope>
   );
+}
+
+/** Shares catalog validation ordering across every menu using the settings owner. */
+export function SettingsScope({ value, children }: {
+  value: Omit<SettingsApi, "saveCatalogDefault">;
+  children: ReactNode;
+}) {
+  const current = useRef(value.apply);
+  current.current = value.apply;
+  const newest = useRef(0);
+  useEffect(() => () => { newest.current++; }, []);
+  const apply: SettingsApi["apply"] = (patch) => {
+    if ("overlays.default_catalog" in (patch.set ?? {}) ||
+        patch.reset?.includes("overlays.default_catalog")) newest.current++;
+    return current.current(patch);
+  };
+  const saveCatalogDefault: SettingsApi["saveCatalogDefault"] = async (id, validate) => {
+    const request = ++newest.current;
+    try {
+      const revision = await validate();
+      if (request !== newest.current) return null;
+      return await apply({ set: { "overlays.default_catalog": id }, catalogRevision: revision });
+    } catch (error) {
+      return request === newest.current ? refusalOf(error) : null;
+    }
+  };
+  return <SettingsContext value={{ ...value, ...through(apply), saveCatalogDefault }}>{children}</SettingsContext>;
 }
 
 /** The effective and confirmed settings, the effective shortcuts, and the ways to store new ones; only inside a `SettingsProvider`. */

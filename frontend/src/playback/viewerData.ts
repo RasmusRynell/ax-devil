@@ -1,4 +1,3 @@
-import { freshCatalog } from "./freshCatalog";
 /** What a viewer holds of its lanes' data: Sample Items, Frame Maps and catalogs, and what each lane draws from them. */
 
 import { Catalogs } from "../lanes/catalogs";
@@ -83,18 +82,15 @@ export class ViewerData {
     const source = before[lane];
     if (!source) return [];
     const request = ++this.#applyRequest;
+    const current = () =>
+      request === this.#applyRequest && this.#lanes.states[lane]?.settings === source;
     try {
       if (reread) {
-        await freshCatalog(source.catalog, ({ revision, document }) => {
-          this.catalogs.get(source.catalog);
-          this.catalogs.receive(source.catalog, revision, document);
-        });
-      } else {
-        const held = this.catalogs.get(source.catalog);
-        if (held.state !== "ready" || !held.catalog || held.problem) return [];
+        if (!(await this.catalogs.validate(source.catalog, current))) return [];
       }
-      if (request !== this.#applyRequest || this.#lanes.states[lane]?.settings !== source)
-        return [];
+      if (!current()) return [];
+      const held = this.catalogs.get(source.catalog);
+      if (held.state !== "ready" || !held.catalog || held.problem) return [];
       this.#lanes.setProblem(lane, undefined);
       return this.#lanes.copyFrom(lane, before);
     } catch (error) {
@@ -185,6 +181,7 @@ export class ViewerData {
 
   /** Drops everything held but the compiled catalogs. */
   close(): void {
+    this.#applyRequest++;
     this.#maps = undefined;
     this.#draw = undefined;
     this.#waiting = [];
@@ -207,6 +204,7 @@ export class ViewerData {
     prior: readonly LaneSettings[] | undefined,
     saved?: Saved,
   ): void {
+    this.#applyRequest++;
     const before = this.#lanes.states;
     const defaults = startWith(opened.lane_defaults, opened.catalogs, personal, saved);
     this.#lanes.open(opened.lanes, defaults, prior).forEach(this.#send);

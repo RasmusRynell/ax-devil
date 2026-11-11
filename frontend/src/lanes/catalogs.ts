@@ -1,5 +1,6 @@
 /** The catalogs a stream has asked the backend for, compiled once per id and shared by every lane that uses them. */
 
+import { readFreshCatalog } from "./freshCatalog";
 import { compileCatalog, locate, type CompiledCatalog, type Diagnostic } from "../present";
 import type { CatalogInfoWire } from "../stream/protocol";
 
@@ -14,7 +15,7 @@ type CatalogEntry =
 /** What the backend last said of a catalog: revisions restart with the backend, so the text counts too. */
 type Reply = { revision: number; document: string | null; problem: string | null };
 
-type Held = { reply?: Reply; entry: CatalogEntry };
+type Held = { reply?: Reply; epoch?: number; entry: CatalogEntry };
 
 /** The diagnostics of a failed compile, one per line with the document position when it has one. */
 function describe(diagnostics: readonly Diagnostic[], document: string): string {
@@ -28,6 +29,7 @@ function describe(diagnostics: readonly Diagnostic[], document: string): string 
 }
 
 export class Catalogs {
+  #epoch = 0;
   readonly #request: (id: string) => void;
   readonly #held = new Map<string, Held>();
   /** The revision of the document each catalog's last successful compile came from. */
@@ -60,10 +62,8 @@ export class Catalogs {
     return held.entry;
   }
 
-  /** Asks the backend for the catalog `id` again and takes its answer even when it is the one held. */
+  /** Asks for the catalog again without forgetting the revision already received. */
   reload(id: string): void {
-    const held = this.#held.get(id);
-    if (held) held.reply = undefined;
     this.#request(id);
   }
 
@@ -72,8 +72,22 @@ export class Catalogs {
    * changes only of those it was asked for. The compiles stay until the new answers differ.
    */
   open(listing: readonly CatalogInfoWire[]): void {
+    this.#epoch++;
     this.#listing = listing;
     for (const id of this.#held.keys()) this.#request(id);
+  }
+
+  /** Rereads for an action, reconciles with socket pushes, and accepts only the current valid document. */
+  async validate(id: string, current: () => boolean): Promise<boolean> {
+    const epoch = this.#epoch;
+    this.get(id);
+    const fresh = await readFreshCatalog(id);
+    if (!current() || epoch !== this.#epoch) return false;
+    this.receive(id, fresh.revision, fresh.document);
+    const held = this.get(id);
+    if (held.state !== "ready" || !held.catalog || held.problem)
+      throw new Error(held.state === "ready" ? held.problem : "The catalog is loading");
+    return true;
   }
 
   /** The backend lists other catalogs now. */
@@ -82,8 +96,8 @@ export class Catalogs {
   }
 
   /**
-   * Takes the backend's answer or push. Whatever differs from the last one replaces the document (a restarted backend
-   * counts revisions from the start); one that does not compile, or no document at all, leaves the last compile in
+   * Takes answers and pushes in revision order within a connection; reopening permits a restarted backend's lower
+   * revisions. A document that does not compile, or no document at all, leaves the last compile in
    * place and says why. Reports whether the entry changed.
    */
   receive(
@@ -94,6 +108,8 @@ export class Catalogs {
   ): boolean {
     const held = this.#held.get(id);
     const last = held?.reply;
+    if (held?.epoch === this.#epoch && last && revision < last.revision) return false;
+    if (held) held.epoch = this.#epoch;
     if (
       !held ||
       (last?.revision === revision && last.document === document && last.problem === problem)

@@ -312,8 +312,15 @@ describe("export dialog", () => {
     const { jobs, onClose } = open();
     chosen = "/out/clip.mp4";
     await exportNow();
-    say(jobs, 1, { state: "Failed", code: "Internal", params: {}, reason: "No encoder." });
-    expect(screen.getByRole("alert").textContent).toBe("Error: No encoder.");
+    say(jobs, 1, {
+      state: "Failed",
+      code: "Internal",
+      params: {},
+      reason: "Export frame timestamps must increase (timestamp 0 µs)",
+    });
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Error: Export frame timestamps must increase (timestamp 0 µs)",
+    );
     expect(disabled("Cancel")).toBe(true);
     press("Close");
     expect(onClose).toHaveBeenCalled();

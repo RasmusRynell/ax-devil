@@ -127,7 +127,7 @@ describe("lanes", () => {
     ]);
   });
 
-  it("recompiles a pushed catalog, keeps the last good one while a push fails, and takes a restarted backend's lower revision", async () => {
+  it("recompiles pushed catalogs and keeps the last good one until a failed push is repaired", async () => {
     const { stream, server, drawn } = await shown();
     const name = () => drawn.at(-1)?.lanes[0]?.catalog.name;
     const problem = () => stream.getSnapshot().lanes[0].catalogProblem;
@@ -137,9 +137,9 @@ describe("lanes", () => {
     server.catalog("built-in:standard", '{"schema": 4}', 3);
     expect(name()).toBe("Classic");
     expect(problem()).toMatch(/\(\d+:\d+\)/);
-    server.catalog("built-in:standard", catalogDocument(), 1);
+    server.catalog("built-in:standard", catalogDocument(), 4);
     expect([name(), problem()]).toEqual(["Standard", undefined]);
-    server.catalog("built-in:standard", null, 0);
+    server.catalog("built-in:standard", null, 5);
     expect([name(), problem()]).toEqual(["Standard", "There is no catalog built-in:standard"]);
   });
 
@@ -211,14 +211,20 @@ describe("lanes", () => {
           }),
       ),
     );
+    const stale = stream.applyToAll(0);
+    server.catalog("built-in:standard", "{}", 4);
+    finish(Response.json({ revision: 3, document: catalogDocument() }));
+    await stale;
+    expect(stream.laneSettings()).toEqual(unchanged);
+    expect(stream.getSnapshot().lanes[0].catalogProblem).toBeTruthy();
     const pending = stream.applyToAll(0);
     stream.setLane(1, { theme: "newer" });
-    finish(Response.json({ revision: 3, document: catalogDocument() }));
+    finish(Response.json({ revision: 5, document: catalogDocument() }));
     await pending;
     expect(stream.laneSettings()[1].theme).toBe("newer");
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json({ revision: 3, document: catalogDocument() })),
+      vi.fn(async () => Response.json({ revision: 5, document: catalogDocument() })),
     );
     await stream.applyToAll(0);
     expect(policies(sent).slice(before)).toMatchObject([
