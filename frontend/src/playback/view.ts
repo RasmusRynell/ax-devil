@@ -35,7 +35,7 @@ export type PlaybackView = {
   height: number;
   /** The size, frame rate and length for the pane header, such as `640×480 · 25 fps · 0:04`; empty until described. */
   details: string;
-  /** Problems with the video itself, such as overlay sizes that do not match it. Empty for a watcher. */
+  /** Problems with the video itself, such as overlay sizes that do not match it. Empty for a Guest. */
   warnings: readonly string[];
   /** How evenly the video's frames are spaced; `null` until it is ready or for a one-frame video. */
   cadence: CadenceWire | null;

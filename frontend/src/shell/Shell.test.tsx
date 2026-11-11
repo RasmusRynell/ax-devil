@@ -344,7 +344,7 @@ describe("viewer shortcuts", () => {
   });
 });
 
-describe("a watcher", () => {
+describe("a Guest", () => {
   it("shows the presenter's window and cannot add to it", async () => {
     const room = FakeSocket.host();
     room.show(videos, "a-open");
@@ -380,7 +380,7 @@ describe("a watcher", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  /** A watcher of a session whose Doc has "a" and "b" open and whose presenter shows "a". */
+  /** A Guest of a session whose Doc has "a" and "b" open and whose presenter shows "a". */
   async function watchAB(access: "watch" | "explore") {
     const room = FakeSocket.host(access);
     room.show(videos, "both-open");
@@ -414,16 +414,5 @@ describe("a watcher", () => {
     act(() => room.show(videos, "b-open"));
     expect(selected()).toEqual([]);
     expect(FakeSocket.latest.received.filter((message) => message.type === "view")).toEqual([]);
-  });
-
-  it("cannot add a video from the host's files when it may only edit", async () => {
-    const room = FakeSocket.host("edit");
-    window.sessionStorage.setItem(
-      "ax-devil.credential",
-      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
-    );
-    await showShell();
-    const add = screen.getAllByRole("button", { name: "Add Video" });
-    expect(add.every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
   });
 });

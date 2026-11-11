@@ -42,7 +42,7 @@ afterEach(() => {
   frames = [];
 });
 
-/** A watcher in someone else's session, with a region holding one element. */
+/** A Guest in someone else's session, with a region holding one element. */
 async function watching() {
   const room = FakeSocket.host();
   window.sessionStorage.setItem(

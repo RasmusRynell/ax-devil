@@ -25,7 +25,7 @@ export type Stream = {
   overlay: LiveOverlayKind | null;
   /** The overlay's lane name, which names the stream where its recipe is not known. */
   lane: string | null;
-  /** How it was added, for the owner; `null` for a watcher and for a stream not resolved yet. */
+  /** How it was added, for the owner; `null` for a Guest and for a stream not resolved yet. */
   recipe: NewLiveWire | null;
   /** Why it did not resolve, when it failed. */
   reason: string;
@@ -109,7 +109,7 @@ const groupedBy = (item: ItemState, recipe: NewLiveWire | null): NewLiveWire | n
 /**
  * The cameras of `items` in the order their first stream appears. A camera is the streams whose recipes name the same
  * host (whatever the case, and as the Session reads a `$NAME` reference: `shown`) and device port, named
- * by the first label one of them was given, else by the host. Streams without a recipe (a watcher's) are grouped by
+ * by the first label one of them was given, else by the host. Streams without a recipe (a Guest's) are grouped by
  * their label. `known` holds the recipes items resolved with before, by item.
  */
 export function camerasOf(

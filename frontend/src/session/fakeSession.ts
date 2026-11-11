@@ -52,14 +52,17 @@ const launched = () => ({ scenario: scenario("empty"), state: "initial" });
 /**
  * One Session of the fake backend, as the real one keeps it: the Doc, the presenter's view, sharing, and a seat per
  * participant with its own view while it explores. Tests drive the owner through it when the client under test is a
- * watcher.
+ * Guest.
  */
 export class Room {
   /** The scenario this room shows, and the state it is in. */
   shown = new Showing(FakeSocket.launch.scenario, FakeSocket.launch.state);
   docRev = 0;
   presenter: View = EMPTY_VIEW;
-  /** What watchers may do while sharing is on; null while it is off. */
+  /** Counts changes to the presenter's view, and the seat that made the last one (none: the backend). */
+  presenterRev = 0;
+  presenterBy: number | undefined;
+  /** What Guests may do while sharing is on; null while it is off. */
   access: Access | null = null;
   secret = "s3cret";
   readonly seats: Seat[] = [];
@@ -70,12 +73,10 @@ export class Room {
     return `${this.id}.${this.secret}`;
   }
 
-  /** Adds a participant; the owner is the first. */
-  seat(socket: FakeSocket | null): Seat {
+  /** Adds a participant: an Owner seat, or a Guest. */
+  seat(socket: FakeSocket | null, owner: boolean): Seat {
     const id = this.seats.length + 1;
-    const owner = id === 1;
-    const view = !owner && this.access === "edit" ? this.presenter : null;
-    const seat: Seat = { id, owner, view, viewsDone: 0, resume: "", socket };
+    const seat: Seat = { id, owner, view: null, viewsDone: 0, resume: "", socket };
     this.seats.push(seat);
     return seat;
   }
@@ -87,13 +88,15 @@ export class Room {
     this.share();
   }
 
-  /** The owner shows another view. */
-  publish(view: View) {
+  /** The Owner seat `by` shows another view. */
+  publish(view: View, by?: number) {
     this.presenter = view;
+    this.presenterRev += 1;
+    this.presenterBy = by;
     this.share();
   }
 
-  /** The owner changes what watchers may do; a watcher that may not explore goes back to following. */
+  /** An Owner seat changes what Guests may do; a Guest that may not explore goes back to following. */
   allow(access: Access | null) {
     this.access = access;
     if (access === "watch") this.seats.forEach((seat) => (seat.view = null));
@@ -151,11 +154,11 @@ export class FakeSocket {
       );
   }
 
-  /** A session someone else owns and shares, for the client under test to watch. */
+  /** A session someone else owns and shares, for the client under test to join or attach to. */
   static host(access: Access = "watch"): Room {
     const room = new Room(`room-${FakeSocket.rooms.size + 1}`);
     room.access = access;
-    room.seat(null);
+    room.seat(null, true);
     FakeSocket.rooms.set(room.id, room);
     return room;
   }
@@ -249,7 +252,8 @@ export class FakeSocket {
       type: "seat",
       rev: room.docRev,
       docRev: room.docRev,
-      presenterRev: 0,
+      presenterRev: room.presenterRev,
+      presenterBy: room.presenterBy,
       access,
       can: seatAccess()[access],
       mode: seat.view ? "exploring" : "following",
@@ -263,7 +267,7 @@ export class FakeSocket {
         id: other.id,
         name: `Guest ${other.id}`,
         color: other.id - 1,
-        role: other.owner ? "owner" : "watcher",
+        role: other.owner ? "owner" : "guest",
         mode: other.view ? "exploring" : "following",
         present: other.socket !== null || other.owner,
         sharesCursor: true,
@@ -279,7 +283,7 @@ export class FakeSocket {
         if (message.seq <= seat.viewsDone) return;
         seat.viewsDone = message.seq;
         // A seat that may only watch has its view refused; the number is finished all the same.
-        if (seat.owner) room.presenter = message.view;
+        if (seat.owner) room.publish(message.view, seat.id);
         else if (room.access && room.access !== "watch") seat.view = message.view;
         room.share();
         break;
@@ -304,11 +308,10 @@ export class FakeSocket {
         break;
       case "leave":
         this.close();
-        if (seat.owner) room.seats.forEach((other) => other.socket?.endWith(4404, "stopped"));
-        else {
-          room.seats.splice(room.seats.indexOf(seat), 1);
-          room.share();
-        }
+        room.seats.splice(room.seats.indexOf(seat), 1);
+        if (seat.owner && !room.seats.some((other) => other.owner))
+          room.seats.forEach((other) => other.socket?.endWith(4404, "stopped"));
+        else room.share();
         break;
       case "hello":
       case "cursorOptions":
@@ -340,8 +343,9 @@ export class FakeSocket {
       if (control.type === "share" || control.type === "setAccess") room.allow(control.access);
       else if (control.type === "stop") {
         room.access = null;
-        room.seats.slice(1).forEach((other) => other.socket?.endWith(4404, "stopped"));
-        room.seats.splice(1);
+        const guests = room.seats.filter((other) => !other.owner);
+        guests.forEach((other) => other.socket?.endWith(4404, "stopped"));
+        guests.forEach((other) => room.seats.splice(room.seats.indexOf(other), 1));
       } else room.secret += "x";
     } else if (cmd.type === "workspace") {
       if (!seat.owner) return refuse();
@@ -359,8 +363,7 @@ export class FakeSocket {
         });
       this.change(room, cmd);
     } else {
-      const edits = seat.owner || room.access === "edit";
-      if (!edits) return refuse();
+      if (!seat.owner) return refuse();
       if (FakeSocket.refuseContent)
         return this.emit({
           type: "ack",
@@ -409,13 +412,18 @@ export class FakeSocket {
     } else if (auth.type === "own") {
       room = new Room(`room-${FakeSocket.rooms.size + 1}`);
       FakeSocket.rooms.set(room.id, room);
-      seat = room.seat(this);
+      seat = room.seat(this, true);
     } else {
-      const id = auth.type === "watch" ? auth.session : auth.link.split(".")[0];
+      const id = auth.type === "attach" ? auth.session : auth.link.split(".")[0];
       room = FakeSocket.rooms.get(id ?? "");
-      if (!room?.access) return this.endWith(4404);
-      if (auth.type === "join" && auth.link !== room.link) return this.endWith(4401);
-      seat = room.seat(this);
+      if (auth.type === "attach") {
+        if (!room) return this.endWith(4404);
+        seat = room.seat(this, true);
+      } else {
+        if (!room?.access) return this.endWith(4404);
+        if (auth.link !== room.link) return this.endWith(4401);
+        seat = room.seat(this, false);
+      }
     }
     if (!room || !seat) return this.endWith(4404);
     seat.resume = `${room.id}-${seat.id}-${++FakeSocket.tokens}`;

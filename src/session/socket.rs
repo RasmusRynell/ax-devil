@@ -137,16 +137,16 @@ async fn hello(
             }
             Ok(handle)
         }
-        SessionAuth::Watch {
+        SessionAuth::Attach {
             session,
             server_password,
         } => {
-            member(state, server_password.as_deref())?;
+            let principal = member(state, server_password.as_deref())?;
             let id = session
                 .parse::<SessionId>()
                 .map_err(|error| refuse(error, ENDED))?;
             sessions
-                .watch(id, cursors)
+                .attach(id, principal.full_access(), cursors)
                 .map_err(|error| refuse(error, ENDED))
         }
         SessionAuth::Join { link } => {
@@ -160,7 +160,7 @@ async fn hello(
     }
 }
 
-/// Who the password makes the caller, if that is an Owner, who may own or watch sessions.
+/// Who the password makes the caller, if that is an Owner, who may own or attach to sessions.
 fn member(state: &AppState, password: Option<&str>) -> Result<Principal, Exit> {
     let principal = state.policy.principal_for(password);
     if password.is_some() && principal == Principal::None {

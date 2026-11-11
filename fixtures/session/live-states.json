@@ -1,6 +1,18 @@
 {
   "docs": {
     "initial": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -232,8 +244,10 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "resolving": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -244,9 +258,7 @@
           "recovered": false,
           "rows": []
         }
-      }
-    },
-    "resolving": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -446,18 +458,6 @@
               "warnings": []
             }
           ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": []
         }
       }
     }

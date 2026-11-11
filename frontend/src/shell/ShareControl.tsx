@@ -13,7 +13,7 @@ const AVATARS = 3;
 /** The link that brings a browser's own join link into the desktop app. */
 const appLink = (link: string) => `ax-devil://open?url=${encodeURIComponent(link)}`;
 
-/** The join link this page can open in the app: the session's own, or the one a link watcher arrived with. */
+/** The join link this page can open in the app: the session's own, or the one a link Guest arrived with. */
 function openableLink(own: string | null): string | null {
   if (own) return own;
   const held = credential();
@@ -23,9 +23,9 @@ function openableLink(own: string | null): string | null {
 }
 
 /**
- * The title bar's share entry. Not shared: "Start sharing". Shared, or a watcher: who is in the Session, for a
- * watcher whose presentation it is and, while exploring, the way back to it, and a menu with the two cursor options
- * and the way out. Everything here belongs to this window alone, so it works for a watcher too.
+ * The title bar's share entry. Not shared: "Start sharing". Shared, or a Guest: who is in the Session, for a
+ * Guest whose presentation it is and, while exploring, the way back to it, and a menu with the two cursor options
+ * and the way out. Everything here belongs to this window alone, so it works for a Guest too.
  */
 export function ShareControl({ onStartSharing }: { onStartSharing: () => void }) {
   const { state, session, mode, cursorOptions, setCursorOptions, leave, follow } = useSession();
@@ -49,7 +49,7 @@ export function ShareControl({ onStartSharing }: { onStartSharing: () => void })
 
   const owner = state === "owner";
   const exploring = participants.filter((participant) => participant.mode === "exploring").length;
-  const watching = participants.filter((participant) => participant.role === "watcher").length;
+  const watching = participants.filter((participant) => participant.role === "guest").length;
   const presenter = participants.find((participant) => participant.role === "owner");
   const inApp = window.axDevilWindow ? null : openableLink(session?.link ?? null);
   const openInApp: MenuEntry[] = inApp

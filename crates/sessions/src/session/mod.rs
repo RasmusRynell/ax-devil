@@ -11,6 +11,7 @@ mod commands;
 mod handle;
 mod jobs;
 mod layout;
+mod listing;
 mod roster;
 mod runner;
 mod service;
@@ -25,11 +26,12 @@ pub use commands::{Command, Control, Scope};
 pub use handle::{Change, Feed, Handle, Reply, StreamLease};
 pub use jobs::{Completion, JobOwner, Spawn, Work};
 pub use layout::{Axis, Layout, MAX_PANES, ViewerId};
+pub use listing::Listing;
 pub use roster::RosterEntry;
 pub use runner::{Completer, OnRuntime, Runner, Watcher};
-pub use service::{HeldItem, Listing, Service};
+pub use service::{HeldItem, Service};
 pub use sources::poll as poll_sources;
-pub use state::{Doc, OWNER_SEAT, Seat, SeatKind, SessionState, Sharing};
+pub use state::{Doc, Seat, SeatKind, SessionState, Sharing};
 pub use streams::{TICKET_TTL, Ticket};
 pub use transition::{Effects, Fresh, Input, Outcome, transition};
 pub use views::{Sidebar, SidebarView, View, ViewLane, ViewerView, restrict};
@@ -56,7 +58,7 @@ pub struct GrantId(pub u64);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct JobId(pub u64);
 
-/// What watchers may do while sharing is on.
+/// What Guests may do while sharing is on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum Access {
@@ -64,8 +66,6 @@ pub enum Access {
     Watch,
     /// Follow, or explore a view of their own.
     Explore,
-    /// Explore, and change the Doc's content.
-    Edit,
 }
 
 /// Visits the types this module sends to the frontend, and its modules' types.

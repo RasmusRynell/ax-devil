@@ -2,11 +2,11 @@
 
 use crate::pane;
 use sessions::{
-    OwnerId, SessionId,
+    SessionId,
     session::{
         Access, Axis, Command, Completion, ContentRef, Control, Fresh, Input, Layout, Lease,
-        MAX_PANES, OWNER_SEAT, Outcome, Refusal, SeatId, SessionState, View, Work, authorize,
-        authorize_stream, can, transition,
+        MAX_PANES, Outcome, Refusal, SeatId, SessionState, View, Work, authorize, authorize_stream,
+        can, transition,
     },
 };
 use workspace::{ItemId, WorkspaceItem};
@@ -19,7 +19,6 @@ enum Row {
     WatchFollowing,
     ExploreFollowing,
     ExploreExploring,
-    Edit,
 }
 
 /// What a command needs, as the table names it.
@@ -36,9 +35,8 @@ fn allowed(row: Row, needs: Needs) -> bool {
     match (row, needs) {
         (Row::Owner, _) | (_, Needs::Stream) => true,
         (Row::ExploreFollowing | Row::ExploreExploring, Needs::Follow) => true,
-        (Row::Edit, Needs::Content) => true,
         (
-            Row::WatchFollowing | Row::ExploreFollowing | Row::ExploreExploring | Row::Edit,
+            Row::WatchFollowing | Row::ExploreFollowing | Row::ExploreExploring,
             Needs::Content | Needs::Host | Needs::Control | Needs::Follow,
         ) => false,
     }
@@ -46,6 +44,7 @@ fn allowed(row: Row, needs: Needs) -> bool {
 
 struct World {
     state: SessionState,
+    owner: SeatId,
     item: ItemId,
     key: ContentRef,
     spare: WorkspaceItem,
@@ -67,7 +66,7 @@ fn command(seat: SeatId, command: Command) -> Input {
     }
 }
 
-/// A shared session of one video, open and resolved, with one watcher (seat 2) under `access`.
+/// A shared session of one video, open and resolved, with one guest (seat 2) under `access`.
 fn world(access: Access) -> World {
     let dir = tempfile::tempdir().unwrap();
     let (item, spare) = (
@@ -75,12 +74,13 @@ fn world(access: Access) -> World {
         crate::video_in(dir.path(), "b.mp4"),
     );
     let id = item.id;
-    let mut state = SessionState::new(SessionId::generate(), OwnerId::generate(), true);
+    let mut state = SessionState::new(SessionId::generate(), true);
+    let owner = state.seat_owner();
     let add = DocCommand::AddItems {
         items: vec![item],
         open: true,
     };
-    let effects = step(&mut state, command(OWNER_SEAT, Command::Content(add)));
+    let effects = step(&mut state, command(owner, Command::Content(add)));
     let spawn = &effects.spawn[0];
     let Work::Resolve(job) = &spawn.work;
     let done = Completion::Resolved(crate::resolve(job));
@@ -93,14 +93,14 @@ fn world(access: Access) -> World {
     );
     step(
         &mut state,
-        command(OWNER_SEAT, Command::Control(Control::Share { access })),
+        command(owner, Command::Control(Control::Share { access })),
     );
     let effects = step(&mut state, Input::Join { secret: None });
-    assert!(matches!(effects.outcome, Outcome::Joined { seat, .. } if seat == SeatId(2)));
+    assert!(matches!(effects.outcome, Outcome::Seated { seat, .. } if seat == SeatId(2)));
     step(
         &mut state,
         Input::View {
-            seat: OWNER_SEAT,
+            seat: owner,
             lease: Lease(0),
             view: crate::showing(id),
             seq: 1,
@@ -110,6 +110,7 @@ fn world(access: Access) -> World {
     let key = crate::key(&state, id);
     World {
         state,
+        owner,
         item: id,
         key,
         spare,
@@ -158,7 +159,7 @@ fn samples(world: &World) -> Vec<(Command, Needs)> {
         (Command::Follow, Needs::Follow),
         (
             Command::Control(Control::Share {
-                access: Access::Edit,
+                access: Access::Explore,
             }),
             Needs::Control,
         ),
@@ -187,7 +188,11 @@ fn seated(row: Row) -> (World, SeatId) {
         step(&mut world.state, view);
     };
     match row {
-        Row::Owner => (world(Access::Watch), OWNER_SEAT),
+        Row::Owner => {
+            let world = world(Access::Watch);
+            let owner = world.owner;
+            (world, owner)
+        }
         Row::WatchFollowing => (world(Access::Watch), SeatId(2)),
         Row::ExploreFollowing => (world(Access::Explore), SeatId(2)),
         Row::ExploreExploring => {
@@ -195,7 +200,6 @@ fn seated(row: Row) -> (World, SeatId) {
             explore(&mut world);
             (world, SeatId(2))
         }
-        Row::Edit => (world(Access::Edit), SeatId(2)),
     }
 }
 
@@ -206,7 +210,6 @@ fn each_kind_of_seat_may_run_exactly_the_commands_the_table_gives_it() {
         Row::WatchFollowing,
         Row::ExploreFollowing,
         Row::ExploreExploring,
-        Row::Edit,
     ] {
         let (world, seat) = seated(row);
         for (sample, needs) in samples(&world) {
@@ -238,7 +241,7 @@ fn each_kind_of_seat_may_run_exactly_the_commands_the_table_gives_it() {
 }
 
 #[test]
-fn a_view_changes_the_presenter_only_for_the_owner_and_starts_exploring_for_a_seat_that_may() {
+fn a_view_changes_the_presenter_only_for_an_owner_seat_and_starts_exploring_for_a_seat_that_may() {
     let sets = |row: Row| {
         let (world, seat) = seated(row);
         let view = Input::View {
@@ -262,7 +265,7 @@ fn a_view_changes_the_presenter_only_for_the_owner_and_starts_exploring_for_a_se
         2,
         "a refused view is settled, so the client stops showing it"
     );
-    for row in [Row::ExploreFollowing, Row::ExploreExploring, Row::Edit] {
+    for row in [Row::ExploreFollowing, Row::ExploreExploring] {
         let (state, _) = sets(row).unwrap();
         assert_eq!(
             state.seats[&SeatId(2)].mode(),
@@ -274,7 +277,7 @@ fn a_view_changes_the_presenter_only_for_the_owner_and_starts_exploring_for_a_se
 
 #[test]
 fn a_view_with_more_panes_than_a_window_may_have_is_refused() {
-    let (world, _) = seated(Row::Owner);
+    let (world, owner) = seated(Row::Owner);
     let panes = |count: usize| View {
         layout: Some(
             (2..=count as u32).fold(*pane(1), |first, viewer| Layout::Split {
@@ -288,7 +291,7 @@ fn a_view_with_more_panes_than_a_window_may_have_is_refused() {
     };
     let outcome = |view| {
         let input = Input::View {
-            seat: OWNER_SEAT,
+            seat: owner,
             lease: Lease(0),
             view,
             seq: 2,
@@ -324,10 +327,8 @@ fn streams_are_bound_by_seat_following_the_presenter_or_choosing_their_own_frame
             "{row:?}"
         );
     }
-    for row in [Row::ExploreExploring, Row::Edit] {
-        let low = Authority::Own {
-            priority: Priority::Low,
-        };
-        assert_eq!(authority(row), low, "{row:?}");
-    }
+    let low = Authority::Own {
+        priority: Priority::Low,
+    };
+    assert_eq!(authority(Row::ExploreExploring), low);
 }

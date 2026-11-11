@@ -24,7 +24,7 @@ installViewerHarness();
 const s = scenario("one-video");
 
 // A reload replaces the viewer in one commit with the viewer of the Content's next generation, which plays on if the
-// first was playing. Whatever else makes a viewer go away leaves the clock paused for the watchers.
+// first was playing. Whatever else makes a viewer go away leaves the clock paused for the Guests.
 describe("a viewer replaced by a reload", () => {
   /** The viewer of the item, playing or not; `show` moves the Doc to one of the states of its scenario. */
   async function open(playing: boolean) {

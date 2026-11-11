@@ -238,7 +238,7 @@ impl ShareListener {
                 return;
             }
             let _changing = self.changing.lock().await;
-            if self.state.sessions.list().is_empty() {
+            if self.state.sessions.is_empty() {
                 let open = self
                     .open
                     .lock()

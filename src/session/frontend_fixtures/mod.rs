@@ -24,8 +24,7 @@ use scene::Scene;
 use serde::Serialize;
 use serde_json::{Value, json};
 use sessions::session::{
-    Access, Command, Control, Fresh, Input, Lease, OWNER_SEAT, Outcome, SessionState, can,
-    transition,
+    Access, Command, Control, Fresh, Input, Lease, Outcome, SessionState, can, transition,
 };
 use std::{collections::BTreeMap, fs, io, path::Path};
 use workspace::Environment;
@@ -51,7 +50,7 @@ struct Recording {
 #[derive(Serialize)]
 struct Audiences {
     owner: DocWire,
-    watcher: DocWire,
+    guest: DocWire,
 }
 
 /// A command a client sends in state `from`, and the state it leads to.
@@ -82,14 +81,14 @@ impl Recording {
         recording
     }
 
-    /// Records `session` as the state `name`, projected for the owner and for a watcher. A state recorded twice must
+    /// Records `session` as the state `name`, projected for the owner and for a Guest. A state recorded twice must
     /// be the same Doc: a step may lead to a state the scenario built directly.
     fn state(&mut self, name: &str, session: &SessionState) {
         let audience =
             |host_details| project_in(&session.doc, Audience { host_details }, &self.environment);
         let both = Audiences {
             owner: audience(true),
-            watcher: audience(false),
+            guest: audience(false),
         };
         match self.docs.get(name) {
             Some(recorded) => assert_eq!(text(recorded), text(&both), "state {name} differs"),
@@ -134,9 +133,8 @@ impl Recording {
         let defaults = super::live::defaults(&state.settings.state(), false);
         let saved = Saved::new(
             &session.doc.workspace.workspace,
-            true,
             session.expands,
-            audience_of(session, OWNER_SEAT, Lease(0)),
+            audience_of(session, scene::owner_of(session), Lease(0)),
         );
         let request = wire::command(
             wire_command,
@@ -227,11 +225,8 @@ const GROUPS: &[&[(&str, Build)]] = &[
 
 /// What each kind of seat may do, as `can` decides it in a session shared at that access.
 fn seat_access() -> BTreeMap<String, sessions::session::Can> {
-    let owner = SessionState::new(
-        sessions::SessionId::generate(),
-        sessions::OwnerId::generate(),
-        false,
-    );
+    let mut owner = SessionState::new(sessions::SessionId::generate(), false);
+    let seat = owner.seat_owner();
     let mut rights = BTreeMap::new();
     let key = |access: SeatAccess| match serde_json::to_value(access) {
         Ok(serde_json::Value::String(name)) => name,
@@ -239,27 +234,27 @@ fn seat_access() -> BTreeMap<String, sessions::session::Can> {
     };
     rights.insert(
         key(SeatAccess::Owner),
-        can(&owner, OWNER_SEAT, Lease(0)).expect("the owner has a seat"),
+        can(&owner, seat, Lease(0)).expect("the owner has a seat"),
     );
-    for access in [Access::Watch, Access::Explore, Access::Edit] {
+    for access in [Access::Watch, Access::Explore] {
         let shared = |input| match transition(&owner, input) {
             Ok((next, _)) => next,
             Err(refusal) => panic!("{refusal:?}"),
         };
         let shared_session = shared(Input::Command {
-            seat: OWNER_SEAT,
+            seat,
             lease: Lease(0),
             command: Command::Control(Control::Share { access }),
             fresh: Fresh::now(),
         });
         let (joined, fx) = transition(&shared_session, Input::Join { secret: None })
             .unwrap_or_else(|refusal| panic!("{refusal:?}"));
-        let Outcome::Joined { seat, lease } = fx.outcome else {
-            panic!("a watcher joins a shared session");
+        let Outcome::Seated { seat, lease } = fx.outcome else {
+            panic!("a Guest joins a shared session");
         };
         rights.insert(
             key(access.into()),
-            can(&joined, seat, lease).expect("the watcher has a seat"),
+            can(&joined, seat, lease).expect("the Guest has a seat"),
         );
     }
     rights

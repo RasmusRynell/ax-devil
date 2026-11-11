@@ -1,6 +1,209 @@
 {
   "docs": {
     "a-hidden": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "B"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/C",
+                      "label": "C",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "C"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/D",
+                      "label": "D",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "D"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 4,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
+              "kind": "lane",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
+              "kind": "lane",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C",
+              "kind": "entry",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
+              "kind": "lane",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/D",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/D",
+              "kind": "entry",
+              "label": "D",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -202,209 +405,6 @@
               "kind": "entry",
               "label": "D",
               "location": "/data/list/D",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "playlist",
-              "label": "list",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "list",
-                  "entries": [
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/A",
-                      "label": "A",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "A"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/B",
-                      "label": "B",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "B"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/C",
-                      "label": "C",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "C"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [],
-                      "id": "00000000-0000-4000-8000-000000000001/list/D",
-                      "label": "D",
-                      "lane_metadata": [],
-                      "lanes": [
-                        "D"
-                      ],
-                      "metadata": []
-                    }
-                  ],
-                  "generation": 2,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "Playlist",
-                  "playlists": [
-                    {
-                      "entries": 4,
-                      "id": "00000000-0000-4000-8000-000000000001/list",
-                      "label": "list",
-                      "metadata": []
-                    }
-                  ]
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list",
-              "kind": "playlist",
-              "label": "list",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": true,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A",
-              "kind": "entry",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
-              "kind": "lane",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B",
-              "kind": "entry",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
-              "kind": "lane",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C",
-              "kind": "entry",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
-              "kind": "lane",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/D",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/D",
-              "kind": "entry",
-              "label": "D",
-              "location": null,
               "status": {
                 "status": "Ready"
               },
@@ -415,6 +415,209 @@
       }
     },
     "abcd-hidden": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "B"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/C",
+                      "label": "C",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "C"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/D",
+                      "label": "D",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "D"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 4,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
+              "kind": "lane",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
+              "kind": "lane",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C",
+              "kind": "entry",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
+              "kind": "lane",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/D",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/D",
+              "kind": "entry",
+              "label": "D",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -616,209 +819,6 @@
               "kind": "entry",
               "label": "D",
               "location": "/data/list/D",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "playlist",
-              "label": "list",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "list",
-                  "entries": [
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/A",
-                      "label": "A",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "A"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/B",
-                      "label": "B",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "B"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/C",
-                      "label": "C",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "C"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [],
-                      "id": "00000000-0000-4000-8000-000000000001/list/D",
-                      "label": "D",
-                      "lane_metadata": [],
-                      "lanes": [
-                        "D"
-                      ],
-                      "metadata": []
-                    }
-                  ],
-                  "generation": 2,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "Playlist",
-                  "playlists": [
-                    {
-                      "entries": 4,
-                      "id": "00000000-0000-4000-8000-000000000001/list",
-                      "label": "list",
-                      "metadata": []
-                    }
-                  ]
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list",
-              "kind": "playlist",
-              "label": "list",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": true,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A",
-              "kind": "entry",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
-              "kind": "lane",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": true,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B",
-              "kind": "entry",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
-              "kind": "lane",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": true,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C",
-              "kind": "entry",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
-              "kind": "lane",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/D",
-              "hidden": true,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/D",
-              "kind": "entry",
-              "label": "D",
-              "location": null,
               "status": {
                 "status": "Ready"
               },
@@ -829,6 +829,209 @@
       }
     },
     "b-hidden": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "B"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/C",
+                      "label": "C",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "C"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/D",
+                      "label": "D",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "D"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 4,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
+              "kind": "lane",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
+              "kind": "lane",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C",
+              "kind": "entry",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
+              "kind": "lane",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/D",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/D",
+              "kind": "entry",
+              "label": "D",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -1030,209 +1233,6 @@
               "kind": "entry",
               "label": "D",
               "location": "/data/list/D",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "playlist",
-              "label": "list",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "list",
-                  "entries": [
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/A",
-                      "label": "A",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "A"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/B",
-                      "label": "B",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "B"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/C",
-                      "label": "C",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "C"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [],
-                      "id": "00000000-0000-4000-8000-000000000001/list/D",
-                      "label": "D",
-                      "lane_metadata": [],
-                      "lanes": [
-                        "D"
-                      ],
-                      "metadata": []
-                    }
-                  ],
-                  "generation": 2,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "Playlist",
-                  "playlists": [
-                    {
-                      "entries": 4,
-                      "id": "00000000-0000-4000-8000-000000000001/list",
-                      "label": "list",
-                      "metadata": []
-                    }
-                  ]
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list",
-              "kind": "playlist",
-              "label": "list",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A",
-              "kind": "entry",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
-              "kind": "lane",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": true,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B",
-              "kind": "entry",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
-              "kind": "lane",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C",
-              "kind": "entry",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
-              "kind": "lane",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/D",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/D",
-              "kind": "entry",
-              "label": "D",
-              "location": null,
               "status": {
                 "status": "Ready"
               },
@@ -1243,6 +1243,209 @@
       }
     },
     "b-hidden-lane-c-hidden": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "B"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/C",
+                      "label": "C",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "C"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/D",
+                      "label": "D",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "D"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 4,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
+              "kind": "lane",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
+              "kind": "lane",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C",
+              "kind": "entry",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
+              "kind": "lane",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/D",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/D",
+              "kind": "entry",
+              "label": "D",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -1444,209 +1647,6 @@
               "kind": "entry",
               "label": "D",
               "location": "/data/list/D",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "playlist",
-              "label": "list",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "list",
-                  "entries": [
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/A",
-                      "label": "A",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "A"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/B",
-                      "label": "B",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "B"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/C",
-                      "label": "C",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "C"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [],
-                      "id": "00000000-0000-4000-8000-000000000001/list/D",
-                      "label": "D",
-                      "lane_metadata": [],
-                      "lanes": [
-                        "D"
-                      ],
-                      "metadata": []
-                    }
-                  ],
-                  "generation": 2,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "Playlist",
-                  "playlists": [
-                    {
-                      "entries": 4,
-                      "id": "00000000-0000-4000-8000-000000000001/list",
-                      "label": "list",
-                      "metadata": []
-                    }
-                  ]
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list",
-              "kind": "playlist",
-              "label": "list",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A",
-              "kind": "entry",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
-              "kind": "lane",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": true,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B",
-              "kind": "entry",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
-              "kind": "lane",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C",
-              "kind": "entry",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": true,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
-              "kind": "lane",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/D",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/D",
-              "kind": "entry",
-              "label": "D",
-              "location": null,
               "status": {
                 "status": "Ready"
               },
@@ -1657,6 +1657,209 @@
       }
     },
     "bc-hidden": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "B"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/C",
+                      "label": "C",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "C"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/D",
+                      "label": "D",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "D"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 4,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
+              "kind": "lane",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
+              "kind": "lane",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C",
+              "kind": "entry",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
+              "kind": "lane",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/D",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/D",
+              "kind": "entry",
+              "label": "D",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -1858,209 +2061,6 @@
               "kind": "entry",
               "label": "D",
               "location": "/data/list/D",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "playlist",
-              "label": "list",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "list",
-                  "entries": [
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/A",
-                      "label": "A",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "A"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/B",
-                      "label": "B",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "B"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/C",
-                      "label": "C",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "C"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [],
-                      "id": "00000000-0000-4000-8000-000000000001/list/D",
-                      "label": "D",
-                      "lane_metadata": [],
-                      "lanes": [
-                        "D"
-                      ],
-                      "metadata": []
-                    }
-                  ],
-                  "generation": 2,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "Playlist",
-                  "playlists": [
-                    {
-                      "entries": 4,
-                      "id": "00000000-0000-4000-8000-000000000001/list",
-                      "label": "list",
-                      "metadata": []
-                    }
-                  ]
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list",
-              "kind": "playlist",
-              "label": "list",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A",
-              "kind": "entry",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
-              "kind": "lane",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": true,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B",
-              "kind": "entry",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
-              "kind": "lane",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": true,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C",
-              "kind": "entry",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
-              "kind": "lane",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/D",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/D",
-              "kind": "entry",
-              "label": "D",
-              "location": null,
               "status": {
                 "status": "Ready"
               },
@@ -2071,6 +2071,209 @@
       }
     },
     "bcd-hidden": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "B"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/C",
+                      "label": "C",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "C"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/D",
+                      "label": "D",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "D"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 4,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
+              "kind": "lane",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
+              "kind": "lane",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C",
+              "kind": "entry",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
+              "kind": "lane",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/D",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/D",
+              "kind": "entry",
+              "label": "D",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -2272,209 +2475,6 @@
               "kind": "entry",
               "label": "D",
               "location": "/data/list/D",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "playlist",
-              "label": "list",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "list",
-                  "entries": [
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/A",
-                      "label": "A",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "A"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/B",
-                      "label": "B",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "B"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/C",
-                      "label": "C",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "C"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [],
-                      "id": "00000000-0000-4000-8000-000000000001/list/D",
-                      "label": "D",
-                      "lane_metadata": [],
-                      "lanes": [
-                        "D"
-                      ],
-                      "metadata": []
-                    }
-                  ],
-                  "generation": 2,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "Playlist",
-                  "playlists": [
-                    {
-                      "entries": 4,
-                      "id": "00000000-0000-4000-8000-000000000001/list",
-                      "label": "list",
-                      "metadata": []
-                    }
-                  ]
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list",
-              "kind": "playlist",
-              "label": "list",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A",
-              "kind": "entry",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
-              "kind": "lane",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": true,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B",
-              "kind": "entry",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
-              "kind": "lane",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": true,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C",
-              "kind": "entry",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
-              "kind": "lane",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/D",
-              "hidden": true,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/D",
-              "kind": "entry",
-              "label": "D",
-              "location": null,
               "status": {
                 "status": "Ready"
               },
@@ -2485,6 +2485,209 @@
       }
     },
     "c-hidden": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "B"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/C",
+                      "label": "C",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "C"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/D",
+                      "label": "D",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "D"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 4,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
+              "kind": "lane",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
+              "kind": "lane",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C",
+              "kind": "entry",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
+              "kind": "lane",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/D",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/D",
+              "kind": "entry",
+              "label": "D",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -2686,209 +2889,6 @@
               "kind": "entry",
               "label": "D",
               "location": "/data/list/D",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "playlist",
-              "label": "list",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "list",
-                  "entries": [
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/A",
-                      "label": "A",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "A"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/B",
-                      "label": "B",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "B"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/C",
-                      "label": "C",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "C"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [],
-                      "id": "00000000-0000-4000-8000-000000000001/list/D",
-                      "label": "D",
-                      "lane_metadata": [],
-                      "lanes": [
-                        "D"
-                      ],
-                      "metadata": []
-                    }
-                  ],
-                  "generation": 2,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "Playlist",
-                  "playlists": [
-                    {
-                      "entries": 4,
-                      "id": "00000000-0000-4000-8000-000000000001/list",
-                      "label": "list",
-                      "metadata": []
-                    }
-                  ]
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list",
-              "kind": "playlist",
-              "label": "list",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A",
-              "kind": "entry",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
-              "kind": "lane",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B",
-              "kind": "entry",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
-              "kind": "lane",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": true,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C",
-              "kind": "entry",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
-              "kind": "lane",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/D",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/D",
-              "kind": "entry",
-              "label": "D",
-              "location": null,
               "status": {
                 "status": "Ready"
               },
@@ -2899,6 +2899,209 @@
       }
     },
     "initial": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "B"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/list/C",
+                      "label": "C",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "C"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/D",
+                      "label": "D",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "D"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 4,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
+              "kind": "lane",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
+              "kind": "lane",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C",
+              "kind": "entry",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/C",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
+              "kind": "lane",
+              "label": "C",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/D",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/D",
+              "kind": "entry",
+              "label": "D",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -3107,8 +3310,10 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "renamed": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -3117,7 +3322,7 @@
             {
               "id": "00000000-0000-4000-8000-000000000001",
               "kind": "playlist",
-              "label": "list",
+              "label": "Later",
               "open": true,
               "resolution": {
                 "content": {
@@ -3183,7 +3388,7 @@
                     {
                       "entries": 4,
                       "id": "00000000-0000-4000-8000-000000000001/list",
-                      "label": "list",
+                      "label": "Later",
                       "metadata": []
                     }
                   ]
@@ -3203,7 +3408,7 @@
               "item": "00000000-0000-4000-8000-000000000001",
               "key": "00000000-0000-4000-8000-000000000001/list",
               "kind": "playlist",
-              "label": "list",
+              "label": "Later",
               "location": null,
               "status": {
                 "status": "Ready"
@@ -3310,9 +3515,7 @@
             }
           ]
         }
-      }
-    },
-    "renamed": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [],
@@ -3514,209 +3717,6 @@
               "kind": "entry",
               "label": "D",
               "location": "/data/list/D",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "playlist",
-              "label": "Later",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "list",
-                  "entries": [
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/A",
-                      "label": "A",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "A"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/B",
-                      "label": "B",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "B"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000001/list/C",
-                      "label": "C",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "C"
-                      ],
-                      "metadata": []
-                    },
-                    {
-                      "handlers": [],
-                      "id": "00000000-0000-4000-8000-000000000001/list/D",
-                      "label": "D",
-                      "lane_metadata": [],
-                      "lanes": [
-                        "D"
-                      ],
-                      "metadata": []
-                    }
-                  ],
-                  "generation": 2,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "Playlist",
-                  "playlists": [
-                    {
-                      "entries": 4,
-                      "id": "00000000-0000-4000-8000-000000000001/list",
-                      "label": "Later",
-                      "metadata": []
-                    }
-                  ]
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list",
-              "kind": "playlist",
-              "label": "Later",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A",
-              "kind": "entry",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/A\u001fA",
-              "kind": "lane",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B",
-              "kind": "entry",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/B",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/B\u001fB",
-              "kind": "lane",
-              "label": "B",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C",
-              "kind": "entry",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/C",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/C\u001fC",
-              "kind": "lane",
-              "label": "C",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001/list/D",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001/list/D",
-              "kind": "entry",
-              "label": "D",
-              "location": null,
               "status": {
                 "status": "Ready"
               },

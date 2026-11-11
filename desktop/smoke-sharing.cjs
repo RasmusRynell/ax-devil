@@ -1,4 +1,4 @@
-// The smoke test's sharing scenario: an owner starts sharing, a watcher joins through the link in a second window,
+// The smoke test's sharing scenario: an owner starts sharing, a guest joins through the link in a second window,
 // and a third window lists the shared Session. Screenshots of each in both themes.
 const { nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
@@ -63,26 +63,26 @@ module.exports.run = async ({ window, shell, ownerCsp }) => {
   };
 
   // Sharing is off until someone asks: the window's Session is private, and the backend lists none. The title bar's
-  // Start sharing turns it on and shows the Sessions view, with the join link a second window opens as a watcher.
+  // Start sharing turns it on and shows the Sessions view, with the join link a second window opens as a guest.
   window.webContents.setZoomFactor(1);
   await js(
     "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
   );
   window.setBounds({ x: 0, y: 0, width: 1000, height: 700 });
   const sessions = () => js("fetch('/api/sessions').then((r) => r.json())");
-  assert.deepEqual(await sessions(), []);
+  assert.equal((await sessions())[0].link, undefined);
   await click(window, "share");
   const joinLink = "document.querySelector('aside input[aria-label=\"Join link\"]')";
   await wait(joinLink);
   const link = await js(`${joinLink}.value`);
   assert.match(link, /^http:\/\/127\.0\.0\.1:\d+\/#join=/);
-  assert.equal((await sessions()).length, 1);
+  assert.match((await sessions())[0].link, /#join=/);
 
   const other = await shell.showRemote(link);
   other.setBounds({ x: 40, y: 40, width: 760, height: 560 });
   const second = page(other);
   await second.wait("document.querySelector('h1')?.textContent === 'ax-devil'");
-  // The watcher shows the owner's view: the Sessions view with both of them in it, and the owner's open video.
+  // The guest shows the owner's view: the Sessions view with both of them in it, and the owner's open video.
   const participants = `${GUEST}.length`;
   await second.wait(sidebarTitle("Sessions"));
   await second.wait(`${participants} === 2`);
@@ -93,14 +93,14 @@ module.exports.run = async ({ window, shell, ownerCsp }) => {
   await second.wait("document.querySelector('input[aria-label=Frame]')");
   assert.equal(await second.js(`${panes}.join()`), await js(`${panes}.join()`));
 
-  // Reloading the watcher takes its seat back: same Guest N, and the owner still sees two participants.
-  const watcherCsp = watchCsp(other);
+  // Reloading the guest takes its seat back: same Guest N, and the owner still sees two participants.
+  const guestCsp = watchCsp(other);
   const you = `${GUEST}.find((li) => li.textContent.includes('(you)'))?.textContent`;
   const guest = await second.js(you);
   assert.match(guest, /^Guest \d+ \(you\)$/);
   await reload(other);
   await second.wait(`${participants} === 2`);
-  assert.equal(await second.js(you), guest, "A reload must keep the watcher's seat");
+  assert.equal(await second.js(you), guest, "A reload must keep the guest's seat");
   await delay(500);
   assert.equal(await js(participants), 2);
   const both = [
@@ -116,7 +116,7 @@ module.exports.run = async ({ window, shell, ownerCsp }) => {
   await js("document.querySelector('header [aria-label=Session]').click()");
   await wait("!document.querySelector('[role=menu]')");
 
-  // A following watcher's clicks change nothing: its controls are disabled, it cannot close the owner's pane, and
+  // A following guest's clicks change nothing: its controls are disabled, it cannot close the owner's pane, and
   // the owner's window is as it was.
   const ownerView = () =>
     js(`JSON.stringify({
@@ -136,15 +136,12 @@ module.exports.run = async ({ window, shell, ownerCsp }) => {
   assert.equal(
     await ownerView(),
     ownerBefore,
-    "A following watcher must not change the owner's view",
+    "A following guest must not change the owner's view",
   );
-  assert.ok(
-    await second.js(sidebarTitle("Sessions")),
-    "A following watcher keeps the owner's view",
-  );
+  assert.ok(await second.js(sidebarTitle("Sessions")), "A following guest keeps the owner's view");
   assert.equal(await second.js(`!!${follow}`), false);
 
-  // With exploring allowed, a watcher that touches its own view starts exploring and gets the way back to the
+  // With exploring allowed, a guest that touches its own view starts exploring and gets the way back to the
   // presenter, while the owner's view is untouched; turning it off sends every explorer back.
   const explore = "document.querySelector('aside input[type=checkbox]').click()";
   await js(explore);
@@ -168,12 +165,12 @@ module.exports.run = async ({ window, shell, ownerCsp }) => {
   assert.equal((await ownerView()).includes('"explore":true'), true);
   await js(explore);
 
-  // The owner's choice of view is the watcher's, and the watcher cannot make its own.
+  // The owner's choice of view is the guest's, and the guest cannot make its own.
   await js("document.querySelector('[aria-label=Live]').click()");
   await second.wait(sidebarTitle("Live"));
   assert.equal(await second.js("document.querySelector('[aria-label=Bookmarks]').disabled"), true);
 
-  // The owner's pointer over a control draws a cursor on the same control in the watcher's narrower window, and
+  // The owner's pointer over a control draws a cursor on the same control in the guest's narrower window, and
   // over the video it lands on the same picture pixel although the two windows show the picture at other sizes.
   const cursorAt = async (id, spot) => {
     window.webContents.sendInputEvent({ type: "mouseLeave", x: 0, y: 0 });
@@ -206,7 +203,7 @@ module.exports.run = async ({ window, shell, ownerCsp }) => {
   await cursorAt(picture, { ...(await js(within(picture, 0.25, 0.3))), fx: 0.25, fy: 0.3 });
   await shootBoth("session-cursor-video", both);
 
-  // A third window on the same backend is a Session of its own and lists the shared one to watch.
+  // A third window on the same backend is a Session of its own and lists the shared one to continue.
   window.webContents.sendInputEvent({ type: "mouseLeave", x: 0, y: 0 });
   await second.wait(`!${tag("Guest 1")}`);
   const third = await shell.showLocal();
@@ -214,10 +211,10 @@ module.exports.run = async ({ window, shell, ownerCsp }) => {
   const listing = page(third);
   await listing.wait("document.querySelector('h1')?.textContent === 'ax-devil'");
   await listing.js("document.querySelector('[aria-label=Sessions]').click()");
-  await listing.wait("document.querySelector('aside [aria-label=\"Shared sessions\"] button')");
+  await listing.wait("document.querySelector('aside [aria-label=\"Other sessions\"] button')");
   assert.equal(
     await listing.js(
-      "document.querySelector('aside [aria-label=\"Shared sessions\"] li').textContent.includes('2')",
+      "document.querySelector('aside [aria-label=\"Other sessions\"] li').textContent.includes('2')",
     ),
     true,
   );
@@ -225,7 +222,7 @@ module.exports.run = async ({ window, shell, ownerCsp }) => {
   await fitsAtMinimum(third, listing, "sessions-list");
   third.close();
 
-  // Stopping tells the watcher, and the owner's Session is private again.
+  // Stopping tells the guest, and the owner's Session is private again.
   await js("document.querySelector('[aria-label=Sessions]').click()");
   await wait(button("Stop sharing"));
   await js(`${button("Stop sharing")}.click()`);
@@ -234,7 +231,7 @@ module.exports.run = async ({ window, shell, ownerCsp }) => {
   );
   await shootBoth("session-ended", [["", other, second]]);
   await wait(button("Start sharing"));
-  assert.deepEqual(await sessions(), []);
-  assert.deepEqual([ownerCsp, watcherCsp], [[], []], "The app must break no CSP rule");
+  assert.equal((await sessions())[0].link, undefined);
+  assert.deepEqual([ownerCsp, guestCsp], [[], []], "The app must break no CSP rule");
   other.close();
 };

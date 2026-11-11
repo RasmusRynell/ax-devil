@@ -92,7 +92,7 @@ fn live_stream(item: ItemId) -> (WorkspaceItem, Content) {
 }
 
 /// A Doc with a resolved open video, a resolved open playlist, a resolved open live stream, a failed open item and
-/// two items with no viewer (a failed one and a resolved playlist), all carrying sentinels in every place a watcher
+/// two items with no viewer (a failed one and a resolved playlist), all carrying sentinels in every place a guest
 /// must not learn of.
 fn doc() -> (Doc, [ItemId; 6]) {
     let ids = [(); 6].map(|()| ItemId::generate());
@@ -175,22 +175,22 @@ fn doc() -> (Doc, [ItemId; 6]) {
 }
 
 #[test]
-fn a_watcher_learns_no_path_credential_or_reason_and_sees_only_what_is_open() {
+fn a_guest_learns_no_path_credential_or_reason_and_sees_only_what_is_open() {
     let (doc, [_, _, failed, _, _, _]) = doc();
     let public = Audience {
         host_details: false,
     };
-    let watcher = serde_json::to_string(&project(&doc, public, false)).unwrap();
+    let guest = serde_json::to_string(&project(&doc, public, false)).unwrap();
     for secret in [
         "SECRET",
         "/home",
         "rtsp",
         "closed.mp4",
         "closed playlist",
-        // A row's `location` is null for a watcher.
+        // A row's `location` is null for a guest.
         "\"location\":\"",
     ] {
-        assert!(!watcher.contains(secret), "{secret} reached {watcher}");
+        assert!(!guest.contains(secret), "{secret} reached {guest}");
     }
     for shared in [
         "gate.mp4",
@@ -204,7 +204,7 @@ fn a_watcher_learns_no_path_credential_or_reason_and_sees_only_what_is_open() {
         "MQTT",
         &failed.to_string(),
     ] {
-        assert!(watcher.contains(shared), "{shared} missing from {watcher}");
+        assert!(guest.contains(shared), "{shared} missing from {guest}");
     }
 
     let owner = serde_json::to_string(&project(&doc, Audience::HOST, false)).unwrap();
@@ -283,7 +283,7 @@ fn a_watcher_learns_no_path_credential_or_reason_and_sees_only_what_is_open() {
 }
 
 #[test]
-fn rows_follow_the_items_a_watcher_sees_and_carry_what_was_hidden() {
+fn rows_follow_the_items_a_guest_sees_and_carry_what_was_hidden() {
     let (doc, ids) = doc();
     let public = Audience {
         host_details: false,
@@ -297,9 +297,9 @@ fn rows_follow_the_items_a_watcher_sees_and_carry_what_was_hidden() {
             .collect()
     };
 
-    let watcher = rows(public);
-    assert!(watcher.contains(&("SEQ-02".into(), true)), "{watcher:?}");
-    assert!(watcher.contains(&("SEQ-01".into(), false)), "{watcher:?}");
+    let guest = rows(public);
+    assert!(guest.contains(&("SEQ-02".into(), true)), "{guest:?}");
+    assert!(guest.contains(&("SEQ-01".into(), false)), "{guest:?}");
     let live = ids[5];
     let wire_rows = project(&doc, public, false).workspace.rows;
     let row = wire_rows
@@ -307,7 +307,7 @@ fn rows_follow_the_items_a_watcher_sees_and_carry_what_was_hidden() {
         .find(|row| row.label == "Live stream")
         .unwrap();
     assert_eq!(row.entry.as_deref(), Some(live.to_string().as_str()));
-    assert!(!watcher.iter().any(|(label, _)| label.starts_with("closed")));
+    assert!(!guest.iter().any(|(label, _)| label.starts_with("closed")));
     let owner = rows(Audience::HOST);
     assert!(owner.iter().any(|(label, _)| label == "closed playlist"));
     let located = project(&doc, Audience::HOST, false).workspace.rows;
@@ -381,7 +381,7 @@ fn env_of(value: &'static str) -> Environment {
     Environment::new(move |name| (name == "CAM").then(|| value.to_owned()))
 }
 
-const WATCHER: Audience = Audience {
+const GUEST: Audience = Audience {
     host_details: false,
 };
 
@@ -512,8 +512,8 @@ fn an_expanded_host_that_is_no_plain_host_is_never_shown_to_anyone() {
                 .map(String::from)
                 .into();
             assert_eq!(shown_of(&doc, Audience::HOST, &env), hidden, "{hostile}");
-            // The watcher is told no host at all, and the same label.
-            assert_eq!(shown_of(&doc, WATCHER, &env)[..2], hidden[..2], "{hostile}");
+            // The guest is told no host at all, and the same label.
+            assert_eq!(shown_of(&doc, GUEST, &env)[..2], hidden[..2], "{hostile}");
         }
     }
 }

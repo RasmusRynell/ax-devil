@@ -3,6 +3,7 @@
 //! `matrix` checks the role table on the pure transition; `revocation` and `streams` run real handles on paused time.
 
 mod matrix;
+mod owner_seats;
 mod revocation;
 mod roster;
 mod runner;
@@ -114,14 +115,14 @@ impl Rig {
         video_in(self.dir.path(), name)
     }
 
-    /// An owner that shares with `access`, and a watcher that joined.
+    /// An owner that shares with `access`, and a guest that joined.
     pub(crate) fn shared(&self, access: Access) -> (Handle<u8>, Handle<u8>) {
         let owner = self.service.create(true, CursorOptions::default()).unwrap();
         owner
             .command(Command::Control(Control::Share { access }))
             .unwrap();
-        let watcher = self.join(&owner);
-        (owner, watcher)
+        let guest = self.join(&owner);
+        (owner, guest)
     }
 
     pub(crate) fn join(&self, owner: &Handle<u8>) -> Handle<u8> {

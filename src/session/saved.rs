@@ -5,15 +5,10 @@ use api_types::Audience;
 use foundation::ItemId;
 use workspace::{Environment, LiveRecipe, Source, Workspace, WorkspaceItem, intake::with_label_as};
 
-/// The logins saved with the workspace's streams, for the seat that may copy them.
+/// The logins saved with the workspace's streams, for an Owner seat that may copy them.
 #[derive(Clone, Copy)]
 pub(super) struct Saved<'a> {
     workspace: &'a Workspace,
-    /// Whether the seat is the session's owner; any other copies no login.
-    owner: bool,
-    /// Whether the seat is not the owner of a session whose references read this machine's environment: a stream it
-    /// adds may not hold one.
-    pub(super) guest: bool,
     /// Whether the session's references read this machine's environment.
     expands: bool,
     /// What the seat is shown of hosts.
@@ -21,16 +16,9 @@ pub(super) struct Saved<'a> {
 }
 
 impl<'a> Saved<'a> {
-    pub(super) fn new(
-        workspace: &'a Workspace,
-        owner: bool,
-        expands: bool,
-        audience: Audience,
-    ) -> Self {
+    pub(super) fn new(workspace: &'a Workspace, expands: bool, audience: Audience) -> Self {
         Self {
             workspace,
-            owner,
-            guest: expands && !owner,
             expands,
             audience,
         }
@@ -68,11 +56,6 @@ impl<'a> Saved<'a> {
             Some(found) => self.labelled(found.clone(), Some(label)).label,
             None => label.trim().to_owned(),
         }
-    }
-
-    /// The recipe of the live stream `item`, when the seat may copy its login.
-    pub(super) fn live(self, item: ItemId) -> Option<&'a LiveRecipe> {
-        self.owner.then(|| self.recipe(item)).flatten()
     }
 
     /// The recipe of live stream `item`.

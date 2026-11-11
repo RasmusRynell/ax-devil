@@ -2,7 +2,7 @@ import type { ErrorCode, ErrorWire, RefusalCode } from "./generated/api";
 
 /**
  * What each public failure code says to someone who is not told the backend's own wording: the Session socket and
- * the playback socket send only the code to a watcher, so this window words it.
+ * the playback socket send only the code to a Guest, so this window words it.
  */
 export const ERRORS: Record<ErrorCode, string> = {
   InvalidPath: "That path is not valid.",

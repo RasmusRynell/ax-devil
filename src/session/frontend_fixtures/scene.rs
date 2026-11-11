@@ -5,9 +5,9 @@ use foundation::{BookmarkId, HostPath, ItemId};
 use handler_api::ResolvedPlaylists;
 use handlers::Handlers;
 use sessions::{
-    OwnerId, SessionId,
+    SessionId,
     session::{
-        Command, Completion, Fresh, Input, Lease, OWNER_SEAT, SessionState, Work, transition,
+        Command, Completion, Fresh, Input, Lease, SeatId, SeatKind, SessionState, Work, transition,
     },
 };
 use std::{collections::BTreeMap, path::PathBuf};
@@ -18,11 +18,21 @@ use workspace::{
 };
 use workspace_store::{BookmarkCommand, DocCommand, HiddenRef, Saved};
 
+/// The first Owner seat of `session`.
+pub(super) fn owner_of(session: &SessionState) -> SeatId {
+    session
+        .seats
+        .iter()
+        .find(|(_, seat)| seat.kind == SeatKind::Owner)
+        .map(|(id, _)| *id)
+        .expect("a scene has an Owner seat")
+}
+
 /// Applies `command` to `session` as its owner and resolves the items it sends to be resolved with `outcomes`, as the
 /// runner would. A refusal is a mistake in the scenario.
 pub(super) fn run(session: &mut SessionState, outcomes: &Outcomes, command: Command) {
     let input = Input::Command {
-        seat: OWNER_SEAT,
+        seat: owner_of(session),
         lease: Lease(0),
         command,
         fresh: Fresh::now(),
@@ -61,8 +71,10 @@ pub(super) struct Scene {
 impl Scene {
     /// An empty session: its owner holds the files grant and reads no environment.
     pub(super) fn new() -> Self {
+        let mut session = SessionState::new(SessionId::generate(), false);
+        session.seat_owner();
         Self {
-            session: SessionState::new(SessionId::generate(), OwnerId::generate(), false),
+            session,
             outcomes: Outcomes::default(),
             items: BTreeMap::new(),
             ids: BTreeMap::new(),

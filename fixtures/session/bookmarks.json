@@ -1,6 +1,18 @@
 {
   "docs": {
     "blur-question": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [
@@ -216,8 +228,10 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "blur-removed": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -228,9 +242,7 @@
           "recovered": false,
           "rows": []
         }
-      }
-    },
-    "blur-removed": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [
@@ -438,22 +450,22 @@
               "warnings": []
             }
           ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": []
         }
       }
     },
     "blur-unnamed": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [
@@ -669,21 +681,213 @@
             }
           ]
         }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": []
-        }
       }
     },
     "both-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Blur",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "v.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [
@@ -892,210 +1096,6 @@
               "kind": "lane",
               "label": "GT",
               "location": "/data/mot/GT.txt",
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [
-            {
-              "bookmarks": [
-                {
-                  "frame": 75,
-                  "id": "00000000-0000-4000-9000-000000000001",
-                  "kind": "note",
-                  "note": "",
-                  "time_us": 3000000
-                },
-                {
-                  "frame": 90,
-                  "id": "00000000-0000-4000-9000-000000000002",
-                  "kind": "issue",
-                  "note": "Blur",
-                  "time_us": 3600000
-                }
-              ],
-              "entry": "",
-              "item": "00000000-0000-4000-8000-000000000001",
-              "item_name": "v.mp4",
-              "key": "00000000-0000-4000-8000-000000000001",
-              "reviewed": false,
-              "standing": {
-                "entry": "00000000-0000-4000-8000-000000000001",
-                "status": "Open"
-              },
-              "target": null
-            },
-            {
-              "bookmarks": [
-                {
-                  "frame": 6,
-                  "id": "00000000-0000-4000-9000-000000000003",
-                  "kind": "note",
-                  "note": "",
-                  "time_us": 240000
-                }
-              ],
-              "entry": "A",
-              "item": "00000000-0000-4000-8000-000000000002",
-              "item_name": "mot",
-              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
-              "reviewed": false,
-              "standing": {
-                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
-                "status": "Open"
-              },
-              "target": "MOT/A"
-            },
-            {
-              "bookmarks": [
-                {
-                  "frame": 4,
-                  "id": "00000000-0000-4000-9000-000000000004",
-                  "kind": "note",
-                  "note": "",
-                  "time_us": 160000
-                }
-              ],
-              "entry": "MOT/Z",
-              "item": "00000000-0000-4000-8000-000000000002",
-              "item_name": "mot",
-              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
-              "reviewed": false,
-              "standing": {
-                "status": "Missing"
-              },
-              "target": "MOT/Z"
-            }
-          ],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "video",
-              "label": "v.mp4",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "v.mp4",
-                  "entry": {
-                    "handlers": [],
-                    "id": "00000000-0000-4000-8000-000000000001",
-                    "label": "v.mp4",
-                    "lane_metadata": [],
-                    "lanes": [
-                      "v.mp4"
-                    ],
-                    "metadata": []
-                  },
-                  "generation": 4,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "SeekableVideo"
-                },
-                "status": "Resolved"
-              }
-            },
-            {
-              "id": "00000000-0000-4000-8000-000000000002",
-              "kind": "playlist",
-              "label": "mot",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "mot",
-                  "entries": [
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
-                      "label": "A",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "GT"
-                      ],
-                      "metadata": []
-                    }
-                  ],
-                  "generation": 5,
-                  "id": "00000000-0000-4000-8000-000000000002",
-                  "kind": "Playlist",
-                  "playlists": [
-                    {
-                      "entries": 1,
-                      "id": "00000000-0000-4000-8000-000000000002/MOT",
-                      "label": "mot",
-                      "metadata": []
-                    }
-                  ]
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001",
-              "kind": "item",
-              "label": "v.mp4",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000002",
-              "key": "00000000-0000-4000-8000-000000000002/MOT",
-              "kind": "playlist",
-              "label": "mot",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000002",
-              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
-              "kind": "entry",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000002",
-              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
-              "kind": "lane",
-              "label": "GT",
-              "location": null,
               "status": {
                 "status": "Ready"
               },
@@ -1106,6 +1106,18 @@
       }
     },
     "initial": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [
@@ -1321,21 +1333,146 @@
             }
           ]
         }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": []
-        }
       }
     },
     "mot-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [
@@ -1551,146 +1688,21 @@
             }
           ]
         }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [
-            {
-              "bookmarks": [
-                {
-                  "frame": 6,
-                  "id": "00000000-0000-4000-9000-000000000003",
-                  "kind": "note",
-                  "note": "",
-                  "time_us": 240000
-                }
-              ],
-              "entry": "A",
-              "item": "00000000-0000-4000-8000-000000000002",
-              "item_name": "mot",
-              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
-              "reviewed": false,
-              "standing": {
-                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
-                "status": "Open"
-              },
-              "target": "MOT/A"
-            },
-            {
-              "bookmarks": [
-                {
-                  "frame": 4,
-                  "id": "00000000-0000-4000-9000-000000000004",
-                  "kind": "note",
-                  "note": "",
-                  "time_us": 160000
-                }
-              ],
-              "entry": "MOT/Z",
-              "item": "00000000-0000-4000-8000-000000000002",
-              "item_name": "mot",
-              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
-              "reviewed": false,
-              "standing": {
-                "status": "Missing"
-              },
-              "target": "MOT/Z"
-            }
-          ],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000002",
-              "kind": "playlist",
-              "label": "mot",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "mot",
-                  "entries": [
-                    {
-                      "handlers": [
-                        "MOT_FILE"
-                      ],
-                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
-                      "label": "A",
-                      "lane_metadata": [
-                        []
-                      ],
-                      "lanes": [
-                        "GT"
-                      ],
-                      "metadata": []
-                    }
-                  ],
-                  "generation": 5,
-                  "id": "00000000-0000-4000-8000-000000000002",
-                  "kind": "Playlist",
-                  "playlists": [
-                    {
-                      "entries": 1,
-                      "id": "00000000-0000-4000-8000-000000000002/MOT",
-                      "label": "mot",
-                      "metadata": []
-                    }
-                  ]
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000002",
-              "key": "00000000-0000-4000-8000-000000000002/MOT",
-              "kind": "playlist",
-              "label": "mot",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000002",
-              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
-              "kind": "entry",
-              "label": "A",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            },
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000002",
-              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
-              "kind": "lane",
-              "label": "GT",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
       }
     },
     "recovered": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 2,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": true,
+          "rows": []
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [
@@ -1906,21 +1918,21 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "renamed": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
-          "epoch": 2,
+          "epoch": 0,
           "file": null,
           "items": [],
           "modified": true,
           "name": null,
-          "recovered": true,
+          "recovered": false,
           "rows": []
         }
-      }
-    },
-    "renamed": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [
@@ -2136,21 +2148,21 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "replaced": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
-          "epoch": 0,
+          "epoch": 1,
           "file": null,
           "items": [],
-          "modified": true,
+          "modified": false,
           "name": null,
           "recovered": false,
           "rows": []
         }
-      }
-    },
-    "replaced": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [
@@ -2366,21 +2378,21 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "reviewed": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
-          "epoch": 1,
+          "epoch": 0,
           "file": null,
           "items": [],
-          "modified": false,
+          "modified": true,
           "name": null,
           "recovered": false,
           "rows": []
         }
-      }
-    },
-    "reviewed": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [
@@ -2540,8 +2552,10 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "sharp": {
+      "guest": {
         "workspace": {
           "bookmarks": [],
           "epoch": 0,
@@ -2552,9 +2566,7 @@
           "recovered": false,
           "rows": []
         }
-      }
-    },
-    "sharp": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [
@@ -2770,21 +2782,91 @@
             }
           ]
         }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": []
-        }
       }
     },
     "sharp-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Sharp",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "w.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "w.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "w.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "w.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "w.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [
@@ -3000,8 +3082,10 @@
             }
           ]
         }
-      },
-      "watcher": {
+      }
+    },
+    "v-open": {
+      "guest": {
         "workspace": {
           "bookmarks": [
             {
@@ -3017,13 +3101,13 @@
                   "frame": 90,
                   "id": "00000000-0000-4000-9000-000000000002",
                   "kind": "issue",
-                  "note": "Sharp",
+                  "note": "Blur",
                   "time_us": 3600000
                 }
               ],
               "entry": "",
               "item": "00000000-0000-4000-8000-000000000001",
-              "item_name": "w.mp4",
+              "item_name": "v.mp4",
               "key": "00000000-0000-4000-8000-000000000001",
               "reviewed": false,
               "standing": {
@@ -3039,22 +3123,22 @@
             {
               "id": "00000000-0000-4000-8000-000000000001",
               "kind": "video",
-              "label": "w.mp4",
+              "label": "v.mp4",
               "open": true,
               "resolution": {
                 "content": {
-                  "display_name": "w.mp4",
+                  "display_name": "v.mp4",
                   "entry": {
                     "handlers": [],
                     "id": "00000000-0000-4000-8000-000000000001",
-                    "label": "w.mp4",
+                    "label": "v.mp4",
                     "lane_metadata": [],
                     "lanes": [
                       "v.mp4"
                     ],
                     "metadata": []
                   },
-                  "generation": 5,
+                  "generation": 4,
                   "id": "00000000-0000-4000-8000-000000000001",
                   "kind": "SeekableVideo"
                 },
@@ -3073,7 +3157,7 @@
               "item": "00000000-0000-4000-8000-000000000001",
               "key": "00000000-0000-4000-8000-000000000001",
               "kind": "item",
-              "label": "w.mp4",
+              "label": "v.mp4",
               "location": null,
               "status": {
                 "status": "Ready"
@@ -3082,9 +3166,7 @@
             }
           ]
         }
-      }
-    },
-    "v-open": {
+      },
       "owner": {
         "workspace": {
           "bookmarks": [
@@ -3300,91 +3382,21 @@
             }
           ]
         }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [
-            {
-              "bookmarks": [
-                {
-                  "frame": 75,
-                  "id": "00000000-0000-4000-9000-000000000001",
-                  "kind": "note",
-                  "note": "",
-                  "time_us": 3000000
-                },
-                {
-                  "frame": 90,
-                  "id": "00000000-0000-4000-9000-000000000002",
-                  "kind": "issue",
-                  "note": "Blur",
-                  "time_us": 3600000
-                }
-              ],
-              "entry": "",
-              "item": "00000000-0000-4000-8000-000000000001",
-              "item_name": "v.mp4",
-              "key": "00000000-0000-4000-8000-000000000001",
-              "reviewed": false,
-              "standing": {
-                "entry": "00000000-0000-4000-8000-000000000001",
-                "status": "Open"
-              },
-              "target": null
-            }
-          ],
-          "epoch": 0,
-          "file": null,
-          "items": [
-            {
-              "id": "00000000-0000-4000-8000-000000000001",
-              "kind": "video",
-              "label": "v.mp4",
-              "open": true,
-              "resolution": {
-                "content": {
-                  "display_name": "v.mp4",
-                  "entry": {
-                    "handlers": [],
-                    "id": "00000000-0000-4000-8000-000000000001",
-                    "label": "v.mp4",
-                    "lane_metadata": [],
-                    "lanes": [
-                      "v.mp4"
-                    ],
-                    "metadata": []
-                  },
-                  "generation": 4,
-                  "id": "00000000-0000-4000-8000-000000000001",
-                  "kind": "SeekableVideo"
-                },
-                "status": "Resolved"
-              }
-            }
-          ],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": [
-            {
-              "detail": "",
-              "entry": "00000000-0000-4000-8000-000000000001",
-              "hidden": false,
-              "item": "00000000-0000-4000-8000-000000000001",
-              "key": "00000000-0000-4000-8000-000000000001",
-              "kind": "item",
-              "label": "v.mp4",
-              "location": null,
-              "status": {
-                "status": "Ready"
-              },
-              "warnings": []
-            }
-          ]
-        }
       }
     },
     "v-reviewed": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
       "owner": {
         "workspace": {
           "bookmarks": [
@@ -3599,18 +3611,6 @@
               "warnings": []
             }
           ]
-        }
-      },
-      "watcher": {
-        "workspace": {
-          "bookmarks": [],
-          "epoch": 0,
-          "file": null,
-          "items": [],
-          "modified": true,
-          "name": null,
-          "recovered": false,
-          "rows": []
         }
       }
     }

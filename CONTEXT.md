@@ -23,12 +23,12 @@ Shared language for ax-devil's inspection workspace. Code, docs and UI use these
 | Playlist Item | A Workspace Item holding a playlist resolver id and that resolver's settings; it resolves to one or more playlists. | Resolved playlist |
 | Bookmark | A frame of a local video or playlist entry that the user marked while reviewing, with a kind and an optional note; saved in the Workspace with each Bookmark Target's reviewed mark. Never on live streams. | Marker, annotation, flag |
 | Bookmark Target | What is reviewed: a Video Item, or one entry of a Playlist Item, named by its playlist's name and its label. | Entry index, content id |
-| Session | What one window shows, held by one backend from the window's first connect until it ends; every window has one. Private until its Owner uses Start sharing (Stop sharing makes it private again); Sessions of one backend are isolated from each other. | Room, window |
-| Owner | Whoever created a Session and the only one who can change what it shows. | Host, presenter |
-| Watcher | Anyone else in a Session: Following shows the Presenter View, Exploring shows its own view of what the Owner has open. | Viewer, guest, spectator |
-| Presenter View | The view state the Owner publishes. | Shared screen |
+| Session | A piece of shared work held by one backend from its first connect until it ends; every window is attached to exactly one. Private until an Owner uses Start sharing (Stop sharing makes it private again); Sessions of one backend are isolated from each other. | Room, window |
+| Owner | The person who controls the server: a local connection or a Server Password holder, on any number of devices. Every Owner seat in a Session drives its Presenter View. | Host, presenter |
+| Guest | Anyone in a Session by Join Link: Following shows the Presenter View, Exploring shows its own view of what the Owner has open. | Watcher, Viewer, spectator |
+| Presenter View | The one view state of a Session, which Owner seats drive and Guests follow. | Shared screen |
 | Join Link | A URL whose secret admits its holder to one Session only. | Invite, share link |
-| Server Password | The secret that lets someone use a remote server itself: own and watch Sessions, add its videos, change its settings. | Login, token |
+| Server Password | The secret that lets someone use a remote server itself: own and attach to Sessions, add its videos, change its settings. | Login, token |
 | Sidebar View | What the sidebar shows, chosen from the activity bar: the Workspace or one part of it (top zone), or something about the application (bottom zone). | Panel, tab, page |
 | Content | What a Workspace Item resolves to: Seekable Video, Live Video, or Playlist Content. Rebuilt on every resolution, never saved. | Startup content, resolved item |
 | Viewer | An open inspection surface hosted by the Workspace: the user-facing name for a Viewer Widget. | Player, pane, runtime bucket |
@@ -69,7 +69,7 @@ Shared language for ax-devil's inspection workspace. Code, docs and UI use these
 
 ## Usage Notes
 
-- Use **Watcher** for a Session's participant, never Viewer, which already names the inspection surface.
+- Use **Guest** for a Session's participant who joined by Join Link, never Viewer, which already names the inspection surface.
 - Use **Seekable Video Content** for the Workspace description and "seekable source" only for the runtime source opened from it.
 - Use **Frame Display** for the reusable display shell and **Video Viewer** for the workflow that owns media behavior.
 - Use **Overlay Content** for companion data, **Sample Item** and **Frame Map** for what the backend sends, and **Marks** for what the frontend draws. Use **Lane Policy** for what the backend must know and **Lane Style** for what only the client holds.

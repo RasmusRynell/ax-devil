@@ -3,7 +3,7 @@ use crate::{access::Policy, plugins::Plugins};
 use api_types::CursorPoint;
 use serde_json::json;
 use sessions::CursorOptions;
-use sessions::session::{Control, Handle};
+use sessions::session::Handle;
 use std::sync::Arc;
 
 fn command(command: serde_json::Value) -> api_types::SessionCommand {
@@ -118,55 +118,6 @@ fn items_of(handle: &Handle<CursorPoint>) -> Vec<(String, String)> {
         .iter()
         .map(|item| (item.id.to_string(), item.label.clone()))
         .collect()
-}
-
-/// A seat that is not shown the host (an Edit guest) is answered nothing about it by what clears: a label equal to
-/// the host stays, and only the placeholder it is shown clears. The owner's own behaviour is the other test's.
-#[tokio::test]
-async fn a_guest_cannot_find_a_hosts_text_by_which_label_clears() {
-    let folder = tempfile::tempdir().unwrap();
-    let state = app(folder.path());
-    let owner = state
-        .sessions
-        .create(true, CursorOptions::default())
-        .unwrap();
-    answer(
-        &state,
-        &owner,
-        1,
-        command(json!({"type": "addItems", "open": false,
-            "items": [{"type": "Live", "host": "cam.local"}]})),
-    )
-    .await;
-    owner
-        .command(sessions::session::Command::Control(Control::Share {
-            access: sessions::session::Access::Edit,
-        }))
-        .unwrap();
-    let link = owner.state().sharing.as_ref().unwrap().link.clone();
-    let guest = state
-        .sessions
-        .join(&link, CursorOptions::default())
-        .unwrap();
-    let id = items_of(&owner)[0].0.clone();
-    let rename = |label: &str| json!({"type": "renameItem", "item": id, "label": label});
-    answer(&state, &guest, 1, command(rename("cam.local"))).await;
-    assert_eq!(items_of(&owner)[0].1, "cam.local", "no oracle for the host");
-    answer(&state, &guest, 2, command(rename("Live stream"))).await;
-    assert_eq!(
-        items_of(&owner)[0].1,
-        "",
-        "the placeholder it is shown clears"
-    );
-    // The owner is shown the host, so naming the stream by it names nothing.
-    answer(&state, &owner, 2, command(rename("cam.local"))).await;
-    assert_eq!(items_of(&owner)[0].1, "");
-
-    // A guest adds nothing, so no add is a route for the question.
-    let add = json!({"type": "addItems", "open": false,
-        "items": [{"type": "Live", "host": "cam.local", "label": "cam.local"}]});
-    answer(&state, &guest, 3, command(add)).await;
-    assert_eq!(items_of(&owner).len(), 1);
 }
 
 /// Every route that names an item clears a label equal to its default, for an owner whose references expand and one
