@@ -28,8 +28,9 @@ use workspace_store::{BookmarkCommand, DocCommand, HiddenRef};
 /// - a scanned camera's stream needs `Control`: its `found` address is gone once the command is converted;
 /// - `AddResolved` and `EditResolved` always need `Host`: the staged item came from a resolve that read the host's
 ///   files, though `needs` says `Content` for a live recipe;
-/// - a workspace command is run by the files adapter, which asks `needs` of the Session commands it sends after its
-///   file work; `ExportBookmarks` sends none.
+/// - `ExportBookmarks` writes a file and sends no Session command.
+///
+/// A workspace command is compared with the command the files adapter sends after its file work (`files::sent`).
 pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
     match wire {
         SessionCommand::Content { command } => Some(match command {

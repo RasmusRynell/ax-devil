@@ -1,9 +1,12 @@
 use super::*;
+use crate::session::files::sent;
 use crate::test_support::TestApp;
 use api_types::{Audience, DocCommand as DocWire, bookmarks::BookmarkCommand as BookmarkWire};
+use foundation::HostPath;
 use serde_json::{Value, json};
 use sessions::session::{SessionState, Use};
 use std::collections::BTreeSet;
+use workspace::Workspace;
 
 /// Names every command a client can send. The match is exhaustive, so a new command does not compile until it has an
 /// arm here; its name is then listed in `VARIANTS`, and the test fails until `cases` sends one.
@@ -53,8 +56,10 @@ variants! {
 enum Expect {
     /// Against `Command::needs` of the command it converts to.
     Converted,
-    /// Against this scope, written here: the command has no counterpart to convert to in `Command::needs` (see the
-    /// exceptions in `scope`'s documentation).
+    /// Against `Command::needs` of the command the files adapter sends after its file work (`files::sent`).
+    Sent,
+    /// Against this scope, written here: the exceptions in `scope`'s documentation, which have no comparable command
+    /// (the staged item is converted only with its ticket; the export sends none).
     Fixed(Scope),
 }
 
@@ -72,7 +77,7 @@ fn workspace(kind: &str, fields: Value) -> Value {
 
 /// One command of every variant, and of every shape of value that decides its scope.
 fn cases() -> Vec<(Value, Expect)> {
-    use Expect::{Converted, Fixed};
+    use Expect::{Converted, Fixed, Sent};
     let item = ItemId::generate().to_string();
     let ticket = ItemId::generate().to_string();
     let bookmark = BookmarkId::generate().to_string();
@@ -173,14 +178,11 @@ fn cases() -> Vec<(Value, Expect)> {
                 "content": item, "generation": 0, "entry": item, "viewer": 0 } }),
             Converted,
         ),
-        (workspace("new", json!({})), Fixed(Scope::Host)),
-        (
-            workspace("open", json!({ "path": "/w.axw" })),
-            Fixed(Scope::Host),
-        ),
-        (workspace("save", json!({})), Fixed(Scope::Host)),
-        (workspace("keep", json!({})), Fixed(Scope::Content)),
-        (workspace("discard", json!({})), Fixed(Scope::Host)),
+        (workspace("new", json!({})), Sent),
+        (workspace("open", json!({ "path": "/w.axw" })), Sent),
+        (workspace("save", json!({})), Sent),
+        (workspace("keep", json!({})), Sent),
+        (workspace("discard", json!({})), Sent),
         (
             workspace("exportBookmarks", json!({ "path": "/b.csv" })),
             Fixed(Scope::Host),
@@ -189,8 +191,9 @@ fn cases() -> Vec<(Value, Expect)> {
 }
 
 /// The wire's scope is decided before the command is converted, so it is a copy of the rule in `Command::needs` that
-/// must not drift: every command that converts to a Session command needs what that command needs. The rest are
-/// asserted as written (the exceptions in `scope`'s documentation), and every variant must have a sample.
+/// must not drift: every command that converts to a Session command, or that the files adapter turns into one after
+/// its file work, needs what that command needs. The rest are asserted as written (the exceptions in `scope`'s
+/// documentation), and every variant must have a sample.
 #[tokio::test]
 async fn the_wire_scope_is_the_scope_the_converted_command_needs() {
     let app = TestApp::new();
@@ -201,6 +204,17 @@ async fn the_wire_scope_is_the_scope_the_converted_command_needs() {
         seen.insert(variant(&wire));
         let wanted = match expect {
             Expect::Fixed(scope) => Some(scope),
+            Expect::Sent => {
+                let SessionCommand::Workspace { command } = &wire else {
+                    panic!("{value} is not a workspace command");
+                };
+                let file = Some(HostPath::new("/w.axw"));
+                let sent = sent(command, Workspace::default(), file);
+                sent.as_ref().and_then(|sent| match sent.needs() {
+                    Use::Command(scope) => Some(scope),
+                    Use::Stream(_) => None,
+                })
+            }
             Expect::Converted => {
                 let state = &app.state;
                 let defaults = crate::session::live::defaults(&state.settings.state(), false);
@@ -229,5 +243,7 @@ async fn the_wire_scope_is_the_scope_the_converted_command_needs() {
         };
         assert_eq!(scope(&wire), wanted, "{value}");
     }
-    assert_eq!(seen, VARIANTS.iter().copied().collect::<BTreeSet<_>>());
+    let named: BTreeSet<_> = VARIANTS.iter().copied().collect();
+    assert_eq!(named.len(), VARIANTS.len(), "a variant is named twice");
+    assert_eq!(seen, named);
 }
