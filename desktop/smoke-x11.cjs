@@ -86,7 +86,9 @@ async function withUnfocused(window, work) {
     let timer;
     try {
       await Promise.race([
-        closed,
+        closed.then(() => {
+          if (failure) throw new Error("Private X11 focus witness failed", { cause: failure });
+        }),
         new Promise((_resolve, reject) => {
           timer = setTimeout(() => {
             other.kill("SIGKILL");
@@ -94,7 +96,6 @@ async function withUnfocused(window, work) {
           }, 3000);
         }),
       ]);
-      if (failure) throw new Error("Private X11 focus witness failed", { cause: failure });
     } finally {
       clearTimeout(timer);
     }
