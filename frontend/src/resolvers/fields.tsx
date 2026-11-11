@@ -1,3 +1,4 @@
+import { chooseFile, chooseFolder, type PathRequest, type PickPath } from "../pickPath";
 import type { ReactNode } from "react";
 import type { DecoderInfo, FieldInfo, FieldKindWire, ScanCountInfo } from "../generated/api";
 import { Button } from "../kit/Button";
@@ -12,8 +13,8 @@ export interface FieldForm {
   /** The text of every field that is not a `Scan` field, and any settings the form does not show. */
   values: Settings;
   scans: Readonly<Record<string, ScanView>>;
-  /** Browses this machine's folders; absent where the page is not the backend's own window. */
-  pickFolder?: () => Promise<string | null>;
+  /** Browses the backend machine's folders; absent where the page may not. */
+  pickPath?: PickPath;
   /** Sets a field's text. `commit` is true when the text is final, such as a picked folder, so a scan may follow. */
   set: (key: string, value: string, commit?: boolean) => void;
   /** Whether everything the `Scan` field reads is filled in. */
@@ -50,15 +51,15 @@ export const needsValue = (field: FieldInfo) => field.required && field.default 
 
 const text = (form: FieldForm, field: FieldInfo) => shown(field, form.values);
 
-/** A text box, with Browse beside it in the desktop app when `pick` can choose the path. */
+/** A text box, with Browse beside it when the form can pick a path. */
 function PathField({
   field,
   form,
-  pick,
+  request,
 }: {
   field: FieldInfo;
   form: FieldForm;
-  pick?: () => Promise<string | null>;
+  request?: PathRequest;
 }) {
   return (
     <TextField
@@ -67,12 +68,12 @@ function PathField({
       placeholder={fallback(field)}
       onChange={(value) => form.set(field.key, value)}
       action={
-        pick && (
+        request && (
           <Button
             className="shrink-0"
             aria-label={`Browse ${field.label}`}
             onClick={() =>
-              void pick().then((path) => {
+              void form.pickPath?.(request).then((path) => {
                 if (path !== null) form.set(field.key, path, true);
               })
             }
@@ -182,9 +183,16 @@ function ScanCountControl({
 
 /** The control for each kind of field; a new kind is a new entry here, not a branch. */
 const CONTROLS: Record<FieldKindWire["kind"], Control> = {
-  Folder: (field, form) => <PathField field={field} form={form} pick={form.pickFolder} />,
-  // The shell has no picker for files of a given type yet, so a file is typed.
-  File: (field, form) => <PathField field={field} form={form} />,
+  Folder: (field, form) => (
+    <PathField field={field} form={form} request={form.pickPath && chooseFolder()} />
+  ),
+  File: (field, form) => (
+    <PathField
+      field={field}
+      form={form}
+      request={form.pickPath && chooseFile(field.kind.kind === "File" ? field.kind.extensions : [])}
+    />
+  ),
   Text: (field, form) => (
     <TextField
       label={field.label}

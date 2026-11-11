@@ -150,7 +150,7 @@ export function useSelectOnOpen(on: boolean) {
   return input;
 }
 
-/** A labelled text box; `masked` hides what is typed, `placeholder` shows what applies while it is empty, `suggestions` are offered to pick from, each as `[value, name]`, while any text stays allowed, `action` sits after the box, `describedBy` names a note about it, `fill` gives the box its own row at the full width, `wide` makes it wide enough for a `$NAME` reference, `selectOnOpen` focuses it with its text selected once it is on screen (after a dialog around it took the focus). */
+/** A labelled text box; `masked` hides what is typed, `placeholder` shows what applies while it is empty, `suggestions` are offered to pick from, each as `[value, name]`, while any text stays allowed, `action` sits after the box, `describedBy` names a note about it, `fill` gives the box its own row at the full width, `wide` makes it wide enough for a `$NAME` reference, `selectOnOpen` focuses it with its text selected once it is on screen (after a dialog around it took the focus), `onEnter` takes Enter for itself instead of the dialog's OK. */
 export function TextField({
   label,
   value,
@@ -162,6 +162,7 @@ export function TextField({
   fill = false,
   wide = false,
   selectOnOpen = false,
+  onEnter,
   onChange,
 }: {
   label: ReactNode;
@@ -174,6 +175,7 @@ export function TextField({
   fill?: boolean;
   wide?: boolean;
   selectOnOpen?: boolean;
+  onEnter?: () => void;
   onChange: (value: string) => void;
 }) {
   const id = useId();
@@ -196,6 +198,14 @@ export function TextField({
           list={suggestions?.length ? list : undefined}
           aria-describedby={describedBy}
           onChange={(event) => onChange(event.target.value)}
+          onKeyDown={
+            onEnter &&
+            ((event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              onEnter();
+            })
+          }
           className={`${FIELD} min-w-0 ${fill ? "flex-1" : wide ? "w-field-wide" : "w-field"}`}
         />
         {suggestions?.length ? (

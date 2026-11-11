@@ -3,9 +3,6 @@
 Who may do what, and where each setting lives. Sharing, `serve` and remote windows are new in the rewrite, so this
 page is the reference for them, not the Python app.
 
-Parts of this model are not built yet; see [Not Yet True](#not-yet-true). New code follows this page, never the
-behavior a listed gap still has.
-
 ## Five Facts
 
 Every access or settings decision reads exactly one of these. Never derive one from another.
@@ -96,10 +93,10 @@ Rules:
 
 ## Native Features
 
-File and folder dialogs, restart and opening the log folder exist only in a desktop window on the server's own
-machine. The frontend asks the shell bridge whether a feature is offered and shows the control only then; it never
-infers this from the Role. Where a remote Owner needs the same task, the server offers its own way to do it (a path
-picker served by the backend).
+Restart and opening the log folder exist only in a desktop window on the server's own machine; the frontend asks the
+shell bridge and shows the control only then, never inferring it from the Role. File and folder dialogs have a
+server-side stand-in: `usePickPath` uses the shell's dialog when offered, else the path picker, which an Owner uses
+to browse the server through `GET /api/files/folder`.
 
 ## Adding Something
 
@@ -110,11 +107,3 @@ picker served by the backend).
 | A Session field | Whether a Guest receives it; if so, it passes the projection rule |
 | A native feature | The shell bridge offers it; what a remote Owner uses instead |
 | Something to choose from | The list lives with the server; the choice is a setting |
-
-## Not Yet True
-
-Each row is removed by the change that makes it true; this section is deleted with the last one.
-
-| Model | Today |
-|-------|-------|
-| A remote Owner has a path picker | Folder and file dialogs are refused in remote windows with no replacement |

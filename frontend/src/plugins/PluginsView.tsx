@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useAccess } from "../access";
-import { nativeBridge } from "../windowBridge";
+import { chooseFolder, usePickPath } from "../pickPath";
 import { reasonOf } from "../errors";
 import type {
   HandlerKind,
@@ -194,7 +194,7 @@ export function PluginsView() {
   const [busy, setBusy] = useState(false);
   // Why the last install or remove failed; a list reload never clears it.
   const [refused, setRefused] = useState<string | null>(null);
-  const bridge = nativeBridge();
+  const pick = usePickPath();
 
   const change = async (url: string, body: InstallRequest | RemoveRequest | UpdateRequest) => {
     setBusy(true);
@@ -234,11 +234,11 @@ export function PluginsView() {
               setRefused(null);
             }}
             action={
-              bridge && (
+              pick && (
                 <BrowseButton
                   what="folder"
                   onBrowse={() =>
-                    void bridge.pickFolder().then((folder) => {
+                    void pick(chooseFolder()).then((folder) => {
                       if (folder !== null) setPath(folder);
                     })
                   }

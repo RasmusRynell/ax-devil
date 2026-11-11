@@ -6,8 +6,8 @@ import { SegmentedControl } from "../kit/Chips";
 import { Checkbox, LABELLED, Select, TextField } from "../kit/Fields";
 import { Icon } from "../kit/Icon";
 import { SET_PASSWORD } from "../live/expansions";
+import { chooseFolder, usePickPath } from "../pickPath";
 import { isSecretState, secretStateOf, type Login } from "../secret";
-import { nativeBridge } from "../windowBridge";
 import { LoginsEditor } from "./LoginsEditor";
 
 /** A setting's value as the backend tells it, or as edited: logins carry the passwords typed since. */
@@ -151,18 +151,18 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
     <TextField label={label} value={textOf(value)} suggestions={decoders} onChange={onChange} />
   ),
   folder: ({ row, label, value, onChange }) => {
-    const bridge = nativeBridge();
+    const pick = usePickPath();
     return (
       <TextField
         label={label}
         value={textOf(value)}
         onChange={onChange}
         action={
-          bridge && (
+          pick && (
             <BrowseButton
               what={row.label}
               onBrowse={() =>
-                void bridge.pickFolder(row.label).then((folder) => {
+                void pick(chooseFolder(row.label)).then((folder) => {
                   if (folder !== null) onChange(folder);
                 })
               }

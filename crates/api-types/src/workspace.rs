@@ -264,6 +264,41 @@ pub struct FileCheck {
     pub problem: Option<String>,
 }
 
+/// What `GET /api/files/folder` answers: one folder on the backend's machine, and where a listing can start.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+pub struct FolderListing {
+    /// The folder's canonical path; absent when no folder was asked for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub path: Option<String>,
+    /// The folder that holds it; absent at a root and when no folder was asked for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub parent: Option<String>,
+    /// The visible entries it holds, folders first, each group by name ignoring case.
+    pub entries: Vec<FolderEntry>,
+    /// Where to start: the home folder, then the filesystem roots.
+    pub places: Vec<FolderPlace>,
+}
+
+/// One entry of a listed folder.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+pub struct FolderEntry {
+    /// The file or folder name.
+    pub name: String,
+    /// Whether it is a folder; otherwise a file.
+    pub folder: bool,
+}
+
+/// A folder to start a listing from.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+pub struct FolderPlace {
+    /// What to call it: `Home`, or the root's own path.
+    pub name: String,
+    /// The folder's absolute path.
+    pub path: String,
+}
+
 /// An entry or lane to hide or show.
 #[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
 pub struct HiddenTarget {
@@ -293,5 +328,8 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<NewOverlayWire>();
     types.visit::<CheckFilesRequest>();
     types.visit::<FileCheck>();
+    types.visit::<FolderListing>();
+    types.visit::<FolderEntry>();
+    types.visit::<FolderPlace>();
     types.visit::<HiddenTarget>();
 }

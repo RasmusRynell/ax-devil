@@ -177,19 +177,21 @@ describe("the Bookmarks view", () => {
     ]);
   });
 
-  it("exports every bookmark to a typed path where the window has no file dialog", async () => {
+  it("exports every bookmark to the file the dialog chose", async () => {
+    window.axDevilWindow = {
+      remote: false,
+      pickExportFile: () => Promise.resolve("/tmp/marks.csv"),
+    } as unknown as typeof window.axDevilWindow;
     await renderView("initial");
     fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
-    fireEvent.click(screen.getByRole("button", { name: "Export" }));
-    expect(screen.getByText("Enter a path on the server.")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Path on the server"), {
-      target: { value: "/tmp/marks" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Export" }));
-    const workspace = FakeSocket.latest.received.flatMap((message) =>
-      message.type === "command" && message.cmd.type === "workspace" ? [message.cmd.command] : [],
+    const exported = () =>
+      FakeSocket.latest.received.flatMap((message) =>
+        message.type === "command" && message.cmd.type === "workspace" ? [message.cmd.command] : [],
+      );
+    await waitFor(() =>
+      expect(exported()).toEqual([{ type: "exportBookmarks", path: "/tmp/marks.csv" }]),
     );
-    expect(workspace).toEqual([{ type: "exportBookmarks", path: "/tmp/marks.csv" }]);
+    delete window.axDevilWindow;
   });
 });
 

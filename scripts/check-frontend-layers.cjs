@@ -26,6 +26,7 @@ const FRONTEND_LAYERS = {
     "commands",
     "recents",
     "windowBridge",
+    "pickPath",
     "session",
   ],
   workflows: [

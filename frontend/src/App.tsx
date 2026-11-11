@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AccessContext } from "./access";
 import { apiFetch } from "./api";
 import type { AppInfo } from "./generated/api";
+import { PathPickerProvider } from "./pickPath";
 import { SessionProvider } from "./session/session";
 import { SettingsProvider } from "./settings";
 import { SeekProvider } from "./bookmarks/viewerLink";
@@ -41,11 +42,13 @@ export function App() {
     return (
       <AccessContext value={{ owner: backend.info.owner, fullAccess: backend.info.fullAccess }}>
         <SettingsProvider onInfo={refreshed}>
-          <SessionProvider>
-            <SeekProvider>
-              <Shell version={backend.info.version} />
-            </SeekProvider>
-          </SessionProvider>
+          <PathPickerProvider>
+            <SessionProvider>
+              <SeekProvider>
+                <Shell version={backend.info.version} />
+              </SeekProvider>
+            </SessionProvider>
+          </PathPickerProvider>
         </SettingsProvider>
       </AccessContext>
     );

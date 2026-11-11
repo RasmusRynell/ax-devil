@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useReducer, useRef, type ReactNode } from "
 import { reasonOf } from "../errors";
 import type { ChoiceInfo, DecoderInfo, ErrorWire, FieldInfo, ResolverInfo } from "../generated/api";
 import { Refusal } from "../kit/Refusal";
-import { nativeBridge } from "../windowBridge";
+import { usePickPath } from "../pickPath";
 import { decoderOptions, FieldControl, misread, needsValue, shown, type FieldForm } from "./fields";
 import {
   checkedCount,
@@ -265,8 +265,7 @@ export function useResolverForm(
   );
   // A resolver not opened yet starts blank; its form is stored with its first edit.
   const state = forms.get(resolver.id) ?? start(resolver);
-  // Only the backend's own window shares its machine's folders with it.
-  const bridge = nativeBridge();
+  const pick = usePickPath();
   // Scans by `<resolver id>/<field key>`: a resolver left for another keeps scanning into its own form.
   const controllers = useRef(new Map<string, AbortController>());
   const slot = (key: string) => `${resolver.id}/${key}`;
@@ -350,7 +349,7 @@ export function useResolverForm(
   return {
     resolver,
     decoders,
-    pickFolder: bridge && (() => bridge.pickFolder()),
+    pickPath: pick,
     values: state.values,
     scans: state.scans,
     forms,

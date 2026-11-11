@@ -110,6 +110,13 @@ async function gallery(window) {
   const answer = () =>
     js("document.querySelector('output[aria-label=\"Last choice\"]').textContent");
   const dialogOpen = () => js("Boolean(document.querySelector('dialog[open]'))");
+  const openPicker = async () => {
+    await js(
+      "[...document.querySelectorAll('button')].find((b) => b.textContent === 'Open path picker').click()",
+    );
+    await wait("document.querySelector('dialog[open] [role=group] button')");
+    await frames({ js });
+  };
 
   for (const theme of ["light", "dark"]) {
     nativeTheme.themeSource = theme;
@@ -140,6 +147,12 @@ async function gallery(window) {
     key(window, "Return");
     await wait("!document.querySelector('dialog[open]')");
     assert.equal(await answer(), "later", `Enter must give the default choice (${theme})`);
+
+    // The path picker lists the server's folders; Escape cancels it.
+    await openPicker();
+    await shoot(`kit-path-picker-${theme}.png`);
+    key(window, "Escape");
+    await wait("!document.querySelector('dialog[open]')");
   }
 
   // The dialog's long message scrolls and its choices stay in view at the window minimum and 200% zoom.
@@ -152,6 +165,11 @@ async function gallery(window) {
   await frames({ js });
   assert.deepEqual(await js(`(${fit.dialog.toString()})()`), [], "the choice dialog at 200% zoom");
   key(window, "Return");
+  await wait("!document.querySelector('dialog[open]')");
+  // The path picker's list scrolls and its buttons stay in view at the same size.
+  await openPicker();
+  assert.deepEqual(await js(`(${fit.dialog.toString()})()`), [], "the path picker at 200% zoom");
+  key(window, "Escape");
   await wait("!document.querySelector('dialog[open]')");
   window.webContents.setZoomFactor(1);
 

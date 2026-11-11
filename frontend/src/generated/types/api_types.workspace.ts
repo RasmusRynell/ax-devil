@@ -29,6 +29,53 @@ path: string,
 problem?: string, };
 
 /**
+ * One entry of a listed folder.
+ */
+export type FolderEntry = { 
+/**
+ * The file or folder name.
+ */
+name: string, 
+/**
+ * Whether it is a folder; otherwise a file.
+ */
+folder: boolean, };
+
+/**
+ * What `GET /api/files/folder` answers: one folder on the backend's machine, and where a listing can start.
+ */
+export type FolderListing = { 
+/**
+ * The folder's canonical path; absent when no folder was asked for.
+ */
+path?: string, 
+/**
+ * The folder that holds it; absent at a root and when no folder was asked for.
+ */
+parent?: string, 
+/**
+ * The visible entries it holds, folders first, each group by name ignoring case.
+ */
+entries: Array<FolderEntry>, 
+/**
+ * Where to start: the home folder, then the filesystem roots.
+ */
+places: Array<FolderPlace>, };
+
+/**
+ * A folder to start a listing from.
+ */
+export type FolderPlace = { 
+/**
+ * What to call it: `Home`, or the root's own path.
+ */
+name: string, 
+/**
+ * The folder's absolute path.
+ */
+path: string, };
+
+/**
  * An entry or lane to hide or show.
  */
 export type HiddenTarget = { 

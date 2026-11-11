@@ -3,7 +3,6 @@ import { useAccess } from "../access";
 import { scopeOf } from "../commands";
 import type { SidebarView, WorkspaceCommand } from "../generated/api";
 import { COMMANDS } from "../generated/settings";
-import { CommandFailed } from "../errors";
 import { Button } from "../kit/Button";
 import { ChoiceDialog } from "../kit/ChoiceDialog";
 import type { MenuCommand } from "../kit/Menu";
@@ -33,9 +32,9 @@ import { KeptStateProvider } from "../kit/keptState";
 import { RevealLive, RevealShown } from "./RevealShown";
 import { LISTED_VIEWS, Sidebar } from "./Sidebar";
 import { Welcome } from "./Welcome";
-import { WorkspaceFileDialog } from "./WorkspaceFileDialog";
 import type { ActivityItem } from "./views";
 import { toggleAppFullscreen, nativeBridge, useAppFullscreen } from "../windowBridge";
+import { OPEN_WORKSPACE, saveWorkspace, usePickPath } from "../pickPath";
 
 const TEXT_INPUTS = new Set(["text", "search", "number", "email", "url", "tel", "password"]);
 
@@ -63,9 +62,7 @@ type Dialog =
   | "about"
   | "add-video"
   | "add-live-stream"
-  | "add-playlist"
-  | "open-workspace"
-  | "save-workspace-as";
+  | "add-playlist";
 
 /**
  * The application layout: menu bar over the activity bar, sidebar and central area. What the window shows comes from
@@ -80,8 +77,6 @@ export function Shell({ version }: { version: string }) {
   const command = useCommand();
   const workspace = useDoc()?.workspace;
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
-  // The file a typed Save As would replace, until the user answers.
-  const [replacing, setReplacing] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   useFrontViewer(() => setNotice(`Cap at ${MAX_PANES} panes`));
   // A failed save of a setting: a notice the user acknowledges, as the app's own dialogs do.
@@ -98,37 +93,22 @@ export function Shell({ version }: { version: string }) {
   const [addSeed, setAddSeed] = useState<AddSeed>({});
   const closer = (which: Dialog) => () => setDialog((now) => (now === which ? null : now));
 
-  // Only the local backend's window may browse this machine's files; any other asks for a path on the server.
   const bridge = nativeBridge();
+  const pick = usePickPath();
   const fail = (error: unknown) =>
     setNotice(error instanceof Error ? error.message : String(error));
   // A refused or failed workspace command shows why, as any other command does.
   const ask = (change: WorkspaceCommand) =>
     command({ type: "workspace", command: change }).then(() => setNotice(null), fail);
-  const openWorkspace = () => {
-    if (!bridge) return setDialog("open-workspace");
-    bridge
-      .pickOpenWorkspace()
+  const openWorkspace = () =>
+    void pick?.(OPEN_WORKSPACE)
       .then((path) => (path ? ask({ type: "open", path }) : undefined))
       .catch(fail);
-  };
-  const saveAs = () => {
-    if (!bridge) return setDialog("save-workspace-as");
-    bridge
-      .pickSaveWorkspace(workspace?.name ?? "Untitled", workspace?.file ?? null)
-      // The native dialog has asked about an existing file already.
+  const saveAs = () =>
+    void pick?.(saveWorkspace(workspace?.name ?? "Untitled", workspace?.file ?? null))
+      // Either dialog has asked about an existing file already.
       .then((path) => (path ? ask({ type: "save", path, replace: true }) : undefined))
       .catch(fail);
-  };
-  // A typed path is saved to unless it names another file that exists, which the user is asked about.
-  const saveTo = (path: string) =>
-    command({ type: "workspace", command: { type: "save", path } }).then(
-      () => setNotice(null),
-      (error: unknown) =>
-        error instanceof CommandFailed && error.error.code === "WorkspaceExists"
-          ? setReplacing(path)
-          : fail(error),
-    );
   const saveFile = () => (workspace?.file ? void ask({ type: "save" }) : saveAs());
 
   const startSharing = () => {
@@ -180,13 +160,10 @@ export function Shell({ version }: { version: string }) {
   };
   // A modal dialog owns the keyboard and the window: no command, from a shortcut or a menu, runs while one is open.
   const find = (id: string) =>
-    dialog || replacing || refused || !allowed[scopeOf(id)]
-      ? undefined
-      : (actions[id] ?? viewerActions[id]);
+    dialog || refused || !allowed[scopeOf(id)] ? undefined : (actions[id] ?? viewerActions[id]);
   const run = (id: string) => {
     if (!id.startsWith(RECENT_ID)) return find(id)?.();
-    if (!dialog && !replacing && allowed.host)
-      void ask({ type: "open", path: id.slice(RECENT_ID.length) });
+    if (!dialog && allowed.host) void ask({ type: "open", path: id.slice(RECENT_ID.length) });
   };
   // The sidebar's Add opens the dialog from a seed; the menu and shortcut open it without one.
   const addLive = (seed: AddSeed) => {
@@ -366,37 +343,6 @@ export function Shell({ version }: { version: string }) {
             />
           )}
           {dialog === "add-playlist" && <AddPlaylistDialog onClose={closer("add-playlist")} />}
-          {dialog === "open-workspace" && (
-            <WorkspaceFileDialog
-              mode="open"
-              onSubmit={(path) => void ask({ type: "open", path })}
-              onClose={closer("open-workspace")}
-            />
-          )}
-          {dialog === "save-workspace-as" && (
-            <WorkspaceFileDialog
-              mode="save"
-              path={workspace?.file ?? ""}
-              onSubmit={(path) => void saveTo(path)}
-              onClose={closer("save-workspace-as")}
-            />
-          )}
-          {replacing && (
-            <ChoiceDialog
-              title="Save workspace as"
-              message={`Replace ${replacing.split(/[/\\]/).pop()}?`}
-              choices={[
-                { id: "replace", label: "Replace" },
-                { id: "cancel", label: "Cancel" },
-              ]}
-              defaultId="cancel"
-              onChoose={(choice) => {
-                setReplacing(null);
-                if (choice === "replace")
-                  void ask({ type: "save", path: replacing, replace: true });
-              }}
-            />
-          )}
           {dialog === "shortcuts" && <ShortcutsDialog onClose={closer("shortcuts")} />}
           {refused && (
             <ChoiceDialog

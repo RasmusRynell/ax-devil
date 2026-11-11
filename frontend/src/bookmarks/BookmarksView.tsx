@@ -66,7 +66,7 @@ export function BookmarksView() {
 
   const fail = (error: unknown) =>
     setProblem(error instanceof Error ? error.message : String(error));
-  const [exportCsv, exportDialog] = useExportBookmarks(fail);
+  const exportCsv = useExportBookmarks(fail);
   const send = (change: BookmarkCommand) =>
     command({ type: "content", command: { type: "bookmark", command: change } }).then(
       () => setProblem(null),
@@ -135,7 +135,6 @@ export function BookmarksView() {
           onClose={() => setRenaming(null)}
         />
       )}
-      {exportDialog}
     </section>
   );
 }
