@@ -189,11 +189,12 @@ async fn recovery_failure_does_not_prevent_replacement() {
             (4, json!({"type": "open", "path": target})),
         ] {
             owner.say(add_video(seq - 1)).await;
-            let modified = doc(&mut owner, |ws| ws["modified"] == true).await;
-            assert_eq!(
-                doc(&mut second, |ws| ws["modified"] == true).await,
-                modified
-            );
+            // Resolution publishes another Doc; compare the same settled state on both seats.
+            let resolved = |ws: &serde_json::Value| {
+                ws["modified"] == true && ws["items"][0]["resolution"]["status"] == "Resolved"
+            };
+            let modified = doc(&mut owner, resolved).await;
+            assert_eq!(doc(&mut second, resolved).await, modified);
             second.say(workspace(seq, command)).await;
             let (outcome, empty) = settle(&mut second, seq, |ws| ws["items"] == json!([])).await;
             assert_eq!(doc(&mut owner, |ws| ws["items"] == json!([])).await, empty);
