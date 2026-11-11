@@ -43,6 +43,7 @@ pub(super) async fn scan(
             Some(false)
         },
         ScanLoad::Normal,
+        full_access,
     ) {
         Ok(scan) => Json(ScanStarted {
             scan: state.network.rescan(scan),
@@ -148,6 +149,7 @@ mod tests {
         let cache = folder.path().join("cache");
         let videos = crate::video_cache::start(&settings, &cache);
         let (_stop, stopping) = tokio::sync::watch::channel(false);
+        let (asked, mut logins) = mpsc::unbounded_channel();
         let state = crate::AppState::new(
             Arc::clone(&settings),
             crate::access::Policy::Shared {
@@ -159,7 +161,10 @@ mod tests {
             crate::plugins::Plugins::fixed(handlers::Handlers::built_in()),
             &cache,
         )
-        .with_network(crate::test_support::idle_network());
+        .with_network(Network::with_scanner(move |request| {
+            asked.send(request.logins.len()).unwrap();
+            mpsc::channel(1).1
+        }));
         let router = crate::app(state);
         let send = |body: &'static str| {
             let mut request = post("/api/network/scan", body);
@@ -173,16 +178,18 @@ mod tests {
         };
 
         // An Owner without Full access may not use the logins the server holds, whether it asks or leaves it to the
-        // setting.
+        // setting, which is on and holds a login.
         assert_eq!(
             send(r#"{"sign_in":true}"#).await.unwrap().status(),
             StatusCode::FORBIDDEN
         );
-        assert_eq!(
-            send(r#"{"sign_in":false}"#).await.unwrap().status(),
-            StatusCode::OK
-        );
-        assert_eq!(send("{}").await.unwrap().status(), StatusCode::OK);
+        assert!(logins.try_recv().is_err());
+        // The scanner is asked in its own task, so each request is awaited before the next replaces it.
+        for body in [r#"{"sign_in":false}"#, "{}"] {
+            assert_eq!(send(body).await.unwrap().status(), StatusCode::OK);
+            let asked = timeout(Duration::from_secs(10), logins.recv()).await;
+            assert_eq!(asked.unwrap(), Some(0), "{body}");
+        }
     }
 
     #[tokio::test]

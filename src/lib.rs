@@ -359,25 +359,6 @@ pub(crate) async fn patch_settings(
     }): State<AppState>,
     Json(body): Json<SettingsPatch>,
 ) -> Result<Json<SettingsState>, (StatusCode, Json<ApiError>)> {
-    if let Some(serde_json::Value::String(range)) =
-        body.set.as_ref().and_then(|set| set.get("scan.range"))
-    {
-        // A `$NAME` reference is checked as the variable holds it now, as the scan will read it; blank is the local
-        // network.
-        let expanded = settings::reference(range).map_or_else(
-            || range.clone(),
-            |name| std::env::var(name).unwrap_or_default(),
-        );
-        if !expanded.trim().is_empty()
-            && let Err(error) = camera::Targets::parse(&expanded)
-        {
-            return Err(failure(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "scan.range",
-                error.detail().to_owned(),
-            ));
-        }
-    }
     let patch = settings::Patch {
         set: body.set.unwrap_or_default(),
         reset: body.reset.unwrap_or_default().into_iter().collect(),
@@ -395,6 +376,9 @@ pub(crate) async fn patch_settings(
         settings
             .patch_if(&patch, |current| {
                 admit_save(&policy, bearer(&headers), current, &patch)?;
+                // Only after admission, which refuses what a caller without Full access may not read or write.
+                let full_access = policy.principal_in(bearer(&headers), current).full_access();
+                refuse_unscannable_range(&patch, full_access)?;
                 let stored = current.resolved(catalogs::DEFAULT_SETTING);
                 match routes::catalogs::default_refusal(&library, stored.as_ref(), &patch.set) {
                     Some(reason) => Err(settings::Error {
@@ -450,6 +434,34 @@ fn admit_save(
     } else {
         current.refuse_without_full_access(patch)
     }
+}
+
+/// Refuses a patch whose `scan.range` could not be scanned. Full access is checked as the variable holds the value
+/// now when it is a `$NAME` reference, as the scan will read it; anyone else is checked as written, and a reference is
+/// not expanded for them, so what the environment holds is neither read nor reported. Blank is the local network.
+fn refuse_unscannable_range(
+    patch: &settings::Patch,
+    full_access: bool,
+) -> Result<(), settings::Error> {
+    let Some(serde_json::Value::String(range)) = patch.set.get("scan.range") else {
+        return Ok(());
+    };
+    let text = match settings::reference(range) {
+        None => range.clone(),
+        Some(name) if full_access => std::env::var(name).unwrap_or_default(),
+        Some(_) => return Ok(()),
+    };
+    if text.trim().is_empty() {
+        return Ok(());
+    }
+    camera::Targets::parse(&text)
+        .map(drop)
+        .map_err(|error| settings::Error {
+            location: "scan.range".to_owned(),
+            reason: error.detail().to_owned(),
+            invalid: true,
+            forbidden: false,
+        })
 }
 
 pub(crate) fn failure(

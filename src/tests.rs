@@ -106,6 +106,49 @@ async fn a_patch_changes_only_the_keys_it_names_and_a_refused_one_changes_nothin
 }
 
 #[tokio::test]
+async fn a_save_without_full_access_is_refused_before_a_reference_is_expanded() {
+    let folder = tempfile::tempdir().unwrap();
+    let settings =
+        Arc::new(settings::Settings::load(&folder.path().join("settings.json")).unwrap());
+    let cache = folder.path().join("cache");
+    let videos = crate::video_cache::start(&settings, &cache);
+    let (_stop, stopping) = watch::channel(false);
+    let state = AppState::new(
+        Arc::clone(&settings),
+        Policy::Shared {
+            password: Some(sessions::Secret::chosen("pw".into()).unwrap()),
+            settings: Arc::clone(&settings),
+        },
+        videos,
+        stopping,
+        plugins::Plugins::fixed(handlers::Handlers::built_in()),
+        &cache,
+    );
+    let mut request = patch(r#"{"set": {"scan.range": "$PATH"}}"#);
+    request
+        .headers_mut()
+        .insert("authorization", "Bearer pw".parse().unwrap());
+    request
+        .extensions_mut()
+        .insert(axum::extract::ConnectInfo(std::net::SocketAddr::from((
+            [10, 0, 0, 9],
+            4000,
+        ))));
+    let reply = tower::ServiceExt::oneshot(app(state), request)
+        .await
+        .unwrap();
+
+    // `PATH` is set wherever the tests run and is no address list: were it expanded, the range error would answer.
+    assert_eq!(reply.status(), StatusCode::FORBIDDEN);
+    let body = axum::body::to_bytes(reply.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let text = String::from_utf8(body.to_vec()).unwrap();
+    assert!(!text.contains(&std::env::var("PATH").unwrap()), "{text}");
+    assert!(text.contains("full access"), "{text}");
+}
+
+#[tokio::test]
 async fn a_window_is_saved_beside_the_others_and_a_corrupt_file_is_no_window() {
     let test = TestApp::new();
     let window = |method: &str, name: &str, body: &str| {
