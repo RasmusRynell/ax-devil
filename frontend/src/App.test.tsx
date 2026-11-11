@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { adoptFragment, credential } from "./access";
 import { App } from "./App";
 import { apiFetch } from "./api";
+import { deviceStore } from "./deviceSettings";
 import { DEFAULT_SETTINGS } from "./fakeSettings";
 import type { SettingsPatch, SettingsState } from "./generated/api";
 import { FakeSocket } from "./session/fakeSession";
@@ -13,16 +14,12 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   window.sessionStorage.clear();
+  deviceStore.reset("ui.theme");
   window.localStorage.clear();
   window.history.replaceState(null, "", "/");
   FakeSocket.reset();
   delete document.documentElement.dataset.theme;
 });
-
-const dark: SettingsState = {
-  ...DEFAULT_SETTINGS,
-  values: { ...DEFAULT_SETTINGS.values, "ui.theme": "dark" },
-};
 
 const info = (access = { owner: true, fullAccess: true }) => ({
   app: "ax-devil",
@@ -32,7 +29,7 @@ const info = (access = { owner: true, fullAccess: true }) => ({
 
 /** A backend with the given settings; a PATCH changes the keys it names, as the real one does, or is refused with `refuse`. */
 function backend(
-  settings = dark,
+  settings = DEFAULT_SETTINGS,
   refuse?: { reason: string; location: string },
   access?: { owner: boolean; fullAccess: boolean },
 ) {
@@ -55,8 +52,9 @@ function backend(
 }
 
 describe("app shell", () => {
-  it("shows the app, themed from the stored settings", async () => {
+  it("shows the app, themed from this device's settings", async () => {
     backend();
+    deviceStore.set("ui.theme", "dark");
     render(<App />);
     expect(await screen.findByRole("heading", { name: "ax-devil" })).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -87,27 +85,36 @@ describe("app shell", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("settings file unreadable");
   });
 
-  it("stores the Settings dialog choice through the backend, and applies it live", async () => {
-    const fetchMock = backend();
+  it("sends a Settings dialog choice of the server to it, and keeps the theme on the device", async () => {
+    const fetchMock = backend(DEFAULT_SETTINGS, undefined, { owner: true, fullAccess: false });
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
     fireEvent.change(await screen.findByLabelText("Theme"), { target: { value: "light" } });
+    fireEvent.click(screen.getByRole("tab", { name: "Storage" }));
+    fireEvent.change(screen.getByLabelText("Cache folder"), { target: { value: "/var/cache" } });
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
     const patch = fetchMock.mock.calls.find(([, init]) => init?.method === "PATCH");
-    expect(JSON.parse(patch?.[1]?.body as string)).toEqual({ set: { "ui.theme": "light" } });
+    expect(JSON.parse(patch?.[1]?.body as string)).toEqual({
+      set: { "storage.cache_dir": "/var/cache" },
+    });
+    expect(JSON.parse(window.localStorage.getItem("ax-devil.device") ?? "{}")).toEqual({
+      "ui.theme": "light",
+    });
   });
 
-  it("keeps the dialog open and says why at the value the backend refused", async () => {
-    backend(dark, { reason: "no such theme", location: "ui.theme" });
+  it("keeps the dialog open, says why at the value the backend refused and changes nothing on the device", async () => {
+    backend(DEFAULT_SETTINGS, { reason: "no such folder", location: "storage.cache_dir" });
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
     fireEvent.change(await screen.findByLabelText("Theme"), { target: { value: "light" } });
+    fireEvent.click(screen.getByRole("tab", { name: "Storage" }));
+    fireEvent.change(screen.getByLabelText("Cache folder"), { target: { value: "/nowhere" } });
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("no such theme");
-    expect(within(alert.parentElement as HTMLElement).getByLabelText("Theme")).toBeTruthy();
-    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(alert.textContent).toContain("no such folder");
+    expect(within(alert.parentElement as HTMLElement).getByLabelText("Cache folder")).toBeTruthy();
+    expect(window.localStorage.getItem("ax-devil.device")).toBeNull();
   });
 
   it("ignores a slow save that finishes after its dialog was closed, and never saves twice", async () => {
@@ -117,19 +124,23 @@ describe("app shell", () => {
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url === "/api/info") return { ok: true, json: async () => info() };
-        if (init?.method !== "PATCH") return { ok: true, json: async () => dark };
+        if (init?.method !== "PATCH") return { ok: true, json: async () => DEFAULT_SETTINGS };
         puts.push(init.body as string);
         await new Promise<void>((resolve) => {
           finish = resolve;
         });
         const patch = JSON.parse(init.body as string) as SettingsPatch;
-        const values = { ...dark.values, ...patch.set };
-        return { ok: true, json: async () => ({ ...dark, revision: 1, values }) };
+        const values = { ...DEFAULT_SETTINGS.values, ...patch.set };
+        return { ok: true, json: async () => ({ ...DEFAULT_SETTINGS, revision: 1, values }) };
       }),
     );
     render(<App />);
+    const folder = async (value: string) => {
+      fireEvent.click(await screen.findByRole("tab", { name: "Storage" }));
+      fireEvent.change(screen.getByLabelText("Cache folder"), { target: { value } });
+    };
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
-    fireEvent.change(await screen.findByLabelText("Theme"), { target: { value: "light" } });
+    await folder("/one");
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     expect((screen.getByRole("button", { name: "OK" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.submit(screen.getByRole("dialog", { hidden: true }).querySelector("form") as Element);
@@ -141,11 +152,12 @@ describe("app shell", () => {
     );
     expect(screen.queryByRole("dialog", { hidden: true })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    fireEvent.change(await screen.findByLabelText("Theme"), { target: { value: "auto" } });
+    await folder("/two");
     finish();
-    await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.getByRole("dialog", { hidden: true })).toBeTruthy();
-    expect((screen.getByLabelText("Theme") as HTMLSelectElement).value).toBe("auto");
+    expect((screen.getByLabelText("Cache folder") as HTMLInputElement).value).toBe("/two");
   });
 });
 
@@ -179,52 +191,30 @@ describe("access", () => {
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toBeUndefined();
   });
 
-  it("keeps the theme and shortcuts of a page that is not the Owner in the browser, not on the server", async () => {
+  it("gives a page that is not the Owner only the Device settings, kept on the device and not on the server", async () => {
     const fetchMock = vi.fn(async (url: string) => ({
       ok: url === "/api/info",
       status: 401,
       json: async () => info({ owner: false, fullAccess: false }),
     }));
     vi.stubGlobal("fetch", fetchMock);
-    window.localStorage.setItem(
-      "ax-devil.preferences",
-      JSON.stringify({ values: { "ui.theme": "dark" } }),
-    );
+    window.localStorage.setItem("ax-devil.preferences", JSON.stringify({ values: {} }));
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
-    expect(document.documentElement.dataset.theme).toBe("dark");
     fireEvent.change(await screen.findByLabelText("Theme"), { target: { value: "light" } });
-    expect(screen.queryByLabelText("Cache folder")).toBeNull();
+    expect(screen.queryByLabelText("Show lane names")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Keyboard shortcuts" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(JSON.parse(window.localStorage.getItem("ax-devil.preferences") ?? "{}")).toMatchObject({
-      values: { "ui.theme": "light" },
-      shortcuts: {},
-    });
-    expect(fetchMock.mock.calls.every(([url]) => url !== "/api/settings")).toBe(true);
-  });
-
-  it("sends only the settings a server-password holder changed to the server and keeps nothing in the browser", async () => {
-    const fetchMock = backend(DEFAULT_SETTINGS, undefined, { owner: true, fullAccess: false });
-    render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
-    fireEvent.change(await screen.findByLabelText("Theme"), { target: { value: "light" } });
-    fireEvent.click(screen.getByRole("tab", { name: "Storage" }));
-    fireEvent.change(screen.getByLabelText("Cache folder"), { target: { value: "/var/cache" } });
-    fireEvent.click(screen.getByRole("button", { name: "OK" }));
-    await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
-    const patch = fetchMock.mock.calls.find(([, init]) => init?.method === "PATCH");
-    expect(JSON.parse(patch?.[1]?.body as string)).toEqual({
-      set: { "ui.theme": "light", "storage.cache_dir": "/var/cache" },
-    });
     expect(window.localStorage.getItem("ax-devil.preferences")).toBeNull();
+    expect(fetchMock.mock.calls.every(([url]) => url !== "/api/settings")).toBe(true);
   });
 });
 
 describe("settings changed elsewhere", () => {
   it("are read again with the info, only for a notice above the revision held", async () => {
-    let held: SettingsState = { ...dark, revision: 3 };
+    let held: SettingsState = { ...DEFAULT_SETTINGS, revision: 3 };
     const fetchMock = vi.fn(async (url: string) => ({
       ok: true,
       json: async () => (url === "/api/info" ? info() : held),
@@ -239,15 +229,22 @@ describe("settings changed elsewhere", () => {
         .sort();
     expect(reads()).toEqual(["/api/info", "/api/settings"]);
 
-    // Another window changed the theme; this window learns it from the notice and from nothing else.
-    held = { ...held, revision: 4, values: { ...held.values, "ui.theme": "light" } };
+    // Another window changed the folder; this window learns it from the notice and from nothing else.
+    const folder = async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+      fireEvent.click(await screen.findByRole("tab", { name: "Storage" }));
+      const value = (screen.getByLabelText("Cache folder") as HTMLInputElement).value;
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      return value;
+    };
+    held = { ...held, revision: 4, values: { ...held.values, "storage.cache_dir": "/other" } };
     await act(async () => FakeSocket.latest.emit({ type: "settings", revision: 4 }));
-    await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
+    await waitFor(async () => expect(await folder()).toBe("/other"));
     expect(reads()).toEqual(["/api/info", "/api/info", "/api/settings", "/api/settings"]);
 
-    held = { ...held, revision: 3, values: { ...held.values, "ui.theme": "dark" } };
+    held = { ...held, revision: 3, values: { ...held.values, "storage.cache_dir": "/older" } };
     await act(async () => FakeSocket.latest.emit({ type: "settings", revision: 4 }));
     expect(reads()).toHaveLength(4);
-    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(await folder()).toBe("/other");
   });
 });

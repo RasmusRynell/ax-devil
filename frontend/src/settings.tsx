@@ -10,9 +10,9 @@ import {
 } from "react";
 import { useAccess } from "./access";
 import { apiFetch } from "./api";
+import { deviceStore, useDeviceValues, type DeviceValue } from "./deviceSettings";
 import type { ApiError, AppInfo, SettingsPatch, SettingsState } from "./generated/api";
 import { COMMANDS, SETTINGS, type CommandId, type SettingKey } from "./generated/settings";
-import { MEASURES } from "./present";
 
 /**
  * Every way to store settings resolves to the refusal (its `location` is a setting key or `shortcuts.<id>`, empty when
@@ -98,13 +98,6 @@ type Row = (typeof SETTINGS)[number];
 type Values = SettingsState["values"];
 type Shortcuts = SettingsState["shortcuts"];
 
-/** The Personal settings and shortcut overrides a page without a backend of its own keeps in this browser. */
-interface Local {
-  values: Partial<Values>;
-  /** Only the commands whose key differs from the standard one. */
-  shortcuts: Partial<Shortcuts>;
-}
-
 /** The value of *row* when the backend has none: a list of records is built from its rows of field values. */
 function defaultOf(row: Row) {
   const kind = row.kind;
@@ -115,107 +108,17 @@ function defaultOf(row: Row) {
   return "default" in kind ? kind.default : kind.type === "auto_or_whole" ? "auto" : "";
 }
 
-const LOCAL_KEY = "ax-devil.preferences";
-const PERSONAL = SETTINGS.filter((row) => row.scope === "personal");
+/** Where a page that holds only a join link once kept its own Personal settings; it keeps none now. */
+const RETIRED_KEY = "ax-devil.preferences";
+const DEVICE_KEYS = new Set<string>(
+  SETTINGS.filter((row) => row.scope === "device").map((row) => row.key),
+);
 export const DEFAULT_VALUES = Object.fromEntries(
   SETTINGS.map((row) => [row.key, defaultOf(row)]),
 ) as Values;
 const STANDARD_SHORTCUTS = Object.fromEntries(
   COMMANDS.map((command) => [command.id, command.key]),
 ) as Shortcuts;
-
-/** Whether *value* is null or a whole number of milliseconds the backend accepts. */
-const isMsOrNull = (value: unknown) =>
-  value === null ||
-  (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 100_000);
-
-/** Whether *value* is sticky settings in range: `enabled`, a whole `timeout_ms` or null, an `opacity` from 0 to 1. */
-function isSticky(value: unknown) {
-  const { enabled, timeout_ms: timeout, opacity } = (value ?? {}) as Record<string, unknown>;
-  return (
-    typeof enabled === "boolean" &&
-    isMsOrNull(timeout) &&
-    typeof opacity === "number" &&
-    opacity >= 0 &&
-    opacity <= 1
-  );
-}
-
-/** Whether *value* is a sync default: only a `tolerance_ms` that is null (exact) or whole and in range. */
-const isSync = (value: unknown) =>
-  typeof value === "object" &&
-  value !== null &&
-  Object.keys(value).join() === "tolerance_ms" &&
-  isMsOrNull((value as { tolerance_ms: unknown }).tolerance_ms);
-
-/** Whether *value* is an object filter: class switches, the ranges of score and confidence, and an expression. */
-function isObjectFilter(value: unknown) {
-  const { filter, ranges, expression } = (value ?? {}) as Record<string, unknown>;
-  const isBound = (bound: unknown) => bound === null || typeof bound === "number";
-  return (
-    typeof filter === "object" &&
-    filter !== null &&
-    Object.values(filter).every((on) => typeof on === "boolean") &&
-    MEASURES.every((measure) => {
-      const { min, max } = ((ranges as Record<string, unknown> | null)?.[measure] ?? {}) as Record<
-        string,
-        unknown
-      >;
-      return isBound(min) && isBound(max);
-    }) &&
-    typeof expression === "string"
-  );
-}
-
-/** Whether *value* is something this Personal row can hold; a stored value that is not is ignored. */
-const holds = (row: Row, value: unknown) =>
-  row.kind.type === "bool"
-    ? typeof value === "boolean"
-    : row.kind.type === "sticky"
-      ? isSticky(value)
-      : row.kind.type === "sync"
-        ? isSync(value)
-        : row.kind.type === "object_filter"
-          ? isObjectFilter(value)
-          : row.kind.type === "text"
-            ? typeof value === "string"
-            : row.kind.type === "records"
-              ? Array.isArray(value)
-              : row.kind.type === "choice" && row.kind.options.some(([name]) => name === value);
-
-/** What this browser kept: only what the Personal rows and commands still accept, ignoring anything unreadable. */
-function readLocal(): Local {
-  const local: Local = { values: {}, shortcuts: {} };
-  try {
-    const kept = JSON.parse(window.localStorage.getItem(LOCAL_KEY) ?? "{}") as Partial<Local>;
-    for (const row of PERSONAL) {
-      const value = kept.values?.[row.key];
-      if (holds(row, value)) Object.assign(local.values, { [row.key]: value });
-    }
-    for (const { id } of COMMANDS) {
-      const key = kept.shortcuts?.[id];
-      if (key === null || typeof key === "string") local.shortcuts[id] = key;
-    }
-  } catch {
-    // Nothing usable was kept: the defaults apply.
-  }
-  return local;
-}
-
-/** What this browser keeps once *patch* applies to *kept*: only Personal rows and commands. */
-function applyLocal(kept: Local, patch: SettingsPatch): Local {
-  const values = { ...kept.values };
-  const shortcuts = { ...kept.shortcuts };
-  for (const { key } of PERSONAL) {
-    if (patch.set && key in patch.set) Object.assign(values, { [key]: patch.set[key] });
-    if (patch.reset?.includes(key)) delete values[key];
-  }
-  for (const { id } of COMMANDS) {
-    if (patch.shortcutsSet && id in patch.shortcutsSet) shortcuts[id] = patch.shortcutsSet[id];
-    if (patch.shortcutsReset?.includes(id)) delete shortcuts[id];
-  }
-  return { values, shortcuts };
-}
 
 async function request(init?: RequestInit): Promise<SettingsState> {
   const response = await apiFetch("/api/settings", init);
@@ -242,10 +145,29 @@ export function useAppearance(theme: string, textSize: string) {
   useLayoutEffect(() => applyAppearance(theme, textSize), [theme, textSize]);
 }
 
+/** Splits *patch* into what the device stores (its Device keys) and what the backend stores. */
+function splitPatch(patch: SettingsPatch) {
+  const entries = Object.entries(patch.set ?? {});
+  const device = {
+    set: entries.filter(([key]) => DEVICE_KEYS.has(key)),
+    reset: (patch.reset ?? []).filter((key) => DEVICE_KEYS.has(key)),
+  };
+  const set = Object.fromEntries(entries.filter(([key]) => !DEVICE_KEYS.has(key)));
+  const reset = (patch.reset ?? []).filter((key) => !DEVICE_KEYS.has(key));
+  // A part left out is not sent.
+  const server = {
+    ...patch,
+    set: Object.keys(set).length ? set : undefined,
+    reset: reset.length ? reset : undefined,
+  } as SettingsPatch;
+  return { device, server };
+}
+
 /**
- * An Owner's settings all come from the backend and go to it. A page that holds only a join link has no settings
- * there: this browser keeps its Personal ones. Children render once the settings are read, with the theme and text
- * size applied live to the document root; a failed read shows its reason instead. The settings are read again only
+ * An Owner's Personal and Server settings come from the backend and go to it; a page that holds only a join link
+ * gets the defaults of those and cannot change them. Device settings live on this device for everyone, never on the
+ * backend. Children render once the settings are read, with the theme and text size applied live to the document
+ * root; a failed read shows its reason instead. The settings are read again only
  * when the session connection reports a revision above the one held, together with `GET /api/info`, which `onInfo`
  * receives so that Full access follows `server.password_full_access`.
  */
@@ -260,13 +182,21 @@ export function SettingsProvider({
   const [load, setLoad] = useState<Load>(
     owner ? { state: "loading" } : { state: "ready", remote: null },
   );
-  const [local, setLocal] = useState(readLocal);
+  const device = useDeviceValues();
   // The revision of the settings held and of the last info asked for; a reply older than what is held is dropped.
   const held = useRef({ settings: 0, info: 0 });
   const take = useCallback((remote: SettingsState) => {
     if (remote.revision < held.current.settings) return;
     held.current.settings = remote.revision;
     setLoad({ state: "ready", remote });
+  }, []);
+  // A page that holds only a join link kept a copy of the Personal settings here; nothing stale stays behind.
+  useEffect(() => {
+    try {
+      window.localStorage.removeItem(RETIRED_KEY);
+    } catch {
+      // Storage is blocked: nothing was kept.
+    }
   }, []);
   useEffect(() => {
     if (!owner) return;
@@ -296,8 +226,7 @@ export function SettingsProvider({
     [take, onInfo],
   );
   const remote = load.state === "ready" ? load.remote : null;
-  const mine = owner ? null : local;
-  const values = { ...DEFAULT_VALUES, ...remote?.values, ...mine?.values };
+  const values = { ...DEFAULT_VALUES, ...remote?.values, ...device };
   useAppearance(values["ui.theme"] as string, values["ui.text_size"] as string);
 
   if (load.state === "failed")
@@ -305,28 +234,27 @@ export function SettingsProvider({
   if (load.state === "loading") return <main aria-busy="true" />;
 
   const apply = async (patch: SettingsPatch) => {
+    const { device: mine, server } = splitPatch(patch);
     try {
-      if (owner) {
+      if (!isEmpty(server)) {
+        if (!owner) return { reason: "Only the Owner can change this", location: "" };
         take(
           await request({
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(patch),
+            body: JSON.stringify(server),
           }),
         );
-      } else {
-        const kept = applyLocal(readLocal(), patch);
-        window.localStorage.setItem(LOCAL_KEY, JSON.stringify(kept));
-        setLocal(kept);
       }
+      // After the backend took its part, so a refused save changes nothing here either.
+      for (const [key, value] of mine.set) deviceStore.set(key as SettingKey, value as DeviceValue);
+      for (const key of mine.reset) deviceStore.reset(key as SettingKey);
       return null;
     } catch (error) {
       return refusalOf(error);
     }
   };
-  const shortcuts = mine
-    ? { ...STANDARD_SHORTCUTS, ...mine.shortcuts }
-    : (remote?.shortcuts ?? STANDARD_SHORTCUTS);
+  const shortcuts = remote?.shortcuts ?? STANDARD_SHORTCUTS;
   return (
     <SettingsNoticeContext.Provider value={noticed}>
       <SettingsContext.Provider

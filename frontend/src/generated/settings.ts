@@ -32,7 +32,7 @@ export const SETTINGS = [
     "secret": false,
     "full_access": false,
     "quick_setup": true,
-    "scope": "personal"
+    "scope": "device"
   },
   {
     "key": "ui.text_size",
@@ -72,7 +72,7 @@ export const SETTINGS = [
     "secret": false,
     "full_access": false,
     "quick_setup": true,
-    "scope": "personal"
+    "scope": "device"
   },
   {
     "key": "ui.quick_setup_done",

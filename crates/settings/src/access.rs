@@ -28,7 +28,7 @@ impl State {
             invalid: false,
             forbidden: true,
         };
-        for setting in self.table {
+        for setting in self.rows() {
             let Some(stored) = self.values.get(setting.key) else {
                 continue;
             };

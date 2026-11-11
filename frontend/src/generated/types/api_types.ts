@@ -11,7 +11,7 @@ export type ApiError = {
  */
 reason: string, 
 /**
- * The setting key (`ui.theme`), `shortcuts.<command id>`, or file the reason is about.
+ * The setting key (`camera.host`), `shortcuts.<command id>`, or file the reason is about.
  */
 location: string, };
 
@@ -103,7 +103,7 @@ export type SettingsState = {
  */
 revision: number, 
 /**
- * Every setting by dotted key, such as `"ui.theme"`, with the default when unset, a `$NAME` reference as written
+ * Every setting by dotted key, such as `"camera.host"`, with the default when unset, a `$NAME` reference as written
  * and a literal secret masked.
  */
 values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<"score" | "confidence", { min: number | null; max: number | null }>; expression: string }>, 

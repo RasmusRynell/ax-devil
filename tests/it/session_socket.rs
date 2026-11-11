@@ -290,7 +290,12 @@ async fn a_settings_change_is_announced_to_an_owner_connection_and_never_to_a_jo
         )
         .await;
 
-    let saved = patch_settings(&address, PASSWORD, &json!({"set": {"ui.theme": "dark"}})).await;
+    let saved = patch_settings(
+        &address,
+        PASSWORD,
+        &json!({"set": {"overlays.lane_names": false}}),
+    )
+    .await;
     let told = owner
         .until(|m| m["type"] == "settings" && m["revision"] != first)
         .await;
@@ -344,7 +349,12 @@ async fn an_owner_attached_as_a_guest_seat_is_still_told_of_a_settings_change() 
     let first = attached.until(of_type("settings")).await["revision"]
         .as_u64()
         .unwrap();
-    let saved = patch_settings(&address, PASSWORD, &json!({"set": {"ui.theme": "dark"}})).await;
+    let saved = patch_settings(
+        &address,
+        PASSWORD,
+        &json!({"set": {"overlays.lane_names": false}}),
+    )
+    .await;
     let told = attached
         .until(|m| m["type"] == "settings" && m["revision"].as_u64() != Some(first))
         .await;

@@ -47,6 +47,12 @@ export interface WindowBridge {
   openLogs(file: string): Promise<void>;
   /** Closes the app and starts it again; only the local page may ask. Absent when the app did not start its backend. */
   restart?(): void;
+  /** Every setting this device keeps, one file whichever server the window shows; read before the page paints. */
+  deviceValues?(): Record<string, unknown>;
+  /** Stores one device setting, or removes it with null. */
+  setDeviceValue?(key: string, value: string | boolean | number | null): void;
+  /** Reports every device setting after another window changed one; returns the way to stop listening. */
+  onDeviceValuesChange?(listener: (values: Record<string, unknown>) => void): () => void;
   /** The page zoom factor (1 is 100%), read when asked. */
   zoomFactor?(): number;
 }

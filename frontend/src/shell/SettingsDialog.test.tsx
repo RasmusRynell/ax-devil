@@ -24,7 +24,11 @@ const row = vi.hoisted(() => (key: string, kind: object, over: object) => ({
 vi.mock(import("../generated/settings"), async (original) => ({
   ...(await original()),
   SETTINGS: [
-    row("t.flag", { type: "bool", default: false }, { label: "Flag", description: "Flags it." }),
+    row(
+      "t.flag",
+      { type: "bool", default: false },
+      { label: "Flag", description: "Flags it.", scope: "device" },
+    ),
     row("t.hidden", { type: "bool", default: false }, { page: null }),
     row(
       "t.size",
@@ -207,7 +211,7 @@ describe("settings dialog", () => {
     expect(save).toHaveBeenCalledWith({ set: { "t.decoder": "MY_PLUGIN_DECODER" } });
   });
 
-  it("offers the Server rows only to someone who may configure the server", () => {
+  it("offers a page that holds only a join link the Device rows alone", () => {
     render(
       <FakeSettings>
         <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
@@ -293,9 +297,11 @@ describe("settings dialog", () => {
     /** Settings over `apply`, which answers once `until` settles. */
     const open = (apply: SettingsApi["apply"], onClose = vi.fn()) =>
       render(
-        <FakeSettings apply={apply}>
-          <SettingsDialog onClose={onClose} onRestartNeeded={() => {}} />
-        </FakeSettings>,
+        <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
+          <FakeSettings apply={apply}>
+            <SettingsDialog onClose={onClose} onRestartNeeded={() => {}} />
+          </FakeSettings>
+        </AccessContext.Provider>,
       );
     const clearExit = () => {
       fireEvent.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));

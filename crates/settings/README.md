@@ -6,9 +6,11 @@ publishes one immutable `State`. Domain code takes settings as values; only the 
 
 ## Scopes and defaults
 
-Each row in `TABLE` has a `Scope`: Personal (how one person's app behaves: theme, shortcuts) or Server (what the
-server works with: the video cache, the cache folder). The scope groups rows for the UI; a caller reads and changes
-every row. A literal in a `secret` row is shown masked; a masked password sent back in a records row keeps the stored one.
+Each row in `TABLE` has a `Scope`: Device (the screen in front of you: theme, text size), Personal (how one person's
+app behaves: defaults for new overlays) or Server (what the server works with: the video cache, the cache folder).
+Device rows are declared here for the frontend's table and validation, but the service never holds one: they are
+absent from the state and the file, a patch naming one is refused as an unknown setting, and a file that still holds
+one loads and loses it with the next write. Shortcuts are Personal but not rows. A literal in a `secret` row is shown masked; a masked password sent back in a records row keeps the stored one.
 
 Settings supply defaults at the moment something is created, and the value is copied in: a workspace, video or saved
 layout never refers back to the settings file, and nothing shareable embeds a setting, a `$NAME` reference or a
@@ -17,7 +19,7 @@ credential. Only shortcuts are read live.
 ## File
 
 ```json
-{ "version": 1, "settings": { "ui.theme": "dark" }, "shortcuts": { "save-workspace": "Ctrl+Alt+S", "exit": null } }
+{ "version": 1, "settings": { "camera.protocol": "http" }, "shortcuts": { "save-workspace": "Ctrl+Alt+S", "exit": null } }
 ```
 
 - Flat dotted keys. The file is sparse: only values that differ from the default are written, reset deletes the key,

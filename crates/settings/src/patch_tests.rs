@@ -8,7 +8,7 @@ fn without_full_access_a_save_cannot_change_a_full_access_row_or_add_a_reference
  {
     let folder = tempfile::tempdir().unwrap();
     let settings = Settings::load(&folder.path().join("settings.json")).unwrap();
-    let mut edit = change("light");
+    let mut edit = change("rtsp");
     let login = |user: &str, password: &str| json!({"user": user, "password": password});
     edit.set.insert(
         "scan.logins".into(),
@@ -34,7 +34,7 @@ fn without_full_access_a_save_cannot_change_a_full_access_row_or_add_a_reference
     for (key, value) in [
         ("storage.cache_dir", json!("/tmp/other")),
         ("scan.range", json!("$RANGE")),
-        ("ui.theme", json!("$THEME")),
+        ("camera.overlay", json!("$THEME")),
         ("scan.logins", json!([login("$U", "$NEW")])),
         ("scan.logins", json!([login("$NEW", MASK)])),
         ("scan.logins", json!([login("$P", MASK)])),
@@ -57,7 +57,9 @@ fn patches_from_stale_copies_keep_each_other_and_the_revision_rises_with_each_wr
         ..Patch::default()
     };
 
-    settings.patch(&only("ui.theme", json!("dark"))).unwrap();
+    settings
+        .patch(&only("camera.overlay", json!("mqtt")))
+        .unwrap();
     let state = settings
         .patch(&Patch {
             set: BTreeMap::from([("scan.range".to_owned(), json!("10.0.0.0/24"))]),
@@ -66,8 +68,8 @@ fn patches_from_stale_copies_keep_each_other_and_the_revision_rises_with_each_wr
         })
         .unwrap();
     assert_eq!(
-        state.values()["ui.theme"],
-        "dark",
+        state.values()["camera.overlay"],
+        "mqtt",
         "a key not named is not touched"
     );
     assert_eq!(state.values()["scan.range"], "10.0.0.0/24");
@@ -75,12 +77,12 @@ fn patches_from_stale_copies_keep_each_other_and_the_revision_rises_with_each_wr
     assert_eq!(state.revision(), first + 2);
 
     let reset = Patch {
-        reset: BTreeSet::from(["ui.theme".to_owned()]),
+        reset: BTreeSet::from(["camera.overlay".to_owned()]),
         shortcuts_reset: BTreeSet::from(["exit".to_owned()]),
         ..Patch::default()
     };
     let state = settings.patch(&reset).unwrap();
-    assert_eq!(state.values()["ui.theme"], "auto");
+    assert_eq!(state.values()["camera.overlay"], "datahub");
     assert_eq!(
         state.shortcuts()["exit"],
         shortcuts::effective(&BTreeMap::new())["exit"]

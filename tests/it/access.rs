@@ -206,10 +206,11 @@ async fn a_server_answers_settings_and_sessions_only_to_the_password() {
     assert_eq!(settings["values"]["storage.cache_dir"], "");
     // The default references are set, but what they give is the machine's environment: only Full access sees it.
     assert!(settings.get("resolved").is_none());
-    let body = json!({"set": {"ui.theme": "dark"}, "shortcutsSet": {"exit": null}}).to_string();
+    let body =
+        json!({"set": {"overlays.lane_names": false}, "shortcutsSet": {"exit": null}}).to_string();
     let (status, saved) = send(&app, "PATCH", "/api/settings", &right, &body).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(saved["values"]["ui.theme"], "dark");
+    assert_eq!(saved["values"]["overlays.lane_names"], false);
     assert_eq!(saved["shortcuts"]["exit"], json!(null));
 }
 

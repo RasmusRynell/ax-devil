@@ -6,6 +6,7 @@ const path = require("node:path");
 
 const { backendArgs, parseLaunch, relaunchArgs, userArgs } = require("./args.cjs");
 const { backendExecutable, createBackend } = require("./backend.cjs");
+const { createDeviceValues } = require("./device.cjs");
 const { handOff } = require("./hand-off.cjs");
 const { confirmLink, linkTarget, registerLinks, singleInstance } = require("./links.cjs");
 const { askAfterFailure, explainFailure, parseTarget, verifyServer } = require("./remote.cjs");
@@ -276,6 +277,8 @@ async function onLaunch(launch) {
 }
 
 installIpc({
+  // The theme and text size of this device, kept beside the backend's own files and apart from Chromium's cache.
+  device: createDeviceValues(path.join(app.getPath("appData"), "ax-devil", "device.json")),
   connect: (window, target, password) => {
     // Resolves the address now so a bad one rejects in the page; the rest answers through native dialogs.
     parseTarget(target, password);

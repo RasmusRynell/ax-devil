@@ -3,7 +3,7 @@
 //!
 //! Settings supply defaults at the moment something is created and the value is copied in; nothing created from them
 //! refers back to the file. Only shortcuts are read live. Each setting has a [`Scope`], which decides which of them
-//! a person may read and change when several share one backend. See the README for the file format and how to
+//! a person may read and change when several share one backend; the server holds no Device setting. See the README for the file format and how to
 //! change it.
 //!
 //! A change names the keys it sets and resets; any other key keeps the value it has now, whoever wrote it. It reaches
@@ -40,7 +40,7 @@ use tokio::sync::watch;
 /// setting's value.
 #[derive(Debug)]
 pub struct Error {
-    /// The setting key (`ui.theme`, `shortcuts.exit`) or file path the reason is about.
+    /// The setting key (`camera.host`, `shortcuts.exit`) or file path the reason is about.
     pub location: String,
     /// What is wrong.
     pub reason: String,
@@ -122,6 +122,11 @@ impl State {
         let mut numbers = BTreeMap::new();
         let mut settings = Map::new();
         for setting in table {
+            if setting.scope == Scope::Device {
+                // A device keeps its own; an old file's value is dropped with the next write.
+                stored.remove(setting.key);
+                continue;
+            }
             let value = stored
                 .remove(setting.key)
                 .unwrap_or_else(|| setting.kind.default_value());
@@ -195,7 +200,7 @@ impl State {
                 ("settings" | "shortcuts", Value::Object(entries)) => {
                     found.extend(entries.keys().filter_map(|key| {
                         let known = if name == "settings" {
-                            self.table.iter().any(|setting| setting.key == key)
+                            self.rows().any(|setting| setting.key == key)
                         } else {
                             self.overrides.contains_key(key)
                                 || shortcuts::COMMANDS.iter().any(|command| command.id == key)
@@ -209,12 +214,18 @@ impl State {
         found
     }
 
-    /// Every setting by dotted key, such as `ui.theme`, with the default when the file has none, as shown
+    /// The settings the server holds: every row but the Device ones.
+    fn rows(&self) -> impl Iterator<Item = &'static Setting> {
+        self.table
+            .iter()
+            .filter(|setting| setting.scope != Scope::Device)
+    }
+
+    /// Every setting by dotted key, such as `camera.host`, with the default when the file has none, as shown
     /// to a person: a `$NAME` reference as written, a literal secret masked. See [`resolved`](Self::resolved) for
     /// the value as it is used.
     pub fn values(&self) -> BTreeMap<String, Value> {
-        self.table
-            .iter()
+        self.rows()
             .filter_map(|setting| {
                 let value = self.values.get(setting.key)?;
                 Some((setting.key.to_owned(), setting.shown(value)))
@@ -347,19 +358,19 @@ impl Settings {
             invalid: true,
             forbidden: false,
         };
-        if let Some(key) = patch.set.keys().chain(&patch.reset).find(|key| {
-            !current
-                .table
-                .iter()
-                .any(|setting| setting.key == key.as_str())
-        }) {
+        if let Some(key) = patch
+            .set
+            .keys()
+            .chain(&patch.reset)
+            .find(|key| !current.rows().any(|setting| setting.key == key.as_str()))
+        {
             return Err(invalid(key, "unknown setting"));
         }
         if let Some(key) = patch.reset.iter().find(|key| patch.set.contains_key(*key)) {
             return Err(invalid(key, "named twice"));
         }
         let mut values = current.values.clone();
-        for setting in current.table {
+        for setting in current.rows() {
             let value = match patch.set.get(setting.key) {
                 Some(value) => value.clone(),
                 None if patch.reset.contains(setting.key) => setting.kind.default_value(),
@@ -417,7 +428,7 @@ impl Settings {
         let Some(value) = edit(stored) else {
             return Ok(current);
         };
-        if let Some(setting) = current.table.iter().find(|setting| setting.key == key) {
+        if let Some(setting) = current.rows().find(|setting| setting.key == key) {
             setting
                 .check(&value, &*current.lookup)
                 .map_err(|reason| invalid(key, &reason))?;

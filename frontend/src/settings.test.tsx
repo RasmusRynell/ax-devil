@@ -1,7 +1,8 @@
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AccessContext } from "./access";
+import { deviceStore } from "./deviceSettings";
 import { DEFAULT_SETTINGS } from "./fakeSettings";
 import { SettingsNoticeContext, SettingsProvider, useSettings } from "./settings";
 
@@ -15,10 +16,20 @@ const noInfo = () => {};
 
 function Catalog() {
   const { values, set } = useSettings();
+  const [refused, setRefused] = useState(false);
   return (
-    <button onClick={() => void set("overlays.default_catalog", "user:night.json")}>
-      {(values["overlays.default_catalog"] as string) || "built-in"}
-    </button>
+    <>
+      <button
+        onClick={() =>
+          void set("overlays.default_catalog", "user:night.json").then(
+            (refusal) => refusal && setRefused(true),
+          )
+        }
+      >
+        {(values["overlays.default_catalog"] as string) || "built-in"}
+      </button>
+      {refused && <p>refused</p>}
+    </>
   );
 }
 
@@ -28,7 +39,9 @@ function TextSize() {
 }
 
 describe("settings", () => {
-  it("applies the theme and text size to the document root as they are saved", async () => {
+  it("stores a Device setting on the device, applies it and sends no request, even for a Guest", async () => {
+    const fetched = vi.fn();
+    vi.stubGlobal("fetch", fetched);
     render(
       <SettingsProvider onInfo={noInfo}>
         <TextSize />
@@ -36,27 +49,26 @@ describe("settings", () => {
     );
     fireEvent.click(await screen.findByRole("button", { name: "Larger text" }));
     await waitFor(() => expect(document.documentElement.dataset.textSize).toBe("large"));
-    expect(document.documentElement.dataset.theme).toBe("auto");
+    expect(JSON.parse(window.localStorage.getItem("ax-devil.device") ?? "{}")).toEqual({
+      "ui.text_size": "large",
+    });
+    expect(fetched).not.toHaveBeenCalled();
+    deviceStore.reset("ui.text_size");
   });
 
-  it("keeps the Personal default catalog of a browser without a backend for it in the browser", async () => {
+  it("gives a Guest the default of every Personal setting, refuses its change and drops the old copy", async () => {
+    window.localStorage.setItem(
+      "ax-devil.preferences",
+      JSON.stringify({ values: { "overlays.default_catalog": "user:night.json" } }),
+    );
     render(
       <SettingsProvider onInfo={noInfo}>
         <Catalog />
       </SettingsProvider>,
     );
     fireEvent.click(await screen.findByRole("button", { name: "built-in" }));
-    await waitFor(() => screen.getByRole("button", { name: "user:night.json" }));
-    expect(JSON.parse(window.localStorage.getItem("ax-devil.preferences") ?? "{}")).toMatchObject({
-      values: { "overlays.default_catalog": "user:night.json" },
-    });
-    cleanup();
-    render(
-      <SettingsProvider onInfo={noInfo}>
-        <Catalog />
-      </SettingsProvider>,
-    );
-    expect(screen.getByRole("button", { name: "user:night.json" })).toBeTruthy();
+    await screen.findByText("refused");
+    expect(window.localStorage.getItem("ax-devil.preferences")).toBeNull();
   });
 
   /** A notice of `revision`, as the session connection reports it, and the way to save a folder. */

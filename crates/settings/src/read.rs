@@ -9,8 +9,7 @@ impl State {
     /// What each non-secret setting that holds a `$NAME` reference gives as it is used, by dotted key, for
     /// a form that starts from the value rather than the reference. Not logged: nothing is used yet.
     pub fn references(&self) -> BTreeMap<String, Value> {
-        self.table
-            .iter()
+        self.rows()
             .filter(|setting| !setting.secret)
             .filter_map(|setting| {
                 let value = self.values.get(setting.key)?;
@@ -29,7 +28,7 @@ impl State {
     /// leading `~` by the home folder. A reference that gives a value the setting cannot hold is logged and the
     /// default is used instead.
     pub fn resolved(&self, key: &str) -> Option<Value> {
-        let setting = self.table.iter().find(|setting| setting.key == key)?;
+        let setting = self.rows().find(|setting| setting.key == key)?;
         let value = self.values.get(key)?;
         Some(setting.used(value, &*self.lookup))
     }
@@ -47,7 +46,7 @@ impl State {
     /// this machine's environment: a `$NAME` stays the text it is, except in a whole-number setting, which cannot hold
     /// text and gives its default.
     pub fn written(&self, key: &str) -> Option<Value> {
-        let setting = self.table.iter().find(|setting| setting.key == key)?;
+        let setting = self.rows().find(|setting| setting.key == key)?;
         let value = self.values.get(key)?;
         let number = matches!(setting.kind, Kind::Whole { .. });
         Some(if number && setting.holds_reference(value) {

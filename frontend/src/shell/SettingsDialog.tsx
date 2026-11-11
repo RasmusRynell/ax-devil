@@ -18,8 +18,8 @@ import { useSaveDialog } from "./useSaveDialog";
 const PAGED: readonly Row[] = SETTINGS.filter((row) => row.page !== null);
 
 /**
- * The Settings dialog, built from the settings table: the Personal rows for everyone, the Server rows for whoever may
- * configure the server. Changes apply on OK; `onRestartNeeded` runs after a save that changed a setting that applies
+ * The Settings dialog, built from the settings table: the Device rows for everyone, the Personal and Server rows for
+ * the Owner. Changes apply on OK; `onRestartNeeded` runs after a save that changed a setting that applies
  * only after a restart. Keyboard shortcuts open in a dialog of their own over this one, which stores them when it is
  * confirmed, even if this one is cancelled.
  */
@@ -31,9 +31,9 @@ export function SettingsDialog({
   onRestartNeeded: () => void;
 }) {
   const { values, file } = useSettings();
-  // A page that holds only a join link keeps just its Personal settings, in its browser.
+  // A page that holds only a join link has only the Device settings.
   const { owner, fullAccess } = useAccess();
-  const shown = PAGED.filter((row) => owner || row.scope === "personal");
+  const shown = PAGED.filter((row) => owner || row.scope === "device");
   const pages = [...new Set(shown.flatMap((row) => row.page ?? [])), ...(file ? ["Advanced"] : [])];
   // What the dialog opened with: only the settings changed from it are sent, so another window's change to the rest stays.
   const [base] = useState(values);
@@ -136,7 +136,7 @@ export function SettingsDialog({
               ))}
             </>
           )}
-          {page === "General" && (
+          {page === "General" && owner && (
             <Button
               className="self-start"
               disabled={saving}
