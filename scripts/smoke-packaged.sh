@@ -21,7 +21,7 @@ logs="$PWD/artifacts/smoke-logs"
 rm -rf "$logs"
 mkdir -p "$logs"
 export AX_DEVIL_SMOKE_ROOT="$PWD"
-read -r stop_seconds grace_seconds < <(node -e 'const b = require("./desktop/smoke-budget.cjs"); console.log(b.KILL_AFTER_MS / 1000, b.EXIT_GRACE_MS / 1000)')
+read -r stop_seconds grace_seconds < <(node -e 'const b = require("./desktop/smoke-budget.cjs"); console.log(b.PACKAGE_EXIT_MS / 1000, b.PACKAGE_KILL_MS / 1000)')
 
 # A path for the app and its tools: C:/... on Windows, unchanged elsewhere.
 native() { if [[ $os == win ]]; then cygpath -m "$1"; else echo "$1"; fi; }
@@ -87,26 +87,16 @@ if ! scheme_declared; then
 fi
 
 # Kills the app and everything it started.
-alive() { [[ " $(jobs -pr | tr '\n' ' ') " == *" $pid "* ]]; }
 kill_tree() {
-  alive || return 0
   if [[ $os == win ]]; then
-    taskkill //F //T //PID "$(cat "/proc/$pid/winpid" 2>/dev/null || echo "$pid")"
+    taskkill //F //T //PID "$(cat "/proc/$pid/winpid" 2>/dev/null || echo "$pid")" >/dev/null 2>&1 || true
   else
-    signal_tree TERM
-    for ((n = 0; n < grace_seconds; n++)); do
-      alive || break
-      sleep 1
-    done
-    if alive; then signal_tree KILL; fi
+    kill -TERM -- "-$pid" 2>/dev/null || true
+    sleep "$grace_seconds"
+    kill -KILL -- "-$pid" 2>/dev/null || true
   fi
 }
-signal_tree() {
-  local error
-  if ! error=$(kill -"$1" -- "-$pid" 2>&1); then
-    [[ $error == *"No such process"* ]] || { echo "$error" >&2; return 1; }
-  fi
-}
+alive() { kill -0 "$pid" 2>/dev/null; }
 
 # One launch of the app for one group: its scenarios in order, a fresh home, its own logs. Returns the verdict. The app
 # fails a hung scenario by name, with its screenshot, well before the plan's deadline; the kill is only for an app that
@@ -140,7 +130,6 @@ run_group() {
     sleep 1
   done
   kill_tree
-  wait "$pid" || true
 
   for log in "app-$group.log" "electron-$group.log"; do
     echo "--- $log"

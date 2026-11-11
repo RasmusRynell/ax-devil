@@ -4,17 +4,19 @@ const groups = require("../desktop/smoke-groups.cjs");
 const {
   FIXTURE_BUILD_MS,
   PACKAGE_SETUP_MS,
-  KILL_AFTER_MS,
+  PACKAGE_EXIT_MS,
+  PACKAGE_KILL_MS,
   EXIT_GRACE_MS,
 } = require("../desktop/smoke-budget.cjs");
 const scenarios = loadScenarios(groups);
 const launches = Object.entries(groups).map(([group, names]) => ({
   group,
   deadline: deadlineMs(names, scenarios),
-  teardown: KILL_AFTER_MS + EXIT_GRACE_MS,
+  teardown: PACKAGE_EXIT_MS + PACKAGE_KILL_MS,
 }));
 const inner =
   FIXTURE_BUILD_MS +
+  EXIT_GRACE_MS +
   PACKAGE_SETUP_MS +
   launches.reduce((sum, row) => sum + row.deadline + row.teardown, 0);
 const smokeMinutes = Math.ceil(inner / 60000) + 1;

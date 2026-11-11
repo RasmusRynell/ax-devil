@@ -1,4 +1,3 @@
-const { observe } = require("../desktop/child.cjs");
 const { spawn } = require("node:child_process");
 const { apiVersion } = require("../desktop/generated/api.json");
 const mode = process.argv[2];
@@ -8,10 +7,32 @@ const origin = `http://127.0.0.1:${port}`;
 const ui = `http://127.0.0.1:${uiPort}`;
 const children = [];
 let stopping = false;
+function signalTree(child, signal) {
+  if (!child.pid) return;
+  try {
+    if (process.platform === "win32") child.kill(signal);
+    else process.kill(-child.pid, signal);
+  } catch (error) {
+    if (error.code !== "ESRCH") throw error;
+  }
+}
 function stop(code = 0) {
   if (stopping) return;
   stopping = true;
-  void Promise.all(children.map((owned) => owned.stop())).then(() => process.exit(code));
+  for (const child of children) signalTree(child, "SIGINT");
+  const timeout = setTimeout(() => {
+    for (const child of children) signalTree(child, "SIGKILL");
+  }, 3000);
+  void Promise.all(
+    children.map((child) =>
+      child.exitCode !== null || child.signalCode !== null
+        ? Promise.resolve()
+        : new Promise((r) => child.once("exit", r)),
+    ),
+  ).then(() => {
+    clearTimeout(timeout);
+    process.exit(code);
+  });
 }
 function start(command, args, env = {}) {
   const child = spawn(command, args, {
@@ -19,7 +40,7 @@ function start(command, args, env = {}) {
     detached: process.platform !== "win32",
     env: { ...process.env, ...env },
   });
-  children.push(observe(child, true));
+  children.push(child);
   child.on("error", (error) => {
     console.error(error.message);
     stop(1);
@@ -105,7 +126,7 @@ process.on("SIGTERM", () => stop());
       detached: process.platform !== "win32",
       env,
     });
-    children.push(observe(child, true));
+    children.push(child);
     child.on("error", (error) => {
       console.error(error.message);
       stop(1);

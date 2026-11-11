@@ -127,3 +127,24 @@ void test(
     }
   },
 );
+
+void test("repeated child stop sends one interrupt and arms one escalation", async () => {
+  const { observe } = require("./child.cjs");
+  const child = fakeProcess({ stubborn: true });
+  child.kill = (signal) => child.signals.push(signal);
+  const owned = observe(child);
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const first = owned.stop();
+    assert.equal(owned.stop(), first);
+    mock.timers.tick(3000);
+    assert.deepEqual(child.signals, ["SIGINT", "SIGKILL"]);
+    child.emit("exit", 0, null);
+    await first;
+    await owned.stop();
+    mock.timers.tick(60000);
+    assert.deepEqual(child.signals, ["SIGINT", "SIGKILL"]);
+  } finally {
+    mock.timers.reset();
+  }
+});

@@ -3,7 +3,7 @@ const { spawn } = require("node:child_process");
 const { createInterface } = require("node:readline");
 const path = require("node:path");
 
-const { observe } = require("./child.cjs");
+const { observe, BACKEND_INTERRUPT_MS, BACKEND_STOP_MS } = require("./child.cjs");
 
 const { apiVersion, shellApi } = require("./generated/api.json");
 
@@ -153,8 +153,8 @@ function createBackend({ port, devUrl, executable, args = [], onUnexpectedExit, 
       const owned = child;
       const ended = lifecycle?.done;
       if (owned && owned.exitCode === null && owned.signalCode === null) {
-        lifecycle.after(3000, "SIGINT");
-        lifecycle.after(6000, "SIGKILL");
+        lifecycle.after(BACKEND_INTERRUPT_MS, "SIGINT");
+        lifecycle.after(BACKEND_STOP_MS, "SIGKILL");
         owned.stdin.end();
       }
       return Promise.all([starting, ended]).then(() => undefined);
