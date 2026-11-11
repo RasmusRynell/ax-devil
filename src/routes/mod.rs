@@ -7,6 +7,7 @@
 
 pub(crate) mod catalogs;
 mod client_errors;
+mod folder;
 mod glance;
 mod handlers;
 mod intake;
@@ -235,6 +236,20 @@ pub(crate) const ROUTES: &[Route] = &[
         listeners: MEMBERS,
         who: Who::Owner,
         handler: |method| on(method, intake::check),
+    },
+    Route {
+        method: MethodFilter::GET,
+        path: "/api/files/folder",
+        listeners: MEMBERS,
+        who: Who::Owner,
+        handler: |method| on(method, folder::list),
+    },
+    Route {
+        method: MethodFilter::GET,
+        path: "/api/files/exists",
+        listeners: MEMBERS,
+        who: Who::Owner,
+        handler: |method| on(method, folder::exists),
     },
     Route {
         method: MethodFilter::GET,

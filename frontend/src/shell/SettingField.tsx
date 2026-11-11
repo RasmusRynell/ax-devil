@@ -5,11 +5,13 @@ import { BrowseButton } from "../kit/Button";
 import { SegmentedControl } from "../kit/Chips";
 import { Checkbox, LABELLED, Select, TextField } from "../kit/Fields";
 import { Icon } from "../kit/Icon";
-import { nativeBridge } from "../windowBridge";
+import { SET_PASSWORD } from "../live/expansions";
+import { chooseFolder, usePickPath } from "../pickPath";
+import { isSecretState, secretStateOf, type Login } from "../secret";
 import { LoginsEditor } from "./LoginsEditor";
 
-/** A setting's value as the backend stores it. */
-export type Value = SettingsState["values"][SettingKey];
+/** A setting's value as the backend tells it, or as edited: logins carry the passwords typed since. */
+export type Value = SettingsState["values"][SettingKey] | Login[];
 type KindTag =
   | "bool"
   | "sticky"
@@ -47,16 +49,24 @@ export interface Row {
   readonly quick_setup: boolean;
 }
 
-/** The value as text; the sticky and sync settings and lists of records are not text, and no field shows them. */
-export const textOf = (value: Value) => (typeof value === "object" ? "" : String(value));
-
-/** Whether the whole value is a `$NAME` reference to an environment variable. */
-export const isReference = (value: string) => /^\$[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+/**
+ * The value as text: a secret that is not being edited as the reference it holds (a literal is not known here, so
+ * it is empty); the sticky and sync settings and lists of records are not text, and no field shows them.
+ */
+export const textOf = (value: Value) =>
+  isSecretState(value)
+    ? value.state === "reference"
+      ? `$${value.name}`
+      : ""
+    : typeof value === "object"
+      ? ""
+      : String(value);
 
 /** Whether a secret row holds the secret itself, which is then masked and warned about, not a reference to it. */
 export function literalSecret(row: Row, value: Value) {
-  const text = textOf(value);
-  return row.secret && text !== "" && !(row.env && isReference(text));
+  if (!row.secret) return false;
+  if (isSecretState(value)) return value.state === "literal";
+  return secretStateOf(textOf(value), row.env).state === "literal";
 }
 
 interface FieldProps {
@@ -129,6 +139,8 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
       label={label}
       value={textOf(value)}
       masked={literalSecret(row, value)}
+      // A saved secret is not known here: the dots only say it is set, and typing replaces it.
+      placeholder={isSecretState(value) && value.state === "literal" ? SET_PASSWORD : undefined}
       describedBy={describedBy}
       wide={row.env}
       onChange={onChange}
@@ -139,18 +151,18 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
     <TextField label={label} value={textOf(value)} suggestions={decoders} onChange={onChange} />
   ),
   folder: ({ row, label, value, onChange }) => {
-    const bridge = nativeBridge();
+    const pick = usePickPath();
     return (
       <TextField
         label={label}
         value={textOf(value)}
         onChange={onChange}
         action={
-          bridge && (
+          pick && (
             <BrowseButton
               what={row.label}
               onBrowse={() =>
-                void bridge.pickFolder(row.label).then((folder) => {
+                void pick(chooseFolder(row.label)).then((folder) => {
                   if (folder !== null) onChange(folder);
                 })
               }

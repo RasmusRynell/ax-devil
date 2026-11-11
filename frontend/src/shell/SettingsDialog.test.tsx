@@ -111,7 +111,7 @@ describe("settings dialog", () => {
       "t.mode": "https",
       "t.port": 554,
       "t.dir": "",
-      "t.token": "hunter2",
+      "t.token": { state: "literal" },
       "scan.logins": [],
     };
     const state = { ...DEFAULT_SETTINGS, values } as never;
@@ -137,6 +137,7 @@ describe("settings dialog", () => {
     // A control's tooltip is its description, else its key.
     expect(token.closest("[title]")?.getAttribute("title")).toBe("t.token");
     expect(token.type).toBe("password");
+    expect([token.value, token.placeholder]).toEqual(["", "••••••••"]);
     const warning = screen.getByText(/^Saved as plain text/);
     expect(warning.textContent).toBe(
       "Saved as plain text. Use $VARIABLE to read it from the environment.",
@@ -255,7 +256,7 @@ describe("settings dialog", () => {
   });
 
   describe("scan logins", () => {
-    const logins = [{ user: "root", password: "********" }];
+    const logins = [{ id: "a1", user: "root", password: { state: "literal" } }];
     const open = (save: () => Promise<null>, onClose = () => {}) => {
       const values = { ...DEFAULT_SETTINGS.values, "scan.logins": logins };
       render(

@@ -53,6 +53,52 @@ owner: boolean,
 fullAccess: boolean, };
 
 /**
+ * A login of the `scan.logins` setting as a client sends it, in the list that is saved whole and in order. With an
+ * `id` it is that saved login, and a missing `password` keeps its saved one; without an `id` it is a new login, which
+ * has a `password`. An unknown `id` is refused, and a saved login left out is removed.
+ */
+export type LoginEdit = { 
+/**
+ * The saved login this is.
+ */
+id?: string, 
+/**
+ * The user name, as written.
+ */
+user: string, 
+/**
+ * The new password, as written.
+ */
+password?: string, };
+
+/**
+ * A login of the `scan.logins` setting as a client reads it.
+ */
+export type LoginView = { 
+/**
+ * Names the login for as long as it is saved; a save refers to it by this.
+ */
+id: string, 
+/**
+ * The user name, as written.
+ */
+user: string, 
+/**
+ * The password.
+ */
+password: SecretState, };
+
+/**
+ * What a client learns of a secret: whether it is set and, for a `$NAME` reference, its name. Never the literal, its
+ * length or a mask. A client changes a secret by naming it in a [`SettingsPatch`].
+ */
+export type SecretState = { "state": "unset" } | { "state": "literal" } | { "state": "reference", 
+/**
+ * The variable's name, without the `$`.
+ */
+name: string, };
+
+/**
  * Where the settings are kept: the file's path on the backend's machine and its format version.
  */
 export type SettingsFile = { 
@@ -71,14 +117,13 @@ log?: string, };
 
 /**
  * The body of `PATCH /api/settings`: the keys to set and to reset. A key that is not named is not touched, so the
- * last write to a key wins. A masked password in a record of logins keeps the stored password; a text secret is
- * changed only by naming it.
+ * last write to a key wins. A secret is changed only by naming it; the logins are one list of [`LoginEdit`].
  */
 export type SettingsPatch = { 
 /**
  * The settings to set by dotted key.
  */
-set?: Partial<Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<"score" | "confidence", { min: number | null; max: number | null }>; expression: string }>>, 
+set?: Partial<Record<SettingKey, string | boolean | number | Array<LoginEdit> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<"score" | "confidence", { min: number | null; max: number | null }>; expression: string }>>, 
 /**
  * The settings to put back to their default.
  */
@@ -103,10 +148,10 @@ export type SettingsState = {
  */
 revision: number, 
 /**
- * Every setting by dotted key, such as `"camera.host"`, with the default when unset, a `$NAME` reference as written
- * and a literal secret masked.
+ * Every setting by dotted key, such as `"camera.host"`, with the default when unset and a `$NAME` reference as
+ * written. A secret, and the `password` of a login, is a [`SecretState`]: never the literal.
  */
-values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<"score" | "confidence", { min: number | null; max: number | null }>; expression: string }>, 
+values: Record<SettingKey, string | boolean | number | SecretState | Array<LoginView> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<"score" | "confidence", { min: number | null; max: number | null }>; expression: string }>, 
 /**
  * What each non-secret setting among `values` that holds a `$NAME` reference gives as it is used (a number for a
  * whole-number setting), for a form that starts from the value. Only with Full access, since it is the server's

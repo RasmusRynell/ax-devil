@@ -2,7 +2,19 @@
 
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::path::Path;
+use std::{collections::BTreeSet, path::Path};
+
+/// The field of a record that names it, so a save can keep its secret fields without the client holding them.
+pub(crate) const ID: &str = "id";
+
+/// An id no other record has: random, so a client holding the id of a removed record never names a later one.
+pub(crate) fn fresh_id() -> String {
+    let mut bytes = [0u8; 8];
+    // Without operating-system randomness there is no sound way to make an id that is not reused.
+    getrandom::fill(&mut bytes)
+        .unwrap_or_else(|error| panic!("the operating system has no randomness: {error}"));
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
 
 /// The longest a kept sample may stay, in milliseconds, which the playback backend enforces.
 const MAX_STICKY_MS: u64 = 100_000;
@@ -229,7 +241,8 @@ pub enum Kind {
     /// A folder the user picked: an absolute path once a leading `~` is the home folder, or empty for the app's
     /// standard folder. Never checked against the disk, so an unplugged drive does not stop startup.
     Folder,
-    /// A list of records, each an object that has exactly these text fields.
+    /// A list of records, each an object that has exactly these text fields and an `id` the server assigned, unique in
+    /// the list (see `secret.rs`).
     Records {
         /// The names of the fields every record has.
         fields: &'static [&'static str],
@@ -255,18 +268,68 @@ impl Kind {
             Self::Records { fields, default } => Value::Array(
                 default
                     .iter()
-                    .map(|values| {
+                    .enumerate()
+                    .map(|(at, values)| {
+                        let id = (ID.to_owned(), Value::from(format!("default-{at}")));
                         Value::Object(
-                            fields
-                                .iter()
-                                .zip(*values)
-                                .map(|(field, value)| ((*field).to_owned(), Value::from(*value)))
+                            std::iter::once(id)
+                                .chain(fields.iter().zip(*values).map(|(field, value)| {
+                                    ((*field).to_owned(), Value::from(*value))
+                                }))
                                 .collect(),
                         )
                     })
                     .collect(),
             ),
         }
+    }
+
+    /// `value` with an id on every record that has none, as a file written before records had ids holds them, and the
+    /// default's own ids when the records are the default's. Any other kind is returned as it is.
+    pub(crate) fn with_ids(&self, value: Value) -> Value {
+        if !matches!(self, Self::Records { .. }) {
+            return value;
+        }
+        let Value::Array(mut records) = value else {
+            return value;
+        };
+        let bare = |records: &[Value]| -> Vec<Value> {
+            records
+                .iter()
+                .map(|record| {
+                    let mut record = record.clone();
+                    if let Some(fields) = record.as_object_mut() {
+                        fields.remove(ID);
+                    }
+                    record
+                })
+                .collect()
+        };
+        if let Value::Array(default) = self.default_value()
+            && bare(&records) == bare(&default)
+        {
+            return Value::Array(default);
+        }
+        // Derived from the position, not random, so the same file gives the same ids on every load until a write stores them.
+        let mut taken: BTreeSet<String> = records
+            .iter()
+            .filter_map(|record| record.get(ID)?.as_str().map(str::to_owned))
+            .collect();
+        for (at, record) in records.iter_mut().enumerate() {
+            let Some(fields) = record.as_object_mut() else {
+                continue;
+            };
+            if fields.contains_key(ID) {
+                continue;
+            }
+            let id = (at..)
+                .map(|number| format!("position-{number}"))
+                .find(|id| !taken.contains(id))
+                .expect("an unbounded range has a free value");
+            taken.insert(id.clone());
+            fields.insert(ID.into(), Value::String(id));
+        }
+        Value::Array(records)
     }
 
     /// Whether `value` is the default. A number is compared by what it is, so `1` and `1.0` are the same opacity.
@@ -309,13 +372,18 @@ impl Kind {
             (Self::Records { fields, .. }, Value::Array(records)) => {
                 let fits = |record: &Value| {
                     record.as_object().is_some_and(|record| {
-                        record.len() == fields.len()
+                        record.len() == fields.len() + 1
+                            && record.get(ID).is_some_and(Value::is_string)
                             && fields
                                 .iter()
                                 .all(|field| record.get(*field).is_some_and(Value::is_string))
                     })
                 };
-                if records.iter().all(fits) {
+                let ids: BTreeSet<&str> = records
+                    .iter()
+                    .filter_map(|record| record.get(ID)?.as_str())
+                    .collect();
+                if records.iter().all(fits) && ids.len() == records.len() {
                     Ok(())
                 } else {
                     Err(format!(

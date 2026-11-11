@@ -11,11 +11,30 @@ import { RowList } from "./RowList";
 import { Switch } from "./Switch";
 import { Tabs } from "./Tabs";
 import { ChoiceDialog } from "./ChoiceDialog";
+import type { FolderListing } from "../generated/api";
+import { PathPicker } from "./PathPicker";
 import { Icon } from "./Icon";
 import { ICONS, type IconName } from "./icons";
 import type { MenuEntry } from "./Menu";
 import { SectionCaption } from "./SectionCaption";
 import { ViewPanel } from "./ViewPanel";
+
+/** A folder with a few entries, for the path picker. */
+const listing = (): Promise<FolderListing> =>
+  Promise.resolve({
+    path: "/home/me/recordings",
+    parent: "/home/me",
+    entries: [
+      { name: "2026-03-14", folder: true },
+      { name: "gate", folder: true },
+      { name: "marks.csv", folder: false },
+      { name: "notes.csv", folder: false },
+    ],
+    places: [
+      { name: "Home", path: "/home/me" },
+      { name: "/", path: "/" },
+    ],
+  });
 
 const LONG =
   "The overlay for this lane does not line up with the video's frames, so boxes may land one frame early or late.";
@@ -75,6 +94,7 @@ export function Gallery() {
   const [filters, setFilters] = useState<ReadonlySet<string>>(new Set(["Boxes", "Labels"]));
   const [open, setOpen] = useState(true);
   const [asking, setAsking] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [answer, setAnswer] = useState("none");
   const [text, setText] = useState("");
   const [folded, setFolded] = useState(true);
@@ -107,6 +127,7 @@ export function Gallery() {
           <BrowseButton what="video file" onBrowse={() => undefined} />
         </div>
         <Button onClick={() => setAsking(true)}>Open choice dialog</Button>
+        <Button onClick={() => setPicking(true)}>Open path picker</Button>
         <output aria-label="Last choice">{answer}</output>
       </Section>
 
@@ -383,6 +404,18 @@ export function Gallery() {
           ))}
         </ul>
       </Section>
+      {picking && (
+        <PathPicker
+          mode="save"
+          list={listing}
+          exists={() => Promise.resolve(false)}
+          title="Save as"
+          extensions={[".csv"]}
+          name="marks.csv"
+          onChoose={() => setPicking(false)}
+          onCancel={() => setPicking(false)}
+        />
+      )}
       {asking && (
         <ChoiceDialog
           title="Restart"

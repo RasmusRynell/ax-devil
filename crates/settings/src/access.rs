@@ -40,9 +40,9 @@ impl State {
             if setting.full_access && new != *stored {
                 return Err(forbidden(setting.key, "needs full access to change"));
             }
-            // Every row, whether or not it expands references today, and what is stored once masked secrets are put
+            // Every row, whether or not it expands references today, and what is stored once kept passwords are put
             // back. A reference the row already holds in the same field may be kept, moved between records or reordered.
-            let Ok(effective) = setting.unmasked(&new, Some(stored)) else {
+            let Ok(effective) = setting.applied(&new, Some(stored)) else {
                 continue;
             };
             let held = texts(stored, "");

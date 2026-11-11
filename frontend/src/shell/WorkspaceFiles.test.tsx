@@ -10,7 +10,21 @@ import { Shell } from "./Shell";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 
+/** A window on its own backend, whose file dialogs choose `open` and `save`. */
+function dialogs(open: string, save = open) {
+  const pickOpenWorkspace = vi.fn(() => Promise.resolve(open));
+  window.axDevilWindow = {
+    remote: false,
+    onMaximizedChange: () => () => undefined,
+    onFullScreenChange: () => () => undefined,
+    pickOpenWorkspace,
+    pickSaveWorkspace: () => Promise.resolve(save),
+  } as unknown as typeof window.axDevilWindow;
+  return pickOpenWorkspace;
+}
+
 afterEach(() => {
+  delete window.axDevilWindow;
   cleanup();
   vi.unstubAllGlobals();
   window.sessionStorage.clear();
@@ -61,58 +75,44 @@ describe("workspace files", () => {
       "fetch",
       vi.fn(() => Promise.resolve(Response.json([]))),
     );
+    const pick = dialogs("/srv/Gate.ax-devil.workspace");
     await renderShell();
     expect(screen.queryByText("Recent workspaces")).toBeNull();
     // Another button keeps its own Enter; with nothing focused, Enter runs Open Workspace.
     fireEvent.keyDown(screen.getByRole("button", { name: "Add Video" }), { key: "Enter" });
-    expect(screen.queryByRole("textbox", { name: "Path on the server" })).toBeNull();
+    expect(pick).not.toHaveBeenCalled();
     fireEvent.keyDown(document.body, { key: "Enter" });
-    expect(screen.getByRole("textbox", { name: "Path on the server" })).toBeTruthy();
+    expect(pick).toHaveBeenCalled();
   });
 
   it("lets a shortcut bound to Enter take the key from the default Open Workspace", async () => {
+    const pick = dialogs("/srv/Gate.ax-devil.workspace");
     await renderShell({
       ...DEFAULT_SETTINGS,
       shortcuts: { ...DEFAULT_SETTINGS.shortcuts, settings: "Enter" },
     });
     fireEvent.keyDown(document.body, { key: "Enter" });
     expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
-    expect(screen.queryByRole("textbox", { name: "Path on the server" })).toBeNull();
+    expect(pick).not.toHaveBeenCalled();
   });
 
-  it("opens a workspace by the path typed where the window has no file dialog", async () => {
+  it("opens the workspace the file dialog chose", async () => {
+    dialogs("/srv/Gate.ax-devil.workspace");
     await renderShell();
     fireEvent.click(screen.getByRole("menuitem", { name: "File" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Open Workspace/ }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Path on the server" }), {
-      target: { value: " /srv/Gate.ax-devil.workspace " },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Open" }));
-    expect(sent()).toEqual([{ type: "open", path: "/srv/Gate.ax-devil.workspace" }]);
+    await waitFor(() =>
+      expect(sent()).toEqual([{ type: "open", path: "/srv/Gate.ax-devil.workspace" }]),
+    );
   });
 
-  it("asks before a typed Save As replaces a file, and only then sends it again", async () => {
-    FakeSocket.existingFiles.add("/srv/Gate.ax-devil.workspace");
-    await renderShell();
-    const saveAs = async (answer: string) => {
-      fireEvent.click(screen.getByRole("menuitem", { name: "File" }));
-      fireEvent.click(screen.getByRole("menuitem", { name: /Save Workspace As/ }));
-      fireEvent.change(screen.getByRole("textbox", { name: "Path on the server" }), {
-        target: { value: "/srv/Gate" },
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Save" }));
-      fireEvent.click(await screen.findByRole("button", { name: answer }));
-    };
+  it("saves to the file the dialog chose, which has asked about an existing one itself", async () => {
     const path = "/srv/Gate.ax-devil.workspace";
-    await saveAs("Cancel");
-    expect(sent()).toEqual([{ type: "save", path }]);
-    expect(screen.queryByRole("alert")).toBeNull();
-    await saveAs("Replace");
-    expect(sent()).toEqual([
-      { type: "save", path },
-      { type: "save", path },
-      { type: "save", path, replace: true },
-    ]);
+    dialogs(path);
+    await renderShell();
+    fireEvent.click(screen.getByRole("menuitem", { name: "File" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Save Workspace As/ }));
+    await waitFor(() => expect(sent()).toEqual([{ type: "save", path, replace: true }]));
   });
 
   it("offers Keep and Discard for restored changes, even with nothing in the workspace", async () => {

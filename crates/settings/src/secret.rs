@@ -1,52 +1,44 @@
-//! How a secret setting is shown and kept: the literal in it is masked for a person. A text secret is changed only
-//! by naming it in a patch; a record in a list of logins is sent whole, and its masked password is put back from the
-//! stored value.
+//! A secret is write-only: what a client reads of it says whether it is set and, for a `$NAME` reference, the name,
+//! never the literal. A text secret is changed only by naming it in a patch. A list of records (the logins) is saved
+//! whole and in order; each record has an `id` the server assigned, and a record sent with its id and no password
+//! keeps the stored one.
 
-use crate::{env, table::Setting};
-use serde_json::Value;
-
-/// Shown in place of a literal secret; a masked password sent back in a record keeps the stored one.
-pub const MASK: &str = "********";
+use crate::{
+    env,
+    kind::{ID, Kind, fresh_id},
+    table::Setting,
+};
+use serde_json::{Value, json};
 
 /// The field of a record in a secret list that holds the secret.
 const PASSWORD: &str = "password";
 
-/// Whether two records of a secret list are the same login: every field but the password is equal.
-fn same_login(a: &Value, b: &Value) -> bool {
-    fn others(record: &Value) -> Option<Vec<(&String, &Value)>> {
-        record.as_object().map(|fields| {
-            fields
-                .iter()
-                .filter(|(name, _)| *name != PASSWORD)
-                .collect()
-        })
-    }
-    others(a) == others(b)
-}
-
 impl Setting {
-    /// Whether `text` is the secret itself rather than empty or a `$NAME` reference to it.
-    fn literal(&self, text: &str) -> bool {
-        !text.is_empty() && !(self.env && env::reference(text).is_some())
+    /// What a client learns of the secret `text`: not set, a reference with its name, or a literal and nothing more.
+    fn state(&self, text: &str) -> Value {
+        if text.is_empty() {
+            return json!({"state": "unset"});
+        }
+        match self.env.then(|| env::reference(text)).flatten() {
+            Some(name) => json!({"state": "reference", "name": name}),
+            None => json!({"state": "literal"}),
+        }
     }
 
-    /// `value` as shown to a person: the literal in a secret row is masked, everything else as written. In a secret
-    /// list of records the literal in each record's `password` field is masked.
+    /// `value` as a client reads it: in a secret row the text, or the `password` of each record, is its state.
     pub fn shown(&self, value: &Value) -> Value {
         if !self.secret {
             return value.clone();
         }
         match value {
-            Value::String(text) if self.literal(text) => Value::String(MASK.into()),
+            Value::String(text) => self.state(text),
             Value::Array(records) => Value::Array(
                 records
                     .iter()
                     .map(|record| {
                         let mut record = record.clone();
-                        if let Some(Value::String(password)) = record.get_mut(PASSWORD)
-                            && self.literal(password)
-                        {
-                            *password = MASK.into();
+                        if let Some(Value::String(password)) = record.get(PASSWORD) {
+                            record[PASSWORD] = self.state(password);
                         }
                         record
                     })
@@ -56,79 +48,48 @@ impl Setting {
         }
     }
 
-    /// What a person's `sent` value means once the masked passwords in it are put back from the `stored` value. A text
-    /// secret sent as the mask is refused: a client names a text secret only to change it. A masked password in a record keeps the stored password of the record at
-    /// the same position when its other fields are unchanged, else of an unclaimed record with the same other fields,
-    /// else of the unclaimed record at the same position (the user changed another field of it). A stored record
-    /// keeps its password for one row only, and a masked secret with nothing to keep is refused rather than stored
-    /// empty. So is one whose login is stored more than once while the rows sent for it are not as many: which of the
-    /// passwords it stands for cannot be told.
-    pub(crate) fn unmasked(&self, sent: &Value, stored: Option<&Value>) -> Result<Value, String> {
-        const REENTER: &str = "Re-enter the password; the saved one cannot be kept for this entry.";
-        if !self.secret {
+    /// What a client's `sent` value means given the `stored` one. A list of records is the whole list in its order:
+    /// a record with an `id` is that stored record (its fields as sent; a `password` it lacks is the stored one), a
+    /// record without one is new and gets an id. An unknown or repeated id is refused.
+    pub(crate) fn applied(&self, sent: &Value, stored: Option<&Value>) -> Result<Value, String> {
+        let (Kind::Records { .. }, Value::Array(records)) = (&self.kind, sent) else {
             return Ok(sent.clone());
-        }
-        match (sent, stored) {
-            (Value::Array(records), stored) => {
-                let before = stored
-                    .and_then(Value::as_array)
-                    .map_or(&[][..], Vec::as_slice);
-                let masked = |record: &Value| record.get(PASSWORD).is_some_and(|p| p == MASK);
-                // Several stored records of one login differ only in their passwords, so which one a masked row stands
-                // for is known only while the rows of that login keep their number and order: refuse otherwise.
-                for record in records.iter().filter(|record| masked(record)) {
-                    let stored = before.iter().filter(|old| same_login(old, record)).count();
-                    let sent = records.iter().filter(|row| same_login(row, record)).count();
-                    if stored > 1 && sent != stored {
-                        return Err(match record.get("user").and_then(Value::as_str) {
-                            Some(user) => format!("Re-enter the password for {user}."),
-                            None => REENTER.into(),
-                        });
-                    }
+        };
+        let before = stored
+            .and_then(Value::as_array)
+            .map_or(&[][..], Vec::as_slice);
+        let mut seen: Vec<&str> = Vec::new();
+        let mut kept = Vec::with_capacity(records.len());
+        for record in records {
+            let Some(fields) = record.as_object() else {
+                // Not a record: the check of the result says so.
+                kept.push(record.clone());
+                continue;
+            };
+            let mut record = fields.clone();
+            match fields.get(ID) {
+                None => {
+                    record.insert(ID.into(), Value::String(fresh_id()));
                 }
-                // The stored record each masked row takes its password from.
-                let mut taken: Vec<Option<usize>> = vec![None; records.len()];
-                let mut claimed = vec![false; before.len()];
-                for (row, record) in records.iter().enumerate() {
-                    if masked(record) && before.get(row).is_some_and(|old| same_login(old, record))
+                Some(Value::String(id)) => {
+                    let old = before
+                        .iter()
+                        .find(|old| old.get(ID).and_then(Value::as_str) == Some(id))
+                        .ok_or("That login is no longer saved.")?;
+                    if seen.contains(&id.as_str()) {
+                        return Err("A login is listed twice.".into());
+                    }
+                    seen.push(id);
+                    if !fields.contains_key(PASSWORD)
+                        && let Some(password) = old.get(PASSWORD)
                     {
-                        taken[row] = Some(row);
-                        claimed[row] = true;
+                        record.insert(PASSWORD.into(), password.clone());
                     }
                 }
-                for (row, record) in records.iter().enumerate() {
-                    if !masked(record) || taken[row].is_some() {
-                        continue;
-                    }
-                    let same = (0..before.len())
-                        .find(|&old| !claimed[old] && same_login(&before[old], record));
-                    let moved = Some(row).filter(|&old| claimed.get(old) == Some(&false));
-                    if let Some(old) = same.or(moved) {
-                        taken[row] = Some(old);
-                        claimed[old] = true;
-                    }
-                }
-                records
-                    .iter()
-                    .zip(&taken)
-                    .map(|(record, old)| {
-                        let mut record = record.clone();
-                        if masked(&record) {
-                            let kept = old
-                                .and_then(|old| before[old].get(PASSWORD))
-                                .ok_or(REENTER)?;
-                            record[PASSWORD] = kept.clone();
-                        }
-                        Ok(record)
-                    })
-                    .collect::<Result<Vec<_>, &str>>()
-                    .map(Value::Array)
-                    .map_err(str::to_owned)
+                Some(_) => return Err("A login's id is text.".into()),
             }
-            (Value::String(text), _) if text == MASK => {
-                Err("Enter the secret itself, not the mask.".into())
-            }
-            _ => Ok(sent.clone()),
+            kept.push(Value::Object(record));
         }
+        Ok(Value::Array(kept))
     }
 }

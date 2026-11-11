@@ -277,7 +277,7 @@ describe("resolver form", () => {
     expect((screen.getByLabelText("Dataset folder") as HTMLInputElement).value).toBe("/picked");
   });
 
-  it("offers Browse only in the backend's own window, not in a window on another machine's server", () => {
+  it("offers Browse only where a path can be picked, not in a window on another machine's server", () => {
     window.axDevilWindow = {
       remote: true,
       pickFolder: () => Promise.resolve("/picked"),

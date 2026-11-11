@@ -33,11 +33,8 @@ runs:
     # The media crate generates its FFmpeg bindings with clang.
     - name: Install the private display and clang
       shell: bash
-      run: |
-        # The Azure mirror stalls; retries and timeouts make update and install fail fast or recover.
-        printf 'Acquire::Retries "5";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99ci-retries
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends xauth xvfb clang libclang-dev
+      # The script installs from whichever Ubuntu mirror answers, with apt retries and timeouts.
+      run: scripts/apt-install.sh xauth xvfb clang libclang-dev
 
     # The pinned FFmpeg the Linux package ships; the loader path is for the test binaries and the app.
     - name: Choose the FFmpeg folder

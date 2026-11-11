@@ -15,7 +15,7 @@ import {
 } from "./OverlayRow";
 import { Refusal } from "../kit/Refusal";
 import { checkFiles, useFileProblems } from "./useFileProblems";
-import { nativeBridge } from "../windowBridge";
+import { chooseFile, usePickPath, VIDEO, type PickPath } from "../pickPath";
 
 const blankEntry = (key: number): OverlayEntry => ({ key, path: "", picked: "" });
 
@@ -71,19 +71,15 @@ export function AddVideoDialog({
   const nextKey = useRef(entries.length);
   const readers = useRef(new Map<number, () => OverlayRead>());
   const decoders = handlers?.decoders ?? [];
-  // Only the local backend's window may browse this machine's files.
-  const bridge = nativeBridge();
+  const pick = usePickPath();
   const named = entries.map((entry) => entry.path.trim());
   const files = [...new Set([path.trim(), ...named].filter(Boolean))];
   const { problems, checking } = useFileProblems(files);
   const videoProblem = problems.get(path.trim());
   // A cancelled chooser leaves the field as it is; a chooser that fails says why.
-  const choose = async (
-    pick: () => Promise<string | null> | undefined,
-    taken: (chosen: string) => void,
-  ) => {
+  const choose = async (request: Parameters<PickPath>[0], taken: (chosen: string) => void) => {
     try {
-      const chosen = await pick();
+      const chosen = await pick?.(request);
       if (chosen) {
         taken(chosen);
         setFailure(null);
@@ -170,15 +166,10 @@ export function AddVideoDialog({
           placeholder="Required"
           action={
             <>
-              {bridge && (
+              {pick && (
                 <BrowseButton
                   what="video file"
-                  onBrowse={() =>
-                    void choose(
-                      () => bridge.pickVideo(),
-                      (chosen) => setPath(chosen),
-                    )
-                  }
+                  onBrowse={() => void choose(VIDEO, (chosen) => setPath(chosen))}
                 />
               )}
               {/* The room of an overlay row's Remove button, so every path box shares its edges. */}
@@ -198,11 +189,10 @@ export function AddVideoDialog({
                 problem={problems.get(entry.path.trim())}
                 tried={tried}
                 onBrowse={
-                  bridge &&
+                  pick &&
                   (() =>
-                    void choose(
-                      () => bridge.pickOverlay(extensions),
-                      (chosen) => edit(withPath(entry, chosen, decoders)),
+                    void choose(chooseFile(extensions), (chosen) =>
+                      edit(withPath(entry, chosen, decoders)),
                     ))
                 }
                 onChange={edit}

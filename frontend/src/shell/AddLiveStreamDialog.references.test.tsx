@@ -12,7 +12,7 @@ const REFERENCES = {
     ...DEFAULT_SETTINGS.values,
     "camera.host": "$AX_DEVIL_TARGET_ADDR",
     "camera.user": "$AX_DEVIL_TARGET_USER",
-    "camera.password": "$AX_DEVIL_TARGET_PASS",
+    "camera.password": { state: "reference" as const, name: "AX_DEVIL_TARGET_PASS" },
   },
 };
 

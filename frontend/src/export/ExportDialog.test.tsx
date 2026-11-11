@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   act,
   cleanup,
@@ -86,13 +86,34 @@ const say = (
   state: Extract<ServerMessage, { type: "Export" }>["state"],
 ) => act(() => jobs.receive({ type: "Export", job, state }));
 
+/** Export once the previous pick has settled: the button is disabled while a dialog is open, and a click then is lost. */
+const pressExport = async () => {
+  await waitFor(() => expect(disabled("Export")).toBe(false));
+  press("Export");
+};
+
+/** What the stubbed native dialog gives for the export file. */
+let chosen = "";
+const exportNow = () =>
+  act(async () => {
+    press("Export");
+  });
+
+beforeEach(() => {
+  chosen = "";
+  window.axDevilWindow = {
+    remote: false,
+    pickExportFile: () => Promise.resolve(chosen),
+  } as unknown as typeof window.axDevilWindow;
+});
+
 afterEach(() => {
   cleanup();
   delete window.axDevilWindow;
 });
 
 describe("export dialog", () => {
-  it("exports the drawable visible lanes as the viewer holds them, to the path typed", () => {
+  it("exports the drawable visible lanes as the viewer holds them, to the path chosen", async () => {
     const { exported } = open();
     expect(screen.queryByLabelText("Hidden")).toBeNull();
     // A lane still loading cannot be drawn.
@@ -100,11 +121,8 @@ describe("export dialog", () => {
     type("From frame", "10");
     type("To frame", "19");
     fireEvent.change(screen.getByLabelText("Quality"), { target: { value: "high" } });
-    expect((screen.getByRole("button", { name: "Export" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
-    type("Path on the server", "/out/clip.mp4");
-    press("Export");
+    chosen = "/out/clip.mp4";
+    await exportNow();
     expect(exported()).toEqual([
       {
         type: "Export",
@@ -158,7 +176,7 @@ describe("export dialog", () => {
     expect(screen.queryByText(message)).toBeNull();
   });
 
-  it("offers no lane choice for one lane, which is exported", () => {
+  it("offers no lane choice for one lane, which is exported", async () => {
     const sent: ClientMessage[] = [];
     const view = { ...VIEW, lanes: [lane("DPM", { source: 0, status: READY })] };
     render(
@@ -170,8 +188,8 @@ describe("export dialog", () => {
       />,
     );
     expect(screen.queryByText("Lanes")).toBeNull();
-    type("Path on the server", "/out/clip.mp4");
-    press("Export");
+    chosen = "/out/clip.mp4";
+    await exportNow();
     expect(sent).toMatchObject([{ type: "Export", lanes: [{ lane: 0 }] }]);
   });
 
@@ -192,7 +210,6 @@ describe("export dialog", () => {
       lanes: [{ ...both.lanes[0], settings: { ...LANE_SETTINGS, visible: false } }, both.lanes[1]],
     };
     rerender(<ExportDialog jobs={jobs} view={one} name="clip.mp4" onClose={() => {}} />);
-    type("Path on the server", "/out/clip.mp4");
     expect((screen.getByRole("button", { name: "Export" }) as HTMLButtonElement).disabled).toBe(
       false,
     );
@@ -213,7 +230,7 @@ describe("export dialog", () => {
     expect(screen.getByRole("alert").textContent).toBe("Catalog broke.");
   });
 
-  it("a lane menu's export offers only that lane, with no checkboxes", () => {
+  it("a lane menu's export offers only that lane, with no checkboxes", async () => {
     const both = {
       ...VIEW,
       lanes: [lane("DPM", { source: 0, status: READY }), lane("GT", { source: 1, status: READY })],
@@ -222,8 +239,8 @@ describe("export dialog", () => {
     const jobs = new ExportJobs((message) => sent.push(message));
     render(<ExportDialog jobs={jobs} view={both} name="clip.mp4" only={1} onClose={() => {}} />);
     expect(screen.queryByRole("checkbox")).toBeNull();
-    type("Path on the server", "/out/clip.mp4");
-    press("Export");
+    chosen = "/out/clip.mp4";
+    await exportNow();
     expect(sent).toMatchObject([{ type: "Export", lanes: [{ lane: 1 }] }]);
   });
 
@@ -247,23 +264,23 @@ describe("export dialog", () => {
     expect(screen.getByTitle(name)).toBeTruthy();
   });
 
-  it("exports the frame on screen as a PNG", () => {
+  it("exports the frame on screen as a PNG", async () => {
     const { exported } = open();
     fireEvent.change(screen.getByLabelText("Format"), { target: { value: "png" } });
-    type("Path on the server", "/out/frame.png");
-    press("Export");
+    chosen = "/out/frame.png";
+    await exportNow();
     expect(exported()[0]).toMatchObject({ first: 40, last: 40, format: { format: "Png" } });
   });
 
-  it("appends the format's extension to a path that lacks it, and keeps one that has it", () => {
+  it("appends the format's extension to a path that lacks it, and keeps one that has it", async () => {
     for (const [typed, saved] of [
       ["/out/clip", "/out/clip.mp4"],
       ["/out/clip.mov", "/out/clip.mov.mp4"],
       ["/out/CLIP.MP4", "/out/CLIP.MP4"],
     ]) {
       const { exported } = open();
-      type("Path on the server", typed);
-      press("Export");
+      chosen = typed;
+      await exportNow();
       expect(exported()[0]).toMatchObject({ path: saved });
       cleanup();
     }
@@ -271,17 +288,16 @@ describe("export dialog", () => {
 
   it("refuses a range outside the video", () => {
     open();
-    type("Path on the server", "/out/clip.mp4");
     type("To frame", "100");
     expect((screen.getByRole("button", { name: "Export" }) as HTMLButtonElement).disabled).toBe(
       true,
     );
   });
 
-  it("shows progress, cancels on request and says when the export was cancelled", () => {
+  it("shows progress, cancels on request and says when the export was cancelled", async () => {
     const { sent, jobs } = open();
-    type("Path on the server", "/out/clip.mp4");
-    press("Export");
+    chosen = "/out/clip.mp4";
+    await exportNow();
     say(jobs, 1, { state: "Running", done: 25, total: 100 });
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
     press("Cancel");
@@ -293,10 +309,10 @@ describe("export dialog", () => {
     expect(disabled("Close")).toBe(false);
   });
 
-  it("tells where the file went, or why the export failed, and closes", () => {
+  it("tells where the file went, or why the export failed, and closes", async () => {
     const { jobs, onClose } = open();
-    type("Path on the server", "/out/clip.mp4");
-    press("Export");
+    chosen = "/out/clip.mp4";
+    await exportNow();
     say(jobs, 1, { state: "Failed", code: "Internal", params: {}, reason: "No encoder." });
     expect(screen.getByRole("alert").textContent).toBe("Error: No encoder.");
     expect(disabled("Cancel")).toBe(true);
@@ -316,10 +332,10 @@ describe("export dialog", () => {
       </AccessContext.Provider>,
     );
     expect(screen.queryByLabelText("Path on the server")).toBeNull();
-    press("Export");
+    await pressExport();
     await waitFor(() => expect(pick).toHaveBeenCalledWith("DPM.mp4", "mp4"));
     expect(sent).toEqual([]);
-    press("Export");
+    await pressExport();
     await waitFor(() =>
       expect(sent).toMatchObject([{ type: "Export", path: "/home/me/clip.mp4" }]),
     );
@@ -347,16 +363,16 @@ describe("export dialog", () => {
         />
       </AccessContext.Provider>,
     );
-    press("Export");
+    await pressExport();
     await waitFor(() => expect(pick).toHaveBeenLastCalledWith("front.v2.mp4", "mp4"));
     fireEvent.click(screen.getByLabelText("front.v2.avi"));
-    press("Export");
+    await pressExport();
     await waitFor(() => expect(pick).toHaveBeenLastCalledWith("detections.mp4", "mp4"));
     fireEvent.click(screen.getByLabelText("detections.json"));
-    press("Export");
+    await pressExport();
     await waitFor(() => expect(pick).toHaveBeenLastCalledWith("tracks.mp4", "mp4"));
     fireEvent.click(screen.getByLabelText("camera.v2/tracks"));
-    press("Export");
+    await pressExport();
     await waitFor(() => expect(pick).toHaveBeenLastCalledWith("folder.mp4", "mp4"));
   });
 });

@@ -6,7 +6,7 @@ import { Dialog, DialogFrame } from "../kit/Dialog";
 import { Checkbox, Select, TextField } from "../kit/Fields";
 import { MiddleElided } from "../kit/MiddleElided";
 import type { PlaybackView } from "../playback/view";
-import { nativeBridge } from "../windowBridge";
+import { exportFile, usePickPath } from "../pickPath";
 import { choicesOf } from "./lanes";
 import type { ExportJobs, ExportStatus } from "./jobs";
 
@@ -153,7 +153,7 @@ export function ExportDialog({
   const status = useSyncExternalStore(jobs.subscribe, jobs.getSnapshot);
   const latest = useRef(view);
   latest.current = view;
-  const bridge = nativeBridge();
+  const pick = usePickPath();
   const offered = (lanes: PlaybackView["lanes"]) =>
     choicesOf(lanes).filter((choice) => only === undefined || choice.lane === only);
   const choices = offered(view.lanes);
@@ -162,7 +162,6 @@ export function ExportDialog({
   const [quality, setQuality] = useState<ExportQualityWire>("balanced");
   const [from, setFrom] = useState("0");
   const [to, setTo] = useState(String(view.frameCount - 1));
-  const [path, setPath] = useState("");
   const [failure, setFailure] = useState<string | null>(null);
   const [choosing, setChoosing] = useState(false);
 
@@ -184,7 +183,7 @@ export function ExportDialog({
   const first = kind === "png" ? view.playhead : wholeNumber(from);
   const last = kind === "png" ? view.playhead : wholeNumber(to);
   const framesOk = first !== null && last !== null && first <= last && last < view.frameCount;
-  const ready = picked.length > 0 && framesOk && (bridge !== undefined || path.trim() !== "");
+  const ready = picked.length > 0 && framesOk && pick !== undefined;
 
   const start = async () => {
     if (first === null || last === null) return;
@@ -194,7 +193,7 @@ export function ExportDialog({
       // Named for the first lane taken, as the selection stands when Export is pressed; the viewer's name when none is.
       const source = (picked[0]?.label ?? name).split("/").filter(Boolean).pop() || name;
       const stem = source.replace(/\.[^.]*$/, "") || source;
-      const chosen = bridge ? await bridge.pickExportFile(`${stem}.${kind}`, kind) : path.trim();
+      const chosen = await pick?.(exportFile(`${stem}.${kind}`, kind));
       if (!chosen) return;
       const target = withExtension(chosen, kind);
       // The lanes are read now: the picker may have been open while they changed.
@@ -274,7 +273,6 @@ export function ExportDialog({
             <Select label="Quality" value={quality} options={QUALITIES} onChange={setQuality} />
           </>
         )}
-        {!bridge && <TextField label="Path on the server" value={path} onChange={setPath} />}
         {loading && (
           <p role="status" className="m-0">
             Render catalogs are still loading.

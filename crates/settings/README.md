@@ -10,7 +10,7 @@ Each row in `TABLE` has a `Scope`: Device (the screen in front of you: theme, te
 app behaves: defaults for new overlays) or Server (what the server works with: the video cache, the cache folder).
 Device rows are declared here for the frontend's table and validation, but the service never holds one: they are
 absent from the state and the file, a patch naming one is refused as an unknown setting, and a file that still holds
-one loads and loses it with the next write. Shortcuts are Personal but not rows. A literal in a `secret` row is shown masked; a masked password sent back in a records row keeps the stored one.
+one loads and loses it with the next write. Shortcuts are Personal but not rows. A `secret` row is write-only (a client reads whether it is set and a reference's name, never the literal). A records row (the logins) is saved whole and in order; each record has a server-assigned `id` in the file, a record sent with its `id` and no password keeps the stored one, and a file without ids gets them on load, derived from position so they are the same until the first write.
 
 Settings supply defaults at the moment something is created, and the value is copied in: a workspace, video or saved
 layout never refers back to the settings file, and nothing shareable embeds a setting, a `$NAME` reference or a

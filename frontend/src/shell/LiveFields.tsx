@@ -72,7 +72,7 @@ function hint(props: PanelProps, field: FieldKey) {
   if (!key || !row) return undefined;
   const value = props.settings[key];
   const shown = textOf(value);
-  if (row.secret && literalSecret(row, value)) return "•".repeat(shown.length) || undefined;
+  if (row.secret && literalSecret(row, value)) return SET_PASSWORD;
   const expanded = props.expansions && EXPANDED[field]?.(props.expansions);
   return viaText(shown, expanded);
 }

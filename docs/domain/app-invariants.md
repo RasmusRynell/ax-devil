@@ -100,8 +100,7 @@ and the rest of the rules: [invariants](invariants.md).
 - Settings live in one immutable state replaced whole; consumers subscribe to changes, never poll.
 - Each settings row is Device (the screen in front of you), Personal (how my app behaves) or Server (what the server
   works with). Everyone reads and writes Device rows, which live on the device and never reach the server; an Owner
-  reads and writes the others, and a page that holds only a join link gets their defaults. A masked password sent back
-  in a records row means unchanged.
+  reads and writes the others, and a page that holds only a join link gets their defaults.
 - On/off overlay toggles are one closed set (`Overlays` in the Session view, so every Guest sees the presenter's); adding a
   member adds it to the View menu, Settings, which starts a new Session from it, and the config.
 - All shortcuts are defined in one table; persistence is override-only, so no overrides means all defaults apply. An
