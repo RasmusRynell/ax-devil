@@ -75,9 +75,11 @@ export function LoginsEditor({ logins, onSave, onChange }: Props) {
 
   // What the backend holds changed: show it, unless it is what the draft already says or what this editor saved.
   useEffect(() => {
+    const unchanged = same(held.current, logins);
     held.current = logins;
     const at = pending.current.findIndex((save) => save.key === shape(logins));
     if (at < 0) {
+      if (unchanged) return;
       pending.current = [];
       // The same logins again, however the backend writes them, keep the rows as they are, empty ones too.
       setDraft((now) => (shape(now) === shape(logins) ? now : logins));
