@@ -23,3 +23,4 @@ Where the [app](app.md) rows differ from the reference.
 | DT-04 | `tools/show_timestamps.py` is not carried over | The alignment report covers it |
 | DT-06 | The reference's demo images (`docs/media/`) are not carried over | Re-record them with the demo recorder |
 | BIP-002 | [AI] Step 2: reject repeated timezone designators such as `12:00ZZ`, as CPython 3.12 does; the reference environment’s 3.10 accepts them | Malformed multiple zones have inconsistent interpreter acceptance; valid timestamps retain the reference instant. The parser’s recorded compatibility table uses `datetime_to_us(parse_timestamp(text))` on CPython 3.12.15, rather than claiming every Python version agrees |
+| BIP-002 | [human] Keep rejecting the 46 malformed spellings CPython 3.12 accepts accidentally, including `12:34:561Z` and a space before the offset; files containing them lose frames Python would read | Owner: "keep the rejection" |

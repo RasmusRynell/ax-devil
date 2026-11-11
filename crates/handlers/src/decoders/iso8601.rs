@@ -257,4 +257,17 @@ mod tests {
             assert_eq!(parse_timestamp(text), expected.map(MediaTime), "{text}");
         }
     }
+    #[test]
+    fn owner_decided_malformed_timestamps_are_rejected() {
+        for text in [
+            "2028-08-09T12:34:561Z",
+            "2028-08-09T12:34:56.789012 +03:04",
+            "2028-08-09T12:34:56.789012\0+03:04",
+            "2028-08-09T12:34:56:789012+03:04",
+            "2028-W01-112345tZ",
+            "2028-08-09T12:34:56.789012+03:04\0",
+        ] {
+            assert_eq!(parse_timestamp(text), None, "{text:?}");
+        }
+    }
 }
