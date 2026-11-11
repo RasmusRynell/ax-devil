@@ -46,6 +46,20 @@
                 "status": "Ready"
               },
               "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001\u001flive",
+              "kind": "lane",
+              "label": "DataHub WebSocket",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
             }
           ]
         }
@@ -153,6 +167,20 @@
               "kind": "item",
               "label": "Gate",
               "location": "10.0.0.7",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001\u001flive",
+              "kind": "lane",
+              "label": "DataHub WebSocket",
+              "location": null,
               "status": {
                 "status": "Ready"
               },

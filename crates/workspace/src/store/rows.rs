@@ -121,21 +121,35 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                     entry_rows(&mut rows, &video.entry, false);
                 }
                 // A live video has no entry; its one stream is named by its own id.
-                Content::LiveVideo(live) => rows.push(Row {
-                    entry: Some(live.id.clone()),
-                    // The resolved host is what a variable held, which may carry a login: only a plain one is a place.
-                    location: DisplayHost::of(&live.camera.host).map(|host| Location::Camera {
-                        host,
-                        head: live.camera.head,
-                    }),
-                    ..row(
-                        item.id.to_string(),
-                        RowKind::Item,
-                        item.display_name(),
-                        None,
-                        false,
-                    )
-                }),
+                Content::LiveVideo(live) => {
+                    rows.push(Row {
+                        entry: Some(live.id.clone()),
+                        // The resolved host is what a variable held, which may carry a login: only a plain one is a place.
+                        location: DisplayHost::of(&live.camera.host).map(|host| Location::Camera {
+                            host,
+                            head: live.camera.head,
+                        }),
+                        ..row(
+                            item.id.to_string(),
+                            RowKind::Item,
+                            item.display_name(),
+                            None,
+                            false,
+                        )
+                    });
+                    if live.overlay.handler().is_some() {
+                        rows.push(Row {
+                            entry: Some(live.id.clone()),
+                            ..row(
+                                format!("{}{KEY_SEPARATOR}{}", live.id, live.slot),
+                                RowKind::Lane,
+                                live.overlay.mode_name().to_owned(),
+                                None,
+                                false,
+                            )
+                        });
+                    }
+                }
                 Content::Playlist(playlist) => {
                     let several = playlist.playlists.len() > 1;
                     let mut entries = playlist.entries.iter();

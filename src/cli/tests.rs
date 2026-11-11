@@ -128,7 +128,7 @@ fn local_pairs_overlays_with_handlers_in_order_or_leaves_them_all_to_the_extensi
     let Source::Video(recipe) = &item.recipe.source else {
         panic!("local opens a video");
     };
-    assert_eq!(item.label, "a.mp4");
+    assert_eq!(item.display_name(), "a.mp4");
     let pairs: Vec<_> = recipe
         .overlays
         .iter()

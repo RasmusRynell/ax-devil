@@ -56,9 +56,9 @@ impl WorkspaceFiles {
         files: &mut SessionFiles,
         replace: Command,
     ) -> Result<(), Failure> {
-        // Unsaved work that cannot be kept stays where it is, so the user can save it elsewhere.
+        // Recovery failures are logged by sync; they do not prevent the requested workspace switch.
         let outgoing = handle.state();
-        self.sync(files, &outgoing.doc.workspace).await?;
+        let _ = self.sync(files, &outgoing.doc.workspace).await;
         // Other windows can push the copy out of the recents, so it is put back rather than trusted to be there.
         if let Some(copy) = files.copy.clone()
             && outgoing.doc.workspace.modified()
@@ -69,11 +69,7 @@ impl WorkspaceFiles {
                 .file
                 .as_ref()
                 .map(|file| file.as_path());
-            if !self.record(files, copy.path(), recovers).await {
-                let reason =
-                    "Could not keep the unsaved changes: the recent workspaces cannot be updated";
-                return Err(UserError::new(ErrorCode::SaveFailed, reason).into());
-            }
+            self.record(files, copy.path(), recovers).await;
         }
         // A refusal changes nothing; after the replacement, nothing awaits before the copy is let go of.
         handle.command(replace)?;

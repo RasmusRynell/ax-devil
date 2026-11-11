@@ -6,7 +6,7 @@ import { useCan, useCommand, useDoc, useView } from "../session/session";
 import { useShow } from "../viewer/useViewers";
 import { useItemDialogs } from "./ItemDialogs";
 import { rowInformation } from "./rowInformation";
-import { canEdit, isHiddenLane, isStream, rowMenu, type Powers } from "./rowMenu";
+import { canEdit, isHiddenLane, isLiveLane, isStream, rowMenu, type Powers } from "./rowMenu";
 import { openRows, treeOf, type TreeRow } from "./treeModel";
 
 /** Told how an action ended: its failure message, or `null` when it worked. The sidebar's tree keeps it as `problem`. */
@@ -84,7 +84,8 @@ export function useRowActions(): RowActions {
   // opens that), does nothing.
   const open = (row: TreeRow, side = false, say: Say = setProblem) => {
     const { status } = row.info;
-    if (status.status === "Pending" || isHiddenLane(row)) return Promise.resolve();
+    if (status.status === "Pending" || isHiddenLane(row) || isLiveLane(row))
+      return Promise.resolve();
     // Opening a stopped live stream starts it, which changes the workspace: a seat that may not do that is told so.
     // A stream already running is only brought forward, which any seat that views may do.
     if (isStream(row) && !powers.content && !openKeys.has(row.info.key)) {

@@ -25,7 +25,7 @@
               "label": "none.mp4",
               "open": false,
               "recipe": {
-                "label": "none.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/none/none.mp4",
                 "type": "Video"
@@ -44,7 +44,7 @@
               "label": "c.mp4",
               "open": false,
               "recipe": {
-                "label": "c.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/c/c.mp4",
                 "type": "Video"
@@ -75,7 +75,7 @@
               "label": "B.mp4",
               "open": false,
               "recipe": {
-                "label": "B.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/B/B.mp4",
                 "type": "Video"
@@ -106,7 +106,7 @@
               "label": "also-none.mp4",
               "open": false,
               "recipe": {
-                "label": "also-none.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/also-none/also-none.mp4",
                 "type": "Video"
@@ -125,7 +125,7 @@
               "label": "a.mp4",
               "open": false,
               "recipe": {
-                "label": "a.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/a/a.mp4",
                 "type": "Video"
@@ -156,7 +156,7 @@
               "label": "same.mp4",
               "open": false,
               "recipe": {
-                "label": "same.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/p/same.mp4",
                 "type": "Video"
@@ -187,7 +187,7 @@
               "label": "same.mp4",
               "open": false,
               "recipe": {
-                "label": "same.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/q/same.mp4",
                 "type": "Video"
@@ -218,7 +218,7 @@
               "label": "ab.mp4",
               "open": false,
               "recipe": {
-                "label": "ab.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/ab/ab.mp4",
                 "type": "Video"
@@ -397,7 +397,7 @@
               "label": "none.mp4",
               "open": false,
               "recipe": {
-                "label": "none.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/none/none.mp4",
                 "type": "Video"
@@ -416,7 +416,7 @@
               "label": "c.mp4",
               "open": false,
               "recipe": {
-                "label": "c.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/c/c.mp4",
                 "type": "Video"
@@ -447,7 +447,7 @@
               "label": "B.mp4",
               "open": false,
               "recipe": {
-                "label": "B.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/B/B.mp4",
                 "type": "Video"
@@ -478,7 +478,7 @@
               "label": "also-none.mp4",
               "open": false,
               "recipe": {
-                "label": "also-none.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/also-none/also-none.mp4",
                 "type": "Video"
@@ -497,7 +497,7 @@
               "label": "a.mp4",
               "open": false,
               "recipe": {
-                "label": "a.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/a/a.mp4",
                 "type": "Video"
@@ -528,7 +528,7 @@
               "label": "same.mp4",
               "open": false,
               "recipe": {
-                "label": "same.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/p/same.mp4",
                 "type": "Video"
@@ -559,7 +559,7 @@
               "label": "same.mp4",
               "open": false,
               "recipe": {
-                "label": "same.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/q/same.mp4",
                 "type": "Video"

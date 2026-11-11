@@ -193,9 +193,15 @@ export function WorkspaceList({
     // A key pressed on a control inside a row (its Start or Hide button, a warnings popover) is that control's own.
     if (event.target !== event.currentTarget) return;
     const active = rows[from]?.row;
-    if (event.key === "Enter" && event.ctrlKey && !event.altKey && !event.metaKey && active)
-      return onOpen(active, true);
-    if (event.ctrlKey || event.altKey || event.metaKey || !active) return;
+    if (!active) return;
+    if (["Enter", "F2", "Delete"].includes(event.key)) {
+      event.preventDefault();
+      if (event.key === "Enter") onOpen(active, event.ctrlKey);
+      else if (event.key === "F2") onEdit(active);
+      else onRemove(active);
+      return;
+    }
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
     const hasKids = active.hasChildren;
     const isCollapsed = collapsed.has(active.info.key);
     if (event.key === "ArrowDown") onGo(offset + from + 1);
@@ -208,10 +214,7 @@ export function WorkspaceList({
     else if (event.key === "ArrowLeft") {
       const parent = rows.findIndex(({ row }) => row.info.key === active.parent);
       if (parent >= 0) onGo(offset + parent);
-    } else if (event.key === "Enter") onOpen(active);
-    else if (event.key === "F2") onEdit(active);
-    else if (event.key === "Delete") onRemove(active);
-    else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+    } else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
       const box = document.getElementById(idOf(from))?.getBoundingClientRect();
       menuAt(active, box?.left ?? 0, box?.bottom ?? 0);
     } else return;

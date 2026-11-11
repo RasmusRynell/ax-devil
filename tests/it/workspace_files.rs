@@ -160,38 +160,32 @@ async fn unsaved_work_survives_the_window_and_one_window_holds_a_copy_at_a_time(
     assert_eq!(unchanged["epoch"], reopened["epoch"]);
 }
 
-#[cfg(unix)]
 #[tokio::test]
-async fn work_that_cannot_be_kept_is_not_replaced() {
-    use std::os::unix::fs::PermissionsExt;
-    let folder = tempfile::tempdir().unwrap();
-    let unsaved = folder.path().join("unsaved");
-    std::fs::create_dir(&unsaved).unwrap();
-    let mode =
-        |mode| std::fs::set_permissions(&unsaved, std::fs::Permissions::from_mode(mode)).unwrap();
-    mode(0o500);
-    if std::fs::File::create(unsaved.join("probe")).is_ok() {
-        mode(0o700);
-        return; // running as a user the folder mode does not stop (root)
+async fn recovery_failure_does_not_prevent_replacement() {
+    for blocked in ["unsaved", "recent.json"] {
+        let folder = tempfile::tempdir().unwrap();
+        let obstruction = folder.path().join(blocked);
+        if blocked == "unsaved" {
+            std::fs::write(&obstruction, "not a directory").unwrap();
+        } else {
+            std::fs::create_dir(&obstruction).unwrap();
+        }
+        let target = folder.path().join(format!("other{SUFFIX}"));
+        workspace_files::save(&workspace::Workspace::default(), &target).unwrap();
+        let address = backend(folder.path(), None).await;
+        let mut owner = Socket::own(&address, None).await;
+        for (seq, command) in [
+            (2, json!({"type": "new"})),
+            (4, json!({"type": "open", "path": target})),
+        ] {
+            owner.say(add_video(seq - 1)).await;
+            doc(&mut owner, |ws| ws["modified"] == true).await;
+            owner.say(workspace(seq, command)).await;
+            let (outcome, empty) = settle(&mut owner, seq, |ws| ws["items"] == json!([])).await;
+            assert_eq!(outcome, json!({"status": "ok"}), "{blocked}");
+            assert_eq!(empty["modified"], false);
+        }
     }
-    let address = backend(folder.path(), None).await;
-    let mut owner = Socket::own(&address, None).await;
-    owner.say(add_video(1)).await;
-    doc(&mut owner, |ws| ws["modified"] == true).await;
-
-    // New would drop the edit with nowhere to keep it, so it is refused and the workspace stays as it was.
-    owner.say(workspace(2, json!({"type": "new"}))).await;
-    let outcome = ack(&mut owner, 2).await;
-    assert_eq!(outcome["status"], "failed");
-    assert_eq!(outcome["error"]["code"], "SaveFailed");
-    owner.say(add_video(3)).await;
-    doc(&mut owner, |ws| ws["items"].as_array().unwrap().len() == 2).await;
-
-    mode(0o700);
-    owner.say(workspace(4, json!({"type": "new"}))).await;
-    let (outcome, empty) = settle(&mut owner, 4, |ws| ws["items"] == json!([])).await;
-    assert_eq!(outcome, json!({"status": "ok"}));
-    assert_eq!(empty["modified"], false);
 }
 
 #[tokio::test]

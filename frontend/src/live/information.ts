@@ -67,7 +67,8 @@ export function informationOf(stream: Stream): Information {
   if (stream.state !== "ready")
     return { title: label, fields: [["Unavailable", stream.reason]], children: [] };
   const overlay = recipe?.overlay;
-  const draws = overlay && overlay.mode !== "none";
+  const mode = stream.overlay;
+  const draws = mode !== null && mode !== "none";
   return {
     title: label,
     fields: [
@@ -78,13 +79,13 @@ export function informationOf(stream: Stream): Information {
     children: draws
       ? [
           {
-            title: stream.lane ?? SOURCES[overlay.mode],
+            title: stream.lane ?? SOURCES[mode],
             fields: [
               ["type", "overlay"],
               ["video", label],
               ["lane", stream.lane ?? ""],
-              ["overlay source", SOURCES[overlay.mode]],
-              ...overlayFields(overlay),
+              ["overlay source", SOURCES[mode]],
+              ...(overlay ? overlayFields(overlay) : []),
             ],
             children: [],
           },

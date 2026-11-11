@@ -132,7 +132,7 @@
               "label": "v.mp4",
               "open": false,
               "recipe": {
-                "label": "v.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/v/v.mp4",
                 "type": "Video"
@@ -580,7 +580,7 @@
               "label": "v.mp4",
               "open": false,
               "recipe": {
-                "label": "v.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/v/v.mp4",
                 "type": "Video"
@@ -1148,7 +1148,7 @@
               "label": "v.mp4",
               "open": true,
               "recipe": {
-                "label": "v.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/v/v.mp4",
                 "type": "Video"
@@ -1454,7 +1454,7 @@
               "label": "v.mp4",
               "open": false,
               "recipe": {
-                "label": "v.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/v/v.mp4",
                 "type": "Video"
@@ -1743,7 +1743,7 @@
               "label": "v.mp4",
               "open": false,
               "recipe": {
-                "label": "v.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/v/v.mp4",
                 "type": "Video"
@@ -1960,7 +1960,7 @@
               "label": "v.mp4",
               "open": false,
               "recipe": {
-                "label": "v.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/v/v.mp4",
                 "type": "Video"

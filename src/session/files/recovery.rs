@@ -20,7 +20,7 @@ fn now_ms() -> u64 {
 
 impl WorkspaceFiles {
     /// Brings the recovery copy up to date with `state`: written while modified, deleted when not. A failure is
-    /// logged and the next sync tries again; keeping a modified workspace's copy is the one that reports it.
+    /// logged and the next sync tries again.
     pub(super) async fn sync(
         &self,
         files: &mut SessionFiles,

@@ -20,6 +20,10 @@ export const canEdit = (item: ItemState | undefined, powers: Powers): item is It
 export const isHiddenLane = ({ info, target }: TreeRow): boolean =>
   info.kind === "lane" && info.hidden && target !== null;
 
+/** Whether the row is a live overlay: Information only, with no independent playback. */
+export const isLiveLane = ({ info, itemKind }: TreeRow): boolean =>
+  info.kind === "lane" && itemKind === "live";
+
 /**
  * Whether the row is a live stream that can start or stop: it is not opened in place like a recording but started
  * beside the open viewers, and stopped by closing its viewer. The menu, the row's button and every gesture that opens
@@ -67,7 +71,7 @@ export function rowMenu(
             !powers.content,
           ),
         ]
-      : status === "Pending"
+      : status === "Pending" || isLiveLane(row)
         ? []
         : [
             action("open", "Open", hiddenLane, why),
