@@ -145,7 +145,7 @@ jobs:
         if: matrix.name == 'linux'
         timeout-minutes: 5
         run: |
-          # The script drops the unreachable Azure mirror and sets apt retries and timeouts.
+          # The script installs from whichever Ubuntu mirror answers, with apt retries and timeouts.
           scripts/apt-install.sh patchelf xauth xvfb clang libclang-dev
           # Ubuntu 22.04 has no such restriction; the setting exists from 23.10 on, as on the CI image.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
