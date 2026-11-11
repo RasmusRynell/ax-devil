@@ -95,19 +95,17 @@ export function PathPicker({
       },
       (failure: unknown) => {
         if (request.signal.aborted) return;
-        // A path that is a file, not a folder: choose it by opening its folder with its name ready.
+        // A path that is a file, not a folder, or in save mode one not there yet: choose it by
+        // opening its folder with its name ready.
         const [dir, file] = split(folder ?? "");
-        if (
-          failure instanceof FolderProblem &&
-          failure.notAFolder &&
-          mode !== "folder" &&
-          dir &&
-          file
-        ) {
+        const notAFolder = failure instanceof FolderProblem && failure.notAFolder;
+        if ((notAFolder ? mode !== "folder" : mode === "save") && dir && file) {
           wanted.current = file;
           setFolder(dir);
           return;
         }
+        // No listing is left to act on while the error shows.
+        setListing(null);
         setError(failure instanceof Error ? failure.message : String(failure));
       },
     );
@@ -127,8 +125,8 @@ export function PathPicker({
   // A new listing starts on the file a typed path named, else on its first row.
   useEffect(() => {
     const at = shown.findIndex((entry) => entry.name === wanted.current);
-    if (at >= 0 && wanted.current !== null) {
-      if (mode === "save") setFileName(wanted.current);
+    if (mode === "save" && wanted.current !== null) setFileName(wanted.current);
+    if (at >= 0) {
       setActive(at);
       rows.reveal(at);
     } else setActive(0);

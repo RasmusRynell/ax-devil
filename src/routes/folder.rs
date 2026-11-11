@@ -128,8 +128,11 @@ fn hidden(entry: &fs::DirEntry) -> bool {
 fn places() -> Vec<FolderPlace> {
     let home = ["HOME", "USERPROFILE"]
         .into_iter()
-        .find_map(|name| std::env::var_os(name).map(PathBuf::from))
-        .filter(|path| path.is_absolute() && path.is_dir())
+        .find_map(|name| {
+            std::env::var_os(name)
+                .map(PathBuf::from)
+                .filter(|path| path.is_absolute() && path.is_dir())
+        })
         .map(|path| FolderPlace {
             name: "Home".to_owned(),
             path: text(&path),

@@ -115,5 +115,23 @@ describe("path picker", () => {
     expect(again).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Replace" }));
     expect(again).toHaveBeenCalledExactlyOnceWith("/home/me/notes.txt");
+    cleanup();
+
+    // A typed path to a new file opens its folder with the name filled; with no folder, Save stays off.
+    const typed = pick("save", { extensions: [".csv"] });
+    await screen.findByRole("option", { name: "clips" });
+    const field = screen.getByRole("textbox", { name: "Path" });
+    fireEvent.change(field, { target: { value: "/home/me/clips/new.csv" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await vi.waitFor(() => expect(path()).toBe("/home/me/clips"));
+    expect((screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe(
+      "new.csv",
+    );
+    fireEvent.change(field, { target: { value: "/nowhere/deep/new.csv" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await screen.findByText("Cannot open that folder");
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(typed).not.toHaveBeenCalled();
   });
 });
