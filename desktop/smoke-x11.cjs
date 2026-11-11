@@ -60,6 +60,8 @@ async function focus(window) {
 
 // Probe each operation from a genuinely deactivated window, keeping the witness alive until it finishes.
 async function withUnfocused(window, work) {
+  // Start focused so an already inactive target cannot satisfy the probe before the witness maps.
+  await focus(window);
   const other = spawn("python3", [path.join(SMOKE_ROOT, "scripts/private-x11.py"), "competitor"], {
     stdio: ["pipe", "inherit", "inherit"],
   });
