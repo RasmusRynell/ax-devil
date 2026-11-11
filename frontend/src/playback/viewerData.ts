@@ -91,11 +91,15 @@ export class ViewerData {
       if (!current()) return [];
       const held = this.catalogs.get(source.catalog);
       if (held.state !== "ready" || !held.catalog || held.problem) return [];
-      this.#lanes.setProblem(lane, undefined);
+      this.#laneCatalogs.dismissAction(lane);
       return this.#lanes.copyFrom(lane, before);
     } catch (error) {
       if (request === this.#applyRequest && this.#lanes.states[lane]?.settings === source)
-        this.#lanes.setProblem(lane, String(error));
+        this.#laneCatalogs.refuseApply(
+          lane,
+          source.catalog,
+          error instanceof Error ? error.message : String(error),
+        );
       return [];
     }
   }
@@ -182,6 +186,8 @@ export class ViewerData {
   /** Drops everything held but the compiled catalogs. */
   close(): void {
     this.#applyRequest++;
+    this.#laneCatalogs.clearActions();
+    this.#lanes.states.forEach((_, lane) => this.#lanes.setCatalogActionProblem(lane, undefined));
     this.#maps = undefined;
     this.#draw = undefined;
     this.#waiting = [];
@@ -205,6 +211,7 @@ export class ViewerData {
     saved?: Saved,
   ): void {
     this.#applyRequest++;
+    this.#laneCatalogs.clearActions();
     const before = this.#lanes.states;
     const defaults = startWith(opened.lane_defaults, opened.catalogs, personal, saved);
     this.#lanes.open(opened.lanes, defaults, prior).forEach(this.#send);
@@ -316,6 +323,12 @@ export class ViewerData {
     });
   }
 
+  /** Dismisses an Apply refusal without touching backend errors. */
+  dismissCatalogAction(lane: number): void {
+    this.#laneCatalogs.dismissAction(lane);
+    this.#lanes.setCatalogActionProblem(lane, undefined);
+  }
+
   /** Asks the backend for the catalog `lane` chose again; what it answers is compiled anew. */
   reloadCatalog(lane: number): void {
     this.catalogs.reload(this.#lanes.states[lane].settings.catalog);
@@ -332,6 +345,10 @@ export class ViewerData {
       }
       const { catalog, problem } = this.#laneCatalogs.resolve(lane, state.settings.catalog);
       this.#lanes.setCatalogProblem(lane, problem);
+      this.#lanes.setCatalogActionProblem(
+        lane,
+        this.#laneCatalogs.actionProblem(lane, state.settings.catalog),
+      );
       const held = this.#lanes.states[lane].look;
       const same = held?.themes === catalog?.themes && held?.features === catalog?.features;
       if (!same)

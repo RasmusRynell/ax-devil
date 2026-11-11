@@ -173,6 +173,7 @@ export function LaneGrid({
                     : undefined
                 }
                 onReload={() => stream.reloadCatalog(index)}
+                onDismissCatalogAction={() => stream.dismissCatalogAction(index)}
                 onHide={onHide && (() => onHide(lanes[index].label))}
                 onExport={
                   onExport && {

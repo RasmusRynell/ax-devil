@@ -263,6 +263,15 @@ export class LaneSet {
     );
   }
 
+  /** The catalog action owner's current refusal; backend lane errors are independent. */
+  setCatalogActionProblem(lane: number, catalogActionProblem: string | undefined): boolean {
+    return this.#replace(lane, (state) =>
+      state.catalogActionProblem === catalogActionProblem
+        ? state
+        : { ...state, catalogActionProblem },
+    );
+  }
+
   /** What the catalog the lane draws with offers its menu; `undefined` when the lane has none. */
   setLook(lane: number, look: CatalogLook | undefined): boolean {
     return this.#replace(lane, (state) => (state.look === look ? state : { ...state, look }));

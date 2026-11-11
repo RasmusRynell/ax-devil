@@ -210,38 +210,6 @@ mod tests {
     use super::*;
     use axum::extract::ws::Message;
 
-    /// The id of the catalog the next message answers.
-    async fn answered(feed: &mut CatalogFeed) -> String {
-        let Message::Text(message) = feed.next().await.message else {
-            panic!("a catalog is a text message");
-        };
-        let ServerMessage::Catalog { id, .. } = serde_json::from_str(message.as_str()).unwrap()
-        else {
-            panic!("expected a catalog");
-        };
-        id
-    }
-
-    #[tokio::test]
-    async fn asking_for_a_65th_catalog_is_answered_and_drops_the_one_asked_for_longest_ago() {
-        let mut feed =
-            CatalogFeed::new(&Library::built_in(), Audience::HOST, SessionId::generate());
-        for number in 0..MAX_ASKED {
-            feed.ask(format!("user:{number}.json"));
-            answered(&mut feed).await;
-        }
-        feed.ask("user:0.json".into());
-        answered(&mut feed).await;
-
-        feed.ask("user:new.json".into());
-
-        assert_eq!(answered(&mut feed).await, "user:new.json");
-        let held: Vec<&str> = feed.asked.iter().map(|(id, _)| id.as_str()).collect();
-        assert_eq!(held.len(), MAX_ASKED);
-        assert!(held.contains(&"user:0.json") && held.contains(&"user:new.json"));
-        assert!(!held.contains(&"user:1.json"));
-    }
-
     #[test]
     fn reloading_one_catalog_many_times_keeps_the_others_documents_for_export() {
         let mut feed =
@@ -287,14 +255,39 @@ mod tests {
         guest.ask(id.into());
         let initial = next_catalog(&mut guest).await;
         // Each Owner seat has its own feed; exhausting one cannot withdraw the other seat's lend.
-        for number in 0..64 {
+        for number in 0..63 {
             first.ask(format!("user:{number}.json"));
         }
+        // The original plus 63 distinct catalogs fit; the 65th subscription evicts the oldest lend.
+        guest.ask(id.into());
+        assert_eq!(next_catalog(&mut guest).await, initial);
+        first.ask("user:63.json".into());
         guest.ask(id.into());
         let one_owner = next_catalog(&mut guest).await;
         assert_eq!(initial, one_owner);
-        for number in 0..64 {
+        for number in 0..63 {
             second.ask(format!("user:{number}.json"));
+        }
+        guest.ask(id.into());
+        assert_eq!(
+            next_catalog(&mut guest).await,
+            initial,
+            "64 subscriptions retain the original"
+        );
+        second.ask("user:63.json".into());
+        assert!(matches!(
+            library.shared_document(&session.to_string(), &CatalogId::User("shared.json".into())),
+            Served::Missing { revision: 0 }
+        ));
+        // Only the oldest lend was released: all 64 more recently requested catalogs remain shared.
+        for number in 0..64 {
+            assert!(matches!(
+                library.shared_document(
+                    &session.to_string(),
+                    &CatalogId::User(format!("{number}.json"))
+                ),
+                Served::Document { .. }
+            ));
         }
         let withdrawn = next_catalog(&mut guest).await;
         assert_eq!(withdrawn["revision"], 0);

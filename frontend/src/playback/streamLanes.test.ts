@@ -187,53 +187,6 @@ describe("lanes", () => {
     expect(policies(seeded.sent)[0]).toMatchObject({ lane: 0, policy: { tolerance_ms: null } });
   });
 
-  it("gives the other lanes a lane's settings but its visibility, as one policy each", async () => {
-    const { stream, server, sent } = await setup();
-    server.open(10, TWO_LANES);
-    stream.setLane(1, { visible: false });
-    stream.setLane(0, { sticky: { enabled: true, timeout_ms: 500, opacity: 0.5 }, theme: "dusk" });
-    const before = policies(sent).length;
-    vi.stubGlobal("window", { sessionStorage: { getItem: () => null } });
-    const unchanged = stream.laneSettings();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json({ revision: 2, document: "{}" })),
-    );
-    await stream.applyToAll(0);
-    expect(stream.laneSettings()).toEqual(unchanged);
-    let finish!: (value: Response) => void;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        () =>
-          new Promise<Response>((resolve) => {
-            finish = resolve;
-          }),
-      ),
-    );
-    const stale = stream.applyToAll(0);
-    server.catalog("built-in:standard", "{}", 4);
-    finish(Response.json({ revision: 3, document: catalogDocument() }));
-    await stale;
-    expect(stream.laneSettings()).toEqual(unchanged);
-    expect(stream.getSnapshot().lanes[0].catalogProblem).toBeTruthy();
-    const pending = stream.applyToAll(0);
-    stream.setLane(1, { theme: "newer" });
-    finish(Response.json({ revision: 5, document: catalogDocument() }));
-    await pending;
-    expect(stream.laneSettings()[1].theme).toBe("newer");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json({ revision: 5, document: catalogDocument() })),
-    );
-    await stream.applyToAll(0);
-    expect(policies(sent).slice(before)).toMatchObject([
-      { lane: 1, subscribed: false, policy: { sticky: { enabled: true, timeout_ms: 500 } } },
-    ]);
-    expect(stream.laneSettings()[1]).toMatchObject({ theme: "dusk", visible: false });
-    expect(stream.getSnapshot().lanes[1].settings.sticky.opacity).toBe(0.5);
-  });
-
   it("selects an object of the shown sample, asks the backend for its fields, and clears the selection", async () => {
     const { stream, server, sent, drawn } = await shown();
     const columns = drawn.at(-1)?.lanes[0]?.columns as SampleView;

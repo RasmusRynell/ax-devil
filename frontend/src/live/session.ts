@@ -201,6 +201,12 @@ export class LiveSession implements LaneDisplay {
     this.#publish();
   }
 
+  /** Dismisses the lane's Apply refusal. */
+  dismissCatalogAction(lane: number): void {
+    this.#data.dismissCatalogAction(lane);
+    this.#publish();
+  }
+
   /** Asks the backend for the catalog `lane` chose again; the answer is compiled when it arrives. */
   reloadCatalog(lane: number): void {
     this.#data.reloadCatalog(lane);

@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { delay, frames, moveTo, page, setView } = require("./smoke-kit.cjs");
+const { delay, frames, moveTo, page, setView, settled } = require("./smoke-kit.cjs");
 
 const THEMES = ["light", "dark"];
 
@@ -188,12 +188,15 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
   // Copy the lane's catalog from its Look page, then delete the copy: the name field and the confirmation fit, the
   // dialog survives Escape and a press on it without the menu closing under it, and the lane ends where it began.
   const press = async (selector, text) => {
-    const at = await js(`(() => {
+    const at = await settled(
+      window,
+      `(() => {
       const button = [...document.querySelectorAll(${JSON.stringify(`${selector} button`)})].find((b) => b.textContent === ${JSON.stringify(text)});
       button.scrollIntoView({ block: 'nearest' });
       const r = button.getBoundingClientRect();
       return [r.left + r.width / 2, r.top + r.height / 2];
-    })()`);
+    })()`,
+    );
     await moveTo(window, ...at);
     for (const type of ["mouseDown", "mouseUp"]) click(type, at);
   };
@@ -273,9 +276,37 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
     "The lane menu stays open after the delete",
   );
 
-  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
-  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+  await wait(`!${disabled("Apply to all lanes")}`);
+  // An action-only transport refusal uses the lane's standard notice presentation and can be dismissed.
+  await js(`(() => {
+    const real = window.fetch;
+    window.fetch = (url, init) => {
+      if (url !== '/api/catalogs/reload') return real(url, init);
+      window.fetch = real;
+      return Promise.resolve(new Response(JSON.stringify({ code: 'CatalogInvalid', params: {}, reason: 'Reload refused' }), { status: 400 }));
+    };
+  })()`);
+  await press(menu, "Apply to all lanes");
   await wait(`!document.querySelector(${JSON.stringify(menu)})`);
+  await wait(`document.querySelector('[aria-label="GT: warnings"]')`);
+  await js(`document.querySelector('[aria-label="GT: warnings"]').click()`);
+  const warnings = '[role=dialog][aria-label="GT: warnings"]';
+  await wait(
+    `document.querySelector(${JSON.stringify(warnings)}).textContent.includes('Reload refused')`,
+  );
+  for (const theme of THEMES) {
+    await setTheme(theme);
+    await fits(warnings, `The Apply refusal must fit at 200% zoom, ${theme}`);
+    await frames({ js });
+    await shoot(`catalog-apply-refused-${theme}-200.png`);
+  }
   await setView(window, [1100, 720], 1);
+  for (const theme of THEMES) {
+    await setTheme(theme);
+    await frames({ js });
+    await shoot(`catalog-apply-refused-${theme}.png`);
+  }
+  await press(warnings, "Dismiss Apply error");
+  await wait(`!document.querySelector('[aria-label="GT: warnings"]')`);
   await js("document.querySelector('[aria-label=Workspace]').click()");
 };
