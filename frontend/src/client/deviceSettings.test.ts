@@ -42,6 +42,12 @@ describe("device settings", () => {
     store.preview("ui.theme", "dark");
     store.prepare([["ui.theme", "dark"]], [])();
     expect(write).toHaveBeenLastCalledWith("ui.theme", "dark");
+    // The same ordering holds when Device commits precede a later save's submission/server reply.
+    const earlier = store.prepare([["ui.theme", "light"]], []);
+    earlier();
+    store.prepare([["ui.theme", "dark"]], [])();
+    earlier();
+    expect(store.readSaved()["ui.theme"]).toBe("dark");
   });
 
   it("changes in memory and tells its listeners even when the browser's storage is blocked", async () => {

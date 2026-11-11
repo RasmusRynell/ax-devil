@@ -75,20 +75,23 @@ function browserBacking(): Backing {
 export function createDeviceStore(backing: Backing) {
   let stored = valid(backing.read());
   let values = stored;
+  // Save commits follow per-key submission order without invalidating later submissions, while previews, direct writes and incoming broadcasts invalidate pending saves independently.
   const versions = new Map<SettingKey, number>();
+  const submitted = new Map<SettingKey, number>();
+  const committed = new Map<SettingKey, number>();
   const listeners = new Set<() => void>();
-  const publish = (key: SettingKey, value: DeviceValue | null) => {
-    versions.set(key, (versions.get(key) ?? 0) + 1);
+  const publish = (key: SettingKey, value: DeviceValue | null, supersedes = true) => {
+    if (supersedes) versions.set(key, (versions.get(key) ?? 0) + 1);
     values = { ...values };
     if (value === null) delete values[key];
     else values[key] = value;
     listeners.forEach((listener) => listener());
   };
-  const write = (key: SettingKey, value: DeviceValue | null) => {
+  const write = (key: SettingKey, value: DeviceValue | null, supersedes = true) => {
     stored = { ...stored };
     if (value === null) delete stored[key];
     else stored[key] = value;
-    publish(key, value);
+    publish(key, value, supersedes);
     backing.write(key, value);
   };
   backing.subscribe((incoming) => {
@@ -116,14 +119,18 @@ export function createDeviceStore(backing: Backing) {
         ...set,
         ...reset.map((key): [SettingKey, null] => [key, null]),
       ];
-      const pending = changes.map(([key, value]) => ({
-        key,
-        value,
-        version: versions.get(key) ?? 0,
-      }));
+      const pending = changes.map(([key, value]) => {
+        const ordinal = (submitted.get(key) ?? 0) + 1;
+        submitted.set(key, ordinal);
+        return { key, value, ordinal, version: versions.get(key) ?? 0 };
+      });
       return () => {
-        for (const { key, value, version } of pending)
-          if ((versions.get(key) ?? 0) === version) write(key, value);
+        for (const { key, value, version, ordinal } of pending) {
+          if ((versions.get(key) ?? 0) !== version || ordinal <= (committed.get(key) ?? 0))
+            continue;
+          committed.set(key, ordinal);
+          write(key, value, false);
+        }
       };
     },
     /** Calls `listener` after every change, from here or from another window; returns the way to stop. */

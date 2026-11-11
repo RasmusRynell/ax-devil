@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { afterEach, beforeAll, expect, it, vi } from "vite-plus/test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = function () {
@@ -109,5 +109,87 @@ it.each(["Done", "Escape", "Settings OK"])(
     cleanup();
     await mount();
     await screen.findByText(`dark/larger/${confirm !== "Settings OK"}`);
+  },
+);
+
+it.each(["submission order", "reverse order", "first refused"])(
+  "keeps the newer mixed save after Cancel and reopen: %s",
+  async (order) => {
+    const release: (() => void)[] = [];
+    const sent: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url !== "/api/settings") return { ok: false };
+        const initial = { revision: 0, values: { "ui.quick_setup_done": true }, shortcuts: {} };
+        if (init?.method !== "PATCH") return { ok: true, json: async () => initial };
+        const index = sent.length;
+        sent.push(JSON.parse(init.body as string));
+        return new Promise((resolve) => {
+          release.push(() =>
+            resolve(
+              index === 0 && order === "first refused"
+                ? { ok: false, json: async () => ({ reason: "disk full", location: "" }) }
+                : {
+                    ok: true,
+                    json: async () => ({
+                      ...initial,
+                      revision: index + 1,
+                      values: {
+                        ...initial.values,
+                        "camera.host": index === 0 ? "first.example" : "second.example",
+                      },
+                    }),
+                  },
+            ),
+          );
+        });
+      }),
+    );
+    await mount();
+    for (const [theme, host] of [
+      ["light", "first.example"],
+      ["dark", "second.example"],
+    ]) {
+      fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+      fireEvent.change(screen.getByRole("combobox", { name: "Theme" }), {
+        target: { value: theme },
+      });
+      fireEvent.click(screen.getByRole("tab", { name: "Stream defaults" }));
+      fireEvent.change(screen.getByRole("textbox", { name: "Host" }), { target: { value: host } });
+      fireEvent.click(screen.getByRole("button", { name: "OK" }));
+      await waitFor(() => expect(release).toHaveLength(theme === "light" ? 1 : 2));
+      expect(screen.getByRole("button", { name: "OK" })).toHaveProperty("disabled", true);
+      if (theme === "light") {
+        expect(screen.getByRole("button", { name: "Cancel" })).toHaveProperty("disabled", false);
+        fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+        expect(screen.queryByRole("dialog")).toBeNull();
+      }
+    }
+    expect(window.localStorage.getItem("ax-devil.device")).toBeNull();
+    expect(sent).toEqual([
+      { set: { "camera.host": "first.example" } },
+      { set: { "camera.host": "second.example" } },
+    ]);
+    if (order === "reverse order") {
+      await act(async () => release[1]());
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.getByText("dark/system/true")).toBeTruthy();
+      const saved = window.localStorage.getItem("ax-devil.device");
+      await act(async () => release[0]());
+      expect(window.localStorage.getItem("ax-devil.device")).toBe(saved);
+    } else {
+      await act(async () => release[0]());
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      if (order === "first refused")
+        expect(window.localStorage.getItem("ax-devil.device")).toBeNull();
+      else expect(screen.getByText("light/system/true")).toBeTruthy();
+      await act(async () => release[1]());
+    }
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("dark/system/true")).toBeTruthy();
+    expect(JSON.parse(window.localStorage.getItem("ax-devil.device") ?? "{}")).toEqual({
+      "ui.theme": "dark",
+    });
   },
 );
