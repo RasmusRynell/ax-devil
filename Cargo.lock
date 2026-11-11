@@ -77,6 +77,7 @@ dependencies = [
  "serde_json",
  "sessions",
  "settings",
+ "sha2 0.11.1",
  "syn 2.0.119",
  "ts-rs",
  "workspace",

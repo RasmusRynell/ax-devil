@@ -23,7 +23,14 @@ use workspace_store::{BookmarkCommand, DocCommand, HiddenRef};
 
 /// The scope a wire command needs, known without looking at what it names, so the seat is authorized before the
 /// command's content is checked and a refusal never tells a seat whether a path or resolver exists. `None` for a
-/// ticket request, which the Session authorizes against the Content it names. Mirrors `Command::needs`.
+/// ticket request, which the Session authorizes against the Content it names. Mirrors `Command::needs`, which decides;
+/// a test keeps them equal except for these, which only the wire can decide:
+/// - a scanned camera's stream needs `Control`: its `found` address is gone once the command is converted;
+/// - `AddResolved` and `EditResolved` always need `Host`: the staged item came from a resolve that read the host's
+///   files, though `needs` says `Content` for a live recipe;
+/// - `ExportBookmarks` writes a file and sends no Session command.
+///
+/// A workspace command is compared with the command the files adapter sends after its file work (`files::sent`).
 pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
     match wire {
         SessionCommand::Content { command } => Some(match command {
@@ -77,6 +84,9 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
         }),
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 /// What a valid command asks the backend to do.
 pub(super) enum Request {

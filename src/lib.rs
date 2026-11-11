@@ -24,7 +24,7 @@ pub mod video_sources;
 
 use access::{Admission, Limits, Policy, Principal, bearer};
 use api_types::{
-    API_VERSION, ApiError, AppInfo, SHELL_API, SettingsFile, SettingsPatch, SettingsState,
+    ApiError, AppInfo, SHELL_API, SettingsFile, SettingsPatch, SettingsState, api_version,
 };
 use axum::{
     Json, Router,
@@ -481,7 +481,7 @@ pub(crate) fn failure(
 pub(crate) async fn info(principal: Principal) -> Json<AppInfo> {
     Json(AppInfo {
         app: "ax-devil".into(),
-        api: API_VERSION,
+        api: api_version().into(),
         version: env!("CARGO_PKG_VERSION").into(),
         development: !cfg!(feature = "embed-assets"),
         pid: std::process::id(),

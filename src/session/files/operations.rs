@@ -1,6 +1,7 @@
 //! New, Open, Save and Discard: the operations that replace the workspace or write its file.
 
 use super::{Failure, SessionFiles, WorkspaceFiles, name_of};
+use api_types::WorkspaceCommand;
 use foundation::{ErrorCode, HostPath, UserError};
 use sessions::session::{Command, Handle, Refusal};
 use std::{path::PathBuf, sync::Arc};
@@ -8,26 +9,52 @@ use workspace::Workspace;
 use workspace_files::{Claim, resolved};
 use workspace_store::{DocCommand, Saved};
 
+/// The Session command that `command` sends once its file work is done, over the workspace that work read or wrote and
+/// the file it names; `None` for a command that sends none. The one mapping from a client's workspace command to the
+/// Session command, so the scope the wire asks of it is checked against what the Session will ask (`Command::needs`).
+/// Restoring a recovery copy builds its own `Replace { saved: Recovered }`, which `content_scope` treats as any `Replace`.
+pub(in crate::session) fn sent(
+    command: &WorkspaceCommand,
+    workspace: Workspace,
+    file: Option<HostPath>,
+) -> Option<Command> {
+    Some(Command::Content(match command {
+        WorkspaceCommand::New | WorkspaceCommand::Open { .. } | WorkspaceCommand::Discard => {
+            DocCommand::Replace {
+                saved: Saved::As(workspace.clone()),
+                workspace,
+                file,
+            }
+        }
+        WorkspaceCommand::Save { .. } => DocCommand::MarkSaved {
+            workspace,
+            file: file?,
+        },
+        WorkspaceCommand::Keep => DocCommand::Keep,
+        WorkspaceCommand::ExportBookmarks { .. } => return None,
+    }))
+}
+
 impl WorkspaceFiles {
-    /// Makes `workspace` current, keeping the copy of the work it replaces.
+    /// Makes `workspace` current for `command`, keeping the copy of the work it replaces.
     pub(super) async fn replace(
         &self,
         handle: &Handle<api_types::CursorPoint>,
         files: &mut SessionFiles,
+        command: &WorkspaceCommand,
         workspace: Workspace,
         file: Option<PathBuf>,
     ) -> Result<(), Failure> {
-        let saved = Saved::As(workspace.clone());
-        self.swap(handle, files, workspace, file, saved).await
+        let replace = sent(command, workspace, file.map(HostPath::new)).ok_or(Refusal::Invalid)?;
+        self.swap(handle, files, replace).await
     }
 
+    /// Sends `replace`, a command that replaces the workspace, after keeping the copy of the work it replaces.
     async fn swap(
         &self,
         handle: &Handle<api_types::CursorPoint>,
         files: &mut SessionFiles,
-        workspace: Workspace,
-        file: Option<PathBuf>,
-        saved: Saved,
+        replace: Command,
     ) -> Result<(), Failure> {
         // Unsaved work that cannot be kept stays where it is, so the user can save it elsewhere.
         let outgoing = handle.state();
@@ -48,13 +75,8 @@ impl WorkspaceFiles {
                 return Err(UserError::new(ErrorCode::SaveFailed, reason).into());
             }
         }
-        let replace = DocCommand::Replace {
-            workspace,
-            file: file.map(HostPath::new),
-            saved,
-        };
         // A refusal changes nothing; after the replacement, nothing awaits before the copy is let go of.
-        handle.command(Command::Content(replace))?;
+        handle.command(replace)?;
         files.copy = None;
         files.listed = false;
         files.synced = None;
@@ -88,7 +110,11 @@ impl WorkspaceFiles {
                 }
             },
         };
-        self.replace(handle, files, workspace, Some(path.clone()))
+        // Only selects the kind for `sent`: its path is ignored, and the launch path has no real command to pass.
+        let open = WorkspaceCommand::Open {
+            path: path.to_string_lossy().into_owned(),
+        };
+        self.replace(handle, files, &open, workspace, Some(path.clone()))
             .await?;
         self.record(files, &path, None).await;
         Ok(())
@@ -135,8 +161,12 @@ impl WorkspaceFiles {
             }
         };
         let saved = Saved::Recovered { offer: true };
-        self.swap(handle, files, workspace.clone(), recovers.clone(), saved)
-            .await?;
+        let replace = Command::Content(DocCommand::Replace {
+            workspace: workspace.clone(),
+            file: recovers.clone().map(HostPath::new),
+            saved,
+        });
+        self.swap(handle, files, replace).await?;
         let copy = claimed.path().to_owned();
         files.copy = Some(Arc::new(claimed));
         // Marked synced only once listed: a command cancelled before that leaves the next sync to finish the job.
@@ -151,6 +181,7 @@ impl WorkspaceFiles {
         &self,
         handle: &Handle<api_types::CursorPoint>,
         files: &mut SessionFiles,
+        command: &WorkspaceCommand,
         path: Option<PathBuf>,
         replace: bool,
     ) -> Result<(), Failure> {
@@ -178,11 +209,9 @@ impl WorkspaceFiles {
         files
             .off(move || workspace_files::save(&written, &to))
             .await?;
-        let saved = DocCommand::MarkSaved {
-            workspace: snapshot,
-            file: HostPath::new(&target),
-        };
-        handle.command(Command::Content(saved))?;
+        let saved =
+            sent(command, snapshot, Some(HostPath::new(&target))).ok_or(Refusal::Invalid)?;
+        handle.command(saved)?;
         let _ = self.sync(files, &handle.state().doc.workspace).await;
         self.record(files, &target, None).await;
         Ok(())
@@ -219,6 +248,7 @@ impl WorkspaceFiles {
         &self,
         handle: &Handle<api_types::CursorPoint>,
         files: &mut SessionFiles,
+        command: &WorkspaceCommand,
     ) -> Result<(), Failure> {
         let file = handle
             .state()
@@ -231,12 +261,9 @@ impl WorkspaceFiles {
             Some(path) => files.off(move || workspace_files::load(&path)).await?,
             None => Workspace::default(),
         };
-        let saved = DocCommand::Replace {
-            workspace: workspace.clone(),
-            file: file.clone().map(HostPath::new),
-            saved: Saved::As(workspace),
-        };
-        handle.command(Command::Content(saved))?;
+        let saved =
+            sent(command, workspace, file.clone().map(HostPath::new)).ok_or(Refusal::Invalid)?;
+        handle.command(saved)?;
         // Unmodified now, so the sync deletes the copy.
         let _ = self.sync(files, &handle.state().doc.workspace).await;
         if let Some(file) = file {

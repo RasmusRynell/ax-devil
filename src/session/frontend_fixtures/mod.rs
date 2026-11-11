@@ -28,7 +28,6 @@ use sessions::session::{
 };
 use std::{collections::BTreeMap, fs, io, path::Path};
 use workspace::Environment;
-use workspace_store::DocCommand;
 
 /// One scenario's file: the ids its keys name, the Doc in each named state for both audiences, and the commands
 /// that lead from one state to another.
@@ -163,21 +162,14 @@ impl Recording {
 /// The input the adapter (`files::Files::run`) gives the Session for a workspace command, after the file work it does
 /// first. Only the commands that need no file are supported: Keep, and New or Discard of a workspace without one.
 fn workspace_input(command: WorkspaceCommand, session: &SessionState) -> Command {
-    let empty = workspace::Workspace::default();
-    let replace = Command::Content(DocCommand::Replace {
-        workspace: empty.clone(),
-        file: None,
-        saved: workspace_store::Saved::As(empty),
-    });
-    match command {
-        WorkspaceCommand::Keep => Command::Content(DocCommand::Keep),
+    match &command {
+        WorkspaceCommand::Keep => {}
         WorkspaceCommand::New | WorkspaceCommand::Discard
-            if session.doc.workspace.file.is_none() =>
-        {
-            replace
-        }
+            if session.doc.workspace.file.is_none() => {}
         other => panic!("a recorded step cannot run {other:?}, which reads or writes a file"),
     }
+    super::files::sent(&command, workspace::Workspace::default(), None)
+        .expect("Keep, New and Discard send a command")
 }
 
 /// The command a client sends to open the viewer of `item`.

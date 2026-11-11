@@ -21,9 +21,23 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use ts_rs::TS;
 
-/// Raised when a route changes in a way an older desktop shell or frontend cannot use, or a client message is added
-/// that an older backend would reject (a development backend of this version is reused, an older one is not).
-pub const API_VERSION: u32 = 35;
+/// The version of the generated contract: a hash `export-types` computes over every TypeScript file it writes for the
+/// frontend (the types, the constants and the settings tables, with their doc comments, so a comment-only edit
+/// changes it) and stores in `desktop/generated/api.json`. A change to those changes it with no edit; the route
+/// table lives in the root crate, which this one cannot read, so a changed route path or method does not. A client
+/// that expects another version refuses the backend.
+pub fn api_version() -> &'static str {
+    static VERSION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    VERSION.get_or_init(|| {
+        let generated: serde_json::Value =
+            serde_json::from_str(include_str!("../../../desktop/generated/api.json"))
+                .expect("desktop/generated/api.json is valid JSON");
+        generated["apiVersion"]
+            .as_str()
+            .expect("desktop/generated/api.json has an apiVersion")
+            .to_owned()
+    })
+}
 
 /// Raised when the desktop shell's own interface (the preload bridge and its IPC) changes in a way a frontend served
 /// by a remote backend cannot use. The shell loads a remote backend only when its [`AppInfo::shell`] matches.
@@ -35,8 +49,8 @@ pub const SHELL_API: u32 = 7;
 pub struct AppInfo {
     /// Always `"ax-devil"`.
     pub app: String,
-    /// The backend API version; a client that expects another one refuses this backend.
-    pub api: u32,
+    /// The backend API version, see [`api_version`]; a client that expects another one refuses this backend.
+    pub api: String,
     /// The package version.
     pub version: String,
     /// Whether this is a development build that serves no frontend.

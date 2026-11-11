@@ -23,7 +23,7 @@ afterEach(() => {
 
 const info = (access = { owner: true, fullAccess: true }) => ({
   app: "ax-devil",
-  api: 2,
+  api: "2",
   ...access,
 });
 

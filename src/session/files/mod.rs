@@ -10,6 +10,8 @@
 mod operations;
 mod recovery;
 
+pub(super) use operations::sent;
+
 use super::launch::Launch;
 use api_types::{AckOutcome, Audience, WorkspaceCommand};
 use foundation::UserError;
@@ -187,9 +189,9 @@ impl WorkspaceFiles {
                 code: Refusal::NotAllowed,
             };
         };
-        let result = match command {
+        let result = match &command {
             WorkspaceCommand::New => {
-                self.replace(handle, &mut files, Workspace::default(), None)
+                self.replace(handle, &mut files, &command, Workspace::default(), None)
                     .await
             }
             WorkspaceCommand::Open { path } => {
@@ -197,15 +199,15 @@ impl WorkspaceFiles {
                     .await
             }
             WorkspaceCommand::Save { path, replace } => {
-                let path = path.map(PathBuf::from);
-                self.save(handle, &mut files, path, replace.unwrap_or(false))
+                let path = path.clone().map(PathBuf::from);
+                self.save(handle, &mut files, &command, path, replace.unwrap_or(false))
                     .await
             }
-            WorkspaceCommand::Keep => handle
-                .command(Command::Content(DocCommand::Keep))
-                .map(drop)
-                .map_err(Failure::from),
-            WorkspaceCommand::Discard => self.discard(handle, &mut files).await,
+            WorkspaceCommand::Keep => match sent(&command, Workspace::default(), None) {
+                Some(keep) => handle.command(keep).map(drop).map_err(Failure::from),
+                None => Err(Refusal::Invalid.into()),
+            },
+            WorkspaceCommand::Discard => self.discard(handle, &mut files, &command).await,
             WorkspaceCommand::ExportBookmarks { path } => {
                 self.export_bookmarks(handle, &files, PathBuf::from(path))
                     .await
