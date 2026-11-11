@@ -322,10 +322,13 @@ pub enum SessionServerMessage {
         #[ts(type = "number")]
         server_us: i64,
     },
-    /// The settings changed; sent only to an Owner's connection, and carries no setting. A client whose own
-    /// revision is lower fetches `GET /api/settings` and `GET /api/info` again.
-    Settings {
-        /// The revision of the new settings, the one `GET /api/settings` reports.
+    /// What a topic's route answers changed; sent only to an Owner's connection, first for every topic on connecting
+    /// and then with each change, and carries no data. A client that holds another revision of the topic asks its
+    /// routes again.
+    Changed {
+        /// What changed.
+        topic: Topic,
+        /// Differs from the last one sent for the topic whenever its answer may differ, also across a backend restart.
         #[ts(type = "number")]
         revision: u64,
     },
@@ -341,6 +344,31 @@ pub enum SessionServerMessage {
         /// Why.
         reason: EndReason,
     },
+}
+
+/// What a `Changed` notice names: the answers a client asks for again. Every topic's routes are the Owner's, so only
+/// Owner connections are told.
+#[derive(Serialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum Topic {
+    /// `GET /api/settings` and `GET /api/info`, whose Full access follows a setting. Its revision is the settings'.
+    Settings,
+    /// `GET /api/sessions`.
+    Sessions,
+    /// `GET /api/workspaces/recent`.
+    Recents,
+    /// `GET /api/plugins`.
+    Plugins,
+}
+
+impl Topic {
+    /// Every topic.
+    pub const ALL: [Topic; 4] = [
+        Topic::Settings,
+        Topic::Sessions,
+        Topic::Recents,
+        Topic::Plugins,
+    ];
 }
 
 /// A line of `GET /api/sessions`: a Session of this backend.
@@ -380,5 +408,6 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<DocWire>();
     types.visit::<AckOutcome>();
     types.visit::<SessionServerMessage>();
+    types.visit::<Topic>();
     types.visit::<SessionSummary>();
 }

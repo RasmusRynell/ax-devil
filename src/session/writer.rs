@@ -7,8 +7,9 @@
 //! has not got.
 
 use super::exit::{Exit, send, send_frame};
+use super::topics::Topics;
 use crate::AppState;
-use api_types::{Audience, CursorPoint, SeatAccess, SessionServerMessage, SharingInfo};
+use api_types::{Audience, CursorPoint, SeatAccess, SessionServerMessage, SharingInfo, Topic};
 use axum::extract::ws::Message;
 use futures_util::Sink;
 use sessions::{
@@ -76,15 +77,17 @@ pub(super) async fn run<S: Sink<Message> + Unpin>(
         doc_rev: None,
         mine: None,
     };
+    // An Owner's connection is told every topic's revision now, for a change made since the page read it, and again
+    // with each change. Every topic's routes are the Owner's, so a Guest's connection is never told.
+    let mut topics = owner.then(|| Topics::of(state));
+    if let Some(topics) = &mut topics {
+        for topic in Topic::ALL {
+            let revision = topics.revision(topic);
+            send(sink, &SessionServerMessage::Changed { topic, revision }).await?;
+        }
+    }
     send_parts(state, sink, handle, &first, audience, &mut sent).await?;
     send_roster(sink, &mut roster).await?;
-    // An Owner's connection is told the settings' revision now, for a change made since the page read them, and again
-    // with each change. A Guest's is never told.
-    let mut settings = owner.then(|| state.settings.subscribe());
-    if let Some(settings) = &mut settings {
-        let revision = settings.borrow_and_update().revision();
-        send(sink, &SessionServerMessage::Settings { revision }).await?;
-    }
 
     let ticker = |period: Duration| {
         let mut ticker = interval_at(Instant::now() + period, period);
@@ -108,10 +111,10 @@ pub(super) async fn run<S: Sink<Message> + Unpin>(
                     send_roster(sink, &mut roster).await?;
                 }
             },
-            revision = next_settings(&mut settings) => match revision {
-                Some(revision) => send(sink, &SessionServerMessage::Settings { revision }).await?,
-                // The service is gone, which only happens when the backend stops.
-                None => settings = None,
+            topic = next_topic(&mut topics) => {
+                let Some(topics) = &mut topics else { continue };
+                let revision = topics.revision(topic);
+                send(sink, &SessionServerMessage::Changed { topic, revision }).await?;
             },
             reply = replies.recv() => match reply {
                 Some(reply) => send(sink, &reply).await?,
@@ -203,16 +206,12 @@ async fn send_parts<S: Sink<Message> + Unpin>(
     Ok(())
 }
 
-/// The revision of the next settings change, or never when this connection is not told.
-async fn next_settings(
-    settings: &mut Option<watch::Receiver<Arc<settings::State>>>,
-) -> Option<u64> {
-    let Some(settings) = settings else {
-        return std::future::pending().await;
-    };
-    settings.changed().await.ok()?;
-    let revision = settings.borrow_and_update().revision();
-    Some(revision)
+/// The next topic that changed, or never when this connection is not told.
+async fn next_topic(topics: &mut Option<Topics>) -> Topic {
+    match topics {
+        Some(topics) => topics.changed().await,
+        None => std::future::pending().await,
+    }
 }
 
 async fn send_roster<S: Sink<Message> + Unpin>(

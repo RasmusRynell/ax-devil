@@ -110,8 +110,8 @@ pub struct LoginEdit {
 /// and command ids are declared once, in the settings crate, and exported to `generated/settings.ts`.
 #[derive(Serialize, TS)]
 pub struct SettingsState {
-    /// Rises with every write to the settings; a state with a lower one is older. The Session socket's `settings`
-    /// notice carries the same number.
+    /// Rises with every write to the settings; a state with a lower one is older. The `Changed` notice of the
+    /// settings topic on the Session socket carries the same number.
     #[ts(type = "number")]
     pub revision: u64,
     /// Every setting by dotted key, such as `"camera.host"`, with the default when unset and a `$NAME` reference as

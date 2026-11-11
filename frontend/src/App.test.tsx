@@ -238,12 +238,16 @@ describe("settings changed elsewhere", () => {
       return value;
     };
     held = { ...held, revision: 4, values: { ...held.values, "storage.cache_dir": "/other" } };
-    await act(async () => FakeSocket.latest.emit({ type: "settings", revision: 4 }));
+    await act(async () =>
+      FakeSocket.latest.emit({ type: "changed", topic: "settings", revision: 4 }),
+    );
     await waitFor(async () => expect(await folder()).toBe("/other"));
     expect(reads()).toEqual(["/api/info", "/api/info", "/api/settings", "/api/settings"]);
 
     held = { ...held, revision: 3, values: { ...held.values, "storage.cache_dir": "/older" } };
-    await act(async () => FakeSocket.latest.emit({ type: "settings", revision: 4 }));
+    await act(async () =>
+      FakeSocket.latest.emit({ type: "changed", topic: "settings", revision: 4 }),
+    );
     expect(reads()).toHaveLength(4);
     expect(await folder()).toBe("/other");
   });

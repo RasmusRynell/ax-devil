@@ -263,9 +263,13 @@ serverUs: number, } | { "type": "heartbeat",
 /**
  * The backend's clock when it sent this.
  */
-serverUs: number, } | { "type": "settings", 
+serverUs: number, } | { "type": "changed", 
 /**
- * The revision of the new settings, the one `GET /api/settings` reports.
+ * What changed.
+ */
+topic: Topic, 
+/**
+ * Differs from the last one sent for the topic whenever its answer may differ, also across a backend restart.
  */
 revision: number, } | { "type": "cursor", 
 /**
@@ -326,3 +330,9 @@ link?: string,
  * Why there is no link, when other machines cannot reach this backend; an Owner seat only.
  */
 linkProblem?: string, };
+
+/**
+ * What a `Changed` notice names: the answers a client asks for again. Every topic's routes are the Owner's, so only
+ * Owner connections are told.
+ */
+export type Topic = "settings" | "sessions" | "recents" | "plugins";

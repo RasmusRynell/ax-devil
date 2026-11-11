@@ -41,6 +41,4 @@ export interface SessionState {
    * granted to one of them: a stream opened under an earlier one is ended.
    */
   seatings: number;
-  /** How many workspace commands the backend has answered, whatever the answer: the files they touch have settled. */
-  workspaceAnswers: number;
 }

@@ -138,6 +138,7 @@ impl WorkspaceFiles {
             })
             .await;
         done.inspect_err(|error| tracing::warn!("Cannot record a recent workspace: {error}"))
+            .inspect(|()| self.recents.send_modify(|revision| *revision += 1))
             .is_ok()
     }
 
@@ -149,6 +150,7 @@ impl WorkspaceFiles {
         let (storage, path) = (Arc::clone(storage), path.to_owned());
         let done = files.off(move || storage.recents.forget(&path)).await;
         done.inspect_err(|error| tracing::warn!("Cannot forget a recent workspace: {error}"))
+            .inspect(|()| self.recents.send_modify(|revision| *revision += 1))
             .is_ok()
     }
 }

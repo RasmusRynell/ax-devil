@@ -97,6 +97,7 @@ mod tests {
             Plugins::new(Ok(folder.join("plugins.json")), Handlers::built_in())
         });
         let plugin = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/plugins/shell-times");
+        let replaced = test.state.plugins.revisions();
         let installed = |info: &Value| {
             info["plugins"]
                 .as_array()
@@ -112,6 +113,7 @@ mod tests {
             .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(installed(&json(&body)), ["shell-times"]);
+        assert!(replaced.has_changed().unwrap(), "the plugins topic rose");
 
         // Installing it again, or from a path that means nothing here, is refused and changes nothing.
         for path in [plugin, "shell-times"] {

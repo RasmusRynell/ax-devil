@@ -137,7 +137,7 @@ impl<C: Clone + Send + 'static> Handle<C> {
         };
         let applied = self
             .service
-            .locked(|sessions, deferred| apply(sessions, self.session, input, deferred))?;
+            .locked_view(|sessions, deferred| apply(sessions, self.session, input, deferred))?;
         match applied.outcome {
             Outcome::ViewRefused(refusal) => Err(refusal),
             Outcome::None | Outcome::Seated { .. } | Outcome::Opened { .. } => Ok(()),
@@ -173,7 +173,7 @@ impl<C: Clone + Send + 'static> Handle<C> {
         if !self.share.load(Ordering::Relaxed) {
             return;
         }
-        self.service.locked(|sessions, _| {
+        self.service.quietly(|sessions| {
             let Some(live) = sessions.get(&self.session) else {
                 return;
             };
@@ -193,7 +193,7 @@ impl<C: Clone + Send + 'static> Handle<C> {
         self.show.store(options.show, Ordering::Relaxed);
         let was_sharing = self.share.swap(options.share, Ordering::Relaxed);
         if was_sharing != options.share {
-            self.service.locked(|sessions, _| {
+            self.service.quietly(|sessions| {
                 if let Some(live) = sessions.get(&self.session) {
                     live.publish_roster();
                     if !options.share {

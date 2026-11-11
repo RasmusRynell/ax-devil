@@ -99,6 +99,8 @@ pub struct WorkspaceFiles {
     /// `None` keeps no recovery copies and no recent workspaces.
     storage: Option<Arc<WorkspaceStorage>>,
     sessions: Mutex<HashMap<SessionId, Arc<tokio::sync::Mutex<SessionFiles>>>>,
+    /// Rises, from 0, with every change this backend makes to the recent workspaces.
+    recents: watch::Sender<u64>,
 }
 
 fn name_of(path: &Path) -> String {
@@ -112,7 +114,13 @@ impl WorkspaceFiles {
         Self {
             storage: storage.map(Arc::new),
             sessions: Mutex::default(),
+            recents: watch::channel(0).0,
         }
+    }
+
+    /// The count of changes this backend made to the recent workspaces, as they happen.
+    pub fn recent_revisions(&self) -> watch::Receiver<u64> {
+        self.recents.subscribe()
     }
 
     /// The recent workspaces, newest first. Blocks.

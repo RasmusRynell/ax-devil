@@ -119,6 +119,8 @@ impl Hosting {
                 .problem
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner) = failure;
+            // The session list says why there is no link.
+            listener.state.sessions.listing_changed();
         }
     }
 
@@ -216,10 +218,10 @@ impl ShareListener {
                 tracing::error!("The sharing listener stopped: {error}");
             }
         });
-        *self.open.lock().unwrap_or_else(PoisonError::into_inner) = Some(Open {
+        self.replace_open(Some(Open {
             base: base.clone(),
             serving,
-        });
+        }));
         let this = Arc::clone(self);
         tokio::spawn(async move { this.close_when_empty().await });
         Ok(base)
@@ -239,18 +241,24 @@ impl ShareListener {
             }
             let _changing = self.changing.lock().await;
             if self.state.sessions.is_empty() {
-                let open = self
-                    .open
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .take();
-                if let Some(open) = open {
+                if let Some(open) = self.replace_open(None) {
                     open.serving.abort();
                     tracing::info!("Closed the sharing listener: no session is shared");
                 }
                 return;
             }
         }
+    }
+
+    /// Opens or closes the listener's place and returns what it held. The session list carries the join links, which
+    /// exist while this is open, so it is told.
+    fn replace_open(&self, open: Option<Open>) -> Option<Open> {
+        let before = std::mem::replace(
+            &mut *self.open.lock().unwrap_or_else(PoisonError::into_inner),
+            open,
+        );
+        self.state.sessions.listing_changed();
+        before
     }
 }
 
@@ -265,8 +273,13 @@ mod tests {
         let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let hosting = Hosting::Lan(ShareListener::new(taken.local_addr().unwrap(), &app.state));
         assert_eq!(hosting.link_problem(), None);
+        let listed = app.state.sessions.listing_revisions();
 
         hosting.open().await;
+        assert!(
+            listed.has_changed().unwrap(),
+            "the list says why there is no link"
+        );
 
         // A development build refuses before it binds, with its own reason.
         let wanted = if cfg!(feature = "embed-assets") {
@@ -276,5 +289,22 @@ mod tests {
         };
         let problem = hosting.link_problem().unwrap();
         assert!(problem.contains(wanted), "{problem}");
+    }
+
+    #[tokio::test]
+    async fn the_session_list_is_told_when_the_listener_opens_and_when_it_closes() {
+        let app = TestApp::new();
+        let listener = ShareListener::new("127.0.0.1:0".parse().unwrap(), &app.state);
+        let mut listed = app.state.sessions.listing_revisions();
+        let open = Open {
+            base: LinkBase::parse_public("http://share.test").unwrap(),
+            serving: tokio::spawn(async {}),
+        };
+
+        listener.replace_open(Some(open));
+        assert!(listed.has_changed().unwrap(), "opened");
+        listed.borrow_and_update();
+        listener.replace_open(None);
+        assert!(listed.has_changed().unwrap(), "closed");
     }
 }

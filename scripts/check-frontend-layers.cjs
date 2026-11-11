@@ -25,6 +25,7 @@ const FRONTEND_LAYERS = {
     "fakeFullscreen",
     "commands",
     "recents",
+    "resource",
     "windowBridge",
     "pickPath",
     "session",

@@ -83,9 +83,10 @@ Rules:
 - The server never stores or receives a Device value. A Guest gets the built-in default of every Personal row and the
   standard shortcuts, and cannot change them.
 - Shortcuts are Personal and saved in the same request as the rows, but they are not rows.
-- A save names the keys it changes; the last write to a key wins. The server sends every Owner connection a notice
-  with the new, rising revision and no value; the client then fetches again. A client never reloads on its own
-  schedule.
+- A save names the keys it changes; the last write to a key wins. The server sends every Owner connection a
+  `Changed` notice for the topic (settings, sessions, recents, plugins) with its new revision and no value; the
+  client then fetches again. A client does not poll; it retries a failed read a bounded number of times. A Guest connection is told no topic: each topic's routes
+  are the Owner's.
 - A secret is write-only. A client learns whether it is set and, if it is a reference, its `$NAME`; the value
   never leaves the server.
 - What can be chosen (render catalogs, plugins, decoders) lives with the server and is listed to whoever may

@@ -1,14 +1,13 @@
 //! The plugins the app runs with: the built-in handlers plus the installed plugins' ones, reloaded while the app runs.
 //! Everything that installs, removes or reloads goes through [`Plugins`]; routes and the command line read from it.
 
-use api_types::handlers::{
-    HandlerKind, HandlerSummary, PluginInfo, PluginSource, PluginStatus, PluginsInfo,
-    SkippedHandlerInfo,
-};
+mod info;
+
+use api_types::handlers::{PluginSource, PluginStatus, PluginsInfo, SkippedHandlerInfo};
 use foundation::{ErrorCode, UserError};
-use handler_api::{Decoder, PlaylistResolver};
 use handlers::{HandlerSet, Handlers};
-use plugins::{Loaded, Registry, Reserved};
+use info::{built_in_info, installed_info};
+use plugins::{Registry, Reserved};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -115,6 +114,8 @@ pub struct Plugins {
     info: RwLock<Arc<PluginsInfo>>,
     /// What the last load read. Held for a whole refresh, install, remove or update, so they do not interleave.
     seen: Mutex<Seen>,
+    /// Rises, from 0, with every replacement of the handlers and `info`.
+    replaced: watch::Sender<u64>,
 }
 
 impl Plugins {
@@ -151,7 +152,13 @@ impl Plugins {
             built_in,
             info: RwLock::new(Arc::new(info)),
             seen: Mutex::default(),
+            replaced: watch::channel(0).0,
         }
+    }
+
+    /// The count of replacements of the plugins' handlers and info, as they happen.
+    pub fn revisions(&self) -> watch::Receiver<u64> {
+        self.replaced.subscribe()
     }
 
     /// The handlers as they are now, for holders that look things up for a long time.
@@ -344,6 +351,7 @@ impl Plugins {
             Arc::new(info),
         );
         log_new_problems(&before, &self.info());
+        self.replaced.send_modify(|revision| *revision += 1);
     }
 }
 
@@ -356,110 +364,6 @@ fn invalid(path: &Path, error: &plugins::ManifestError) -> UserError {
         ErrorCode::PluginInvalid,
         format!("{}: {error}", path.display()),
     )
-}
-
-fn decoder_summary(decoder: &Arc<dyn Decoder>) -> HandlerSummary {
-    let spec = decoder.spec();
-    HandlerSummary {
-        kind: HandlerKind::Decoder,
-        id: spec.id.clone(),
-        name: spec.name.clone(),
-        extensions: spec.extensions.clone(),
-    }
-}
-
-fn resolver_summary(resolver: &Arc<dyn PlaylistResolver>) -> HandlerSummary {
-    let spec = resolver.spec();
-    HandlerSummary {
-        kind: HandlerKind::PlaylistResolver,
-        id: spec.id.clone(),
-        name: spec.name.clone(),
-        extensions: Vec::new(),
-    }
-}
-
-/// One entry per built-in plugin, in the order its first handler appears.
-fn built_in_info(built_in: &Handlers) -> Vec<PluginInfo> {
-    let mut groups: Vec<(String, Vec<HandlerSummary>)> = Vec::new();
-    let mut add = |plugin: &str, summary: HandlerSummary| match groups
-        .iter_mut()
-        .find(|(id, _)| id == plugin)
-    {
-        Some((_, handlers)) => handlers.push(summary),
-        None => groups.push((plugin.to_owned(), vec![summary])),
-    };
-    for decoder in built_in.decoders() {
-        add(&decoder.spec().plugin, decoder_summary(decoder));
-    }
-    for resolver in built_in.resolvers() {
-        add(&resolver.spec().plugin, resolver_summary(resolver));
-    }
-    groups
-        .into_iter()
-        .map(|(id, handlers)| PluginInfo {
-            source: PluginSource::BuiltIn,
-            status: PluginStatus::Loaded {
-                name: id.clone(),
-                id,
-                version: env!("CARGO_PKG_VERSION").to_owned(),
-                handlers,
-                skipped: Vec::new(),
-            },
-        })
-        .collect()
-}
-
-/// One entry per registry entry.
-fn installed_info(loaded: &Loaded) -> Vec<PluginInfo> {
-    loaded
-        .entries
-        .iter()
-        .map(|entry| PluginInfo {
-            source: PluginSource::Installed {
-                manifest: entry.manifest.display().to_string(),
-                folder: entry
-                    .manifest
-                    .parent()
-                    .unwrap_or_else(|| Path::new("."))
-                    .display()
-                    .to_string(),
-            },
-            status: match &entry.plugin {
-                Ok(plugin) => {
-                    let manifest = &plugin.manifest;
-                    PluginStatus::Loaded {
-                        id: manifest.id.clone(),
-                        name: manifest.name.clone(),
-                        version: manifest.version.clone(),
-                        handlers: plugin
-                            .decoders
-                            .iter()
-                            .map(|decoder| {
-                                decoder_summary(&(Arc::clone(decoder) as Arc<dyn Decoder>))
-                            })
-                            .chain(plugin.resolvers.iter().map(|resolver| {
-                                resolver_summary(
-                                    &(Arc::clone(resolver) as Arc<dyn PlaylistResolver>),
-                                )
-                            }))
-                            .collect(),
-                        skipped: plugin
-                            .skipped
-                            .iter()
-                            .map(|handler| SkippedHandlerInfo {
-                                kind: handler.kind.clone(),
-                                id: handler.id.clone(),
-                                reason: handler.reason.clone(),
-                            })
-                            .collect(),
-                    }
-                }
-                Err(error) => PluginStatus::Failed {
-                    reason: error.capitalised(),
-                },
-            },
-        })
-        .collect()
 }
 
 /// Logs what did not load, which loading could not because logging starts after the command line is read.

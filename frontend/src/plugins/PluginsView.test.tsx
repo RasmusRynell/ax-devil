@@ -170,12 +170,16 @@ describe("plugins view", () => {
   it("keeps an installed plugin listed when an older list fetch answers after the install", async () => {
     let answerOldList = (_info: PluginsInfo) => {};
     let first = true;
+    let installed = false;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_url: string, init?: RequestInit) => {
-        if (init?.method === "POST")
+        if (init?.method === "POST") {
+          installed = true;
           return { ok: true, json: async () => ({ plugins: [MOT, ACME] }) };
-        if (!first) return { ok: true, json: async () => ({ plugins: [MOT] }) };
+        }
+        if (!first)
+          return { ok: true, json: async () => ({ plugins: installed ? [MOT, ACME] : [MOT] }) };
         first = false;
         const old = await new Promise<PluginsInfo>((resolve) => (answerOldList = resolve));
         return { ok: true, json: async () => old };

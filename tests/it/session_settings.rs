@@ -1,35 +1,49 @@
-//! The settings notice on the Session socket: told to an Owner's connection after its welcome, never to a Guest.
+//! The `changed` notices on the Session socket: told to an Owner's connection after its welcome, never to a Guest.
 
 use crate::session_client::{Socket, patch_settings};
 use crate::session_socket::{PASSWORD, command, of_type, serve, view};
 use serde_json::json;
 
+/// The notice of `topic`.
+fn topic(topic: &'static str) -> impl FnMut(&serde_json::Value) -> bool {
+    move |m| m["type"] == "changed" && m["topic"] == topic
+}
+
 #[tokio::test]
-async fn a_settings_change_is_announced_to_an_owner_connection_and_never_to_a_join_link() {
+async fn a_change_is_announced_to_an_owner_connection_and_never_to_a_join_link() {
     let folder = tempfile::tempdir().unwrap();
     let address = serve(folder.path()).await;
     let mut owner = Socket::own(&address, Some(PASSWORD)).await;
-    // An Owner is told the current revision at once, so a change made before it connected is not missed.
-    // The page takes the first notice of a connection as the start of a new revision order, so it follows the welcome.
+    // An Owner is told every topic's current revision at once, so a change made before it connected is not missed.
     let mut seen = Vec::new();
     let first = owner
         .until(|m| {
             seen.push(m["type"].clone());
-            m["type"] == "settings"
+            topic("settings")(m)
         })
         .await["revision"]
         .as_u64()
         .unwrap();
     assert_eq!(seen.first(), Some(&json!("welcome")));
+    let listed = owner.until(topic("sessions")).await["revision"].clone();
     owner
         .say(command(
             1,
             json!({"type": "control", "control": {"type": "share", "access": "watch"}}),
         ))
         .await;
-    let seat = owner
-        .until(|m| m["type"] == "seat" && !m["sharing"].is_null())
+    // Sharing also puts the session in the list other windows read.
+    let (mut seat, mut relisted) = (None, false);
+    owner
+        .until(|m| {
+            if m["type"] == "seat" && !m["sharing"].is_null() {
+                seat = Some(m.clone());
+            }
+            relisted |= topic("sessions")(m) && m["revision"] != listed;
+            seat.is_some() && relisted
+        })
         .await;
+    let seat = seat.unwrap();
     let link = seat["sharing"]["link"].as_str().unwrap();
     let link = link.split("join=").nth(1).unwrap();
     let mut guest = Socket::connect(&address, "/api/session").await;
@@ -47,18 +61,18 @@ async fn a_settings_change_is_announced_to_an_owner_connection_and_never_to_a_jo
     )
     .await;
     let told = owner
-        .until(|m| m["type"] == "settings" && m["revision"] != first)
+        .until(|m| topic("settings")(m) && m["revision"] != first)
         .await;
     assert_eq!(
         told,
-        json!({"type": "settings", "revision": saved["revision"]})
+        json!({"type": "changed", "topic": "settings", "revision": saved["revision"]})
     );
 
-    // The guest's own view is answered after the change, and nothing about settings came before it.
+    // The guest's own view is answered after the changes, and no notice came before it.
     guest.say(view(1, false)).await;
     guest
         .until(|m| {
-            assert_ne!(m["type"], "settings", "a guest was told");
+            assert_ne!(m["type"], "changed", "a guest was told");
             m["type"] == "seat" && m["viewsDone"] == 1
         })
         .await;
@@ -96,7 +110,7 @@ async fn an_owner_attached_as_a_guest_seat_is_still_told_of_a_settings_change() 
             "auth": {"type": "attach", "session": session, "serverPassword": PASSWORD},
             "cursors": {"show": true, "share": true}}))
         .await;
-    let first = attached.until(of_type("settings")).await["revision"]
+    let first = attached.until(topic("settings")).await["revision"]
         .as_u64()
         .unwrap();
     let saved = patch_settings(
@@ -106,7 +120,7 @@ async fn an_owner_attached_as_a_guest_seat_is_still_told_of_a_settings_change() 
     )
     .await;
     let told = attached
-        .until(|m| m["type"] == "settings" && m["revision"].as_u64() != Some(first))
+        .until(|m| topic("settings")(m) && m["revision"].as_u64() != Some(first))
         .await;
     assert_eq!(told["revision"], saved["revision"]);
 }
