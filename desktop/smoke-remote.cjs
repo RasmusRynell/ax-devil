@@ -275,7 +275,7 @@ async function remote(local, shell) {
     for (const stub of stubs) stub.restore();
     stale.server.close();
     dropping.server.close();
-    served.child.kill("SIGINT");
+    await served.lifecycle.stop();
   }
 }
 

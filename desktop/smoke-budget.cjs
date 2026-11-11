@@ -1,0 +1,22 @@
+// Named budgets shared by the app, launchers and CI planning. All values are milliseconds.
+const SCENARIO_TIMEOUT_MS = 90_000;
+const START_TIMEOUT_MS = 90_000;
+const FAILURE_MS = 5000;
+const KILL_AFTER_MS = 10_000;
+const EXIT_GRACE_MS = 5000;
+const APP_START_MS = 30_000;
+const BACKEND_STOP_MS = 6000;
+const FIXTURE_BUILD_MS = 600_000;
+const PACKAGE_SETUP_MS = 60_000;
+const LAUNCH_MARGIN_MS =
+  APP_START_MS + FAILURE_MS + BACKEND_STOP_MS + KILL_AFTER_MS + EXIT_GRACE_MS;
+module.exports = {
+  SCENARIO_TIMEOUT_MS,
+  START_TIMEOUT_MS,
+  FAILURE_MS,
+  KILL_AFTER_MS,
+  EXIT_GRACE_MS,
+  FIXTURE_BUILD_MS,
+  PACKAGE_SETUP_MS,
+  LAUNCH_MARGIN_MS,
+};

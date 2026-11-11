@@ -51,14 +51,10 @@ async function inBackendWindow(args, scenario, { command = "local", env = {} } =
     await js(
       "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Done')?.click()",
     );
-    await scenario(window);
+    await scenario(window, served.origin);
   } finally {
     window.destroy();
-    const exited = new Promise((resolve) => served.child.once("exit", resolve));
-    served.child.kill("SIGINT");
-    const killer = setTimeout(() => served.child.kill("SIGKILL"), 3000);
-    await exited;
-    clearTimeout(killer);
+    await served.lifecycle.stop();
   }
 }
 

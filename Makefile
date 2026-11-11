@@ -151,7 +151,7 @@ test-desktop: _frontend-build desktop/node_modules/.electron-ready _smoke-fixtur
 
 .PHONY: _smoke-fixtures
 _smoke-fixtures:
-	$(CARGO) build --locked -p camera --example loopback_rtsp
+	node scripts/build-smoke-fixture.cjs bash $(CARGO) build --locked -p camera --example loopback_rtsp
 
 # Needs a real camera, so it is not part of `test` or `check`; each test skips itself when AX_DEVIL_TARGET_ADDR is unset.
 test-camera:

@@ -1,6 +1,7 @@
 // Real decoding, recovery and hover pictures over the camera tests' loopback RTSP peer.
-const { nativeTheme } = require("electron");
+const { nativeTheme, BrowserWindow } = require("electron");
 const assert = require("node:assert/strict");
+const { observe } = require("./child.cjs");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs/promises");
 const os = require("node:os");
@@ -21,8 +22,8 @@ module.exports.run = async () => {
       stdio: ["ignore", "pipe", "inherit"],
     },
   );
+  const lifecycle = observe(child);
   // Observe lifecycle before the first await, including a spawn error or exit before readiness.
-  let ended = false;
   let rejectPorts;
   const lines = createInterface({ input: child.stdout });
   const ports = new Promise((resolve, reject) => {
@@ -31,12 +32,10 @@ module.exports.run = async () => {
   });
   const completed = new Promise((resolve) => {
     child.once("error", (error) => {
-      ended = true;
       rejectPorts(error);
       resolve();
     });
     child.once("exit", (code, signal) => {
-      ended = true;
       rejectPorts(new Error(`Loopback fixture exited before readiness: ${code ?? signal}`));
       resolve();
     });
@@ -84,93 +83,117 @@ module.exports.run = async () => {
     );
     await inBackendWindow(
       [file],
-      async (window) => {
-        const { js, wait } = page(window);
-        const row = `[...document.querySelectorAll('[role=treeitem]')].filter(r => r.textContent.includes('Loopback')).at(-1)`;
-        const toolbar = `document.querySelector('[role=toolbar][aria-label=Live]')`;
-        const hover = async () => {
-          const point = await settled(
-            window,
-            `(() => { const r = (${row}).getBoundingClientRect(); return {x: Math.round(r.x + 30), y: Math.round(r.y + r.height / 2)}; })()`,
+      async (window, origin) => {
+        const other = new BrowserWindow({
+          width: 900,
+          height: 650,
+          webPreferences: { backgroundThrottling: false },
+        });
+        try {
+          await other.loadURL(origin);
+          const second = page(other);
+          await second.wait("document.querySelector('h1')?.textContent === 'ax-devil'");
+          await second.js(
+            "[...document.querySelectorAll('dialog button')].find(b => b.textContent === 'Done')?.click()",
           );
-          window.webContents.sendInputEvent({ type: "mouseMove", ...point });
-        };
-        const shoot = async (state) => {
-          for (const shown of ["light", "dark"]) {
-            nativeTheme.themeSource = shown;
-            await wait(`matchMedia('(prefers-color-scheme: ${shown})').matches`);
-            await frames({ js });
-            await fs.writeFile(
-              path.join(SCREENSHOTS, `loopback-${state}-${shown}.png`),
-              (await window.webContents.capturePage()).toPNG(),
+          await second.js("document.querySelector('[aria-label=Sessions]').click()");
+          await second.wait("document.querySelector('[aria-label=\"Other sessions\"] button')");
+          await second.js(
+            "document.querySelector('[aria-label=\"Other sessions\"] button').click()",
+          );
+          const { js, wait } = page(window);
+          const row = `[...document.querySelectorAll('[role=treeitem]')].filter(r => r.textContent.includes('Loopback')).at(-1)`;
+          const toolbar = `document.querySelector('[role=toolbar][aria-label=Live]')`;
+          const hover = async () => {
+            const point = await settled(
+              window,
+              `(() => { const r = (${row}).getBoundingClientRect(); return {x: Math.round(r.x + 30), y: Math.round(r.y + r.height / 2)}; })()`,
             );
-          }
-        };
-        // Read rendered pixels, not styles: each source picture has a distinct colour.
-        const colour = async (channel, hover = false) => {
-          const box = await js(
-            `(() => { const c = document.querySelector(${JSON.stringify(hover ? "[aria-hidden] canvas" : "canvas:not([aria-hidden] canvas)")}); if (!c) return null; const r = c.getBoundingClientRect(); return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2), width: 1, height: 1 }; })()`,
+            window.webContents.sendInputEvent({ type: "mouseMove", ...point });
+          };
+          const shoot = async (state) => {
+            for (const shown of ["light", "dark"]) {
+              nativeTheme.themeSource = shown;
+              await wait(`matchMedia('(prefers-color-scheme: ${shown})').matches`);
+              await frames({ js });
+              await fs.writeFile(
+                path.join(SCREENSHOTS, `loopback-${state}-${shown}.png`),
+                (await window.webContents.capturePage()).toPNG(),
+              );
+            }
+          };
+          // Read rendered pixels, not styles: each source picture has a distinct colour.
+          const colour = async (channel, hover = false) => {
+            const box = await js(
+              `(() => { const c = document.querySelector(${JSON.stringify(hover ? "[aria-hidden] canvas" : "canvas:not([aria-hidden] canvas)")}); if (!c) return null; const r = c.getBoundingClientRect(); return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2), width: 1, height: 1 }; })()`,
+            );
+            if (!box) return false;
+            const pixel = (await window.webContents.capturePage(box)).toBitmap();
+            const index = { red: 2, green: 1, blue: 0 }[channel];
+            return pixel[index] > 80 && pixel[index] > pixel[(index + 1) % 3] * 2;
+          };
+          const picture = async (channel, hover = false) => {
+            for (let attempt = 0; attempt < 300; attempt++) {
+              await frames({ js });
+              if (await colour(channel, hover)) return;
+            }
+            throw new Error(`No ${channel} picture rendered`);
+          };
+          await fs.mkdir(SCREENSHOTS, { recursive: true });
+          await wait(row);
+          await js(`${row}.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+          await wait(`${toolbar}?.textContent.includes('Connecting')`);
+          await hover();
+          await shoot("connecting");
+          assert.equal(
+            await js(`!!document.querySelector('[aria-hidden] canvas')`),
+            false,
+            "no snapshot while connecting",
           );
-          if (!box) return false;
-          const pixel = (await window.webContents.capturePage(box)).toBitmap();
-          const index = { red: 2, green: 1, blue: 0 }[channel];
-          return pixel[index] > 80 && pixel[index] > pixel[(index + 1) % 3] * 2;
-        };
-        const picture = async (channel, hover = false) => {
-          for (let attempt = 0; attempt < 300; attempt++) {
-            await frames({ js });
-            if (await colour(channel, hover)) return;
-          }
-          throw new Error(`No ${channel} picture rendered`);
-        };
-        await fs.mkdir(SCREENSHOTS, { recursive: true });
-        await wait(row);
-        await js(`${row}.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
-        await wait(`${toolbar}?.textContent.includes('Connecting')`);
-        await hover();
-        await shoot("connecting");
-        assert.equal(
-          await js(`!!document.querySelector('[aria-hidden] canvas')`),
-          false,
-          "no snapshot while connecting",
-        );
-        await control("play");
-        await wait(`${toolbar}?.textContent.includes('Live')`);
-        await picture("red");
-        await hover();
-        await picture("red", true);
-        await shoot("open");
-        assert.equal(
-          await control("snapshots"),
-          "0",
-          "connecting and open previews never ask for a snapshot",
-        );
-        await control("drop");
-        await wait(`${toolbar}?.textContent.includes('Reconnecting')`);
-        assert.ok(await colour("red"), "recovery retains the last picture");
-        assert.equal(
-          await js(`${toolbar}.textContent.includes('Retry')`),
-          false,
-          "automatic recovery needs no manual retry",
-        );
-        await shoot("recovering");
-        await control("play");
-        await picture("green");
-        await picture("green", true);
-        await shoot("recovered");
-        await control("codec");
-        await wait(`${toolbar}?.textContent.includes('Unsupported')`);
-        await wait(`[...document.querySelectorAll('button')].some(b => b.textContent === 'Retry')`);
-        assert.ok(await colour("green"), "terminal error retains the last picture");
-        await shoot("terminal");
-        await js(`document.querySelector('button[aria-label="Close this pane"]').click()`);
-        await wait(`!${toolbar}`);
-        window.webContents.sendInputEvent({ type: "mouseMove", x: 1000, y: 500 });
-        await frames({ js });
-        await hover();
-        await picture("blue", true);
-        await shoot("closed");
-        assert.equal(await control("snapshots"), "1", "closed previews share one snapshot read");
+          await control("play");
+          await wait(`${toolbar}?.textContent.includes('Live')`);
+          await picture("red");
+          await second.wait(`${toolbar}?.textContent.includes('Live')`);
+          await hover();
+          await picture("red", true);
+          await shoot("open");
+          assert.equal(
+            await control("snapshots"),
+            "0",
+            "connecting and open previews never ask for a snapshot",
+          );
+          await control("drop");
+          await wait(`${toolbar}?.textContent.includes('Reconnecting')`);
+          assert.ok(await colour("red"), "recovery retains the last picture");
+          assert.equal(
+            await js(`${toolbar}.textContent.includes('Retry')`),
+            false,
+            "automatic recovery needs no manual retry",
+          );
+          await shoot("recovering");
+          await control("play");
+          await picture("green");
+          await picture("green", true);
+          await shoot("recovered");
+          await control("codec");
+          await wait(`${toolbar}?.textContent.includes('Unsupported')`);
+          await wait(
+            `[...document.querySelectorAll('button')].some(b => b.textContent === 'Retry')`,
+          );
+          assert.ok(await colour("green"), "terminal error retains the last picture");
+          await shoot("terminal");
+          await second.wait(`${toolbar}?.textContent.includes('Unsupported')`);
+          await js(`document.querySelector('button[aria-label="Close this pane"]').click()`);
+          await wait(`!${toolbar}`);
+          window.webContents.sendInputEvent({ type: "mouseMove", x: 1000, y: 500 });
+          await frames({ js });
+          await hover();
+          await picture("blue", true);
+          await shoot("closed");
+          assert.equal(await control("snapshots"), "1", "closed previews share one snapshot read");
+        } finally {
+          other.destroy();
+        }
       },
       { command: "open" },
     );
@@ -179,10 +202,12 @@ module.exports.run = async () => {
     clearTimeout(deadline);
     lines.close();
     try {
-      if (!ended) child.kill();
+      await lifecycle.stop();
       await completed;
     } finally {
       await fs.rm(folder, { recursive: true, force: true });
     }
   }
 };
+
+module.exports.timeoutMs = 60_000;

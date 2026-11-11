@@ -10,11 +10,10 @@ const path = require("node:path");
 
 const desktop = path.join(__dirname, "..", "desktop");
 // What a launch needs beside its own start and scenarios: the app starting, a failure picture, the backend stopping.
-const LAUNCH_MARGIN_MS = 60_000;
-const KILL_AFTER_MS = 10_000;
+const { LAUNCH_MARGIN_MS, KILL_AFTER_MS, EXIT_GRACE_MS } = require("../desktop/smoke-budget.cjs");
+
 // How long after the app has exited its output pipes may stay open before the launcher cuts them: `close` fires only
 // once every holder of the pipes has closed them.
-const EXIT_GRACE_MS = 5000;
 
 // Ends the launch running now (once per launch): its whole process group gets SIGTERM, then SIGKILL if the leader
 // has not closed within KILL_AFTER_MS. Once the app has exited it signals nothing.
@@ -218,18 +217,14 @@ function launch(group, names, scenarios, result) {
       process.stderr.write(`group "${group}" ${killed}\n`);
       stop();
     }, limit);
-    // The app has exited, so its group id is certain only now: end what is left of the group at once, and let no later
-    // path signal it (the id could be reused). A descendant that still holds the launcher's output pipes, or one in
-    // another session, delays `close`; after the grace the pipes are cut, so the launch finishes through `finish`.
-    // This is cleanup, not a stop: it changes no verdict.
+    // Exit retires the group id immediately. Descendants holding output pipes cannot keep cleanup waiting forever.
     child.on("exit", () => {
       clearTimeout(owned.deadline);
       clearTimeout(owned.escalation);
-      signal("SIGKILL");
       owned.pid = undefined;
       owned.sweep = setTimeout(() => {
         process.stderr.write(
-          `group "${group}": the app's output was still held open after it exited; the group was killed and the output closed (a process outside the app's process group may still be running)\n`,
+          `group "${group}": the app's output was still held open after it exited; the output was closed (a process outside the app's process group may still be running)\n`,
         );
         child.stdout.destroy();
         child.stderr.destroy();
@@ -242,9 +237,6 @@ function launch(group, names, scenarios, result) {
       clearTimeout(owned.deadline);
       clearTimeout(owned.escalation);
       clearTimeout(owned.sweep);
-      // Sweep members that outlived the leader (Xvfb, the backend), once, while this launch still owns the id; after the
-      // app's exit the id is already retired and this does nothing.
-      signal("SIGKILL");
       owned.pid = undefined;
       if (stopActive === stop) stopActive = () => {};
       const seconds = Math.round((Date.now() - began) / 1000);
@@ -305,4 +297,5 @@ async function main() {
   process.exitCode = !cancelled && verdicts.every(([, { ok }]) => ok) ? 0 : 1;
 }
 
-void main();
+if (require.main === module) void main();
+module.exports = { loadScenarios, deadlineMs };

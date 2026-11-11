@@ -88,9 +88,7 @@ async fn retries_asked_while_the_old_connections_close_wait_in_one_task() {
     assert_eq!(tasks(), one_retry);
 
     rig.fake.hold_closing(false);
-    while rig.fake.videos().len() != 2 {
-        tokio::time::sleep(Duration::from_millis(1)).await;
-    }
+    rig.fake.wait_videos(2).await;
 }
 
 #[tokio::test(start_paused = true)]
@@ -130,6 +128,7 @@ async fn a_video_that_delivers_only_pictures_it_cannot_decode_stalls_and_offers_
 
 #[tokio::test]
 async fn a_retry_retires_what_the_old_connection_left_behind_for_every_window() {
+    timeout(Duration::from_secs(30), async {
     let rig = rig();
     let content = content("cam", rtsp());
     let (mut first, mut second) = (rig.open(&content).await, rig.open(&content).await);
@@ -168,9 +167,7 @@ async fn a_retry_retires_what_the_old_connection_left_behind_for_every_window() 
     {
     }
     first.retry();
-    while rig.fake.videos().len() != 2 {
-        tokio::time::sleep(Duration::from_millis(1)).await;
-    }
+    rig.fake.wait_videos(2).await;
     rig.fake.videos()[1]
         .status
         .send(Status::Live { epoch: 2 })
@@ -202,4 +199,5 @@ async fn a_retry_retires_what_the_old_connection_left_behind_for_every_window() 
         // The event the old connection's decoder held back is reported once to each window.
         assert_eq!(out.events.map(|events| events.samples.len()), Some(1));
     }
+    }).await.expect("retry scenario deadline");
 }

@@ -21,6 +21,7 @@ logs="$PWD/artifacts/smoke-logs"
 rm -rf "$logs"
 mkdir -p "$logs"
 export AX_DEVIL_SMOKE_ROOT="$PWD"
+read -r stop_seconds grace_seconds < <(node -e 'const b = require("./desktop/smoke-budget.cjs"); console.log(b.KILL_AFTER_MS / 1000, b.EXIT_GRACE_MS / 1000)')
 
 # A path for the app and its tools: C:/... on Windows, unchanged elsewhere.
 native() { if [[ $os == win ]]; then cygpath -m "$1"; else echo "$1"; fi; }
@@ -86,16 +87,26 @@ if ! scheme_declared; then
 fi
 
 # Kills the app and everything it started.
+alive() { [[ " $(jobs -pr | tr '\n' ' ') " == *" $pid "* ]]; }
 kill_tree() {
+  alive || return 0
   if [[ $os == win ]]; then
-    taskkill //F //T //PID "$(cat "/proc/$pid/winpid" 2>/dev/null || echo "$pid")" >/dev/null 2>&1 || true
+    taskkill //F //T //PID "$(cat "/proc/$pid/winpid" 2>/dev/null || echo "$pid")"
   else
-    kill -TERM -- "-$pid" 2>/dev/null || true
-    sleep 1
-    kill -KILL -- "-$pid" 2>/dev/null || true
+    signal_tree TERM
+    for ((n = 0; n < grace_seconds; n++)); do
+      alive || break
+      sleep 1
+    done
+    if alive; then signal_tree KILL; fi
   fi
 }
-alive() { kill -0 "$pid" 2>/dev/null; }
+signal_tree() {
+  local error
+  if ! error=$(kill -"$1" -- "-$pid" 2>&1); then
+    [[ $error == *"No such process"* ]] || { echo "$error" >&2; return 1; }
+  fi
+}
 
 # One launch of the app for one group: its scenarios in order, a fresh home, its own logs. Returns the verdict. The app
 # fails a hung scenario by name, with its screenshot, well before the plan's deadline; the kill is only for an app that
@@ -124,11 +135,12 @@ run_group() {
   # A launch still without a verdict at its deadline has failed for good: a PASS written while it is ended does not count.
   if [[ ! -s $result ]] && ((seconds >= deadline)); then expired=1; fi
   # After the verdict the app quits by itself; what is left is ended.
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
+  for ((n = 0; n < stop_seconds; n++)); do
     alive || break
     sleep 1
   done
   kill_tree
+  wait "$pid" || true
 
   for log in "app-$group.log" "electron-$group.log"; do
     echo "--- $log"
