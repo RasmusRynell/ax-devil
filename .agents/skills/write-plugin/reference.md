@@ -171,9 +171,10 @@ A sample is one Scene in the JSON of `scene::serial`. Times are `{"frame": N}` (
 (microseconds on the video's clock); one file uses one kind. An observation's `time` carries either clock, independently
 of the Scene key, or both, `{"frame": N, "us": N}`. Frame numbers are integers; a Scene keyed before frame 0 is skipped
 with a warning. Geometry is normalized to `[0,1]` of the frame. Absent
-parts may be left out. Observations keep arrival order except that each arrival moves before strictly greater
-neighbours on its timestamp clock, if supplied, otherwise its frame clock; a missing clock or equal/smaller value
-stops the walk.
+parts may be left out. Within one Scene, observations follow Python's arrival rule: each arrival moves before strictly
+greater neighbours on its timestamp clock, if supplied, otherwise its frame clock; a missing clock or equal/smaller
+value stops the walk. Same-key `sample` Scenes are each ordered first, then their ordered lists are replayed in receive
+order when joined.
 
 ```json
 {"time": {"start": {"us": 100000}, "end": {"us": 100000}},
