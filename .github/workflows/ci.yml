@@ -145,10 +145,8 @@ jobs:
         if: matrix.name == 'linux'
         timeout-minutes: 5
         run: |
-          # The Azure mirror stalls; retries and timeouts make update and install fail fast or recover.
-          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99ci-retries
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends patchelf xauth xvfb clang libclang-dev
+          # The script drops the unreachable Azure mirror and sets apt retries and timeouts.
+          scripts/apt-install.sh patchelf xauth xvfb clang libclang-dev
           # Ubuntu 22.04 has no such restriction; the setting exists from 23.10 on, as on the CI image.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
