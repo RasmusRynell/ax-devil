@@ -37,7 +37,7 @@ describe("a live stream's Events list", () => {
   it("offers section help even before the first live event", () => {
     mount({ log: new EventLog() });
     expect(
-      screen.getByRole("tab", { name: /^Objects/, description: /dims those absent/ }),
+      screen.getByRole("tab", { name: /^Objects/, description: /dims objects absent/ }),
     ).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Events 0", description: /UTC/ })).toBeTruthy();
   });

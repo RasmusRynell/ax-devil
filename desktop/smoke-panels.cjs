@@ -146,7 +146,7 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
           await js(`(() => {
           const control = document.querySelector(${JSON.stringify(`${menu} select`)});
           control.focus();
-          return document.activeElement === control && control.getAttribute('aria-description')?.includes('Choose how this lane draws');
+          return document.activeElement === control && control.getAttribute('aria-description')?.includes('How this lane draws');
         })()`),
           true,
           "Catalog help belongs to the focusable control at 200% zoom",

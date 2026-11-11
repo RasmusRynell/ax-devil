@@ -21,14 +21,14 @@ describe("lane menu", () => {
     expect(screen.getByRole("tab", { name: "Look" }).getAttribute("aria-selected")).toBe("true");
     const catalog = screen.getByRole("combobox", {
       name: "Catalog",
-      description: /Choose how this lane draws/,
+      description: /How this lane draws/,
     });
     catalog.focus();
     expect(document.activeElement).toBe(catalog);
     expect(
       screen.getByRole("checkbox", {
         name: "Object outlines",
-        description: /Changes apply immediately/,
+        description: /Which overlay features are drawn/,
       }),
     ).toBeTruthy();
     expect(
