@@ -20,10 +20,14 @@ async fn unsaved_work_survives_the_window_and_one_window_holds_a_copy_at_a_time(
     // An edit is written to a recovery copy, which is the newest recent workspace.
     let mut owner = Socket::own(&address, None).await;
     let told = |m: &serde_json::Value| m["type"] == "changed" && m["topic"] == "recents";
-    let before = owner.until(told).await["revision"].clone();
+    let before = owner.until("initial recents change notice", told).await["revision"].clone();
     owner.say(add_video(1)).await;
     // The Owner is told the list changed.
-    owner.until(|m| told(m) && m["revision"] != before).await;
+    owner
+        .until("recents change notice after recovery", |m| {
+            told(m) && m["revision"] != before
+        })
+        .await;
     eventually("the recovery copy, listed", || {
         let copy = copies(folder.path()).pop();
         copy.as_deref().and_then(items_in) == Some(1) && newest_recent(folder.path()) == copy
@@ -174,7 +178,10 @@ async fn recovery_failure_does_not_prevent_replacement() {
         workspace_files::save(&workspace::Workspace::default(), &target).unwrap();
         let address = backend(folder.path(), None).await;
         let mut owner = Socket::own(&address, None).await;
-        let session = owner.until(|message| message["type"] == "welcome").await["session"].clone();
+        let session = owner
+            .until("welcome message", |message| message["type"] == "welcome")
+            .await["session"]
+            .clone();
         let mut second = Socket::connect(&address, "/api/session").await;
         second
             .say(
@@ -182,7 +189,9 @@ async fn recovery_failure_does_not_prevent_replacement() {
             "cursors": {"show": true, "share": true}}),
             )
             .await;
-        let seat = second.until(|message| message["type"] == "seat").await;
+        let seat = second
+            .until("seat message", |message| message["type"] == "seat")
+            .await;
         assert_eq!(seat["access"], "owner");
         for (seq, command) in [
             (2, json!({"type": "new"})),

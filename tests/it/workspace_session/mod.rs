@@ -110,7 +110,10 @@ pub fn workspace(seq: u64, command: Value) -> Value {
 /// The next Doc whose workspace satisfies `wanted`.
 pub async fn doc(socket: &mut Socket, wanted: impl Fn(&Value) -> bool) -> Value {
     let message = socket
-        .until(|message| message["type"] == "doc" && wanted(&message["doc"]["workspace"]))
+        .until(
+            "workspace document matching the requested state",
+            |message| message["type"] == "doc" && wanted(&message["doc"]["workspace"]),
+        )
         .await;
     message["doc"]["workspace"].clone()
 }
@@ -123,21 +126,26 @@ pub async fn settle(
 ) -> (Value, Value) {
     let (mut outcome, mut workspace) = (None, None);
     socket
-        .until(|message| {
-            if message["type"] == "ack" && message["seq"] == seq {
-                outcome = Some(message["outcome"].clone());
-            } else if message["type"] == "doc" && wanted(&message["doc"]["workspace"]) {
-                workspace = Some(message["doc"]["workspace"].clone());
-            }
-            outcome.is_some() && workspace.is_some()
-        })
+        .until(
+            "command acknowledgement and matching workspace document",
+            |message| {
+                if message["type"] == "ack" && message["seq"] == seq {
+                    outcome = Some(message["outcome"].clone());
+                } else if message["type"] == "doc" && wanted(&message["doc"]["workspace"]) {
+                    workspace = Some(message["doc"]["workspace"].clone());
+                }
+                outcome.is_some() && workspace.is_some()
+            },
+        )
         .await;
     (outcome.unwrap(), workspace.unwrap())
 }
 
 pub async fn ack(socket: &mut Socket, seq: u64) -> Value {
     socket
-        .until(|message| message["type"] == "ack" && message["seq"] == seq)
+        .until("ack message for the requested sequence", |message| {
+            message["type"] == "ack" && message["seq"] == seq
+        })
         .await["outcome"]
         .clone()
 }
