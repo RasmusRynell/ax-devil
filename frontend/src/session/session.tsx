@@ -158,6 +158,11 @@ export function useSettled(): boolean {
   return useSelect((state) => state.settled);
 }
 
+/** Whether the shown view and Doc are settled, so automatic placement cannot undo a local view change. */
+export function useViewSettled(): boolean {
+  return useSelect((state) => state.settled && !state.viewPending);
+}
+
 /** Whether this seat may change things of this scope; the backend decides again when it is asked. */
 export function useCan(scope: Scope): boolean {
   return useSelect((state) => canDo(state.seat?.can ?? null, scope));

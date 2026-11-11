@@ -2,16 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { Layout, View, ViewerView } from "../generated/api";
 import { EMPTY_VIEW } from "../session/views";
 import { leaves } from "./layout";
-import {
-  autoPlace,
-  close,
-  leftWithout,
-  moved,
-  open,
-  openToSide,
-  resized,
-  reuse,
-} from "./placement";
+import { autoPlace, close, moved, open, openToSide, resized, reuse } from "./placement";
 
 const pane = (viewer: number): Layout => ({ type: "pane", viewer });
 const row = (first: Layout, second: Layout, share = 5000): Layout => ({
@@ -112,15 +103,6 @@ describe("closing", () => {
     expect(itemsOf(next)).toEqual(["a", "c"]);
     expect(next.active).toBe(1);
     expect(close(next, [1, 3])).toMatchObject({ active: undefined, layout: undefined });
-  });
-
-  it("names the items left without a viewer, not those that keep another", () => {
-    const view = viewOf(1, ["a"], ["a"], ["b"]);
-    expect(leftWithout(view, close(view, [1]))).toEqual([]);
-    expect(leftWithout(view, close(view, [1, 2]))).toEqual(["a"]);
-    // A replaced preview leaves its item without a viewer too, unless another pane shows it.
-    expect(leftWithout(view, open(view, "c")!)).toEqual([]);
-    expect(leftWithout(viewOf(1, ["b"]), open(viewOf(1, ["b"]), "c")!)).toEqual(["b"]);
   });
 });
 

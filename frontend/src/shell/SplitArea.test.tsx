@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { scenario } from "../session/fakeScenario";
 import { FakeSocket, type Room } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
@@ -75,7 +75,10 @@ async function setup() {
   return {
     store,
     room,
-    show: (state: string, scene = one) => act(() => room.show(scene, state)),
+    show: async (state: string, scene = one) => {
+      act(() => room.show(scene, state));
+      await waitFor(() => expect(store.getSnapshot().viewPending).toBe(false));
+    },
   };
 }
 
@@ -84,9 +87,9 @@ const pane = (name: string) => screen.getByRole("group", { name });
 describe("split area", () => {
   it("shows an item as opening until it resolves, then its viewer", async () => {
     const { show } = await setup();
-    show("pending");
+    await show("pending");
     expect(screen.getByRole("status").textContent).toBe("Opening a.mp4…");
-    show("initial");
+    await show("initial");
     expect(screen.getByText(`playing ${itemA}`)).toBeTruthy();
   });
 
@@ -107,10 +110,10 @@ describe("split area", () => {
     expect(room.seats.filter((seat) => seat.owner && seat.socket)).toHaveLength(2);
     const scene = scenario("playlist-retirement");
     for (const state of ["single", "duplicates", "survivor"]) {
-      show(state, scene);
+      await show(state, scene);
       const surviving = room.presenter.viewers[2];
       const overlays = room.presenter.overlays;
-      show(`${state}-resolved`, scene);
+      await show(`${state}-resolved`, scene);
       await act(async () => {});
       if (state === "survivor") {
         expect(room.presenter.viewers).toEqual({ 2: surviving });
@@ -124,14 +127,26 @@ describe("split area", () => {
         expect(seat.getSnapshot().view.overlays).toEqual(overlays);
       }
     }
+    // A local close stays closed while its view packet waits for the backend's retirement decision.
+    await show("single", scene);
+    await waitFor(() => expect(second.getSnapshot().viewPending).toBe(false));
+    FakeSocket.sockets[0]!.defer = true;
+    fireEvent.click(screen.getAllByRole("button", { name: "Close this pane" })[0]!);
+    await act(async () => {});
+    expect(store.getSnapshot().viewPending).toBe(true);
+    expect(store.getSnapshot().view.viewers).toEqual({});
+    expect(second.getSnapshot().view.viewers).toEqual(scene.view("single")!.viewers);
+    act(() => room.show(scene, "single-resolved"));
+    await act(async () => FakeSocket.sockets[0]!.flush());
+    expect(screen.queryByRole("group", { name: "list" })).toBeNull();
   });
 
   it("says why an item failed, and where only to a seat that may read it", async () => {
     const { show } = await setup();
-    show("failed");
+    await show("failed");
     expect(screen.getByRole("alert").textContent).toBe("File not found/data/a/a.mp4");
     // A playlist without entries is refused by the backend, which gives the reason.
-    show("empty-refused", scenario("playlist-groups"));
+    await show("empty-refused", scenario("playlist-groups"));
     expect(screen.getByRole("alert").textContent).toContain(
       "Playlists require at least one entry.",
     );
@@ -155,16 +170,16 @@ describe("split area", () => {
   it("offers to reload a viewer whose files changed, once per change, and reloading resolves the item", async () => {
     const { show } = await setup();
     const offer = () => screen.queryByText("Source changed, reload current viewer?");
-    show("initial");
+    await show("initial");
     expect(offer()).toBeNull();
 
-    show("changed-1");
+    await show("changed-1");
     expect(offer()).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(offer()).toBeNull();
-    show("changed-1");
+    await show("changed-1");
     expect(offer()).toBeNull();
-    show("changed-2");
+    await show("changed-2");
     expect(offer()).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
@@ -177,21 +192,21 @@ describe("split area", () => {
 
   it("says why a reload failed above the viewer it left in place, until dismissed, and again for the next failure", async () => {
     const { show } = await setup();
-    show("initial");
-    show("reload-failed-1");
+    await show("initial");
+    await show("reload-failed-1");
     expect(screen.getByRole("alert").textContent).toBe("Could not reload: File not found");
     expect(screen.getByText(`playing ${itemA}`)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByRole("alert")).toBeNull();
-    show("reload-failed-1");
+    await show("reload-failed-1");
     expect(screen.queryByRole("alert")).toBeNull();
-    show("reload-failed-2");
+    await show("reload-failed-2");
     expect(screen.getByRole("alert")).toBeTruthy();
   });
 
   it("gives eight open items a pane and closes the ninth again", async () => {
     const { show } = await setup();
-    show("nine-open", split);
+    await show("nine-open", split);
     expect(screen.getAllByRole("group")).toHaveLength(8);
     expect(FakeSocket.latest.received).toContainEqual(
       expect.objectContaining({
@@ -203,9 +218,9 @@ describe("split area", () => {
   it("gives each pane an equal share of the window's 512 MiB of frames, redivided as panes come and go", async () => {
     const { show } = await setup();
     const budget = (key: string) => screen.getByLabelText(`budget ${split.ids[key]}`).textContent;
-    show("a-open", split);
+    await show("a-open", split);
     expect(budget("a")).toBe(String(512 * 1024 * 1024));
-    show("abc-open", split);
+    await show("abc-open", split);
     expect(budget("a")).toBe(String(Math.floor((512 * 1024 * 1024) / 3)));
     fireEvent.click(within(pane("c.mp4")).getByRole("button", { name: "Close this pane" }));
     expect(budget("a")).toBe(String(256 * 1024 * 1024));
@@ -213,7 +228,7 @@ describe("split area", () => {
 
   it("gives a pane's header the row's menu without Edit, exporting from that pane's own viewer, and Remove closes the item", async () => {
     const { show } = await setup();
-    show("initial");
+    await show("initial");
     const id = Number(pane("a.mp4").getAttribute("data-cursor-pane"));
     // Another viewer of the same item, registered first: the header exports the one of its own pane.
     const other = vi.fn();
@@ -245,7 +260,7 @@ describe("split area", () => {
 
   it("says in its pane why a header action failed, until dismissed, Escape or the next menu", async () => {
     const { show } = await setup();
-    show("initial");
+    await show("initial");
     const header = () => pane("a.mp4").querySelector("[draggable]") as HTMLElement;
     const alert = () => within(pane("a.mp4")).queryByRole("alert");
     FakeSocket.refuseContent = "NotAllowed";
@@ -275,7 +290,7 @@ describe("split area", () => {
   it("acts from a header on the entry the pane shows: with a whole first playlist hidden, one of the second", async () => {
     const { show } = await setup();
     const groups = scenario("playlist-groups");
-    show("p-hidden", groups);
+    await show("p-hidden", groups);
     const id = Number(pane("list").getAttribute("data-cursor-pane"));
     const shownExport = vi.fn();
     const leave = registerExport(id, groups.ids.list, groups.ids["list/C"], shownExport);
@@ -289,7 +304,7 @@ describe("split area", () => {
 
   it("keeps a playlist header's menu while its entry's playback is not ready, with Export disabled", async () => {
     const { show } = await setup();
-    show("initial", scenario("playlist"));
+    await show("initial", scenario("playlist"));
     // No viewer registered an export: the entry's media is still opening or failed.
     fireEvent.contextMenu(pane("list").querySelector("[draggable]") as HTMLElement);
     const names = screen.getAllByRole("menuitem").map((item) => item.textContent);
@@ -317,7 +332,7 @@ describe("split area", () => {
 
   it("moves a dragged pane to the side it is dropped on without restarting its viewer or unpinning it", async () => {
     const { show } = await setup();
-    show("ab-open", split);
+    await show("ab-open", split);
     fireEvent.click(within(pane("a.mp4")).getByRole("button", { name: /^Pin:/ }));
     const left = (name: string) => pane(name).style.left;
     expect([left("a.mp4"), left("b.mp4")]).toEqual(["0px", "200px"]);
