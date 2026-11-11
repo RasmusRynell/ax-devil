@@ -32,21 +32,23 @@ const alive = (pid) => {
     throw error;
   }
 };
+async function waitFor(check) {
+  const deadline = Date.now() + 3000;
+  while (!check()) {
+    if (Date.now() >= deadline) throw new Error("probe timed out");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
 async function gone(pid) {
-  await bounded(
-    (async () => {
-      while (alive(pid)) await new Promise((r) => setTimeout(r, 10));
-    })(),
-  );
+  await waitFor(() => !alive(pid));
+}
+async function stopChild(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const exited = events.once(child, "exit");
+  child.kill("SIGKILL");
+  await bounded(exited);
 }
 
-async function waitFor(check) {
-  await bounded(
-    (async () => {
-      while (!check()) await new Promise((r) => setTimeout(r, 10));
-    })(),
-  );
-}
 function audit(folder) {
   const log = path.join(folder, "signals");
   const preload = path.join(folder, "audit.cjs");
@@ -94,6 +96,7 @@ for (const escaped of [false, true])
       const pidFile = path.join(folder, "pid");
       const signals = audit(folder);
       let descendant;
+      let wrapper;
       try {
         const verdict = supervise(
           process.execPath,
@@ -112,10 +115,11 @@ for (const escaped of [false, true])
             limitMs: 2500,
             exitGraceMs: 100,
             spawner(command, args, options) {
-              return spawnOwned(command, args, {
+              wrapper = spawnOwned(command, args, {
                 ...options,
                 env: { ...options.env, NODE_OPTIONS: signals.env.NODE_OPTIONS },
               });
+              return wrapper;
             },
           },
         );
@@ -130,13 +134,14 @@ for (const escaped of [false, true])
           assert.match(outcome.reason, /survivor-probe.*escaped-session survivor/);
           assert.equal(alive(descendant), true);
           const before = signals.read();
-          await new Promise((r) => setTimeout(r, 150));
+          assert.equal(wrapper.kill("SIGKILL"), false);
           assert.deepEqual(signals.read(), before, "no delayed group signal after completion");
         } else {
           assert.equal(outcome.ok, true, outcome.reason);
           await gone(descendant);
         }
       } finally {
+        await stopChild(wrapper);
         if (descendant && alive(descendant)) process.kill(descendant, "SIGKILL");
         if (descendant) await gone(descendant);
         fs.rmSync(folder, { recursive: true, force: true });
@@ -185,7 +190,7 @@ void test(
         }
         assertSafe(signals.read());
       } finally {
-        if (child && child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+        await stopChild(child);
         fs.rmSync(folder, { recursive: true, force: true });
       }
     }

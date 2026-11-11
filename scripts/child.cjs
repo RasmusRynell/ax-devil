@@ -73,7 +73,7 @@ function spawnOwned(command, args, options) {
     });
   };
   child.kill = (signal) => {
-    if (status || failure) return false;
+    if (status || failure || leader.exitCode !== null || leader.signalCode !== null) return false;
     if (child.ready) send(signal);
     else pending.push(signal);
     return true;
@@ -99,7 +99,9 @@ function spawnOwned(command, args, options) {
     else if (!status)
       child.emit(
         "error",
-        new Error(`Group leader exited before reporting command status (${code ?? signal})`),
+        new Error(
+          `Group leader exited before reporting command status (${code ?? signal}); cleanup was not confirmed and descendants may remain`,
+        ),
       );
     child.emit("exit", child.exitCode, child.signalCode);
   });
