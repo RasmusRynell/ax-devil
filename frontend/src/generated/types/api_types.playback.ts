@@ -2,7 +2,7 @@
 
 import type { CatalogInfoWire } from "./api_types.catalogs";
 import type { ErrorParams, ErrorWire } from "./api_types.error";
-import type { InspectionWire, ObjectItemsWire } from "./api_types.inspect";
+import type { InspectionRead, InspectionReadResult, InspectionWire, ObjectItemsWire } from "./api_types.inspect";
 import type { LiveAction, LiveEventsWire, LiveGapWire, LiveOpenedWire, LiveStatusWire } from "./api_types.live";
 import type { EventAskWire, EventQueryWire } from "./api_types.playback.events";
 import type { ExportFormatWire, ExportLaneWire, ExportStateWire } from "./api_types.playback.export";
@@ -72,7 +72,7 @@ sample: number,
 /**
  * The object's id; at most 1024 bytes.
  */
-entity: string, } | { "type": "InspectFields", 
+entity: string, } | { "type": "InspectContinue" } & InspectionRead | { "type": "InspectFields", 
 /**
  * The viewer's source id, `LaneInfo::source`.
  */
@@ -291,7 +291,15 @@ entity: string,
 /**
  * What the backend knows of it.
  */
-inspection: InspectionWire, } | { "type": "InspectedFields", 
+inspection: InspectionWire, } | { "type": "InspectContinued", 
+/**
+ * Request correlation number.
+ */
+request: number, 
+/**
+ * Bounded result, under the same frame authority as inspection.
+ */
+result: InspectionReadResult, } | { "type": "InspectedFields", 
 /**
  * The requested source.
  */
@@ -383,7 +391,7 @@ answer: FileAnswer, } | { "type": "LiveOpened" } & LiveOpenedWire | { "type": "L
  * Raised when the messages or the envelope change in a way an older frontend cannot read, or a message is added
  * that an older backend would reject.
  */
-export const PLAYBACK_PROTOCOL = 12;
+export const PLAYBACK_PROTOCOL = 13;
 
 /**
  * "AXDV" read as a little-endian u32.

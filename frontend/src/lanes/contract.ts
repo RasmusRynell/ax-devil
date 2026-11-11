@@ -184,4 +184,18 @@ export type InspectionView =
       summary: Summary;
       fields: readonly FieldWire[];
       truncated: boolean;
+      access?: InspectionAccess;
     };
+
+/** Bounded field navigation and one explicit whole-value copy, owned by Inspections. */
+export interface InspectionAccess {
+  revision: number;
+  next: (() => void) | null;
+  first: (() => void) | null;
+  copy: (ordinal: number, path?: boolean) => void;
+  cancel: () => void;
+  commit: (() => void) | null;
+  progress: { received: number; total: number } | null;
+  error: string | null;
+  copied: boolean;
+}

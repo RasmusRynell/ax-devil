@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { compileFilter } from "../present";
 import { fullSample } from "../present/fixtures";
 import type { LaneFrame } from "../lanes/contract";
@@ -21,7 +21,7 @@ const withCar = fullSample([
 ]);
 const withoutCar = fullSample([{ id: "9", class: "human", box: [0.5, 0.5, 0.6, 0.7] }]);
 
-/** What a lane draws: only the parts the inspector reads are real. */
+/** Displayed sample at the inspection boundary. */
 const frame = (
   sample: number,
   columns = withCar,
@@ -187,7 +187,7 @@ describe("inspections", () => {
     inspections.follow([frame(2)]);
     inspections.follow([frame(3)]);
     expect(samples()).toEqual([1, 2, 3]);
-    // A late reply for a sample no longer shown is kept but not shown.
+    // A late reply for a sample no longer shown is discarded.
     expect(inspections.receive(reply(1, found(CLASS)))).toBe(false);
     expect(inspections.view.state).toBe("loading");
     inspections.receive(reply(3, found({ ...CLASS, value: { kind: "text", value: "bus" } })));
@@ -196,8 +196,8 @@ describe("inspections", () => {
       fields: [{ value: { kind: "text", value: "bus" } }],
     });
     inspections.follow([frame(1)]);
-    expect(inspections.view.state).toBe("ready");
-    expect(samples()).toEqual([1, 2, 3]);
+    expect(inspections.view.state).toBe("loading");
+    expect(samples()).toEqual([1, 2, 3, 1]);
   });
 
   it("never shows another sample's summary or fields while the shown sample's reply is out", () => {
@@ -237,7 +237,7 @@ describe("inspections", () => {
     expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
   });
 
-  it("answers from the last 16 replies without asking", () => {
+  it("keeps the current field window and asks again after leaving it", () => {
     const { inspections, samples } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
@@ -249,7 +249,7 @@ describe("inspections", () => {
     inspections.follow([frame(16)]);
     expect(inspections.view.state).toBe("ready");
     expect(samples()).toHaveLength(17);
-    // The first reply was dropped to make room for the seventeenth.
+    // Leaving the sample releases its fields.
     inspections.follow([frame(0)]);
     expect(samples()).toHaveLength(18);
     expect(inspections.view.state).toBe("loading");
@@ -412,4 +412,124 @@ describe("inspections", () => {
     inspections.select(SELECTION);
     expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
   });
+});
+
+it("replaces field pages and copies complete Unicode text while a superseded reply waits for release", async () => {
+  const { inspections, sent } = setup();
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  try {
+    const access = () => {
+      const view = inspections.view;
+      if (view.state === "none" || view.state === "absent" || !view.access)
+        throw Error("ready inspection");
+      return view.access;
+    };
+    const request = () => {
+      const message = sent.at(-1);
+      if (message?.type !== "InspectContinue") throw Error("continuation");
+      return message.request;
+    };
+    inspections.follow([frame(0)]);
+    inspections.select(SELECTION);
+    inspections.receive(
+      reply(0, {
+        state: "Found",
+        fields: [CLASS],
+        truncated: true,
+        continuation: { token: "socket-capability", next: 4096 },
+      }),
+    );
+    access().next?.();
+    const text = `${"a".repeat(65535)}😀é`;
+    inspections.receiveContinuation({
+      type: "InspectContinued",
+      request: request(),
+      result: {
+        state: "Page",
+        fields: [
+          {
+            group: "debug",
+            path: ["last"],
+            value: { kind: "text", value: "preview" },
+            cut: [4096, 65541],
+          },
+        ],
+        next: null,
+      },
+    });
+    expect(inspections.view).toMatchObject({ fields: [{ path: ["last"] }] });
+    access().copy(4096);
+    inspections.receiveContinuation({
+      type: "InspectContinued",
+      request: request(),
+      result: { state: "Chunk", text: "a".repeat(65535), total: 65541, next: 65535 },
+    });
+    expect(writeText).not.toHaveBeenCalled();
+    expect(access().progress).toEqual({ received: 65535, total: 65541 });
+    inspections.receiveContinuation({
+      type: "InspectContinued",
+      request: request(),
+      result: { state: "Chunk", text: "😀é", total: 65541, next: null },
+    });
+    await Promise.resolve();
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(text);
+    writeText.mockClear();
+    access().copy(4096);
+    const earlier = request();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const late = held.then(() =>
+      inspections.receiveContinuation({
+        type: "InspectContinued",
+        request: earlier,
+        result: { state: "Chunk", text: "late", total: 4, next: null },
+      }),
+    );
+    inspections.follow([frame(1)]);
+    release();
+    expect(await late).toBe(false);
+    expect(writeText).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it("cancels a copy on hide, lane change, explicit cancellation and reconnect", () => {
+  for (const cancel of [
+    (owner: Inspections) => owner.setVisible(false),
+    (owner: Inspections) => owner.select({ ...SELECTION, lane: 1 }),
+    (owner: Inspections) => owner.reconnect(),
+    (owner: Inspections) => {
+      const view = owner.view;
+      if (view.state === "ready") view.access?.cancel();
+    },
+  ]) {
+    const { inspections, sent } = setup();
+    inspections.follow([frame(0), frame(0)]);
+    inspections.select(SELECTION);
+    inspections.receive(
+      reply(0, {
+        state: "Found",
+        fields: [{ ...CLASS, cut: [0, 20000] }],
+        truncated: false,
+        continuation: { token: "socket", next: null },
+      }),
+    );
+    const view = inspections.view;
+    if (view.state !== "ready") throw Error("ready");
+    view.access?.copy(0);
+    const message = sent.at(-1);
+    if (message?.type !== "InspectContinue") throw Error("copy request");
+    cancel(inspections);
+    expect(
+      inspections.receiveContinuation({
+        type: "InspectContinued",
+        request: message.request,
+        result: { state: "Chunk", text: "cancelled", total: 20000, next: null },
+      }),
+    ).toBe(false);
+  }
 });

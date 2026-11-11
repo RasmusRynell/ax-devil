@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 mod leaf;
+mod pages;
+pub use pages::{FieldChunk, FieldPage, MAX_COPY_BYTES, PageField, field_chunk, field_page};
 mod query;
 
 pub use leaf::Leaf;
@@ -17,11 +19,11 @@ use crate::{
     Classification, ColorEntry, Entity, MotionState, Name, Observation, Rgb, Value, WorldVelocity,
 };
 
-/// The most fields an inspection lists.
+/// The most fields one inspection page lists.
 pub const MAX_FIELDS: usize = 4096;
 
 /// The most bytes of paths and texts an inspection lists. Every field repeats the keys above it, so a long key over many
-/// leaves would otherwise multiply; what does not fit is left out and the inspection says so.
+/// leaves would otherwise multiply; what does not fit continues on another page.
 pub const MAX_INSPECTION_BYTES: usize = 8 * 1024 * 1024;
 
 /// Sections of the inspection, in display order.
@@ -100,20 +102,6 @@ fn fraction(value: f64) -> Option<f64> {
     (0.0..=1.0).contains(&value).then_some(value)
 }
 
-/// The entity's fields from its latest observation, in display order: at most `limit`, and the flag says some were
-/// left out. Empty values are not listed, except in Debug, where an empty text, list or map is shown as the source
-/// reported it.
-pub fn entity_fields(entity: &Entity, limit: usize) -> (Vec<InspectionField>, bool) {
-    let mut listing = Listing {
-        limit,
-        bytes: 0,
-        fields: Vec::new(),
-        cut: false,
-    };
-    walk_entity(entity, &mut listing);
-    (listing.fields, listing.cut)
-}
-
 /// Where the leaves of a walk go, one at a time with the path they are at, borrowed.
 trait Sink {
     /// Whether the walk should stop: asked with a value still to list. A sink that cuts the walk short says so.
@@ -121,60 +109,15 @@ trait Sink {
     /// Whether the leaf at `path` is wanted, asked before it is made so that an unwanted one costs nothing; `color`
     /// says the leaf is a colour's score, whose `rgb` channels are leaves of their own, and `bytes` how long its text
     /// is, so that one too long to keep is never copied.
-    fn wants(&mut self, place: Place, path: &[String], color: bool, bytes: usize) -> bool;
+    fn wants(&mut self, place: Place, path: &[&str], color: bool, bytes: usize) -> bool;
+    /// Visits text without first copying the whole value.
+    fn text(&mut self, place: Place, path: &[&str], text: &str) {
+        if self.wants(place, path, false, text.len()) {
+            self.push(place, path, Leaf::Text(text.to_owned()), Marks::default());
+        }
+    }
     /// Takes a leaf that is wanted.
-    fn push(&mut self, place: Place, path: &[String], value: Leaf, marks: Marks);
-}
-
-/// The sink of an inspection: every leaf, up to `limit`.
-struct Listing {
-    limit: usize,
-    /// The bytes of paths and texts listed so far.
-    bytes: usize,
-    fields: Vec<InspectionField>,
-    cut: bool,
-}
-
-impl Sink for Listing {
-    fn full(&mut self) -> bool {
-        let full = self.fields.len() >= self.limit;
-        self.cut |= full;
-        full
-    }
-
-    fn wants(&mut self, _place: Place, path: &[String], _color: bool, bytes: usize) -> bool {
-        // Judged before the leaf is made, and before its path is copied.
-        let size = path.iter().map(String::len).sum::<usize>() + bytes;
-        let fits = self.bytes + size <= MAX_INSPECTION_BYTES;
-        self.cut |= !fits;
-        fits
-    }
-
-    fn push(&mut self, place: Place, path: &[String], value: Leaf, marks: Marks) {
-        let text = if let Leaf::Text(text) = &value {
-            text.len()
-        } else {
-            0
-        };
-        let size = path.iter().map(String::len).sum::<usize>() + text;
-        if self.full() {
-            return;
-        }
-        if self.bytes + size > MAX_INSPECTION_BYTES {
-            self.cut = true;
-            return;
-        }
-        self.bytes += size;
-        self.fields.push(InspectionField {
-            group: place.group,
-            origin: place.origin,
-            path: path.to_vec(),
-            value,
-            color: marks.color,
-            text: marks.text,
-            fraction: marks.fraction,
-        });
-    }
+    fn push(&mut self, place: Place, path: &[&str], value: Leaf, marks: Marks);
 }
 
 /// Walks the entity's leaves into `sink`, in display order.
@@ -212,7 +155,7 @@ const fn place(group: FieldGroup) -> Place {
 struct Walk<'a, S> {
     sink: &'a mut S,
     /// The path of the value being walked.
-    path: Vec<String>,
+    path: Vec<&'a str>,
 }
 
 impl<S: Sink> Walk<'_, S> {
@@ -238,17 +181,20 @@ impl<S: Sink> Walk<'_, S> {
     }
 
     fn leaf(&mut self, place: Place, value: Leaf) {
-        self.emit(place, || value, Marks::default());
+        let bytes = match &value {
+            Leaf::Text(text) => text.len(),
+            _ => 0,
+        };
+        self.emit_sized(place, bytes, || value, Marks::default());
     }
 
     fn text(&mut self, place: Place, text: &str) {
-        let value = || Leaf::Text(text.to_owned());
-        self.emit_sized(place, text.len(), value, Marks::default());
+        self.sink.text(place, &self.path, text);
     }
 
     /// A number, or its name when the source's float is not finite.
     fn number(&mut self, place: Place, number: f64) {
-        self.emit(place, || number_leaf(number), Marks::default());
+        self.leaf(place, number_leaf(number));
     }
 
     /// Whether the sink is full, which is also when something is left out: called with a value still to list.
@@ -257,10 +203,17 @@ impl<S: Sink> Walk<'_, S> {
     }
 
     /// Walks `inside` with `segment` added to the path.
-    fn under(&mut self, segment: &str, inside: impl FnOnce(&mut Self)) {
-        self.path.push(segment.to_owned());
-        inside(self);
-        self.path.pop();
+    fn under(&mut self, segment: &str, inside: impl FnOnce(&mut Walk<'_, S>)) {
+        let mut nested = Walk {
+            sink: &mut *self.sink,
+            path: self
+                .path
+                .iter()
+                .copied()
+                .chain(std::iter::once(segment))
+                .collect(),
+        };
+        inside(&mut nested);
     }
 
     /// A count at `segment`: a whole number, or a float when it exceeds `i64`.
@@ -444,9 +397,12 @@ impl<S: Sink> Walk<'_, S> {
             Value::Str(text) if text.is_empty() => {}
             Value::Map(fields) => self.map(place, fields),
             Value::List(items) => {
-                let colors: Option<Vec<_>> = items.iter().map(ColorEntry::read_exact).collect();
-                if let Some(colors) = colors.filter(|colors| !colors.is_empty()) {
-                    return self.colors(place, &colors);
+                if !items.is_empty()
+                    && items
+                        .iter()
+                        .all(|item| ColorEntry::read_exact(item).is_some())
+                {
+                    return self.colors(place, items.iter().filter_map(ColorEntry::read_exact));
                 }
                 for (index, item) in items.iter().enumerate() {
                     if self.stop() {
@@ -460,15 +416,15 @@ impl<S: Sink> Walk<'_, S> {
     }
 
     /// A colour attribute: one leaf per colour, its score, named by the colour's name or its index.
-    fn colors(&mut self, place: Place, colors: &[ColorEntry]) {
-        for (index, color) in colors.iter().enumerate() {
+    fn colors<'c>(&mut self, place: Place, colors: impl Iterator<Item = ColorEntry<'c>>) {
+        for (index, color) in colors.enumerate() {
             if self.stop() {
                 break;
             }
-            let segment = color
-                .name
-                .filter(|name| !name.is_empty())
-                .map_or_else(|| index.to_string(), str::to_owned);
+            let segment = color.name.filter(|name| !name.is_empty()).map_or_else(
+                || std::borrow::Cow::Owned(index.to_string()),
+                std::borrow::Cow::Borrowed,
+            );
             let score = color.score.map_or(Leaf::Null, number_leaf);
             let marks = Marks {
                 color: Some(color.rgb),

@@ -47,7 +47,7 @@
 use crate::{
     ErrorWire,
     catalogs::CatalogInfoWire,
-    inspect::{InspectionWire, ObjectItemsWire},
+    inspect::{InspectionRead, InspectionReadResult, InspectionWire, ObjectItemsWire},
     live::{LiveAction, LiveEventsWire, LiveGapWire, LiveOpenedWire, LiveStatusWire},
 };
 use scene_store::{Search, Sort};
@@ -128,6 +128,8 @@ pub enum ClientMessage {
     },
     /// Asks for the leaves every object of a Sample Item the viewer holds has at the query paths named, for a search
     /// of the objects' fields; the answer is `InspectedFields`. A newer request replaces one not started yet.
+    InspectContinue(InspectionRead),
+    /// Queries selected paths across objects.
     InspectFields {
         /// The viewer's source id, `LaneInfo::source`.
         source: u16,
@@ -304,6 +306,13 @@ pub enum ServerMessage {
         inspection: InspectionWire,
     },
     /// The answer to an `InspectFields` request.
+    InspectContinued {
+        /// Request correlation number.
+        request: u32,
+        /// Bounded result, under the same frame authority as inspection.
+        result: InspectionReadResult,
+    },
+    /// The selected fields across objects.
     InspectedFields {
         /// The requested source.
         source: u16,

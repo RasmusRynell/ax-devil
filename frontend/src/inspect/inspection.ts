@@ -1,8 +1,8 @@
 /**
  * What the inspector shows of the selected object. The selection is the viewer's own state and survives seeking and
  * playing by object id. The summary comes at once from the Sample Item the lane shows; every other field comes from
- * one `Inspect` request per (source, data revision, sample, object): asking for a newer sample supersedes a request
- * still out (the backend keeps only the newest), and the last 16 replies are kept. A request whose reply never
+ * `Inspect` for (source, data revision, sample, object), followed by bounded pages and value chunks. Asking for a
+ * newer sample supersedes an outstanding request; only the current field window and one explicit copy are kept. A request whose reply never
  * comes (the backend may drop one) is asked again when its sample is wanted again, or after RESEND_AFTER draws.
  * Nothing is asked while no inspector page shows; the selection is kept and asked about when one does. A view only ever holds
  * the shown sample's data: while its reply is out the summary is the shown sample's and there are no fields. While a
@@ -11,13 +11,14 @@
  * the view is of, and never advances it to a draw skipped.
  */
 
-import { MOTION_STATES } from "../present/columns";
-import { maskKeeps } from "../present/filter/filter";
+import { MAX_COPY_BYTES } from "../generated/api";
+import { writeClipboard } from "../tools/table/clipboard";
+import { keyOf, summarize, sameSummary, type Shown } from "./inspectionSummary";
 import type { InspectionView, LaneFrame, Selection, Summary } from "../lanes/contract";
 import type { ClientMessage, FieldWire, InspectionWire, ServerMessage } from "../stream/protocol";
 
-/** How many replies are kept, so that stepping back and forth asks the backend once per frame. */
-const CACHE_SIZE = 16;
+/** One field window is retained; returning to another sample asks afresh. */
+const CACHE_SIZE = 1;
 
 /** The least time between two updates of what the inspector shows while a video plays: 10 Hz, in milliseconds. */
 export const PLAYING_INTERVAL_MS = 100;
@@ -25,54 +26,26 @@ export const PLAYING_INTERVAL_MS = 100;
 /** How many draws a request may stay unanswered while its sample is shown before it is asked again. */
 const RESEND_AFTER = 120;
 
-const encoder = new TextEncoder();
-
 type Reply = Extract<ServerMessage, { type: "Inspected" }>;
 
-/** The sample a selection is looked up in: the frame its lane draws, or why the object is not shown in it. */
-type Shown = { frame: LaneFrame; summary: Summary } | "gone" | "filtered";
-
-const keyOf = (source: number, revision: number, sample: number, entity: string): string =>
-  `${source}:${revision}:${sample}:${entity}`;
-
-/**
- * What the Sample Item says of the object; null when it has no such object, "filtered" when the lane's class toggles
- * or frame filter keep it from being shown (the same test the lane's rows are kept by).
- */
-function summarize(frame: LaneFrame, entity: string): Summary | "filtered" | null {
-  const { columns } = frame;
-  const bytes = encoder.encode(entity);
-  for (let row = 0; row < columns.rows; row++) {
-    if (!columns.strings.equals(columns.entityId[row], bytes)) continue;
-    const test = frame.filter?.test ?? null;
-    frame.filter?.ctx?.bind(columns);
-    if (
-      !maskKeeps(columns.classMask, row * columns.maskWords, frame.classMask) ||
-      (test !== null && test(row) !== 1)
-    )
-      return "filtered";
-    const classId = columns.classId[row];
-    const motion = columns.motion[row];
-    const number = (value: number) => (Number.isNaN(value) ? null : value);
-    return {
-      entity,
-      className: classId < 0 ? null : columns.strings.string(classId),
-      score: number(columns.score[row]),
-      confidence: number(columns.confidence[row]),
-      motion: motion === 0 ? null : MOTION_STATES[motion - 1],
-    };
-  }
-  return null;
-}
-
-const sameSummary = (a: Summary, b: Summary): boolean =>
-  a.entity === b.entity &&
-  a.className === b.className &&
-  a.score === b.score &&
-  a.confidence === b.confidence &&
-  a.motion === b.motion;
-
 export class Inspections {
+  readonly #changed: () => void;
+  #serial = 0;
+  #accessRevision = 0;
+  #pageOffset = 0;
+  #pending: {
+    request: number;
+    key: string;
+    lane: number;
+    token: string;
+    field: number | null;
+    path: boolean;
+    offset: number;
+  } | null = null;
+  #copy: { value: string; received: number; total: number } | null = null;
+  #error: string | null = null;
+  #copied = false;
+  #writing = false;
   readonly #send: (message: ClientMessage) => void;
   #selection: Selection = null;
   #frames: readonly (LaneFrame | undefined)[] = [];
@@ -113,7 +86,12 @@ export class Inspections {
   #cancel: (() => void) | undefined;
 
   /** `send` asks the backend for an object's fields; `now` reads the time in milliseconds. */
-  constructor(send: (message: ClientMessage) => void, now: () => number = () => performance.now()) {
+  constructor(
+    send: (message: ClientMessage) => void,
+    now: () => number = () => performance.now(),
+    changed: () => void = () => {},
+  ) {
+    this.#changed = changed;
     this.#send = send;
     this.#now = now;
   }
@@ -162,6 +140,12 @@ export class Inspections {
   /** Selects an object, or clears the selection with `null`. Reports whether the view changed. */
   select(selection: Selection): boolean {
     if (
+      selection?.lane !== this.#selection?.lane ||
+      selection?.source !== this.#selection?.source ||
+      selection?.entity !== this.#selection?.entity
+    )
+      this.#cancelRead();
+    if (
       selection?.entity !== this.#selection?.entity ||
       selection?.source !== this.#selection?.source
     ) {
@@ -176,7 +160,10 @@ export class Inspections {
   setVisible(visible: boolean): boolean {
     if (visible === this.#visible) return false;
     this.#visible = visible;
-    if (!visible) this.suspend();
+    if (!visible) {
+      this.suspend();
+      this.#cancelRead();
+    }
     return visible && this.#sync();
   }
 
@@ -185,6 +172,13 @@ export class Inspections {
    * `playing` the view follows only if it has not within PLAYING_INTERVAL_MS.
    */
   follow(frames: readonly (LaneFrame | undefined)[], playing = false): boolean {
+    const selected = this.#selection;
+    const shown = selected && frames[selected.lane];
+    const key =
+      shown && selected
+        ? keyOf(shown.source, shown.dataRevision, shown.sample, selected.entity)
+        : null;
+    if (this.#pending && this.#pending.key !== key) this.#cancelRead();
     this.#newest = frames;
     const resumed = this.#awaiting;
     this.#awaiting = false;
@@ -215,6 +209,7 @@ export class Inspections {
   /** The backend's answer to a request for fields. Reports whether the view changed. */
   receive(message: Reply): boolean {
     const key = keyOf(message.source, message.data_revision, message.sample, message.entity);
+    if (key !== this.#wanted) return false;
     if (key === this.#inflight?.key) this.#inflight = null;
     if (message.data_revision === this.#revisions.get(message.source)) {
       if (message.inspection.state === "Unavailable")
@@ -230,12 +225,141 @@ export class Inspections {
    * the viewer hold.
    */
   reconnect(): void {
+    this.#cancelRead();
     this.#inflight = null;
     this.#refused = null;
     this.#awaiting = true;
     this.#revisions.clear();
     this.#cache.clear();
     this.#update();
+  }
+
+  #cancelRead(): void {
+    this.#serial++;
+    this.#pending = null;
+    this.#copy = null;
+    this.#error = null;
+    this.#copied = false;
+    this.#accessRevision++;
+  }
+
+  #notify(): void {
+    this.#accessRevision++;
+    this.#update();
+    this.#changed();
+  }
+
+  #read(field: number | null, offset: number, path = false): void {
+    const key = this.#wanted;
+    const reply = key === null ? undefined : this.#cache.get(key);
+    if (
+      !key ||
+      reply?.state !== "Found" ||
+      !reply.continuation ||
+      !this.#selection ||
+      !this.#visible
+    )
+      return;
+    this.#cancelRead();
+    if (field !== null && this.#writing) {
+      this.#error = "Clipboard is busy";
+      this.#notify();
+      return;
+    }
+    if (field !== null) {
+      const cut = reply.fields
+        .map((entry) => (path ? entry.path_cut : entry.cut))
+        .find((cut) => cut?.[0] === field);
+      if (!cut) return;
+      if (cut[1] > MAX_COPY_BYTES) {
+        this.#error = `Value is ${cut[1]} bytes; copying supports at most ${MAX_COPY_BYTES} bytes`;
+        this.#notify();
+        return;
+      }
+      this.#copy = { value: "", received: 0, total: cut[1] };
+    }
+    this.#pending = {
+      request: ++this.#serial,
+      key,
+      lane: this.#selection.lane,
+      token: reply.continuation.token,
+      field,
+      path,
+      offset,
+    };
+    this.#sendRead();
+    this.#notify();
+  }
+
+  #sendRead(): void {
+    const pending = this.#pending;
+    if (pending)
+      this.#send({
+        type: "InspectContinue",
+        request: pending.request,
+        token: pending.token,
+        field: pending.field,
+        path: pending.path,
+        offset: pending.offset,
+      });
+  }
+
+  /** Accepts a page or chunk only for the current inspection request, selection, lane and sample. */
+  receiveContinuation(message: Extract<ServerMessage, { type: "InspectContinued" }>): boolean {
+    const pending = this.#pending;
+    if (
+      !pending ||
+      pending.request !== message.request ||
+      pending.key !== this.#wanted ||
+      pending.lane !== this.#selection?.lane ||
+      !this.#visible
+    )
+      return false;
+    const result = message.result;
+    if (result.state === "Refused") {
+      this.#cancelRead();
+      this.#error = result.reason;
+    } else if (result.state === "Page" && pending.field === null) {
+      this.#pageOffset = pending.offset;
+      this.#remember(pending.key, {
+        state: "Found",
+        fields: result.fields,
+        truncated: result.next !== null,
+        continuation: { token: pending.token, next: result.next },
+      });
+      this.#pending = null;
+    } else if (result.state === "Chunk" && this.#copy) {
+      const copy = this.#copy;
+      copy.value = `${copy.value}${result.text}`;
+      copy.received = result.next ?? result.total;
+      if (result.next !== null) {
+        pending.offset = result.next;
+        pending.request = ++this.#serial;
+        this.#sendRead();
+      } else {
+        this.#pending = null;
+        this.#commitCopy();
+      }
+    }
+    this.#notify();
+    return true;
+  }
+
+  #commitCopy(): void {
+    const copy = this.#copy;
+    if (!copy || copy.received !== copy.total || this.#writing) return;
+    const serial = this.#serial;
+    this.#copy = null;
+    this.#writing = true;
+    void writeClipboard(copy.value, () => serial === this.#serial).then((written) => {
+      this.#writing = false;
+      if (serial !== this.#serial) return;
+      this.#copied = written;
+      // A fresh click can grant clipboard permission after a long transfer, including an HTTP watcher.
+      this.#copy = written ? null : copy;
+      this.#error = written ? null : "Could not copy the value";
+      this.#notify();
+    });
   }
 
   /** Whether the request out for the shown sample has waited too long for its reply. */
@@ -296,9 +420,9 @@ export class Inspections {
 
   #update(): boolean {
     const selection = this.#selection;
-    this.#wanted = null;
     const next = selection ? this.#viewOf(selection) : ({ state: "none" } as const);
     // Asked for or refused, and no longer the shown sample: asked again if it is shown again.
+    if (next.state === "none" || next.state === "absent") this.#wanted = null;
     if (this.#inflight && this.#inflight.key !== this.#wanted) this.#inflight = null;
     if (this.#refused && this.#refused.key !== this.#wanted) this.#refused = null;
     this.#at = { selection, ...this.#sampleAt() };
@@ -318,7 +442,8 @@ export class Inspections {
             : next.state !== "absent" &&
               sameSummary(before.summary, next.summary) &&
               before.fields === next.fields &&
-              before.truncated === next.truncated)));
+              before.truncated === next.truncated &&
+              before.access?.revision === next.access?.revision)));
     if (same) return false;
     this.#view = next;
     return true;
@@ -326,11 +451,18 @@ export class Inspections {
 
   #viewOf(selection: NonNullable<Selection>): InspectionView {
     const shown = this.#shown(selection);
-    if (typeof shown === "string")
+    if (typeof shown === "string") {
+      this.#cancelRead();
       return { state: "absent", selection, reason: shown, last: this.#last };
+    }
     const { frame, summary } = shown;
     this.#last = summary;
     const key = keyOf(frame.source, frame.dataRevision, frame.sample, selection.entity);
+    if (this.#wanted !== key) {
+      this.#cancelRead();
+      this.#cache.clear();
+      this.#pageOffset = 0;
+    }
     this.#wanted = key;
     const reply = this.#cache.get(key);
     if (reply?.state === "Absent")
@@ -343,6 +475,34 @@ export class Inspections {
       summary,
       fields: found?.fields ?? NO_FIELDS,
       truncated: found?.truncated ?? false,
+      access: found?.continuation
+        ? {
+            revision: this.#accessRevision,
+            next:
+              found.continuation.next === null || this.#pending
+                ? null
+                : () => this.#read(null, found.continuation?.next ?? 0),
+            first: this.#pageOffset === 0 || this.#pending ? null : () => this.#read(null, 0),
+            copy: (ordinal, path) => this.#read(ordinal, 0, path),
+            cancel: () => {
+              this.#cancelRead();
+              this.#notify();
+            },
+            commit:
+              this.#copy?.received === this.#copy?.total && this.#copy !== null
+                ? () => {
+                    this.#commitCopy();
+                    this.#notify();
+                  }
+                : null,
+            progress:
+              this.#copy && this.#copy.received < this.#copy.total
+                ? { received: this.#copy.received, total: this.#copy.total }
+                : null,
+            error: this.#error,
+            copied: this.#copied,
+          }
+        : undefined,
     };
   }
 }

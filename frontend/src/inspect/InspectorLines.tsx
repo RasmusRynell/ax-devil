@@ -292,7 +292,7 @@ function rows(
       );
     }
     const found = line.kind === "field";
-    const full = found ? copyValue(line) : "";
+    const full = found ? (line.cut ? `${line.cut[1]} bytes` : copyValue(line)) : "";
     return (
       <FieldLine
         key={keyOf(line, i)}
@@ -324,8 +324,12 @@ export function InspectorLines({
   scope,
   memory,
   onMemory,
+  onCopyLarge,
+  onCopyStart,
 }: {
   fields: readonly FieldWire[];
+  onCopyLarge?: (ordinal: number, path?: boolean) => void;
+  onCopyStart?: () => void;
   /** The object's id, which leads the list. */
   entity: string;
   /** What the object is, lane and all; a copy mark does not outlast it. */
@@ -375,8 +379,11 @@ export function InspectorLines({
   const copyRow = (row: HTMLElement): boolean => {
     const { index, group } = row.dataset;
     const line = index === undefined ? undefined : all[Number(index)];
-    if (line?.kind === "field") copied.copy(ids[Number(index)] ?? "", copyValue(line));
-    else if (group === "raw") copied.copy(RAW_COPIED, rawJson(fields));
+    onCopyStart?.();
+    if (line?.kind === "field") {
+      if (line.cut) onCopyLarge?.(line.cut[0]);
+      else copied.copy(ids[Number(index)] ?? "", copyValue(line));
+    } else if (group === "raw") copied.copy(RAW_COPIED, rawJson(fields));
     else return false;
     return true;
   };
@@ -401,20 +408,41 @@ export function InspectorLines({
     if (key === undefined) event.stopPropagation();
     else setMenuKey(key);
   };
+  const pathCut = menuKey === null ? undefined : byKey.get(menuKey);
+  const longPath = pathCut?.kind === "field" ? pathCut.pathCut : undefined;
   const entries: MenuEntry[] =
     menuKey === null
       ? []
       : [
-          {
-            kind: "action",
-            id: "pin",
-            label: pinnedKeys.has(menuKey) ? "Unpin field" : "Pin field",
-          },
+          ...(pathCut?.id
+            ? [
+                {
+                  kind: "action" as const,
+                  id: "pin",
+                  label: pinnedKeys.has(menuKey) ? "Unpin field" : "Pin field",
+                },
+              ]
+            : []),
+          ...(longPath
+            ? [
+                {
+                  kind: "action" as const,
+                  id: "copy-path",
+                  label: `Copy path (${longPath[1]} bytes)`,
+                },
+              ]
+            : []),
         ];
 
   return (
     <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)]">
-      <ContextMenu entries={entries} onSelect={() => menuKey !== null && pin(menuKey)}>
+      <ContextMenu
+        entries={entries}
+        onSelect={(id) => {
+          if (id.id === "copy-path" && longPath) onCopyLarge?.(longPath[0], true);
+          else if (menuKey !== null) pin(menuKey);
+        }}
+      >
         <div
           className="flex h-full min-h-0 flex-col"
           style={{ "--label": label } as CSSProperties}

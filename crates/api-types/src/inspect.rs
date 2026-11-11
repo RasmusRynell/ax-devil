@@ -18,6 +18,14 @@ pub struct FieldWire {
     pub path: Vec<String>,
     /// The leaf: an integer exactly, a float, text, true or false, or null.
     pub value: Leaf,
+    /// Ordinal and full UTF-8 size when only a text preview is included.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "[number, number]")]
+    pub cut: Option<[u64; 2]>,
+    /// Ordinal and full dotted path size when the path exceeds a page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "[number, number]")]
+    pub path_cut: Option<[u64; 2]>,
     /// The colour the value is the score of, as red, green and blue; for an entry of a colour attribute.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -56,8 +64,12 @@ pub struct ObjectItemsWire {
 pub enum InspectionWire {
     /// The object's fields, in display order.
     Found {
-        /// At most 4096, and 8 MiB of paths and texts, with every text whole.
+        /// At most 4096 fields and 8 MiB of paths/text; large texts carry a preview and retrieval metadata.
         fields: Vec<FieldWire>,
+        /// Socket-local continuation capability and the next page's ordinal.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        continuation: Option<InspectionContinuation>,
         /// Whether fields were left out.
         truncated: bool,
     },
@@ -69,8 +81,70 @@ pub enum InspectionWire {
 
 /// Visits the types this module sends to the frontend.
 pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<InspectionContinuation>();
+    types.visit::<InspectionRead>();
+    types.visit::<InspectionReadResult>();
     types.visit::<FieldWire>();
     types.visit::<ItemWire>();
     types.visit::<ObjectItemsWire>();
     types.visit::<InspectionWire>();
 }
+
+/// A capability valid only in the socket that issued it, for one held entity/sample revision.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+pub struct InspectionContinuation {
+    /// Opaque capability; never grants authority beyond the requesting socket.
+    pub token: String,
+    /// Next field ordinal, absent on the final page.
+    pub next: Option<u32>,
+}
+
+/// One page or text chunk requested through the playback socket.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+pub struct InspectionRead {
+    /// Correlation number owned by the client's inspection ordering.
+    pub request: u32,
+    /// Capability from the initial inspection.
+    pub token: String,
+    /// Field ordinal for text retrieval; absent for a page.
+    pub field: Option<u32>,
+    /// Retrieve the dotted path instead of the value.
+    #[serde(default)]
+    pub path: bool,
+    /// Field ordinal for a page, UTF-8 byte offset for a text chunk.
+    pub offset: u32,
+}
+
+/// The result of one bounded continuation request.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(tag = "state")]
+pub enum InspectionReadResult {
+    /// A replacement window of fields.
+    Page {
+        /// Bounded fields in stable order.
+        fields: Vec<FieldWire>,
+        /// Next page ordinal, absent at the end.
+        next: Option<u32>,
+    },
+    /// A UTF-8-aligned piece of a value.
+    Chunk {
+        /// At most 64 KiB of UTF-8 text.
+        text: String,
+        /// Full UTF-8 byte count.
+        total: u32,
+        /// Next byte offset, absent at the end.
+        next: Option<u32>,
+    },
+    /// No data; the cursor is stale, authority ended, or the value exceeds the copy ceiling.
+    Refused {
+        /// Safe reason shown in the inspector.
+        reason: String,
+    },
+}
+
+/// Inspection limits exported from the owning Scene module to the client.
+pub const CONSTANTS: &[(&str, u64, &str)] = &[(
+    "MAX_COPY_BYTES",
+    scene::inspection::MAX_COPY_BYTES as u64,
+    "The maximum UTF-8 bytes assembled for one explicit inspection copy.",
+)];

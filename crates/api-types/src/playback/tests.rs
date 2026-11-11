@@ -165,8 +165,11 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
         sample: 3,
         entity: "7".into(),
         inspection: InspectionWire::Found {
+            continuation: None,
             fields: vec![
                 FieldWire {
+                    cut: None,
+                    path_cut: None,
                     group: FieldGroup::Debug,
                     origin: Some(FieldOrigin::Source),
                     path: vec!["tags".into(), "0".into()],
@@ -176,6 +179,8 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
                     fraction: None,
                 },
                 FieldWire {
+                    cut: None,
+                    path_cut: None,
                     group: FieldGroup::Classification,
                     origin: None,
                     path: vec!["class".into()],

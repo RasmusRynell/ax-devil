@@ -135,7 +135,10 @@ async fn a_held_sample_is_found_or_absent_and_anything_else_is_unavailable_witho
         Some(item.frame..=item.frame),
         "gated like the sample"
     );
-    let InspectionWire::Found { fields, truncated } = inspection else {
+    let InspectionWire::Found {
+        fields, truncated, ..
+    } = inspection
+    else {
         panic!("found");
     };
     assert!(!truncated);
@@ -298,4 +301,61 @@ async fn a_follower_is_not_sent_what_a_presenter_who_moved_on_no_longer_shows() 
     let (message, far) = answer(&mut inspections).await;
     assert_eq!(verdict(message), InspectionWire::Unavailable);
     assert!(far.is_none_or(|frames| !gate.admits(&frames)));
+}
+
+#[tokio::test]
+async fn a_cursor_cannot_cross_sockets_or_outlast_its_held_sample() {
+    let folder = tempfile::tempdir().unwrap();
+    let (mut viewer, revision) = viewer(folder.path()).await;
+    hold(&mut viewer, 10).await;
+    let mut inspections = Inspections::default();
+    inspections.ask(&viewer, 0, revision, 10, "2".into());
+    let (message, _) = answer(&mut inspections).await;
+    let InspectionWire::Found {
+        continuation: Some(cursor),
+        ..
+    } = verdict(message)
+    else {
+        panic!("cursor");
+    };
+    let read = InspectionRead {
+        path: false,
+        token: cursor.token,
+        request: 1,
+        field: None,
+        offset: 0,
+    };
+    let mut other_seat = Inspections::default();
+    other_seat.continue_target(read.clone(), viewer.inspect_target(0, revision, 10));
+    let (message, frames) = answer(&mut other_seat).await;
+    assert!(matches!(
+        message,
+        ServerMessage::InspectContinued {
+            result: InspectionReadResult::Refused { .. },
+            ..
+        }
+    ));
+    assert_eq!(frames, None);
+    inspections.continue_target(read.clone(), viewer.inspect_target(0, revision, 10));
+    let (message, frames) = answer(&mut inspections).await;
+    assert!(matches!(
+        message,
+        ServerMessage::InspectContinued {
+            result: InspectionReadResult::Page { .. },
+            ..
+        }
+    ));
+    assert!(frames.is_some());
+    hold(&mut viewer, 40).await;
+    inspections.continue_target(read, viewer.inspect_target(0, revision, 10));
+    let (message, frames) = answer(&mut inspections).await;
+    let ServerMessage::InspectContinued {
+        result: InspectionReadResult::Refused { reason },
+        ..
+    } = message
+    else {
+        panic!("stale cursor refused");
+    };
+    assert_eq!(reason, "Inspection expired; select the object again");
+    assert_eq!(frames, None);
 }

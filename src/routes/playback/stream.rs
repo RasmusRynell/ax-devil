@@ -260,6 +260,17 @@ impl<I: Incoming> Playing<'_, I> {
                     .ask(self.lanes.overlays(), source, data_revision, sample, entity);
                 Ok(())
             }
+            Some(Ok(ClientMessage::InspectContinue(read))) => {
+                let target = self.inspections.continuation_target(&read.token).and_then(
+                    |(source, revision, sample)| {
+                        self.lanes
+                            .overlays()
+                            .inspect_target(source, revision, u64::from(sample))
+                    },
+                );
+                self.inspections.continue_target(read, target);
+                Ok(())
+            }
             Some(Ok(ClientMessage::InspectFields {
                 source,
                 data_revision,

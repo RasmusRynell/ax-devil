@@ -230,6 +230,15 @@ impl<I: Incoming> Live<'_, I> {
                     .ask_target(source, data_revision, sample, entity, target);
                 Ok(())
             }
+            Some(Ok(ClientMessage::InspectContinue(read))) => {
+                let target = self.inspections.continuation_target(&read.token).and_then(
+                    |(source, revision, sample)| {
+                        self.viewer.inspect_target(source, revision, sample)
+                    },
+                );
+                self.inspections.continue_target(read, target);
+                Ok(())
+            }
             Some(Ok(ClientMessage::InspectFields {
                 source,
                 data_revision,

@@ -9,13 +9,16 @@
 
 use super::{Outgoing, text};
 use api_types::{
-    inspect::{FieldWire, InspectionWire, ItemWire, ObjectItemsWire},
+    inspect::{
+        FieldWire, InspectionContinuation, InspectionRead, InspectionReadResult, InspectionWire,
+        ItemWire, ObjectItemsWire,
+    },
     playback::ServerMessage,
 };
 use overlays::ViewerOverlays;
 use scene::{
     Scene,
-    inspection::{Budget, InspectionField, MAX_FIELDS, entity_fields, query_leaves},
+    inspection::{Budget, InspectionField, field_chunk, field_page, query_leaves},
 };
 use scene_store::{TrackRead, TrackSnapshot};
 use std::sync::Arc;
@@ -38,7 +41,8 @@ const SEARCH_BUDGET: Budget = Budget {
 #[derive(Clone)]
 enum Ask {
     /// All the fields of the object with this id.
-    Object(String),
+    Object(String, String),
+    Continue(String, InspectionRead),
     /// The leaves of every object at these query paths, as the client spelled them.
     Paths(Vec<String>),
 }
@@ -47,7 +51,7 @@ impl Ask {
     /// Whether the request is of a size to answer.
     fn within_bounds(&self) -> bool {
         match self {
-            Self::Object(entity) => entity.len() <= MAX_ENTITY_BYTES,
+            Self::Object(entity, _) | Self::Continue(entity, _) => entity.len() <= MAX_ENTITY_BYTES,
             Self::Paths(paths) => {
                 paths.len() <= MAX_PATHS && paths.iter().all(|path| path.len() <= MAX_PATH_BYTES)
             }
@@ -119,6 +123,7 @@ impl Queue {
 pub(super) struct Inspections {
     objects: Queue,
     searches: Queue,
+    cursor: Option<(String, u16, u32, u32, String)>,
 }
 
 impl Inspections {
@@ -145,7 +150,9 @@ impl Inspections {
         entity: String,
         target: Option<Target>,
     ) {
-        let ask = Ask::Object(entity);
+        let token = sessions::Secret::generate().to_string();
+        self.cursor = Some((token.clone(), source, data_revision, sample, entity.clone()));
+        let ask = Ask::Object(entity, token);
         let request = Request {
             source,
             data_revision,
@@ -153,6 +160,30 @@ impl Inspections {
             ask,
         };
         self.objects.ask(request, target);
+    }
+
+    /// Identifies the target only for this socket's current capability. The caller rechecks its held sample.
+    pub(super) fn continuation_target(&self, token: &str) -> Option<(u16, u32, u32)> {
+        let (held, source, revision, sample, _) = self.cursor.as_ref()?;
+        (token == held).then_some((*source, *revision, *sample))
+    }
+
+    /// Queues a continuation under freshly checked sample authority.
+    pub(super) fn continue_target(&mut self, read: InspectionRead, target: Option<Target>) {
+        let valid = self.continuation_target(&read.token);
+        let (source, data_revision, sample) = valid.unwrap_or_default();
+        let entity = self
+            .cursor
+            .as_ref()
+            .map_or_else(String::new, |cursor| cursor.4.clone());
+        let request = Request {
+            source,
+            data_revision,
+            sample,
+            ask: Ask::Continue(entity, read),
+        };
+        self.objects
+            .ask(request, target.filter(|_| valid.is_some()));
     }
 
     /// Takes a request for the leaves of every object at `paths`, replacing one that has not started.
@@ -232,14 +263,18 @@ fn reply(request: &Request, scene: Option<&Scene>) -> ServerMessage {
     } = request;
     let (source, data_revision, sample) = (*source, *data_revision, *sample);
     match ask {
-        Ask::Object(entity) => ServerMessage::Inspected {
+        Ask::Object(entity, token) => ServerMessage::Inspected {
             source,
             data_revision,
             sample,
             entity: entity.clone(),
             inspection: scene.map_or(InspectionWire::Unavailable, |scene| {
-                inspection(scene, entity)
+                inspection(scene, entity, token)
             }),
+        },
+        Ask::Continue(entity, read) => ServerMessage::InspectContinued {
+            request: read.request,
+            result: continued(scene, entity, read),
         },
         Ask::Paths(paths) => ServerMessage::InspectedFields {
             source,
@@ -251,16 +286,53 @@ fn reply(request: &Request, scene: Option<&Scene>) -> ServerMessage {
     }
 }
 
-fn inspection(scene: &Scene, entity: &str) -> InspectionWire {
+fn inspection(scene: &Scene, entity: &str, token: &str) -> InspectionWire {
     match scene.entity(entity) {
         Some(entity) => {
-            let (fields, truncated) = entity_fields(entity, MAX_FIELDS);
+            let page = field_page(entity, 0);
+            let next = page.next.map(|next| next as u32);
             InspectionWire::Found {
-                fields: fields.into_iter().map(field).collect(),
-                truncated,
+                fields: page.fields.into_iter().map(page_field).collect(),
+                truncated: next.is_some(),
+                continuation: Some(InspectionContinuation {
+                    token: token.to_owned(),
+                    next,
+                }),
             }
         }
         None => InspectionWire::Absent,
+    }
+}
+
+fn page_field(item: scene::inspection::PageField) -> FieldWire {
+    let mut wire = field(item.field);
+    wire.cut = item
+        .cut
+        .map(|(ordinal, bytes)| [ordinal as u64, bytes as u64]);
+    wire
+}
+
+fn continued(scene: Option<&Scene>, entity: &str, read: &InspectionRead) -> InspectionReadResult {
+    let Some(entity) = scene.and_then(|scene| scene.entity(entity)) else {
+        return InspectionReadResult::Refused {
+            reason: "Inspection expired; select the object again".into(),
+        };
+    };
+    if let Some(ordinal) = read.field {
+        match field_chunk(entity, ordinal as usize, read.offset as usize, read.path) {
+            Ok(chunk) => InspectionReadResult::Chunk {
+                text: chunk.text,
+                total: chunk.total as u32,
+                next: chunk.next.map(|next| next as u32),
+            },
+            Err(reason) => InspectionReadResult::Refused { reason },
+        }
+    } else {
+        let page = field_page(entity, read.offset as usize);
+        InspectionReadResult::Page {
+            fields: page.fields.into_iter().map(page_field).collect(),
+            next: page.next.map(|next| next as u32),
+        }
     }
 }
 
@@ -287,6 +359,8 @@ fn leaves(scene: &Scene, paths: &[String]) -> Option<Vec<ObjectItemsWire>> {
 
 fn field(field: InspectionField) -> FieldWire {
     FieldWire {
+        cut: None,
+        path_cut: None,
         group: field.group,
         origin: field.origin,
         path: field.path,

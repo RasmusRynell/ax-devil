@@ -47,6 +47,8 @@ export type Line =
       id: FieldId | null;
       label: string;
       value: FieldWire["value"];
+      cut?: FieldWire["cut"];
+      pathCut?: FieldWire["path_cut"];
       /** The colour a colour field's value is the score of. */
       rgb?: FieldWire["rgb"];
       /** What the row shows in place of the value. */
@@ -126,10 +128,12 @@ function fieldLine(field: FieldWire): Line {
   const id = { group: field.group, path: field.path };
   return {
     kind: "field",
-    key: fieldKey(id),
-    id,
+    key: field.path_cut ? `${fieldKey(id)}\u0000${field.path_cut[0]}` : fieldKey(id),
+    id: field.path_cut ? null : id,
     label: (field.rgb ? field.path.slice(-1) : field.path).join(".") || "value",
     value: field.value,
+    cut: field.cut,
+    pathCut: field.path_cut,
     rgb: field.rgb,
     text: field.text,
     fraction: field.fraction,
@@ -164,6 +168,8 @@ export function inspectorLines(
           id,
           label,
           value: found.value,
+          cut: found.cut,
+          pathCut: found.path_cut,
           rgb: found.rgb,
           text: found.text,
           fraction: found.fraction,
@@ -180,7 +186,7 @@ export function inspectorLines(
       heading,
       fold: group,
       folded: isFolded,
-      copyable: group === "raw",
+      copyable: group === "raw" && !own.some((field) => field.cut || field.path_cut),
       count: own.length,
     };
     if (isFolded) return [caption];
