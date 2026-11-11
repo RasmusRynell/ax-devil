@@ -7,15 +7,13 @@ use serde::Serialize;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Scope {
-    /// How one person's app behaves, such as the theme and the shortcuts.
+    /// How one person's app behaves, such as the shortcuts and the defaults for new overlays.
     Personal,
     /// What the server works with: device and broker defaults, folders, cache.
     Server,
-}
-
-impl Scope {
-    /// Every scope, for the person who owns the backend.
-    pub const ALL: [Self; 2] = [Self::Personal, Self::Server];
+    /// What depends on the screen in front of you, such as the theme and the text size. It lives on that device and
+    /// never reaches the server.
+    Device,
 }
 
 /// One declared setting.
@@ -86,7 +84,7 @@ pub const TABLE: &[Setting] = &[
         section: "Appearance",
         env: false,
         quick_setup: true,
-        scope: Scope::Personal,
+        scope: Scope::Device,
         ..BASE
     },
     Setting {
@@ -107,7 +105,7 @@ pub const TABLE: &[Setting] = &[
         section: "Appearance",
         env: false,
         quick_setup: true,
-        scope: Scope::Personal,
+        scope: Scope::Device,
         ..BASE
     },
     Setting {

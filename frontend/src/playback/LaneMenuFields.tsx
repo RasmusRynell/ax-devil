@@ -1,4 +1,5 @@
 import { useId, useState, type ReactNode } from "react";
+import { useAccess } from "../access";
 import type { SettingsState } from "../generated/api";
 import type { SettingKey } from "../generated/settings";
 import { Button } from "../kit/Button";
@@ -98,7 +99,10 @@ export function MakeDefault({
   usable?: boolean;
 }) {
   const { set } = useSettings();
+  const { owner } = useAccess();
   const [refusal, setRefusal] = useState<string | null>(null);
+  // The defaults are the Owner's to change.
+  if (!owner) return null;
   return (
     <div className="flex flex-col items-start gap-s">
       {isDefault ? (

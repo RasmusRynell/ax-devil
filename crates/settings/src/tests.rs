@@ -3,13 +3,14 @@ use migrate::Migration;
 use serde_json::json;
 use std::fs;
 
-/// Every setting at its default, with the theme `theme` and the quick setup done.
+/// Every setting the server holds at its default, with the overlay mode `theme` and the quick setup done.
 fn values(theme: &str) -> BTreeMap<String, Value> {
     let mut all: BTreeMap<String, Value> = TABLE
         .iter()
+        .filter(|setting| setting.scope != Scope::Device)
         .map(|setting| (setting.key.to_owned(), setting.kind.default_value()))
         .collect();
-    all.insert("ui.theme".into(), json!(theme));
+    all.insert("camera.overlay".into(), json!(theme));
     all.insert("ui.quick_setup_done".into(), json!(true));
     all
 }
@@ -118,7 +119,7 @@ fn the_view_defaults_take_a_whole_object_in_range_and_sticky_is_not_written_whil
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
     let settings = Settings::load(&path).unwrap();
-    let mut edit = change("auto");
+    let mut edit = change("datahub");
     edit.set.insert(
         "overlays.default_sticky".into(),
         json!({"enabled": true, "timeout_ms": 2050, "opacity": 1.0}),
@@ -148,16 +149,16 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(
         &path,
-        r#"{"version": 1, "settings": {"ui.theme": "light", "ui.zoom": "large"},
+        r#"{"version": 1, "settings": {"camera.overlay": "rtsp", "ui.zoom": "large"},
             "shortcuts": {"exit": null, "gone": "Ctrl+J"}, "extra": [1]}"#,
     )
     .unwrap();
 
     let settings = Settings::load(&path).unwrap();
-    assert_eq!(settings.state().values()["ui.theme"], "light");
+    assert_eq!(settings.state().values()["camera.overlay"], "rtsp");
     assert_eq!(settings.state().shortcuts()["exit"], None);
 
-    let mut edit = change("dark");
+    let mut edit = change("mqtt");
     edit.set.insert("ui.quick_setup_done".into(), json!(false));
     edit.shortcuts_set
         .insert("exit".into(), Some("Ctrl+Alt+Q".into()));
@@ -167,14 +168,14 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
         read(&path),
         json!({
             "version": 1,
-            "settings": {"ui.theme": "dark", "ui.zoom": "large"},
+            "settings": {"camera.overlay": "mqtt", "ui.zoom": "large"},
             "shortcuts": {"exit": "Ctrl+Alt+Q", "gone": "Ctrl+J"},
             "extra": [1],
         }),
         "only what differs from the default is written; unknown entries stay"
     );
     let again = Settings::load(&path).unwrap().state();
-    assert_eq!(again.values()["ui.theme"], "dark");
+    assert_eq!(again.values()["camera.overlay"], "mqtt");
     assert_eq!(again.shortcuts()["exit"].as_deref(), Some("Ctrl+Alt+Q"));
     assert_eq!(
         fs::read_dir(path.parent().unwrap()).unwrap().count(),
@@ -182,13 +183,47 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
         "no temporary file is left behind"
     );
 
-    let mut reset = change("auto");
+    let mut reset = change("datahub");
     reset.set.insert("ui.quick_setup_done".into(), json!(false));
     settings.patch(&reset).unwrap();
     assert_eq!(
         read(&path)["settings"],
         json!({"ui.zoom": "large"}),
         "resetting deletes the key"
+    );
+}
+
+#[test]
+fn the_server_neither_takes_nor_keeps_a_device_setting() {
+    let folder = tempfile::tempdir().unwrap();
+    let path = folder.path().join("settings.json");
+    fs::write(
+        &path,
+        r#"{"version": 1, "settings": {"ui.theme": "dark", "ui.text_size": "neon"}}"#,
+    )
+    .unwrap();
+    let settings = Settings::load(&path).unwrap();
+    assert!(!settings.state().values().contains_key("ui.theme"));
+
+    for patch in [
+        Patch {
+            set: BTreeMap::from([("ui.theme".to_owned(), json!("dark"))]),
+            ..Patch::default()
+        },
+        Patch {
+            reset: BTreeSet::from(["ui.text_size".to_owned()]),
+            ..Patch::default()
+        },
+    ] {
+        let error = settings.patch(&patch).unwrap_err();
+        assert!(error.invalid && error.reason == "unknown setting");
+    }
+
+    settings.patch(&change("mqtt")).unwrap();
+    assert_eq!(
+        read(&path)["settings"],
+        json!({"camera.overlay": "mqtt", "ui.quick_setup_done": true}),
+        "the old values are dropped with the next write"
     );
 }
 
@@ -206,8 +241,8 @@ fn a_file_that_cannot_be_trusted_stops_loading_naming_the_file_and_key_and_is_le
         ),
         (
             "invalid value",
-            r#"{"version": 1, "settings": {"ui.theme": "neon"}}"#,
-            "ui.theme",
+            r#"{"version": 1, "settings": {"camera.overlay": "neon"}}"#,
+            "camera.overlay",
         ),
         (
             "bad shortcut key",
@@ -241,14 +276,14 @@ fn a_file_that_cannot_be_trusted_stops_loading_naming_the_file_and_key_and_is_le
 fn rename_theme(doc: &mut Map<String, Value>) -> Result<(), String> {
     let settings = doc["settings"].as_object_mut().ok_or("no settings")?;
     let theme = settings.remove("theme").ok_or("no theme")?;
-    settings.insert("ui.theme".into(), theme);
+    settings.insert("camera.overlay".into(), theme);
     Ok(())
 }
 
 fn rename_night(doc: &mut Map<String, Value>) -> Result<(), String> {
-    let theme = doc["settings"]["ui.theme"].as_str() == Some("night");
+    let theme = doc["settings"]["camera.overlay"].as_str() == Some("night");
     if theme {
-        doc["settings"]["ui.theme"] = json!("dark");
+        doc["settings"]["camera.overlay"] = json!("mqtt");
     }
     Ok(())
 }
@@ -267,8 +302,8 @@ fn an_older_file_is_backed_up_migrated_in_order_and_written_at_the_current_versi
     let v1 = r#"{"version": 1, "settings": {"theme": "night"}}"#;
     let (folder, path, settings) = load(v1);
     assert_eq!(
-        settings.state().values()["ui.theme"],
-        "dark",
+        settings.state().values()["camera.overlay"],
+        "mqtt",
         "step 2 saw the result of step 1"
     );
     assert_eq!(
@@ -281,10 +316,10 @@ fn an_older_file_is_backed_up_migrated_in_order_and_written_at_the_current_versi
         "the migrated file is written at once"
     );
 
-    let (folder, _, settings) = load(r#"{"version": 2, "settings": {"ui.theme": "night"}}"#);
+    let (folder, _, settings) = load(r#"{"version": 2, "settings": {"camera.overlay": "night"}}"#);
     assert_eq!(
-        settings.state().values()["ui.theme"],
-        "dark",
+        settings.state().values()["camera.overlay"],
+        "mqtt",
         "a v2 file skips step 1"
     );
     assert!(folder.path().join("settings.v2.json").exists());
@@ -293,7 +328,7 @@ fn an_older_file_is_backed_up_migrated_in_order_and_written_at_the_current_versi
 #[test]
 fn a_migration_backup_never_overwrites_an_earlier_one() {
     let chain: [Migration; 1] = [rename_theme];
-    let old = r#"{"version": 1, "settings": {"theme": "dark"}}"#;
+    let old = r#"{"version": 1, "settings": {"theme": "mqtt"}}"#;
     let launch = |folder: &Path, text: &str| {
         let path = folder.join("settings.json");
         fs::write(&path, text).unwrap();
@@ -311,12 +346,12 @@ fn a_migration_backup_never_overwrites_an_earlier_one() {
         "the same bytes reuse the backup"
     );
 
-    let edited = r#"{"version": 1, "settings": {"theme": "light"}}"#;
+    let edited = r#"{"version": 1, "settings": {"theme": "rtsp"}}"#;
     launch(folder.path(), edited);
     assert_eq!(backup("settings.v1.json"), old, "the first copy is kept");
     assert_eq!(backup("settings.v1.1.json"), edited);
 
-    let third = r#"{"version": 1, "settings": {"theme": "auto"}}"#;
+    let third = r#"{"version": 1, "settings": {"theme": "datahub"}}"#;
     launch(folder.path(), third);
     assert_eq!(backup("settings.v1.json"), old);
     assert_eq!(backup("settings.v1.1.json"), edited);
@@ -375,25 +410,25 @@ fn saving_replaces_a_linked_settings_file_with_a_private_file_and_leaves_the_tar
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("ax-devil/settings.json");
     let target = folder.path().join("elsewhere.json");
-    let original = r#"{"version": 1, "settings": {"ui.theme": "light"}}"#;
+    let original = r#"{"version": 1, "settings": {"camera.overlay": "rtsp"}}"#;
     fs::write(&target, original).unwrap();
     fs::create_dir(path.parent().unwrap()).unwrap();
     std::os::unix::fs::symlink(&target, &path).unwrap();
 
     let settings = Settings::load(&path).unwrap();
-    assert_eq!(settings.state().values()["ui.theme"], "light");
-    settings.patch(&change("dark")).unwrap();
+    assert_eq!(settings.state().values()["camera.overlay"], "rtsp");
+    settings.patch(&change("mqtt")).unwrap();
 
     assert_eq!(fs::read_to_string(&target).unwrap(), original);
     assert!(!fs::symlink_metadata(&path).unwrap().is_symlink());
-    assert_eq!(read(&path)["settings"]["ui.theme"], "dark");
+    assert_eq!(read(&path)["settings"]["camera.overlay"], "mqtt");
     let mode = fs::metadata(&path).unwrap().permissions().mode();
     assert_eq!(mode & 0o777, 0o600, "the file may hold credentials");
 
     let private = folder.path().join("a/b/settings.json");
     Settings::load(&private)
         .unwrap()
-        .patch(&change("dark"))
+        .patch(&change("mqtt"))
         .unwrap();
     let mode = fs::metadata(private.parent().unwrap())
         .unwrap()
@@ -408,22 +443,22 @@ fn a_rejected_patch_changes_neither_state_nor_file() {
     let path = folder.path().join("settings.json");
     let settings = Settings::load(&path).unwrap();
 
-    let mut unknown = change("dark");
+    let mut unknown = change("mqtt");
     unknown.set.insert("ui.zoom".into(), json!(2));
-    let mut unknown_command = change("dark");
+    let mut unknown_command = change("mqtt");
     unknown_command
         .shortcuts_set
         .insert("teleport".into(), None);
-    let mut duplicate = change("dark");
+    let mut duplicate = change("mqtt");
     duplicate
         .shortcuts_set
         .insert("exit".into(), Some("Ctrl+S".into()));
-    let mut reserved = change("dark");
+    let mut reserved = change("mqtt");
     reserved
         .shortcuts_set
         .insert("exit".into(), Some("Ctrl+0".into()));
     for (rejected, location) in [
-        (change("neon"), "ui.theme"),
+        (change("neon"), "camera.overlay"),
         (unknown, "ui.zoom"),
         (unknown_command, "shortcuts.teleport"),
         (duplicate, "shortcuts.exit"),
@@ -434,7 +469,7 @@ fn a_rejected_patch_changes_neither_state_nor_file() {
         assert!(error.invalid);
     }
 
-    assert_eq!(settings.state().values()["ui.theme"], "auto");
+    assert_eq!(settings.state().values()["camera.overlay"], "datahub");
     assert!(!path.exists());
 }
 
@@ -443,13 +478,13 @@ fn a_patch_is_checked_against_the_stored_state_and_a_refusal_changes_nothing() {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
     let settings = Settings::load(&path).unwrap();
-    settings.patch(&change("dark")).unwrap();
+    settings.patch(&change("mqtt")).unwrap();
 
     let refused = settings
-        .patch_if(&change("light"), |stored| {
-            assert_eq!(stored.values()["ui.theme"], "dark");
+        .patch_if(&change("rtsp"), |stored| {
+            assert_eq!(stored.values()["camera.overlay"], "mqtt");
             Err(Error {
-                location: "ui.theme".into(),
+                location: "camera.overlay".into(),
                 reason: "no".into(),
                 invalid: true,
                 forbidden: false,
@@ -458,8 +493,8 @@ fn a_patch_is_checked_against_the_stored_state_and_a_refusal_changes_nothing() {
         .unwrap_err();
 
     assert_eq!(refused.reason, "no");
-    assert_eq!(settings.state().values()["ui.theme"], "dark");
-    assert_eq!(read(&path)["settings"]["ui.theme"], "dark");
+    assert_eq!(settings.state().values()["camera.overlay"], "mqtt");
+    assert_eq!(read(&path)["settings"]["camera.overlay"], "mqtt");
 }
 
 #[test]
@@ -469,7 +504,7 @@ fn the_video_cache_is_auto_or_whole_mib_in_range_and_a_saved_number_survives_a_r
     let settings = Settings::load(&path).unwrap();
     assert_eq!(settings.state().auto_or_whole("playback.video_cache"), None);
     let with = |cache: Value| {
-        let mut all = change("dark");
+        let mut all = change("mqtt");
         all.set.insert("playback.video_cache".into(), cache);
         all
     };
@@ -509,7 +544,10 @@ fn subscribers_see_each_saved_change_and_nothing_for_a_rejected_one() {
         "a rejected change is not announced"
     );
 
-    settings.patch(&change("dark")).unwrap();
+    settings.patch(&change("mqtt")).unwrap();
     assert!(changes.has_changed().unwrap());
-    assert_eq!(changes.borrow_and_update().values()["ui.theme"], "dark");
+    assert_eq!(
+        changes.borrow_and_update().values()["camera.overlay"],
+        "mqtt"
+    );
 }

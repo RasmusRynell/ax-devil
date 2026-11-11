@@ -12,19 +12,19 @@ use ax_devil::{
     share::{Hosting, LinkBase},
 };
 use serde_json::{Value, json};
-use session_client::{Proxy, Socket, get, patch_settings};
+use session_client::{Proxy, Socket, get};
 use sessions::Secret;
 use std::{net::SocketAddr, path::Path, sync::Arc};
 
-const PASSWORD: &str = "pw";
+pub(crate) const PASSWORD: &str = "pw";
 
 /// A server with a password, whose links point at itself, like `serve`. Returns its address.
-async fn serve(folder: &Path) -> String {
+pub(crate) async fn serve(folder: &Path) -> String {
     serve_with(folder, None).await
 }
 
 /// As [`serve`], with `launch` waiting for the first Local session.
-async fn serve_with(folder: &Path, launch: Option<Launch>) -> String {
+pub(crate) async fn serve_with(folder: &Path, launch: Option<Launch>) -> String {
     let settings = settings::Settings::load(&folder.join("default.json")).unwrap();
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
@@ -57,15 +57,15 @@ async fn serve_with(folder: &Path, launch: Option<Launch>) -> String {
     address.to_string()
 }
 
-fn of_type(kind: &'static str) -> impl Fn(&Value) -> bool {
+pub(crate) fn of_type(kind: &'static str) -> impl Fn(&Value) -> bool {
     move |message| message["type"] == kind
 }
 
-fn command(seq: u64, cmd: Value) -> Value {
+pub(crate) fn command(seq: u64, cmd: Value) -> Value {
     json!({"type": "command", "seq": seq, "cmd": cmd})
 }
 
-fn view(seq: u64, open: bool) -> Value {
+pub(crate) fn view(seq: u64, open: bool) -> Value {
     json!({"type": "view", "seq": seq, "view": {
         "sidebar": {"view": "live", "open": open}, "viewers": {}}})
 }
@@ -260,95 +260,6 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
     )
     .await;
     assert_eq!(late.closed().await, 4401);
-}
-
-#[tokio::test]
-async fn a_settings_change_is_announced_to_an_owner_connection_and_never_to_a_join_link() {
-    let folder = tempfile::tempdir().unwrap();
-    let address = serve(folder.path()).await;
-    let mut owner = Socket::own(&address, Some(PASSWORD)).await;
-    // An Owner is told the current revision at once, so a change made before it connected is not missed.
-    let first = owner.until(of_type("settings")).await["revision"]
-        .as_u64()
-        .unwrap();
-    owner
-        .say(command(
-            1,
-            json!({"type": "control", "control": {"type": "share", "access": "watch"}}),
-        ))
-        .await;
-    let seat = owner
-        .until(|m| m["type"] == "seat" && !m["sharing"].is_null())
-        .await;
-    let link = seat["sharing"]["link"].as_str().unwrap();
-    let link = link.split("join=").nth(1).unwrap();
-    let mut guest = Socket::connect(&address, "/api/session").await;
-    guest
-        .say(
-            json!({"type": "hello", "auth": {"type": "join", "link": link},
-                    "cursors": {"show": true, "share": true}}),
-        )
-        .await;
-
-    let saved = patch_settings(&address, PASSWORD, &json!({"set": {"ui.theme": "dark"}})).await;
-    let told = owner
-        .until(|m| m["type"] == "settings" && m["revision"] != first)
-        .await;
-    assert_eq!(
-        told,
-        json!({"type": "settings", "revision": saved["revision"]})
-    );
-
-    // The guest's own view is answered after the change, and nothing about settings came before it.
-    guest.say(view(1, false)).await;
-    guest
-        .until(|m| {
-            assert_ne!(m["type"], "settings", "a guest was told");
-            m["type"] == "seat" && m["viewsDone"] == 1
-        })
-        .await;
-}
-
-#[tokio::test]
-async fn an_owner_attached_as_a_guest_seat_is_still_told_of_a_settings_change() {
-    let folder = tempfile::tempdir().unwrap();
-    let on =
-        json!({"version": settings::VERSION, "settings": {"server.password_full_access": true}});
-    std::fs::write(folder.path().join("default.json"), on.to_string()).unwrap();
-    let address = serve(folder.path()).await;
-    // A Session created with Full access reads the server's environment, so an Owner without it attaches as a Guest, if it is shared.
-    let mut creator = Socket::own(&address, Some(PASSWORD)).await;
-    let session = creator.until(of_type("welcome")).await["session"].clone();
-    creator
-        .say(command(
-            1,
-            json!({"type": "control", "control": {"type": "share", "access": "watch"}}),
-        ))
-        .await;
-    creator
-        .until(|m| m["type"] == "seat" && !m["sharing"].is_null())
-        .await;
-    patch_settings(
-        &address,
-        PASSWORD,
-        &json!({"set": {"server.password_full_access": false}}),
-    )
-    .await;
-
-    let mut attached = Socket::connect(&address, "/api/session").await;
-    attached
-        .say(json!({"type": "hello",
-            "auth": {"type": "attach", "session": session, "serverPassword": PASSWORD},
-            "cursors": {"show": true, "share": true}}))
-        .await;
-    let first = attached.until(of_type("settings")).await["revision"]
-        .as_u64()
-        .unwrap();
-    let saved = patch_settings(&address, PASSWORD, &json!({"set": {"ui.theme": "dark"}})).await;
-    let told = attached
-        .until(|m| m["type"] == "settings" && m["revision"].as_u64() != Some(first))
-        .await;
-    assert_eq!(told["revision"], saved["revision"]);
 }
 
 #[tokio::test]

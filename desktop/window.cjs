@@ -171,11 +171,11 @@ async function suffixed(window, chosen, suffix) {
  * Registers every IPC handler, each answering only its own window's trusted page. `connect` is honoured from a
  * local window and `disconnect` from a remote one, and `restart` from a local one, by the callbacks given here.
  */
-function installIpc({ connect, disconnect, restart }) {
+function installIpc({ connect, disconnect, restart, device }) {
   const on = (channel, act) =>
-    ipcMain.on(channel, (event) => {
+    ipcMain.on(channel, (event, ...args) => {
       try {
-        act(sender(event));
+        act(sender(event), ...args);
       } catch {
         // A message from an untrusted page is dropped.
       }
@@ -191,6 +191,21 @@ function installIpc({ connect, disconnect, restart }) {
   // A remote page's settings belong to its server, which this app cannot restart.
   on("app:restart", ({ remote }) => {
     if (!remote) restart();
+  });
+  // This device's settings are one file whichever server a window shows; a change reaches the other windows.
+  ipcMain.on("device:values", (event) => {
+    try {
+      sender(event);
+      event.returnValue = device.read();
+    } catch {
+      event.returnValue = {};
+    }
+  });
+  on("device:set", ({ window }, key, value) => {
+    if (!device.set(key, value)) return;
+    for (const other of BrowserWindow.getAllWindows())
+      if (other !== window && trusted.has(other.webContents))
+        other.webContents.send("device:changed", device.read());
   });
   handle("window:is-maximized", ({ window }) => window.isMaximized());
   handle("window:is-fullscreen", ({ window }) => window.isFullScreen());

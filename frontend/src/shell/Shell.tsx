@@ -146,7 +146,7 @@ export function Shell({ version }: { version: string }) {
     ...(window.axDevilWindow && { exit: () => window.axDevilWindow?.close() }),
     settings: () => setDialog("settings"),
     plugins: () => setSidebar({ view: "plugins", open: true }),
-    "keyboard-shortcuts": () => setDialog("shortcuts"),
+    ...(owner && { "keyboard-shortcuts": () => setDialog("shortcuts") }),
     ...(owner && { "quick-setup": () => setDialog("quick-setup") }),
     about: () => setDialog("about"),
     "add-video": () => setDialog("add-video"),
@@ -157,7 +157,7 @@ export function Shell({ version }: { version: string }) {
     "add-live-stream": () => setDialog("add-live-stream"),
     "add-playlist": () => setDialog("add-playlist"),
     ...Object.fromEntries(
-      Object.entries(SETTING_CHECKS).map(([id, key]) => [
+      (owner ? Object.entries(SETTING_CHECKS) : []).map(([id, key]) => [
         id,
         () =>
           void set(key, values[key] !== true).then(

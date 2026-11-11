@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { vi } from "vite-plus/test";
+import { AccessContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import type { CatalogInfoWire, LaneStatusWire } from "../generated/api";
 import type { SettingsApi } from "../settings";
@@ -63,22 +64,24 @@ export function setup(
     ...lane,
   };
   const menu = (shown: LaneState) => (
-    <FakeSettings
-      apply={save}
-      state={{
-        ...DEFAULT_SETTINGS,
-        values: { ...DEFAULT_SETTINGS.values, "overlays.default_catalog": defaultCatalog },
-      }}
-    >
-      <LaneMenu
-        lane={shown}
-        catalogs={catalogs}
-        cadence={cadence}
-        onChange={onChange}
-        onHide={onHide}
-        onApplyAll={onApplyAll}
-      />
-    </FakeSettings>
+    <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
+      <FakeSettings
+        apply={save}
+        state={{
+          ...DEFAULT_SETTINGS,
+          values: { ...DEFAULT_SETTINGS.values, "overlays.default_catalog": defaultCatalog },
+        }}
+      >
+        <LaneMenu
+          lane={shown}
+          catalogs={catalogs}
+          cadence={cadence}
+          onChange={onChange}
+          onHide={onHide}
+          onApplyAll={onApplyAll}
+        />
+      </FakeSettings>
+    </AccessContext.Provider>
   );
   const rendered = render(menu(state));
   const show = (change: Partial<LaneState>) => rendered.rerender(menu({ ...state, ...change }));

@@ -98,8 +98,9 @@ and the rest of the rules: [invariants](invariants.md).
 - A save names the keys it changes and validates the resulting state; the file is replaced atomically and only then
   are Owners notified; a failed save changes nothing. Startup storage folders stay active until restart.
 - Settings live in one immutable state replaced whole; consumers subscribe to changes, never poll.
-- Each settings row is Personal (how my app behaves) or Server (what the server works with); an Owner reads and
-  writes both, and a page that holds only a join link keeps Personal settings in its browser. A masked password sent back
+- Each settings row is Device (the screen in front of you), Personal (how my app behaves) or Server (what the server
+  works with). Everyone reads and writes Device rows, which live on the device and never reach the server; an Owner
+  reads and writes the others, and a page that holds only a join link gets their defaults. A masked password sent back
   in a records row means unchanged.
 - On/off overlay preferences are one closed set; adding a member adds it to the View menu, Settings and the config.
 - All shortcuts are defined in one table; persistence is override-only, so no overrides means all defaults apply. An

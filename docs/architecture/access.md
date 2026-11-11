@@ -81,7 +81,9 @@ Choose the scope with the first question that answers yes:
 Rules:
 
 - A setting has one home. No client keeps a second copy, and no value is merged from two places.
-- The server never stores or receives a Device value.
+- The server never stores or receives a Device value. A Guest gets the built-in default of every Personal row and the
+  standard shortcuts, and cannot change them.
+- Shortcuts are Personal and saved in the same request as the rows, but they are not rows.
 - A save names the keys it changes; the last write to a key wins. The server sends every Owner connection a notice
   with the new, rising revision and no value; the client then fetches again. A client never reloads on its own
   schedule.
@@ -115,6 +117,5 @@ Each row is removed by the change that makes it true; this section is deleted wi
 
 | Model | Today |
 |-------|-------|
-| Device scope | Theme and text size are Personal; shortcuts are stored outside the table |
 | Secrets are write-only | A masked value is sent to the client; a records row sends its masked passwords back on save |
 | A remote Owner has a path picker | Folder and file dialogs are refused in remote windows with no replacement |

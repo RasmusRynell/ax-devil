@@ -23,11 +23,11 @@ use ts_rs::TS;
 
 /// Raised when a route changes in a way an older desktop shell or frontend cannot use, or a client message is added
 /// that an older backend would reject (a development backend of this version is reused, an older one is not).
-pub const API_VERSION: u32 = 29;
+pub const API_VERSION: u32 = 30;
 
 /// Raised when the desktop shell's own interface (the preload bridge and its IPC) changes in a way a frontend served
 /// by a remote backend cannot use. The shell loads a remote backend only when its [`AppInfo::shell`] matches.
-pub const SHELL_API: u32 = 6;
+pub const SHELL_API: u32 = 7;
 
 /// Identifies a running backend, so the desktop shell and the development supervisor reuse only a compatible one.
 #[derive(Serialize, TS)]
@@ -59,7 +59,7 @@ pub struct SettingsState {
     /// notice carries the same number.
     #[ts(type = "number")]
     pub revision: u64,
-    /// Every setting by dotted key, such as `"ui.theme"`, with the default when unset, a `$NAME` reference as written
+    /// Every setting by dotted key, such as `"camera.host"`, with the default when unset, a `$NAME` reference as written
     /// and a literal secret masked.
     #[ts(
         type = "Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<\"score\" | \"confidence\", { min: number | null; max: number | null }>; expression: string }>"
@@ -126,7 +126,7 @@ pub struct SettingsPatch {
 pub struct ApiError {
     /// What is wrong, in words for the user.
     pub reason: String,
-    /// The setting key (`ui.theme`), `shortcuts.<command id>`, or file the reason is about.
+    /// The setting key (`camera.host`), `shortcuts.<command id>`, or file the reason is about.
     pub location: String,
 }
 

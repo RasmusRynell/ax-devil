@@ -1,10 +1,10 @@
 {
-  "apiVersion": 29,
+  "apiVersion": 30,
   "reserved": [
     "Ctrl+=",
     "Ctrl++",
     "Ctrl+-",
     "Ctrl+0"
   ],
-  "shellApi": 6
+  "shellApi": 7
 }

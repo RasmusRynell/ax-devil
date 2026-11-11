@@ -15,6 +15,7 @@ mod playback_ws;
 mod plugins;
 mod prepare_next;
 mod session_client;
+mod session_settings;
 mod session_socket;
 mod shutdown;
 mod workspace_files;

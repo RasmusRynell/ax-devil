@@ -64,16 +64,22 @@ async fn a_patch_changes_only_the_keys_it_names_and_a_refused_one_changes_nothin
     assert!(first["file"]["version"].is_u64());
 
     // Two windows that both loaded `first` each save one key: neither undoes the other.
-    let (status, theme) = test.send(patch(r#"{"set": {"ui.theme": "dark"}}"#)).await;
+    let (status, theme) = test
+        .send(patch(r#"{"set": {"overlays.lane_names": false}}"#))
+        .await;
     assert_eq!(status, StatusCode::OK);
     let (status, saved) = test
         .send(patch(
-            r#"{"shortcutsSet": {"save-workspace": "Ctrl+Alt+S", "exit": null}, "reset": ["ui.text_size"]}"#,
+            r#"{"shortcutsSet": {"save-workspace": "Ctrl+Alt+S", "exit": null}, "reset": ["overlays.object_details"]}"#,
         ))
         .await;
     assert_eq!(status, StatusCode::OK);
     let saved = json(&saved);
-    assert_eq!(saved["values"]["ui.theme"], "dark");
+    assert_eq!(saved["values"]["overlays.lane_names"], false);
+    assert!(
+        saved["values"].get("ui.theme").is_none(),
+        "a Device value never reaches the server"
+    );
     assert_eq!(saved["shortcuts"]["exit"], serde_json::Value::Null);
     assert_eq!(saved["shortcuts"]["save-workspace"], "Ctrl+Alt+S");
     assert!(saved["revision"].as_u64() > json(&theme)["revision"].as_u64());
@@ -81,11 +87,12 @@ async fn a_patch_changes_only_the_keys_it_names_and_a_refused_one_changes_nothin
     assert_eq!(json(&read), saved);
 
     for (body, location) in [
-        (r#"{"set": {"ui.theme": "neon"}}"#, "ui.theme"),
+        (r#"{"set": {"camera.protocol": "neon"}}"#, "camera.protocol"),
+        (r#"{"set": {"ui.theme": "dark"}}"#, "ui.theme"),
         // A scan range that cannot be scanned is refused here, not at the first scan.
         (r#"{"set": {"scan.range": "10.0.0"}}"#, "scan.range"),
         (
-            r#"{"set": {"ui.theme": "light"}, "shortcutsSet": {"save-workspace": "Ctrl+O"}}"#,
+            r#"{"set": {"overlays.lane_names": true}, "shortcutsSet": {"save-workspace": "Ctrl+O"}}"#,
             "shortcuts.save-workspace",
         ),
         (r#"{"set": {"ui.zoom": 2}}"#, "ui.zoom"),

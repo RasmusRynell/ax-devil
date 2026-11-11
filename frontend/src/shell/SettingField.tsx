@@ -35,8 +35,8 @@ export interface Row {
     /** For a choice: whether it is a segmented control. */
     readonly toggle?: boolean;
   };
-  /** Whom the setting is for: `personal` is one person's own, `server` is for whoever may configure the server. */
-  readonly scope: "personal" | "server";
+  /** Where the setting lives: `device` on the screen in front of you, `personal` one Owner's own, `server` the server's. */
+  readonly scope: "device" | "personal" | "server";
   readonly page: string | null;
   readonly section: string;
   readonly live: boolean;
