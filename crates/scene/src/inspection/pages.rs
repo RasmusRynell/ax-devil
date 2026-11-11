@@ -71,7 +71,7 @@ impl Sink for Page {
             CHUNK_BYTES
         } else {
             path_size
-        } + bytes.min(TEXT_BYTES);
+        } + bytes;
         if self.result.fields.len() == PAGE_FIELDS || self.bytes + size > PAGE_BYTES {
             self.result.next = Some(ordinal);
             return false;
@@ -119,7 +119,11 @@ impl Sink for Page {
     }
 
     fn text(&mut self, place: Place, path: &[&str], text: &str) {
-        let shown = prefix(text, TEXT_BYTES);
+        // Raw's caption copies its JSON. Preserve complete Raw values that already fit the original budget.
+        let complete_raw = place.group == super::FieldGroup::Raw
+            && text.len()
+                <= PAGE_BYTES.saturating_sub(path.iter().map(|part| part.len()).sum::<usize>());
+        let shown = prefix(text, if complete_raw { text.len() } else { TEXT_BYTES });
         if !self.wants(place, path, false, shown.len()) {
             return;
         }
@@ -132,7 +136,7 @@ impl Sink for Page {
     }
 }
 
-/// Reads at most 4096 fields and 8 MiB of paths/text, abbreviating text at 16 KiB.
+/// Reads at most 4096 fields and 8 MiB of paths/text. Text previews are 16 KiB; Raw values that fit a page stay whole for JSON copying.
 pub fn field_page(entity: &Entity, start: usize) -> FieldPage {
     let mut page = Page {
         start,
@@ -322,6 +326,19 @@ mod tests {
         let next = field_page(&many, first.next.expect("next"));
         assert_eq!(next.fields[next.fields.len() - 2].field.path, ["field4999"]);
         assert_eq!(next.next, None);
+        let mut raw = object(Vec::new());
+        raw.end_reason = Some("x".repeat(20_000).into());
+        let page = field_page(&raw, 0);
+        let reason = page
+            .fields
+            .iter()
+            .find(|entry| entry.field.path == ["end_reason"])
+            .expect("Raw reason");
+        assert_eq!(
+            reason.cut, None,
+            "Raw JSON copying keeps a value that fits its page"
+        );
+        assert_eq!(reason.field.value, Leaf::Text("x".repeat(20_000)));
     }
 
     #[test]
