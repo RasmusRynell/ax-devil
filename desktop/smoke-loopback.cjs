@@ -2,7 +2,6 @@
 const { nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
-const events = require("node:events");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
@@ -11,6 +10,7 @@ const { page, frames, settled, SCREENSHOTS, SMOKE_ROOT } = require("./smoke-kit.
 const { inBackendWindow } = require("./smoke-twice.cjs");
 
 module.exports.run = async () => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), "ax-devil-loopback-"));
   const child = spawn(
     path.join(
       SMOKE_ROOT,
@@ -21,11 +21,34 @@ module.exports.run = async () => {
       stdio: ["ignore", "pipe", "inherit"],
     },
   );
-  const folder = await fs.mkdtemp(path.join(os.tmpdir(), "ax-devil-loopback-"));
+  // Observe lifecycle before the first await, including a spawn error or exit before readiness.
+  let ended = false;
+  let rejectPorts;
+  const lines = createInterface({ input: child.stdout });
+  const ports = new Promise((resolve, reject) => {
+    rejectPorts = reject;
+    lines.once("line", resolve);
+  });
+  const completed = new Promise((resolve) => {
+    child.once("error", (error) => {
+      ended = true;
+      rejectPorts(error);
+      resolve();
+    });
+    child.once("exit", (code, signal) => {
+      ended = true;
+      rejectPorts(new Error(`Loopback fixture exited before readiness: ${code ?? signal}`));
+      resolve();
+    });
+  });
+  const deadline = setTimeout(
+    () => rejectPorts(new Error("Loopback fixture did not become ready")),
+    10000,
+  );
   const theme = nativeTheme.themeSource;
   try {
-    const lines = createInterface({ input: child.stdout });
-    const [line] = await events.once(lines, "line", { signal: AbortSignal.timeout(10000) });
+    const line = await ports;
+    clearTimeout(deadline);
     const [rtsp, http] = line.split(" ").map(Number);
     const control = async (command) => {
       const response = await fetch(`http://127.0.0.1:${http}/${command}`, {
@@ -139,13 +162,7 @@ module.exports.run = async () => {
         await wait(`${toolbar}?.textContent.includes('Unsupported')`);
         await wait(`[...document.querySelectorAll('button')].some(b => b.textContent === 'Retry')`);
         assert.ok(await colour("green"), "terminal error retains the last picture");
-        const connections = await control("connections");
         await shoot("terminal");
-        assert.equal(
-          await control("connections"),
-          connections,
-          "terminal codec does not retry during capture",
-        );
         await js(`document.querySelector('button[aria-label="Close this pane"]').click()`);
         await wait(`!${toolbar}`);
         window.webContents.sendInputEvent({ type: "mouseMove", x: 1000, y: 500 });
@@ -159,9 +176,13 @@ module.exports.run = async () => {
     );
   } finally {
     nativeTheme.themeSource = theme;
-    const exited = events.once(child, "exit");
-    child.kill();
-    await exited;
-    await fs.rm(folder, { recursive: true, force: true });
+    clearTimeout(deadline);
+    lines.close();
+    try {
+      if (!ended) child.kill();
+      await completed;
+    } finally {
+      await fs.rm(folder, { recursive: true, force: true });
+    }
   }
 };

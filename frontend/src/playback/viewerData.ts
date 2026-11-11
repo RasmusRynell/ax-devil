@@ -20,6 +20,8 @@ import type {
   VideoFrame,
 } from "../stream/protocol";
 
+import { MATCH_RETAINED } from "../stream/protocol";
+
 type Opened = Extract<ServerMessage, { type: "Opened" }>;
 
 /** The revision of a source that has not said it is ready: no Frame Map run carries it. */
@@ -49,6 +51,8 @@ export class ViewerData {
   #waiting: number[] = [];
   /** What each lane drew on the frame last composed; `undefined` for a lane that drew nothing. */
   #shown: readonly (LaneFrame | undefined)[] = [];
+  /** The samples of the last presented video, retained independently of later matching revisions. */
+  #presentation: readonly (LaneFrame | undefined)[] = [];
   /** How each lane's sample was matched to the frame last composed. */
   #matched: readonly (LaneMatch | null)[] = [];
 
@@ -89,13 +93,39 @@ export class ViewerData {
       return drawn.state === "draw" ? drawn.frame : undefined;
     });
     this.#waiting = waiting;
-    this.#shown = frames;
+    this.#presentation = frames;
     this.#matched = this.#lanes.states.map((_, lane) => draw.match(lane, frame));
+    return this.#show(video, frames, surface, playing);
+  }
+
+  /** Redraws the held presentation after appearance edits, even while future maps are being replaced. */
+  redraw(video: VideoFrame, surface: Surface | null): boolean {
+    const draw = this.#draw;
+    if (!draw) return false;
+    const composed = this.#presentation.map((held, lane) =>
+      draw.restyle(lane, held, this.#matched[lane]?.kind === MATCH_RETAINED),
+    );
+    if (composed.some((frame) => frame.state === "pending")) return false;
+    return this.#show(
+      video,
+      composed.map((frame) => (frame.state === "draw" ? frame.frame : undefined)),
+      surface,
+      false,
+    );
+  }
+
+  #show(
+    video: VideoFrame,
+    frames: readonly (LaneFrame | undefined)[],
+    surface: Surface | null,
+    playing: boolean,
+  ): boolean {
+    this.#shown = frames;
     surface?.present(video, frames);
     let changed = this.inspections.follow(frames, playing);
     this.inspections.trail(this.#after, this.#changed);
     this.#lanes.states.forEach((_, lane) => {
-      changed = this.#lanes.setPending(lane, waiting.includes(lane)) || changed;
+      changed = this.#lanes.setPending(lane, this.#waiting.includes(lane)) || changed;
     });
     return changed;
   }
@@ -130,6 +160,7 @@ export class ViewerData {
     this.#draw = undefined;
     this.#waiting = [];
     this.#shown = [];
+    this.#presentation = [];
     this.#matched = [];
     this.samples.clear();
     this.inspections.suspend();

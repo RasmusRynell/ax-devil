@@ -151,6 +151,14 @@ async fn a_retry_retires_what_the_old_connection_left_behind_for_every_window() 
         assert_eq!(shown.out.unwrap().map.samples, [0]);
     }
 
+    // Advance both windows beyond the new transport's initial sequence number.
+    video.units.send(unit(1, Some(2_000), 11)).await.unwrap();
+    docs.send(doc(1, "2500")).await.unwrap();
+    let mut previous = 0;
+    for viewer in [&mut first, &mut second] {
+        previous = frame(viewer).await.frame.id().sequence_id;
+    }
+
     // An event is read, but its sample is still held by the decoder when the connection fails.
     rig.hold.close();
     docs.send(doc(1, "3000 events")).await.unwrap();
@@ -169,7 +177,7 @@ async fn a_retry_retires_what_the_old_connection_left_behind_for_every_window() 
         .unwrap();
     rig.hold.open();
     timeout(Duration::from_secs(20), async {
-        while first.lane_ready().unwrap().samples != 3 {
+        while first.lane_ready().unwrap().samples != 4 {
             tokio::time::sleep(Duration::from_millis(1)).await;
         }
     })
@@ -185,6 +193,10 @@ async fn a_retry_retires_what_the_old_connection_left_behind_for_every_window() 
     for viewer in [&mut first, &mut second] {
         let shown = frame(viewer).await;
         assert_eq!(luma(&shown), 30);
+        assert!(
+            shown.frame.id().sequence_id > previous,
+            "Retry must not send maps below either viewer's retained window"
+        );
         let out = shown.out.unwrap();
         assert_eq!(out.map.samples, [NONE_CELL]);
         // The event the old connection's decoder held back is reported once to each window.

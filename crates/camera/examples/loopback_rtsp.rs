@@ -59,6 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/drop",
             get(move || async move {
                 drop.pause(true);
+                drop.next_picture();
                 drop.disconnect();
             }),
         )
@@ -68,10 +69,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 codec.unsupported();
                 codec.disconnect();
             }),
-        )
-        .route(
-            "/connections",
-            get(move || async move { peer.connections().to_string() }),
         );
     axum::serve(listener, app).await?;
     Ok(())

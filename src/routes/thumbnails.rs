@@ -1,10 +1,7 @@
 //! The thumbnail of an entry: its first picture as a JPEG, for the hover cards of the sidebar; of a live stream, its
 //! picture as [`glance`](super::glance) decides it.
 
-use super::{
-    glance::{jpeg, stream_picture},
-    handlers::refuse,
-};
+use super::{glance::jpeg, handlers::refuse};
 use crate::{AppState, Failure, thumbnails::Answer, video_sources::input_of};
 use axum::{
     extract::{Query, State},
@@ -60,7 +57,9 @@ pub(super) async fn get(
             _ => None,
         });
     if let Some((open, live)) = live {
-        return Ok(jpeg(stream_picture(&state, live, open).await));
+        return Ok(jpeg(
+            state.glances.stream_picture(&state.live, live, open).await,
+        ));
     }
     let video = workspace
         .resolutions

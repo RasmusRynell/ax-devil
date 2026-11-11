@@ -1,7 +1,7 @@
 //! Real H.264 pictures for the desktop fixture; transport tests keep their numbered synthetic packets.
 
-pub fn payloads(connection: usize) -> Vec<(Vec<u8>, bool)> {
-    let bytes: &[u8] = if connection == 0 {
+pub fn payloads(generation: usize) -> Vec<(Vec<u8>, bool)> {
+    let bytes: &[u8] = if generation == 0 {
         include_bytes!("../../../../../fixtures/video/rtsp-red.h264")
     } else {
         include_bytes!("../../../../../fixtures/video/rtsp-green.h264")

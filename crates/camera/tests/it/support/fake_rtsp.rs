@@ -111,6 +111,7 @@ struct Shared {
     connections: AtomicUsize,
     paused: tokio::sync::watch::Sender<bool>,
     unsupported: AtomicBool,
+    picture_generation: AtomicUsize,
     drop_connections: tokio::sync::watch::Sender<u64>,
 }
 
@@ -141,15 +142,19 @@ impl FakeRtsp {
             connections: AtomicUsize::new(0),
             paused: tokio::sync::watch::channel(behaviour.pictures).0,
             unsupported: AtomicBool::new(false),
+            picture_generation: AtomicUsize::new(0),
             drop_connections: tokio::sync::watch::channel(0).0,
         });
         let accepting = Arc::clone(&shared);
         let task = tokio::spawn(async move {
+            // The listener owns its connections, so dropping the fixture ends held negotiations too.
+            let mut connections = tokio::task::JoinSet::new();
             while let Ok((socket, _)) = listener.accept().await {
                 let index = accepting.connections.fetch_add(1, Ordering::SeqCst);
                 let shared = Arc::clone(&accepting);
                 let mut dropped = shared.drop_connections.subscribe();
-                tokio::spawn(async move {
+                while connections.try_join_next().is_some() {}
+                connections.spawn(async move {
                     tokio::select! {
                         () = serve(socket, shared, index, addr) => {}
                         _ = dropped.changed() => {}
@@ -163,6 +168,13 @@ impl FakeRtsp {
     /// Hold negotiation and pictures while connecting or recovering.
     pub fn pause(&self, paused: bool) {
         self.shared.paused.send_replace(paused);
+    }
+
+    /// Advance picture identity only for an intentional recovery, never for connection attempts.
+    pub fn next_picture(&self) {
+        self.shared
+            .picture_generation
+            .fetch_add(1, Ordering::SeqCst);
     }
 
     /// Advertise an unsupported codec on subsequent connections.
@@ -391,7 +403,7 @@ async fn serve(socket: TcpStream, shared: Arc<Shared>, index: usize, addr: Socke
                         shared.behaviour.clone(),
                         fault,
                         Arc::clone(&shared),
-                        index,
+                        shared.picture_generation.load(Ordering::SeqCst),
                     ));
                     continue;
                 }
@@ -431,7 +443,7 @@ async fn stream(
     behaviour: Behaviour,
     fault: Fault,
     shared: Arc<Shared>,
-    connection: usize,
+    generation: usize,
 ) {
     let mut sent = 0usize;
     let mut seq = [0u16; 2];
@@ -449,7 +461,7 @@ async fn stream(
         if let Some(&channel) = channels.get("video") {
             let keyframes = !matches!(fault, Fault::Damage { at } if frame >= at);
             let payloads = if behaviour.pictures {
-                super::pictures::payloads(connection)
+                super::pictures::payloads(generation)
             } else {
                 video_payloads(frame, keyframes)
             };
