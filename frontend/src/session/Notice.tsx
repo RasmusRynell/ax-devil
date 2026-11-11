@@ -31,7 +31,7 @@ export function EndedScreen({ why }: { why: Ending }) {
     >
       {ENDINGS[why]}
       {remote && (
-        <Button onClick={() => void window.axDevilWindow?.disconnect()}>Disconnect</Button>
+        <Button onClick={() => void window.axDevilWindow?.disconnect?.()}>Disconnect</Button>
       )}
     </main>
   );
@@ -80,7 +80,7 @@ function RejectedPassword() {
       {credential()?.kind === "password" && (
         <Button onClick={() => setAsking(true)}>Change password</Button>
       )}
-      <Button onClick={() => void window.axDevilWindow?.disconnect()}>Disconnect</Button>
+      <Button onClick={() => void window.axDevilWindow?.disconnect?.()}>Disconnect</Button>
       {asking && <PasswordDialog onClose={() => setAsking(false)} />}
     </>
   );

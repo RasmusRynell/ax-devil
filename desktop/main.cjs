@@ -60,7 +60,10 @@ if (smoke) {
 // Electron's own data (Chromium profile, crash dumps) is browser state, not ax-devil data: the backend owns the
 // app's folders, so keep Electron out of them.
 app.setPath("userData", path.join(app.getPath("cache"), "ax-devil-chromium"));
-// The first local window of this run is remembered: where it was and how big, as the backend keeps it.
+// The theme and text size of this device and the last window's position, kept beside the backend's own files and apart
+// from Chromium's cache.
+const device = createDeviceValues(path.join(app.getPath("appData"), "ax-devil", "device.json"));
+// The first local window of this run is remembered: where it was and how big, in the device file.
 let localOrigin;
 let remembered;
 let windowState;
@@ -130,33 +133,6 @@ function adopt(window, replace) {
   return window;
 }
 
-// The saved window, or nothing when there is none or the backend does not answer; the window then opens at defaults.
-async function loadWindowState() {
-  try {
-    const response = await fetch(`${localOrigin}/api/windows/main`, {
-      signal: AbortSignal.timeout(1000),
-    });
-    return response.status === 200 ? await response.json() : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-// Saves the window before the backend stops; a failure only costs the next start its position.
-async function saveWindowState() {
-  if (!windowState) return;
-  try {
-    await fetch(`${localOrigin}/api/windows/main`, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(windowState),
-      signal: AbortSignal.timeout(1000),
-    });
-  } catch (error) {
-    console.error(`Could not save the window position: ${error.message}`);
-  }
-}
-
 // Keeps `window`'s position for the next start. The normal bounds are kept apart from the maximized state, so a
 // maximized window restores to its own size.
 function remember(window) {
@@ -175,7 +151,7 @@ async function showLocal(replace) {
   const origin = devUrl || localOrigin;
   if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) throw new Error("Invalid local desktop URL");
   const first = !replace && !smoke && !remembered;
-  const saved = first ? await loadWindowState() : undefined;
+  const saved = first ? device.read().window : undefined;
   const bounds = windowBounds(
     saved,
     screen.getAllDisplays().map((display) => display.workArea),
@@ -277,8 +253,7 @@ async function onLaunch(launch) {
 }
 
 installIpc({
-  // The theme and text size of this device, kept beside the backend's own files and apart from Chromium's cache.
-  device: createDeviceValues(path.join(app.getPath("appData"), "ax-devil", "device.json")),
+  device,
   connect: (window, target, password) => {
     // Resolves the address now so a bad one rejects in the page; the rest answers through native dialogs.
     parseTarget(target, password);
@@ -299,12 +274,11 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   if (stopping) return;
   stopping = true;
-  void saveWindowState()
-    .then(() => backend.stop())
-    .then(() => {
-      stopped = true;
-      app.exit(exitCode);
-    });
+  if (windowState) device.set("window", windowState);
+  void backend.stop().then(() => {
+    stopped = true;
+    app.exit(exitCode);
+  });
 });
 app.on("window-all-closed", () => {
   if (recovering === 0) app.quit();

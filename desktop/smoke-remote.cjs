@@ -181,11 +181,14 @@ async function remote(local, shell) {
     );
     await wait("!document.querySelector('dialog') && document.querySelector('canvas')");
 
-    // The server's page is not the local app: it cannot reconnect the window, and it cannot leave its origin.
-    const refused = await js(
-      "window.axDevilWindow.connect('http://127.0.0.1:1').then(() => 'accepted', (error) => error.message)",
+    // The server's page is not the local app: it has none of this machine's native methods, so it cannot reconnect the
+    // window, and it cannot leave its origin.
+    assert.equal(
+      await js(
+        "['connect', 'pickVideo', 'pickFolder', 'openLogs', 'restart'].filter((name) => name in window.axDevilWindow).join()",
+      ),
+      "",
     );
-    assert.match(refused, /not allowed/i);
     const count = BrowserWindow.getAllWindows().length;
     const navigating = new Promise((resolve) => window.webContents.once("will-navigate", resolve));
     await js("setTimeout(() => { location.href = 'http://localhost:1/' })");
@@ -232,16 +235,11 @@ async function remote(local, shell) {
     assert.match(unreachable.asked[0].detail, /nothing is listening there.*ECONNREFUSED/);
     unreachable.restore();
 
-    // Disconnecting returns to the local backend, which was running all along; only a remote page may ask.
+    // Disconnecting returns to the local backend, which was running all along; only a remote window has it.
     await js("window.axDevilWindow.disconnect()");
     const back = await until(windowAt(localOrigin), "a window on the local backend");
     await until(() => window.isDestroyed(), "the remote window to close");
-    assert.match(
-      await page(back).js(
-        "window.axDevilWindow.disconnect().then(() => 'accepted', (error) => error.message)",
-      ),
-      /not allowed/i,
-    );
+    assert.equal(await page(back).js("'disconnect' in window.axDevilWindow"), false);
 
     // With no window left, a server that answers the check and then drops the page keeps the app alive to ask
     // again; only choosing Quit quits.

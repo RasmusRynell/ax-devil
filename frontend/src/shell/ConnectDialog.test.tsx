@@ -8,7 +8,7 @@ afterEach(() => {
   delete window.axDevilWindow;
 });
 
-function connectWith(connect: WindowBridge["connect"]) {
+function connectWith(connect: NonNullable<WindowBridge["connect"]>) {
   window.axDevilWindow = { connect } as WindowBridge;
 }
 const type = (label: string, value: string) =>
@@ -17,7 +17,7 @@ const submit = () => fireEvent.click(screen.getByRole("button", { name: "OK" }))
 
 describe("connect dialog", () => {
   it("asks for a password only with a plain server address, passes a link through, and shows the shell's refusal", async () => {
-    const connect = vi.fn<WindowBridge["connect"]>().mockResolvedValue(undefined);
+    const connect = vi.fn<NonNullable<WindowBridge["connect"]>>().mockResolvedValue(undefined);
     connectWith(connect);
     const onClose = vi.fn();
     render(<ConnectDialog onClose={onClose} />);
@@ -50,7 +50,7 @@ describe("connect dialog", () => {
   });
 
   it("says before connecting that a password the server's header cannot carry is no use", () => {
-    const connect = vi.fn<WindowBridge["connect"]>().mockResolvedValue(undefined);
+    const connect = vi.fn<NonNullable<WindowBridge["connect"]>>().mockResolvedValue(undefined);
     connectWith(connect);
     render(<ConnectDialog onClose={() => {}} />);
     type("Server address or join link", "http://host:7340");

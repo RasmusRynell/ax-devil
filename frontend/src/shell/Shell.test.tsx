@@ -149,14 +149,14 @@ describe("about on the desktop", () => {
   afterEach(() => void delete window.axDevilWindow);
 
   it("shows the desktop's own version, and for a remote server also its address and version", async () => {
-    window.axDevilWindow = {
-      remote: false,
-      appVersion: async () => "0.9.0",
-      onMaximizedChange: () => () => undefined,
-      onFullScreenChange: () => () => undefined,
-    } as unknown as Window["axDevilWindow"];
     for (const remote of [false, true]) {
-      window.axDevilWindow!.remote = remote;
+      window.axDevilWindow = {
+        // Only a window on another machine's server can disconnect.
+        ...(remote && { disconnect: async () => undefined }),
+        appVersion: async () => "0.9.0",
+        onMaximizedChange: () => () => undefined,
+        onFullScreenChange: () => () => undefined,
+      } as unknown as Window["axDevilWindow"];
       await renderShell();
       fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
       fireEvent.click(screen.getByRole("menuitem", { name: "About" }));

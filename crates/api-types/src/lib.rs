@@ -11,7 +11,6 @@ pub mod playback;
 pub mod render;
 pub mod report;
 mod session;
-pub mod window;
 pub mod workspace;
 
 pub use error::{Audience, ErrorParams, ErrorWire, project};
@@ -27,7 +26,7 @@ pub const API_VERSION: u32 = 35;
 
 /// Raised when the desktop shell's own interface (the preload bridge and its IPC) changes in a way a frontend served
 /// by a remote backend cannot use. The shell loads a remote backend only when its [`AppInfo::shell`] matches.
-pub const SHELL_API: u32 = 7;
+pub const SHELL_API: u32 = 8;
 
 /// Identifies a running backend, so the desktop shell and the development supervisor reuse only a compatible one.
 #[derive(Serialize, TS)]
@@ -192,6 +191,5 @@ pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     render::visit_api_types(types);
     report::visit_api_types(types);
     session::visit_api_types(types);
-    window::visit_api_types(types);
     workspace::visit_api_types(types);
 }

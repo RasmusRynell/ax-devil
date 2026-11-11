@@ -102,7 +102,6 @@ const exportNow = () =>
 beforeEach(() => {
   chosen = "";
   window.axDevilWindow = {
-    remote: false,
     pickExportFile: () => Promise.resolve(chosen),
   } as unknown as typeof window.axDevilWindow;
 });

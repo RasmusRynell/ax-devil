@@ -28,7 +28,7 @@ afterEach(() => {
 describe("picking a path", () => {
   it("uses the shell's own dialog when this window has one", async () => {
     const pickVideo = vi.fn(() => Promise.resolve("/home/me/a.mp4"));
-    window.axDevilWindow = { remote: false, pickVideo } as unknown as typeof window.axDevilWindow;
+    window.axDevilWindow = { pickVideo } as unknown as typeof window.axDevilWindow;
     const picked = show(true);
     fireEvent.click(screen.getByRole("button", { name: "Browse" }));
     await vi.waitFor(() => expect(picked).toHaveBeenCalledWith("/home/me/a.mp4"));
@@ -40,7 +40,7 @@ describe("picking a path", () => {
       "fetch",
       vi.fn(() => Promise.resolve(Response.json({ entries: [], places: [] }))),
     );
-    window.axDevilWindow = { remote: true } as unknown as typeof window.axDevilWindow;
+    window.axDevilWindow = { disconnect: () => Promise.resolve() } as unknown as typeof window.axDevilWindow;
     const picked = show(true);
     const browse = screen.getByRole("button", { name: "Browse" });
     browse.focus();

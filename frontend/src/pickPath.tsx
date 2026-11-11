@@ -4,41 +4,41 @@ import { apiFetch } from "./api";
 import type { ErrorWire, FolderListing, PathExists } from "./generated/api";
 import { FolderProblem, PathPicker, type CheckExists } from "./kit/PathPicker";
 import { SUFFIX } from "./recents";
-import { nativeBridge, type WindowBridge } from "./windowBridge";
+import { type WindowBridge } from "./windowBridge";
 
 /** What to choose: how the shell's own dialog does it, and how the path picker does it where there is none. */
 export interface PathRequest {
-  native: (bridge: WindowBridge) => Promise<string | null>;
+  native: (bridge: WindowBridge) => Promise<string | null> | undefined;
   picker: Omit<Parameters<typeof PathPicker>[0], "list" | "exists" | "onChoose" | "onCancel">;
 }
 
 /** One video file. */
 export const VIDEO: PathRequest = {
-  native: (bridge) => bridge.pickVideo(),
+  native: (bridge) => bridge.pickVideo?.(),
   picker: { mode: "file", title: "Choose video" },
 };
 
 /** One file of one of `extensions` (each lowercase with its dot; none lists every file). */
 export const chooseFile = (extensions: readonly string[]): PathRequest => ({
-  native: (bridge) => bridge.pickOverlay(extensions),
+  native: (bridge) => bridge.pickOverlay?.(extensions),
   picker: { mode: "file", title: "Choose file", extensions },
 });
 
 /** A folder; `title` names what it is for. */
 export const chooseFolder = (title?: string): PathRequest => ({
-  native: (bridge) => bridge.pickFolder(title),
+  native: (bridge) => bridge.pickFolder?.(title),
   picker: { mode: "folder", title: title ?? "Choose folder" },
 });
 
 /** A saved workspace to open. */
 export const OPEN_WORKSPACE: PathRequest = {
-  native: (bridge) => bridge.pickOpenWorkspace(),
+  native: (bridge) => bridge.pickOpenWorkspace?.(),
   picker: { mode: "file", title: "Open workspace", extensions: [SUFFIX] },
 };
 
 /** Where to save a workspace called `name`, which starts at `current` when it already has a file. */
 export const saveWorkspace = (name: string, current: string | null): PathRequest => ({
-  native: (bridge) => bridge.pickSaveWorkspace(name, current),
+  native: (bridge) => bridge.pickSaveWorkspace?.(name, current),
   picker: {
     mode: "save",
     title: "Save workspace as",
@@ -50,7 +50,7 @@ export const saveWorkspace = (name: string, current: string | null): PathRequest
 
 /** Where to write an export, suggested as `name` and ending in `.extension`. */
 export const exportFile = (name: string, extension: "mp4" | "png" | "csv"): PathRequest => ({
-  native: (bridge) => bridge.pickExportFile(name, extension),
+  native: (bridge) => bridge.pickExportFile?.(name, extension),
   picker: {
     mode: "save",
     title: extension === "csv" ? "Export CSV" : "Export video",
@@ -131,6 +131,9 @@ export function PathPickerProvider({ children }: { children: ReactNode }) {
  */
 export function usePickPath(): PickPath | undefined {
   const served = useContext(PickContext);
-  const bridge = nativeBridge();
-  return bridge ? (request) => request.native(bridge) : served;
+  const bridge = window.axDevilWindow;
+  // The shell offers its file dialogs all or none, and only for the windows on this machine's own backend.
+  return bridge && Object.keys(bridge).some((name) => name.startsWith("pick"))
+    ? (request) => request.native(bridge) ?? Promise.resolve(null)
+    : served;
 }

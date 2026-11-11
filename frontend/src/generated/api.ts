@@ -22,7 +22,6 @@ export * from "./types/api_types.render";
 export * from "./types/api_types.report";
 export * from "./types/api_types.session";
 export * from "./types/api_types.session.commands";
-export * from "./types/api_types.window";
 export * from "./types/api_types.workspace";
 export * from "./types/export.render";
 export * from "./types/foundation.error";

@@ -1,4 +1,4 @@
-// The saved position and size of the main window, as the backend keeps them (`/api/windows/main`).
+// The saved position and size of the main window, as the shell keeps them in its device file.
 
 const DEFAULT_SIZE = { width: 1280, height: 800 };
 

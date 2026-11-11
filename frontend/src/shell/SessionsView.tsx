@@ -230,7 +230,7 @@ export function SessionsView() {
         <Action
           icon="plug"
           data-cursor-id="sessions:disconnect"
-          onClick={() => void window.axDevilWindow?.disconnect().catch(report)}
+          onClick={() => void window.axDevilWindow?.disconnect?.().catch(report)}
         >
           Disconnect
         </Action>

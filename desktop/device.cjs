@@ -3,8 +3,15 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-/** Whether `value` is something a setting holds: text, a flag or a number. */
-const plain = (value) => ["string", "boolean", "number"].includes(typeof value);
+const scalar = (value) => ["string", "boolean", "number"].includes(typeof value);
+
+/** Whether `value` is something a setting holds: text, a flag, a number, or a flat record of them (a window's bounds). */
+const plain = (value) =>
+  scalar(value) ||
+  (value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.values(value).every(scalar));
 
 /**
  * The device settings kept in `file`, read once. `read()` answers a copy of every value; `set(key, value)` stores one

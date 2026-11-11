@@ -1,6 +1,23 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const { test } = require("node:test");
+const { createDeviceValues } = require("./device.cjs");
 const { windowBounds } = require("./window-state.cjs");
+
+void test("a saved window survives a restart in the device file and is placed on the displays that remain", () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "ax-devil-device-")), "device.json");
+  const window = { x: 2500, y: 40, width: 1000, height: 700, maximized: true };
+  createDeviceValues(file).set("window", window);
+  const saved = createDeviceValues(file).read().window;
+  assert.deepEqual(saved, window);
+  // The display it was on is gone: it opens at the default size.
+  assert.deepEqual(windowBounds(saved, [{ x: 0, y: 0, width: 1920, height: 1080 }]), {
+    width: 1280,
+    height: 800,
+  });
+});
 
 void test("saved bounds are used only when they overlap a display", () => {
   const areas = [{ x: 0, y: 0, width: 1920, height: 1080 }];
