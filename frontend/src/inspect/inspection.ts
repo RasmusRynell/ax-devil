@@ -178,7 +178,7 @@ export class Inspections {
       shown && selected
         ? keyOf(shown.source, shown.dataRevision, shown.sample, selected.entity)
         : null;
-    if (this.#pending && this.#pending.key !== key) this.#cancelRead();
+    if ((this.#pending || this.#copy || this.#writing) && this.#wanted !== key) this.#cancelRead();
     this.#newest = frames;
     const resumed = this.#awaiting;
     this.#awaiting = false;
