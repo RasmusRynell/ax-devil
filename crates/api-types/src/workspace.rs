@@ -277,7 +277,7 @@ pub struct FolderListing {
     pub parent: Option<String>,
     /// The visible entries it holds, folders first, each group by name ignoring case.
     pub entries: Vec<FolderEntry>,
-    /// Where to start: the home folder, then the filesystem roots.
+    /// Where to start: the home folder, then the filesystem roots. Empty when a folder was asked for.
     pub places: Vec<FolderPlace>,
 }
 

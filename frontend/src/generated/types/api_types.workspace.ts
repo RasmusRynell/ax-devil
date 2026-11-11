@@ -58,7 +58,7 @@ parent?: string,
  */
 entries: Array<FolderEntry>, 
 /**
- * Where to start: the home folder, then the filesystem roots.
+ * Where to start: the home folder, then the filesystem roots. Empty when a folder was asked for.
  */
 places: Array<FolderPlace>, };
 

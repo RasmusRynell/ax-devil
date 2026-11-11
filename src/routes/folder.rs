@@ -56,13 +56,12 @@ pub(super) async fn exists(Query(params): Query<Params>) -> Result<Json<PathExis
 }
 
 fn listing(path: Option<&str>) -> Result<FolderListing, Refusal> {
-    let places = places();
     let Some(path) = path else {
         return Ok(FolderListing {
             path: None,
             parent: None,
             entries: Vec::new(),
-            places,
+            places: places(),
         });
     };
     let path = Path::new(path);
@@ -93,7 +92,7 @@ fn listing(path: Option<&str>) -> Result<FolderListing, Refusal> {
         parent: folder.parent().map(text),
         path: Some(text(&folder)),
         entries,
-        places,
+        places: Vec::new(),
     })
 }
 
@@ -231,6 +230,8 @@ mod tests {
             answer["parent"],
             canonical.parent().unwrap().to_string_lossy().as_ref()
         );
+        // Drives are probed only when the places are asked for.
+        assert_eq!(answer["places"], json!([]));
     }
 
     #[tokio::test]

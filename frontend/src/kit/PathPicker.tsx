@@ -22,7 +22,7 @@ export class FolderProblem extends Error {
   }
 }
 
-/** Lists a folder of the backend's machine, or where to start when `path` is absent; rejects with a `FolderProblem`. */
+/** Lists a folder of the backend's machine, or answers where to start when `path` is absent; rejects with a `FolderProblem`. */
 export type ListFolder = (path: string | undefined, signal: AbortSignal) => Promise<FolderListing>;
 
 /** Whether anything, hidden or named in another case, is at `path` on the backend's machine; rejects with an `Error`. */
@@ -92,12 +92,28 @@ export function PathPicker({
   const id = useId();
   const nameField = useRef<HTMLDivElement>(null);
 
+  // The places are asked once, as the picker opens, and stay for every folder; with no folder to open, the first starts it.
   useEffect(() => {
+    const request = new AbortController();
+    list(undefined, request.signal).then(
+      (found) => {
+        setPlaces(found.places);
+        setFolder((current) => current ?? found.places[0]?.path);
+      },
+      (failure: unknown) => {
+        if (!request.signal.aborted)
+          setError(failure instanceof Error ? failure.message : String(failure));
+      },
+    );
+    return () => request.abort();
+  }, [list]);
+
+  useEffect(() => {
+    if (folder === undefined) return;
     const request = new AbortController();
     list(folder, request.signal).then(
       (found) => {
-        setPlaces(found.places);
-        if (found.path === undefined) return setFolder(found.places[0]?.path);
+        if (found.path === undefined) return;
         setListing(found);
         setText(found.path);
         setError(null);

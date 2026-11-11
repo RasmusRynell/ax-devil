@@ -38,7 +38,7 @@ function pick(mode: PickMode, extra: Partial<Parameters<typeof PathPicker>[0]> =
       return Promise.resolve({
         ...(folder && { path, ...folder }),
         entries: folder?.entries ?? [],
-        places: PLACES,
+        places: path === undefined ? PLACES : [],
       });
     // The backend refuses a file as a folder, and a path that is nothing.
     return Promise.reject(new FolderProblem("Cannot open that folder", path.endsWith(".mp4")));
@@ -76,6 +76,8 @@ describe("path picker", () => {
     expect(screen.queryByRole("option", { name: "notes.txt" })).toBeNull();
     await keys("Enter");
     await vi.waitFor(() => expect(path()).toBe("/home/me/clips"));
+    // The places stay, though a folder's own listing carries none.
+    expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Up" }));
     await vi.waitFor(() => expect(path()).toBe("/home/me"));
     fireEvent.click(screen.getByRole("button", { name: "Choose" }));
