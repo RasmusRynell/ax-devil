@@ -94,6 +94,23 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
       const menu = document.querySelector(${JSON.stringify(menu)});
       for (const element of [menu, ...menu.querySelectorAll('*')]) element.scrollTop = 0;
     })()`);
+  // Capture the same controls at normal size before the minimum-size fit evidence.
+  await setView(window, [1100, 720], 1);
+  for (const theme of THEMES) {
+    await setTheme(theme);
+    for (const tab of ["Look", "Filter", "Timing"]) {
+      await js(
+        `[...document.querySelectorAll(${JSON.stringify(`${menu} [role=tab]`)})].find((b) => b.textContent === '${tab}').click()`,
+      );
+      await wait(
+        `document.querySelector(${JSON.stringify(`${menu} [role=tabpanel][aria-label=${tab}]`)})`,
+      );
+      await toStart();
+      await frames({ js });
+      await shoot(`lane-menu-${tab.toLowerCase()}-${theme}.png`);
+    }
+  }
+  await setView(window, [640, 480], 2);
   for (const theme of THEMES) {
     await setTheme(theme);
     for (const tab of ["Look", "Filter", "Timing"]) {

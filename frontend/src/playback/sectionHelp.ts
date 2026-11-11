@@ -6,9 +6,9 @@ export const SECTION_HELP = {
   filter:
     "Filter: Hide objects by class, score or confidence in drawings, hover, the Objects list and export. File scope uses classes only. Objects without a score or confidence are kept.",
   catalog:
-    "Catalog: Choose how this lane draws overlays. Apply to all lanes copies the choice within this viewer; Make default starts new views with it. Saved catalog file changes appear automatically; Reload reads it again.",
+    "Catalog: Choose how this lane draws overlays. Apply to all lanes copies the choice within this viewer; Use as default starts new views with it (Owner only). Saved catalog file changes appear automatically; Reload reads it again.",
   details:
-    "Details: Changes apply immediately, including while paused. Hidden details remain available in inspection and hover. Reset enables every detail.",
+    "Details: Changes apply immediately, including while paused. Hidden drawing details remain available in inspection and hover when Show Object Details is on. Reset enables every detail.",
   Objects:
     "Objects: Search the displayed frame by id, class, state or attribute; ? explains the syntax. For files, File lists every object and dims those absent from this frame. Click an object to inspect it.",
   Events:
