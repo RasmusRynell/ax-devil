@@ -18,6 +18,31 @@ void test("a saved window survives a restart, and a missing file saves nothing",
   }
 });
 
+void test("a saved file of the wrong shape opens the window at the default size", () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "ax-devil-window-"));
+  try {
+    const file = path.join(folder, "window.json");
+    for (const text of [
+      "null",
+      "[]",
+      "7",
+      '{"x":"10","y":0,"width":9,"height":9}',
+      '{"x":1,"y":1,"height":9}',
+    ]) {
+      fs.writeFileSync(file, text);
+      assert.deepEqual(
+        windowBounds(readWindow(file), [{ x: 0, y: 0, width: 1920, height: 1080 }]),
+        {
+          width: 1280,
+          height: 800,
+        },
+      );
+    }
+  } finally {
+    fs.rmSync(folder, { recursive: true, force: true });
+  }
+});
+
 void test("saved bounds are used only when they overlap a display", () => {
   const areas = [{ x: 0, y: 0, width: 1920, height: 1080 }];
   const saved = { x: 100, y: 50, width: 900, height: 600 };
