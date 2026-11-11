@@ -24,9 +24,9 @@ export type AppInfo = {
  */
 app: string, 
 /**
- * The backend API version; a client that expects another one refuses this backend.
+ * The backend API version, see [`api_version`]; a client that expects another one refuses this backend.
  */
-api: number, 
+api: string, 
 /**
  * The package version.
  */

@@ -37,7 +37,7 @@ async fn info_identifies_the_backend_and_its_build() {
     assert_eq!(status, StatusCode::OK);
     let info = json(&body);
     assert_eq!(info["app"], "ax-devil");
-    assert_eq!(info["api"], API_VERSION);
+    assert_eq!(info["api"], api_version());
     assert_eq!(info["development"], !cfg!(feature = "embed-assets"));
 }
 
