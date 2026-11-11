@@ -43,7 +43,10 @@ export function ConnectDialog({ onClose }: { onClose: () => void }) {
     }
     setBusy(true);
     try {
-      await window.axDevilWindow?.connect(target.trim(), plain && password ? password : undefined);
+      await window.axDevilWindow?.connect?.(
+        target.trim(),
+        plain && password ? password : undefined,
+      );
       onClose();
     } catch (error) {
       setFailure(reasonOf(error));

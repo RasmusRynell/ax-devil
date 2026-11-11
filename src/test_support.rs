@@ -86,9 +86,7 @@ impl TestApp {
             std::fs::create_dir(&catalogs).unwrap();
             state = state.with_catalogs(Library::with_folder(catalogs));
         }
-        let state = state
-            .with_network(network)
-            .with_windows(folder.path().join("windows.json"));
+        let state = state.with_network(network);
         let catalogs = Arc::clone(&state.catalogs);
         let router = app(state.clone());
         Self {

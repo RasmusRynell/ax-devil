@@ -278,10 +278,7 @@ describe("resolver form", () => {
   });
 
   it("offers Browse only where a path can be picked, not in a window on another machine's server", () => {
-    window.axDevilWindow = {
-      remote: true,
-      pickFolder: () => Promise.resolve("/picked"),
-    } as WindowBridge;
+    window.axDevilWindow = { disconnect: () => Promise.resolve() } as WindowBridge;
     render(<Harness />);
     expect(screen.queryByRole("button", { name: "Browse Dataset folder" })).toBeNull();
   });

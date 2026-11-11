@@ -10,7 +10,7 @@ const reload = vi.fn();
 beforeEach(() => {
   vi.stubGlobal("WebSocket", FakeSocket);
   vi.stubGlobal("location", { href: window.location.href, reload });
-  window.axDevilWindow = { disconnect, remote: true } as never;
+  window.axDevilWindow = { disconnect } as never;
   FakeSocket.serverPassword = "right";
   window.sessionStorage.setItem(
     "ax-devil.credential",

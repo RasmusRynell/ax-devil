@@ -149,47 +149,6 @@ async fn a_save_without_full_access_is_refused_before_a_reference_is_expanded() 
 }
 
 #[tokio::test]
-async fn a_window_is_saved_beside_the_others_and_a_corrupt_file_is_no_window() {
-    let test = TestApp::new();
-    let window = |method: &str, name: &str, body: &str| {
-        Request::builder()
-            .method(method)
-            .uri(format!("/api/windows/{name}"))
-            .header("content-type", "application/json")
-            .body(Body::from(body.to_owned()))
-            .unwrap()
-    };
-    let main = r#"{"x":-20,"y":30,"width":1280,"height":800,"maximized":true}"#;
-
-    assert_eq!(
-        test.send(window("GET", "main", "")).await.0,
-        StatusCode::NO_CONTENT
-    );
-    assert_eq!(
-        test.send(window("PUT", "main", main)).await.0,
-        StatusCode::NO_CONTENT
-    );
-    let other = r#"{"x":0,"y":0,"width":300,"height":200,"maximized":false}"#;
-    assert_eq!(
-        test.send(window("PUT", "tools-panel", other)).await.0,
-        StatusCode::NO_CONTENT
-    );
-    let (status, body) = test.send(window("GET", "main", "")).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(json(&body), json(main.as_bytes()));
-    assert_eq!(
-        test.send(window("PUT", "Main_1", main)).await.0,
-        StatusCode::UNPROCESSABLE_ENTITY
-    );
-
-    std::fs::write(test._folder.path().join("windows.json"), "{ not json").unwrap();
-    assert_eq!(
-        test.send(window("GET", "main", "")).await.0,
-        StatusCode::NO_CONTENT
-    );
-}
-
-#[tokio::test]
 async fn catalogs_are_polled_in_the_background_so_a_file_that_appears_is_listed() {
     let folder = tempfile::tempdir().unwrap();
     let catalog_dir = folder.path().join("catalogs");

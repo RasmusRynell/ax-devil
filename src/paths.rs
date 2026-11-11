@@ -22,8 +22,6 @@ pub struct Paths {
     default_catalog_dir: PathBuf,
     /// The log file.
     pub log_file: PathBuf,
-    /// The window positions, which are state rather than settings.
-    pub window_file: PathBuf,
     /// The recent workspaces list.
     pub recent_file: PathBuf,
     /// The folder of the recovery copies of unsaved workspaces.
@@ -51,7 +49,6 @@ impl Paths {
             cache_override: cache_dir,
             default_catalog_dir: data_folder(env)?.join("catalogs"),
             log_file: state.join("logs/ax-devil.log"),
-            window_file: state.join("windows.json"),
             recent_file: state.join("recent-workspaces.json"),
             recovery_dir: state.join("unsaved-workspaces"),
         })
@@ -145,10 +142,6 @@ mod tests {
         assert_eq!(
             found.log_file,
             Path::new("/x/state/ax-devil/logs/ax-devil.log")
-        );
-        assert_eq!(
-            found.window_file,
-            Path::new("/x/state/ax-devil/windows.json")
         );
         assert_eq!(
             found.recent_file,

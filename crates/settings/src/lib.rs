@@ -20,7 +20,6 @@ mod read;
 mod secret;
 pub mod shortcuts;
 mod table;
-pub mod window;
 
 pub use env::reference;
 pub use kind::{Kind, NoFilter, StickyValue, SyncValue};

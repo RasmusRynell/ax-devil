@@ -47,8 +47,6 @@ use share::Hosting;
 use std::{path::Path, sync::Arc, time::Duration};
 use tokio::{sync::watch, time::MissedTickBehavior};
 
-pub use routes::window::Windows;
-
 #[cfg(feature = "embed-assets")]
 #[derive(rust_embed::RustEmbed)]
 #[folder = "frontend/dist/"]
@@ -65,8 +63,6 @@ const CATALOG_POLL: Duration = Duration::from_millis(500);
 pub struct AppState {
     /// The settings service; every Owner reads and writes every row.
     pub settings: Arc<settings::Settings>,
-    /// Where the saved window positions are, when this backend keeps any; see [`AppState::with_windows`].
-    windows: Option<Arc<Windows>>,
     /// The log file this backend writes, when it writes one; see [`AppState::with_log_file`].
     log_file: Option<std::path::PathBuf>,
     /// The decoders and playlist resolvers the app knows, and the plugins that provide them.
@@ -161,7 +157,6 @@ impl AppState {
             plugins,
             videos,
             stopping,
-            windows: None,
             log_file: None,
             policy: Arc::new(policy),
             admission: Arc::new(Admission::new(limits)),
@@ -212,13 +207,6 @@ impl AppState {
     #[must_use]
     pub fn with_workspace_storage(self, storage: WorkspaceStorage) -> Self {
         self.with_files(Arc::new(WorkspaceFiles::new(Some(storage))))
-    }
-
-    /// The same state with window positions saved in `file`, which need not exist yet.
-    #[must_use]
-    pub fn with_windows(mut self, file: std::path::PathBuf) -> Self {
-        self.windows = Some(Arc::new(Windows::new(file)));
-        self
     }
 
     /// The same state telling a caller who may see this machine's files that its log is written to `file`.

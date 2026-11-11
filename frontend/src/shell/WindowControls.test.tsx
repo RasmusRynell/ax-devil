@@ -17,7 +17,6 @@ function bridge() {
     toggleFullScreen: vi.fn(),
     pickVideo: vi.fn(() => Promise.resolve(null)),
     pickOverlay: vi.fn(() => Promise.resolve(null)),
-    remote: false,
     connect: vi.fn(),
     disconnect: vi.fn(),
     restart: vi.fn(),

@@ -33,7 +33,7 @@ import { RevealLive, RevealShown } from "./RevealShown";
 import { LISTED_VIEWS, Sidebar } from "./Sidebar";
 import { Welcome } from "./Welcome";
 import type { ActivityItem } from "./views";
-import { toggleAppFullscreen, nativeBridge, useAppFullscreen } from "../windowBridge";
+import { toggleAppFullscreen, useAppFullscreen } from "../windowBridge";
 import { OPEN_WORKSPACE, saveWorkspace, usePickPath } from "../pickPath";
 
 const TEXT_INPUTS = new Set(["text", "search", "number", "email", "url", "tel", "password"]);
@@ -93,7 +93,7 @@ export function Shell({ version }: { version: string }) {
   const [addSeed, setAddSeed] = useState<AddSeed>({});
   const closer = (which: Dialog) => () => setDialog((now) => (now === which ? null : now));
 
-  const bridge = nativeBridge();
+  const bridge = window.axDevilWindow;
   const pick = usePickPath();
   const fail = (error: unknown) =>
     setNotice(error instanceof Error ? error.message : String(error));

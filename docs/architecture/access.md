@@ -39,7 +39,7 @@ Every access or settings decision reads exactly one of these. Never derive one f
 ## Routes
 
 Each route row names who may call it: **Public**, **Owner**, **Full access**, or **Local** (meaningful only on
-the server's own machine: window geometry, the launch hand-off). A session socket is seated by its first message.
+the server's own machine: the launch hand-off). A session socket is seated by its first message.
 No handler checks an address, a listener or a list of grants itself.
 
 ## Sessions And Seats

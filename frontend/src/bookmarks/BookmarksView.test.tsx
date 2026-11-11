@@ -179,7 +179,6 @@ describe("the Bookmarks view", () => {
 
   it("exports every bookmark to the file the dialog chose", async () => {
     window.axDevilWindow = {
-      remote: false,
       pickExportFile: () => Promise.resolve("/tmp/marks.csv"),
     } as unknown as typeof window.axDevilWindow;
     await renderView("initial");

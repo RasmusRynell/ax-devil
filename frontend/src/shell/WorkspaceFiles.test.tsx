@@ -14,7 +14,6 @@ beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 function dialogs(open: string, save = open) {
   const pickOpenWorkspace = vi.fn(() => Promise.resolve(open));
   window.axDevilWindow = {
-    remote: false,
     onMaximizedChange: () => () => undefined,
     onFullScreenChange: () => () => undefined,
     pickOpenWorkspace,

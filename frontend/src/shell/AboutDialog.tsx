@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
 import { useSettings } from "../settings";
-import { nativeBridge, useServerKind } from "../windowBridge";
+import { useServerKind } from "../windowBridge";
 
 /** Where the project lives; the desktop shell opens exactly this link in the default browser. */
 const PROJECT_LINK = "https://github.com/rasmusrynell/ax-devil";
@@ -23,7 +23,7 @@ export function AboutDialog({ version, onClose }: { version: string; onClose: ()
   }, []);
   // The desktop's version is asked for; until it answers there is no version to show.
   const shown = kind === "browser" ? version : desktop;
-  const bridge = nativeBridge();
+  const openLogs = window.axDevilWindow?.openLogs;
   const log = file?.log;
   // A page that is not a secure context, such as a server's over plain HTTP, has no clipboard.
   const canCopy = typeof navigator.clipboard?.writeText === "function";
@@ -59,10 +59,10 @@ export function AboutDialog({ version, onClose }: { version: string; onClose: ()
       >
         github.com/rasmusrynell/ax-devil
       </a>
-      {file && (canCopy || (bridge && log !== undefined)) && (
+      {file && (canCopy || (openLogs && log !== undefined)) && (
         <div className="flex flex-wrap gap-s">
-          {bridge && log !== undefined && (
-            <Button onClick={() => bridge.openLogs(log).catch(failed)}>Open logs folder</Button>
+          {openLogs && log !== undefined && (
+            <Button onClick={() => openLogs(log).catch(failed)}>Open logs folder</Button>
           )}
           {canCopy && <Button onClick={copy}>Copy diagnostics</Button>}
         </div>

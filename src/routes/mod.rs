@@ -19,7 +19,6 @@ mod plugins;
 pub(crate) mod resolve;
 mod scan;
 mod thumbnails;
-pub mod window;
 mod workspaces;
 
 #[cfg(test)]
@@ -70,8 +69,7 @@ pub(crate) struct Route {
 const EVERY: &[Listener] = &[Listener::Local, Listener::Lan, Listener::Server];
 /// Listeners whose callers can be the person at this machine or hold the server password.
 const MEMBERS: &[Listener] = &[Listener::Local, Listener::Server];
-/// The desktop's own files: window positions and installed plugins belong to this machine, so no other listener
-/// serves them.
+/// The desktop's own commands act on this machine, so no other listener serves them.
 const LOCAL: &[Listener] = &[Listener::Local];
 
 /// Every route the backend mounts.
@@ -103,20 +101,6 @@ pub(crate) const ROUTES: &[Route] = &[
         listeners: MEMBERS,
         who: Who::Owner,
         handler: |method| on(method, crate::patch_settings),
-    },
-    Route {
-        method: MethodFilter::GET,
-        path: "/api/windows/{name}",
-        listeners: LOCAL,
-        who: Who::Owner,
-        handler: |method| on(method, window::get),
-    },
-    Route {
-        method: MethodFilter::PUT,
-        path: "/api/windows/{name}",
-        listeners: LOCAL,
-        who: Who::Owner,
-        handler: |method| on(method, window::put),
     },
     Route {
         method: MethodFilter::POST,

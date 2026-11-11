@@ -394,7 +394,6 @@ async fn host_desktop(
     announce(&[format!("ax-devil: http://{}", listener.local_addr()?)]);
     let state = services
         .state(Policy::Local)
-        .with_windows(paths.window_file.clone())
         .with_log_file(paths.log_file.clone());
     // The listener for other machines serves the sessions of this state and opens when one starts sharing.
     let hosting = Hosting::Lan(ShareListener::new(share_address, &state));

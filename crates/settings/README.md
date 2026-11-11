@@ -31,8 +31,6 @@ credential. Only shortcuts are read live.
 - Unknown top-level keys, settings keys and command ids are logged and kept on save, so another version's settings
   survive. A known key with an invalid value, malformed JSON, a missing or non-integer `version`, or a file newer
   than `VERSION` stops loading with an error naming the file and key.
-- Window state is a separate, lenient file (`window.rs`): a bad file gives no saved windows and a warning. It belongs
-  to this machine and is served only on the Local listener.
 
 ## Changing the format
 

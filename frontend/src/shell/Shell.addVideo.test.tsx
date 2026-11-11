@@ -27,7 +27,6 @@ const enabled = () =>
 describe("add video", () => {
   const chooses = (video: string | null) => {
     window.axDevilWindow = {
-      remote: false,
       minimize() {},
       toggleMaximize() {},
       close() {},
@@ -91,11 +90,12 @@ describe("add video", () => {
     "asks %s for a path on the server, and says why the backend refused it",
     async (_, desktop) => {
       serve();
-      const pick = vi.fn(() => Promise.resolve("/clients/own.mp4"));
       if (desktop) {
         chooses(null);
-        window.axDevilWindow!.remote = true;
-        window.axDevilWindow!.pickVideo = pick;
+        // A window on another machine's server is offered no file dialog of this machine's.
+        window.axDevilWindow = Object.fromEntries(
+          Object.entries(window.axDevilWindow!).filter(([name]) => !name.startsWith("pick")),
+        ) as unknown as WindowBridge;
       }
       await renderShell();
       FakeSocket.latest.defer = true;
@@ -107,7 +107,6 @@ describe("add video", () => {
       await enabled();
       fireEvent.click(screen.getByRole("button", { name: "Add" }));
       await act(async () => {});
-      expect(pick).not.toHaveBeenCalled();
       expect(commands()).toMatchObject([
         {
           cmd: {

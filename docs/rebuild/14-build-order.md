@@ -62,7 +62,7 @@ deviations from the reference are listed by [parity](../parity.md).
 | Cache root `$XDG_CACHE_HOME/ax-devil/` (`~/.cache/ax-devil/`), or `--cache-dir` | Resolved in `src/paths.rs`, guarded by `scripts/isolated` |
 | D9 budgets: backend cache Auto is 25% of the memory available at startup, at least 256 MiB (1 GiB where it cannot be read, off Linux); frontend buffer 512 MiB per window, shared equally by its panes `[AI]` (one pane: about 170 frames at 1080p, 43 at 4K); 2 decode workers per source; FFmpeg threads (1 to 8 each) share one budget of the machine's cores. Sample data takes 10% of the viewer's frame budget and is evicted by playhead distance, before frames. Target: resident memory at most the cache allowance plus 600 MB at 4K (not measured) | The backend cache is a share of free memory and adapts to the machine; the frontend buffer fixes the window per video and pane count |
 | D3: one process. Decode workers are threads of the backend | A thread stops at a frame boundary and shares the cache pool; no helper process |
-| D21: settings are one flat, sparse, versioned file in the XDG config folder; window state goes through the backend ([mechanics](../../crates/settings/README.md)) | An unreadable file stops startup rather than lose choices silently |
+| D21: settings are one flat, sparse, versioned file in the XDG config folder ([mechanics](../../crates/settings/README.md)); window state lives in the desktop shell's own file, apart from the settings | An unreadable file stops startup rather than lose choices silently |
 
 ## Decisions taken for the overlay pipeline
 
