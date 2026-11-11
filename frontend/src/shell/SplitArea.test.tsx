@@ -4,6 +4,8 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { scenario } from "../session/fakeScenario";
 import { FakeSocket, type Room } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
+import { SessionStore } from "../session/store";
+import { STORED_SEAT } from "../session/storedSeat";
 import { SessionProvider } from "../session/session";
 import type { ViewerProps } from "../viewers";
 import { registerExport } from "../viewer/exportTargets";
@@ -62,14 +64,16 @@ const { a: itemA } = one.ids;
 
 /** Shows `state` of `scene` in the owner's window. */
 async function setup() {
+  const store = new SessionStore();
   render(
-    <SessionProvider>
+    <SessionProvider store={store}>
       <Area />
     </SessionProvider>,
   );
   await act(async () => {});
   const room = FakeSocket.rooms.get("room-1") as Room;
   return {
+    store,
     room,
     show: (state: string, scene = one) => act(() => room.show(scene, state)),
   };
@@ -84,6 +88,42 @@ describe("split area", () => {
     expect(screen.getByRole("status").textContent).toBe("Opening a.mp4…");
     show("initial");
     expect(screen.getByText(`playing ${itemA}`)).toBeTruthy();
+  });
+
+  it("keeps orphaned panes closed in two Owner seats, preserving the shared surviving pane", async () => {
+    const { show, room, store } = await setup();
+    // Another window has its own stored seat; attach it as an Owner to the same Presenter View.
+    window.sessionStorage.removeItem(STORED_SEAT);
+    const second = new SessionStore();
+    render(
+      <SessionProvider store={second}>
+        <Area />
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    await act(async () => {
+      await second.attach(room.id);
+    });
+    expect(room.seats.filter((seat) => seat.owner && seat.socket)).toHaveLength(2);
+    const scene = scenario("playlist-retirement");
+    for (const state of ["single", "duplicates", "survivor"]) {
+      show(state, scene);
+      const surviving = room.presenter.viewers[2];
+      const overlays = room.presenter.overlays;
+      show(`${state}-resolved`, scene);
+      await act(async () => {});
+      if (state === "survivor") {
+        expect(room.presenter.viewers).toEqual({ 2: surviving });
+        expect(screen.getAllByRole("group", { name: "list" })).toHaveLength(2);
+      } else {
+        expect(room.presenter.viewers).toEqual({});
+        expect(screen.queryByRole("group", { name: "list" })).toBeNull();
+      }
+      for (const seat of [store, second]) {
+        expect(seat.getSnapshot().view.viewers).toEqual(room.presenter.viewers);
+        expect(seat.getSnapshot().view.overlays).toEqual(overlays);
+      }
+    }
   });
 
   it("says why an item failed, and where only to a seat that may read it", async () => {
@@ -254,12 +294,25 @@ describe("split area", () => {
     fireEvent.contextMenu(pane("list").querySelector("[draggable]") as HTMLElement);
     const names = screen.getAllByRole("menuitem").map((item) => item.textContent);
     expect(names).toEqual(
-      expect.arrayContaining(["Open", "Open to the Side", "Information", "Export video"]),
+      expect.arrayContaining(["Open", "Open to the Side", "Information", "Export video", "Remove"]),
     );
     const exportItem = screen.getByRole("menuitem", { name: "Export video" }) as HTMLButtonElement;
     expect([exportItem.disabled, exportItem.title]).toEqual([true, "Open it first"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Information" }));
-    expect(screen.getByRole("dialog")).toBeTruthy();
+    const information = screen.getByRole("dialog", { name: "list" });
+    expect(
+      within(information)
+        .getAllByRole("row")
+        .map((row) => row.textContent),
+    ).toContain("entries4");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.contextMenu(pane("list").querySelector("[draggable]") as HTMLElement);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
+    expect(FakeSocket.latest.received).toContainEqual(
+      expect.objectContaining({
+        cmd: { type: "content", command: { type: "remove", item: scenario("playlist").ids.list } },
+      }),
+    );
   });
 
   it("moves a dragged pane to the side it is dropped on without restarting its viewer or unpinning it", async () => {

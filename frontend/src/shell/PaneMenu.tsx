@@ -48,6 +48,7 @@ export function PaneMenu({
         (info.kind === "item" || info.kind === "entry") &&
         (entry ? info.entry === entry.id : info.kind === "item"),
     );
+  const owner = row?.parent ? actions.tree.find(({ info }) => info.key === row.parent) : row;
   // Export is the pane's own viewer's, once it has one for this row.
   const shown = at ? shownBy(at.viewer) : undefined;
   const exporter = shown && shown.entry === row?.info.entry ? shown.run : undefined;
@@ -57,12 +58,24 @@ export function PaneMenu({
       {at && row && (
         <Popup at={at} onClose={onClose} className="z-20 min-w-max">
           <Menu
-            entries={actions.menuOf(row, exporter, false)}
+            entries={[
+              ...actions.menuOf(row, exporter, false),
+              ...(owner && owner !== row
+                ? actions
+                    .menuOf(owner, exporter, false)
+                    .filter((choice) => choice.kind === "action" && choice.id === "remove")
+                : []),
+            ]}
             checked={NOTHING_CHECKED}
             onSelect={(choice) => {
               onClose();
               const target = { viewer: at.viewer, item: at.item, entry: entry?.id ?? null };
-              actions.choose(row, choice.id, exporter, onAction(target));
+              actions.choose(
+                choice.id === "information" || choice.id === "remove" ? (owner ?? row) : row,
+                choice.id,
+                exporter,
+                onAction(target),
+              );
             }}
           />
         </Popup>

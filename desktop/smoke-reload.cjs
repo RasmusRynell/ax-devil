@@ -136,6 +136,14 @@ module.exports.run = async () => {
         assert.equal((await laneCells(window)).length, 1, "dismissing leaves the viewer");
       },
     );
+    const invalid = path.join(folder, "invalid.mp4");
+    await fs.writeFile(invalid, "not a video");
+    await inBackendWindow(["--video", invalid], async (window) => {
+      const { wait } = page(window);
+      const failed = "document.querySelector('[role=alert]')";
+      await wait(failed);
+      await shoot(window, failed, "video-open-failed");
+    });
   } finally {
     await removeTemp(folder);
   }

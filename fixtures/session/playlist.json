@@ -3312,6 +3312,32 @@
         }
       }
     },
+    "removed": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": false,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": false,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      }
+    },
     "renamed": {
       "guest": {
         "workspace": {
@@ -3747,6 +3773,17 @@
       },
       "from": "initial",
       "to": "renamed"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000001",
+          "type": "remove"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "removed"
     }
   ]
 }

@@ -405,6 +405,12 @@ describe("items", () => {
       fireEvent.contextMenu(screen.getAllByRole("treeitem", { name })[0]);
       fireEvent.click(screen.getByRole("menuitem", { name: "Information" }));
       const dialog = screen.getByRole("dialog");
+      const value = within(dialog).getAllByRole("textbox")[0];
+      value.focus();
+      expect(document.activeElement).toBe(value);
+      window.getSelection()?.removeAllRanges();
+      fireEvent.keyDown(value, { key: "a", ctrlKey: true });
+      expect(window.getSelection()?.toString()).toBe(value.textContent);
       const text = within(dialog)
         .getAllByRole("row")
         .map((row) => row.textContent);

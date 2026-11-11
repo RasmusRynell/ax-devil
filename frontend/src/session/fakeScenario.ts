@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import type { Can, DocWire, EntryInfo, SeatAccess, SessionCommand } from "../generated/api";
+import type { Can, DocWire, EntryInfo, View, SeatAccess, SessionCommand } from "../generated/api";
 
 /** Which part of a Session a Doc is projected for: the owner, or a Guest. */
 export type Audience = "owner" | "guest";
@@ -18,6 +18,8 @@ export interface Scenario {
   readonly name: string;
   readonly ids: Readonly<Record<string, string>>;
   readonly steps: readonly Step[];
+  /** Reconciled presenter for scenarios that exercise automatic placement. */
+  view(state: string): View | undefined;
   /** The Doc in `state` as `audience` receives it; throws naming the states it has. */
   doc(state?: string, audience?: Audience): DocWire;
 }
@@ -26,6 +28,7 @@ interface Recorded {
   docs: Record<string, Record<Audience, DocWire>>;
   ids: Record<string, string>;
   steps: Step[];
+  views?: Record<string, View>;
 }
 
 // A path, not `new URL(.., import.meta.url)`: under jsdom, where the fake is used, that URL is not a file URL.
@@ -45,11 +48,12 @@ const scenarios = new Map<string, Scenario>();
 export function scenario(name: string): Scenario {
   let found = scenarios.get(name);
   if (!found) {
-    const { docs, ids, steps } = freeze(fixture(name) as Recorded);
+    const { docs, ids, steps, views } = freeze(fixture(name) as Recorded);
     found = {
       name,
       ids,
       steps,
+      view: (state) => views?.[state],
       doc(state = "initial", audience = "owner") {
         const at = docs[state];
         if (!at)

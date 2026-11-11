@@ -14,7 +14,10 @@ use crate::{EndReason, MAX_SEATS, Secret};
 use foundation::CancelToken;
 use overlay_sync::MatchPolicy;
 use playback::Authority;
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 use tokio::time::Instant;
 use workspace::store::{DocCommand, complete};
 use workspace::{Content, Entry, ItemId};
@@ -446,6 +449,23 @@ fn complete_job(next: &mut SessionState, job: JobId, completion: Completion) {
 fn settle(next: &mut SessionState, fx: &mut Effects, old_doc_rev: u64) {
     if next.doc_rev != old_doc_rev {
         let presenter = restrict(&next.presenter, &next.doc);
+        // As with closing a pane in the owner window, losing the last pane closes its item.
+        // Publish both together: an open item without a pane would be automatically placed again.
+        let kept: BTreeSet<_> = presenter
+            .viewers
+            .values()
+            .map(|viewer| viewer.item)
+            .collect();
+        let orphaned: BTreeSet<_> = next
+            .presenter
+            .viewers
+            .values()
+            .map(|viewer| viewer.item)
+            .filter(|item| !kept.contains(item) && next.doc.workspace.open.contains(item))
+            .collect();
+        for item in orphaned {
+            commands::content(next, fx, DocCommand::CloseViewer(item));
+        }
         if presenter != *next.presenter {
             next.presenter = Arc::new(presenter);
             next.presenter_rev += 1;

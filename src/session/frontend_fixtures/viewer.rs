@@ -8,6 +8,7 @@ pub(super) const SCENARIOS: &[(&str, Build)] = &[
     ("live-video", live_video),
     ("one-video", one_video),
     ("playlist", playlist),
+    ("playlist-retirement", playlist_retirement),
     ("playlist-groups", playlist_groups),
     ("playlist-lanes", playlist_lanes),
     ("split", split),
@@ -116,6 +117,12 @@ fn playlist() -> Recording {
         json!({ "item": recording.ids["list"], "label": "Later" }),
     );
     recording.branch("initial", shown.session(), rename, "renamed");
+    recording.branch(
+        "initial",
+        shown.session(),
+        remove(&recording.ids["list"]),
+        "removed",
+    );
     for (name, entries) in [
         ("a-hidden", &["A"][..]),
         ("b-hidden", &["B"]),
@@ -209,5 +216,48 @@ fn split() -> Recording {
         close_viewer(&ids["c"]),
         "ab-open",
     );
+    recording
+}
+
+/// Entry B disappears with one pane, duplicate panes, or a surviving pinned pane of A.
+fn playlist_retirement() -> Recording {
+    let initial = opened("list", |scene| {
+        scene.playlist("list", &[("list", &[("A", &[]), ("B", &[])])]);
+    });
+    let mut recording = Recording::new(&initial);
+    for (name, entries) in [
+        ("single", vec!["B"]),
+        ("duplicates", vec!["B", "B"]),
+        ("survivor", vec!["B", "A"]),
+    ] {
+        let mut scene = initial.clone();
+        let viewers: serde_json::Map<String, Value> = entries.iter().enumerate().map(|(at, entry)| {
+            ((at + 1).to_string(), json!({ "item": scene.ids()["list"], "entry": scene.ids()[&format!("list/{entry}")], "pinned": true, "clock": { "frame": 7, "playing": false, "speedCenti": 125, "atUs": 0 } }))
+        }).collect();
+        let first = json!({ "type": "pane", "viewer": 1 });
+        let layout = if entries.len() == 1 {
+            first
+        } else {
+            json!({ "type": "split", "axis": "row", "share": 4000, "first": first, "second": { "type": "pane", "viewer": 2 } })
+        };
+        scene.present(serde_json::from_value(json!({ "sidebar": { "view": "workspace", "open": true }, "active": 1, "viewers": viewers, "layout": layout })).unwrap());
+        use sessions::session::{Command, Overlay, ViewerId, Viewport};
+        scene.command(Command::SetViewport {
+            viewer: ViewerId(entries.len() as u32),
+            viewport: Some(Viewport {
+                x: 0.2,
+                y: 0.1,
+                w: 0.5,
+                h: 0.5,
+            }),
+        });
+        scene.command(Command::SetOverlay {
+            overlay: Overlay::LaneNames,
+            shown: false,
+        });
+        recording.view_state(name, scene.session());
+        scene.reread_playlist("list", &[("list", &[("A", &[])])]);
+        recording.view_state(&format!("{name}-resolved"), scene.session());
+    }
     recording
 }

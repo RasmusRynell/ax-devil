@@ -36,6 +36,8 @@ struct Recording {
     ids: BTreeMap<String, String>,
     docs: BTreeMap<String, Audiences>,
     steps: Vec<Step>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    views: BTreeMap<String, sessions::session::View>,
     #[serde(skip)]
     outcomes: Outcomes,
     /// Where `$NAME` references read their values when the Docs are projected: nowhere, unless a scenario says.
@@ -67,6 +69,7 @@ impl Recording {
             ids: scene.ids().clone(),
             docs: BTreeMap::new(),
             steps: Vec::new(),
+            views: BTreeMap::new(),
             outcomes: scene.outcomes().clone(),
             environment: Environment::literal(),
             app: TestApp::new(),
@@ -95,6 +98,12 @@ impl Recording {
                 self.docs.insert(name.to_owned(), both);
             }
         }
+    }
+
+    /// Records the Doc and reconciled presenter together for frontend placement tests.
+    fn view_state(&mut self, name: &str, session: &SessionState) {
+        self.state(name, session);
+        self.views.insert(name.into(), (*session.presenter).clone());
     }
 
     /// Records `command` sent in state `from`, which `session` is, ending in state `to`.

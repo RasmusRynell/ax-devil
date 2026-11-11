@@ -17,6 +17,7 @@ const CHECKED = {
   "shell/AddLiveStreamDialog.tsx": "smoke-live.cjs",
   "shell/AddPlaylistDialog.tsx": "smoke-playlist.cjs",
   "shell/AddVideoDialog.tsx": "smoke-remote.cjs",
+  "shell/InformationDialog.tsx": "smoke-playlist.cjs",
   "shell/ConnectDialog.tsx": "smoke-shell.cjs",
   "shell/QuickSetupDialog.tsx": "smoke.cjs",
   "shell/SettingsDialog.tsx": "smoke-shell.cjs",
