@@ -73,26 +73,56 @@ function browserBacking(): Backing {
 
 /** The Device values of one backing: the only place they are held. */
 export function createDeviceStore(backing: Backing) {
-  let values = valid(backing.read());
+  let stored = valid(backing.read());
+  let values = stored;
+  const versions = new Map<SettingKey, number>();
   const listeners = new Set<() => void>();
-  const replace = (next: DeviceValues) => {
-    values = next;
+  const publish = (key: SettingKey, value: DeviceValue | null) => {
+    versions.set(key, (versions.get(key) ?? 0) + 1);
+    values = { ...values };
+    if (value === null) delete values[key];
+    else values[key] = value;
     listeners.forEach((listener) => listener());
   };
-  backing.subscribe((stored) => replace(valid(stored)));
+  const write = (key: SettingKey, value: DeviceValue | null) => {
+    stored = { ...stored };
+    if (value === null) delete stored[key];
+    else stored[key] = value;
+    publish(key, value);
+    backing.write(key, value);
+  };
+  backing.subscribe((incoming) => {
+    const next = valid(incoming);
+    // A broadcast carries the whole file: only keys changed in it supersede a local preview.
+    const previous = stored;
+    stored = next;
+    for (const { key } of DEVICE_ROWS)
+      if (next[key] !== previous[key]) publish(key, next[key] ?? null);
+  });
   return {
-    /** Every Device value that differs from its default; the same object until one changes. */
+    /** The effective Device values, including unsaved Quick Setup previews. */
     read: () => values,
+    /** Previews one choice without writing it. Later choices for this key supersede it. */
+    preview: (key: SettingKey, value: DeviceValue) => publish(key, value),
     /** Stores one value. */
-    set: (key: SettingKey, value: DeviceValue) => {
-      replace({ ...values, [key]: value });
-      backing.write(key, value);
-    },
+    set: (key: SettingKey, value: DeviceValue) => write(key, value),
     /** Puts one value back to its default. */
-    reset: (key: SettingKey) => {
-      const { [key]: _gone, ...rest } = values;
-      replace(rest);
-      backing.write(key, null);
+    reset: (key: SettingKey) => write(key, null),
+    /** Captures a pending write; committing it leaves any subsequently changed keys alone. */
+    prepare: (set: [SettingKey, DeviceValue][], reset: SettingKey[]) => {
+      const changes: [SettingKey, DeviceValue | null][] = [
+        ...set,
+        ...reset.map((key): [SettingKey, null] => [key, null]),
+      ];
+      const pending = changes.map(([key, value]) => ({
+        key,
+        value,
+        version: versions.get(key) ?? 0,
+      }));
+      return () => {
+        for (const { key, value, version } of pending)
+          if ((versions.get(key) ?? 0) === version) write(key, value);
+      };
     },
     /** Calls `listener` after every change, from here or from another window; returns the way to stop. */
     subscribe: (listener: () => void) => {

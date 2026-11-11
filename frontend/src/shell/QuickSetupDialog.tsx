@@ -1,10 +1,10 @@
-import { useState, type ReactNode } from "react";
 import { reasonOf } from "../client/errors";
+import { useEffect, useState, type ReactNode } from "react";
 import { SETTINGS, type SettingKey } from "../generated/settings";
 import { SegmentedControl, TileChoice } from "../kit/Chips";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { SectionCaption } from "../kit/SectionCaption";
-import { useAppearance, useSettings } from "../client/settings";
+import { settingsPatch, useAppearance, useSettings } from "../client/settings";
 import { textOf, type Row } from "./SettingField";
 import { useSaveDialog } from "./useSaveDialog";
 
@@ -98,18 +98,22 @@ export function QuickSetupDialog({
   onClose: () => void;
   onNotice: (message: string) => void;
 }) {
-  const { values, shortcuts, previewAppearance } = useSettings();
-  const [draft, setDraft] = useState(values);
+  const { values, previewDevice } = useSettings();
+  const [base] = useState(values);
+  const [draft, setDraft] = useState(base);
+  const theme = values["ui.theme"];
+  const textSize = values["ui.text_size"];
+  useEffect(() => {
+    setDraft((current) => ({ ...current, "ui.theme": theme, "ui.text_size": textSize }));
+  }, [theme, textSize]);
   useAppearance(textOf(draft["ui.theme"]), textOf(draft["ui.text_size"]));
   const { saving, submit } = useSaveDialog(onClose);
   const changed =
-    !values["ui.quick_setup_done"] || ROWS.some((row) => draft[row.key] !== values[row.key]);
+    !base["ui.quick_setup_done"] || ROWS.some((row) => draft[row.key] !== base[row.key]);
   const done = async () => {
     if (!changed) return onClose();
-    const outcome = await submit({ values: { ...draft, "ui.quick_setup_done": true }, shortcuts });
+    const outcome = await submit(settingsPatch(base, { ...draft, "ui.quick_setup_done": true }));
     if (outcome.kind === "refused") {
-      // Python keeps the runtime preview even though persistence and completion were refused.
-      previewAppearance(textOf(draft["ui.theme"]), textOf(draft["ui.text_size"]));
       onNotice(`Could not save these choices: ${reasonOf(outcome.refusal)}`);
       onClose();
     }
@@ -126,7 +130,10 @@ export function QuickSetupDialog({
               label: row.label,
               options: row.kind.options ?? [],
               value: textOf(draft[row.key]),
-              onChange: (value: string) => setDraft({ ...draft, [row.key]: value }),
+              onChange: (value: string) => {
+                if (row.scope === "device") previewDevice(row.key, value);
+                setDraft({ ...draft, [row.key]: value });
+              },
             };
             const preview = PREVIEWS[row.key];
             return (

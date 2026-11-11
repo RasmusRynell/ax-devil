@@ -13,6 +13,37 @@ describe("device settings", () => {
     ).toEqual({ "ui.text_size": "large" });
   });
 
+  it("merges external Device changes per key and protects newer choices from pending writes", () => {
+    let changed: (values: Record<string, unknown>) => void = () => {};
+    const write = vi.fn();
+    const store = createDeviceStore({
+      read: () => ({}),
+      write,
+      subscribe: (listener) => {
+        changed = listener;
+        return () => {};
+      },
+    });
+    const commit = store.prepare(
+      [
+        ["ui.theme", "light"],
+        ["ui.text_size", "large"],
+      ],
+      [],
+    );
+    store.preview("ui.theme", "dark");
+    commit();
+    expect(store.read()).toEqual({ "ui.theme": "dark", "ui.text_size": "large" });
+    expect(write).toHaveBeenCalledExactlyOnceWith("ui.text_size", "large");
+    changed({ "ui.text_size": "small" });
+    expect(store.read()).toEqual({ "ui.theme": "dark", "ui.text_size": "small" });
+    changed({ "ui.theme": "light", "ui.text_size": "small" });
+    expect(store.read()["ui.theme"]).toBe("light");
+    store.preview("ui.theme", "dark");
+    store.prepare([["ui.theme", "dark"]], [])();
+    expect(write).toHaveBeenLastCalledWith("ui.theme", "dark");
+  });
+
   it("changes in memory and tells its listeners even when the browser's storage is blocked", async () => {
     vi.stubGlobal("localStorage", {
       getItem: () => {

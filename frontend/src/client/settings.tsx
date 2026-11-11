@@ -14,6 +14,8 @@ import { type Login, secretStateOf } from "./secret";
  * now, whoever wrote it.
  */
 export interface SettingsApi extends SettingsState {
+  /** Previews a Device choice without storing it; Quick Setup keeps it on refusal. */
+  previewDevice: (key: SettingKey, value: DeviceValue) => void;
   /** Stores one patch: several settings and shortcuts at once, as one write that is refused or taken whole. */
   apply: (patch: SettingsPatch) => Promise<ErrorWire | null>;
   /** Sets one setting; logins carry the passwords typed since, which the backend does not tell. */
@@ -33,6 +35,9 @@ export interface SettingsApi extends SettingsState {
 export function through(apply: SettingsApi["apply"]) {
   return {
     apply,
+    previewDevice: (key: SettingKey, value: DeviceValue) => {
+      if (DEVICE_KEYS.has(key)) deviceStore.preview(key, value);
+    },
     set: (key: SettingKey, value: unknown) =>
       apply({ set: { [key]: value } as SettingsPatch["set"] }),
     reset: (key: SettingKey) => apply({ reset: [key] }),
@@ -193,6 +198,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const apply = async (patch: SettingsPatch): Promise<ErrorWire | null> => {
     const { device: mine, server } = splitPatch(patch);
+    const commitDevice = deviceStore.prepare(mine.set as [SettingKey, DeviceValue][], mine.reset);
     if (!isEmpty(server)) {
       if (!owner)
         return { code: "Forbidden", params: {}, reason: "Only the Owner can change this" };
@@ -201,8 +207,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       settings.apply(answer.value);
     }
     // After the backend took its part, so a refused save changes nothing here either.
-    for (const [key, value] of mine.set) deviceStore.set(key as SettingKey, value as DeviceValue);
-    for (const key of mine.reset) deviceStore.reset(key as SettingKey);
+    commitDevice();
     return null;
   };
   const shortcuts = remote?.shortcuts ?? STANDARD_SHORTCUTS;

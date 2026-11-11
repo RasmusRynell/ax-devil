@@ -1,3 +1,4 @@
+const { clickVisible } = require("./settings-smoke-kit.cjs");
 // The kit gallery scenario of the desktop smoke test: the page at `#kit-gallery` shows every shared component, is
 // photographed in both themes, and is checked where components must wrap instead of overflowing.
 const { nativeTheme } = require("electron");
@@ -110,10 +111,14 @@ async function gallery(window) {
   const answer = () =>
     js("document.querySelector('output[aria-label=\"Last choice\"]').textContent");
   const dialogOpen = () => js("Boolean(document.querySelector('dialog[open]'))");
+  const clickButton = async (text) => {
+    const target = `[...document.querySelectorAll('button')].find(b => b.textContent === ${JSON.stringify(text)})`;
+    await js(`${target}?.scrollIntoView({block: 'center'})`);
+    await clickVisible(window, target);
+  };
   const openPicker = async () => {
-    await js(
-      "[...document.querySelectorAll('button')].find((b) => b.textContent === 'Open path picker').click()",
-    );
+    await setView(window, [1280, 1000], 1);
+    await clickButton("Open path picker");
     await wait("document.querySelector('dialog[open] [role=group] button')");
     await frames({ js });
   };
@@ -127,9 +132,7 @@ async function gallery(window) {
     await shoot(`kit-gallery-${theme}.png`);
 
     // A choice dialog ignores Escape and answers with its default on Enter.
-    await js(
-      "[...document.querySelectorAll('button')].find((b) => b.textContent === 'Open choice dialog').click()",
-    );
+    await clickButton("Open choice dialog");
     await wait("document.querySelector('dialog[open]')");
     await wait("document.activeElement?.textContent === 'Later'");
     await shoot(`kit-choice-dialog-${theme}.png`);
@@ -157,9 +160,7 @@ async function gallery(window) {
 
   // The dialog's long message scrolls and its choices stay in view at the window minimum and 200% zoom.
   await setView(window, [640, 480], 2);
-  await js(
-    "[...document.querySelectorAll('button')].find((b) => b.textContent === 'Open choice dialog').click()",
-  );
+  await clickButton("Open choice dialog");
   await wait("document.querySelector('dialog[open]')");
   await wait("document.activeElement?.textContent === 'Later'");
   await frames({ js });
@@ -168,9 +169,30 @@ async function gallery(window) {
   await wait("!document.querySelector('dialog[open]')");
   // The path picker's list scrolls and its buttons stay in view at the same size.
   await openPicker();
+  await setView(window, [640, 480], 2);
+  await frames({ js });
   assert.deepEqual(await js(`(${fit.dialog.toString()})()`), [], "the path picker at 200% zoom");
   key(window, "Escape");
   await wait("!document.querySelector('dialog[open]')");
+  for (const theme of ["light", "dark"]) {
+    nativeTheme.themeSource = theme;
+    await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+    await js("document.documentElement.dataset.textSize = 'larger'");
+    await openPicker();
+    await setView(window, [640, 480], 2);
+    await frames({ js });
+    assert.deepEqual(
+      await js(`(${fit.dialog.toString()})()`),
+      [],
+      "path picker, largest text at 200%",
+    );
+    await shoot(`appearance-path-picker-${theme}-2.png`);
+    await clickVisible(
+      window,
+      "[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent === 'Cancel')",
+    );
+    await wait("!document.querySelector('dialog[open]')");
+  }
   window.webContents.setZoomFactor(1);
 
   await js("history.replaceState(null, '', location.pathname + location.search)");
