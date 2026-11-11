@@ -83,6 +83,10 @@ function supervise(
     const finish = (code, spawnError) => {
       if (finished) return;
       finished = true;
+      if (spawnError) {
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+      }
       clearTimeout(owned.deadline);
       clearInterval(owned.verdictPoll);
       clearTimeout(owned.shutdown);

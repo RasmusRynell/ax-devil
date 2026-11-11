@@ -240,6 +240,59 @@ void test(
   },
 );
 
+void test(
+  "unexpected leader death fails and closes retained output without signalling its retired group",
+  { timeout: 5000 },
+  async () => {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), "leader-failure-"));
+    const info = path.join(folder, "info");
+    const signals = audit(folder);
+    let launcher;
+    let ids;
+    try {
+      launcher = spawn(
+        process.execPath,
+        [
+          require.resolve("./smoke-process.cjs"),
+          "2",
+          path.join(folder, "result"),
+          "owner-failure",
+          process.execPath,
+          "-e",
+          `
+      require('node:fs').writeFileSync(${JSON.stringify(info)}, JSON.stringify({ leader: process.ppid, command: process.pid }));
+      setInterval(() => {}, 1000);
+    `,
+        ],
+        { env: signals.env, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      const exited = events.once(launcher, "close");
+      let output = "";
+      launcher.stdout.on("data", (chunk) => {
+        output = `${output}${chunk}`;
+      });
+      launcher.stderr.on("data", (chunk) => {
+        output = `${output}${chunk}`;
+      });
+      await waitFor(() => fs.existsSync(info));
+      ids = JSON.parse(fs.readFileSync(info, "utf8"));
+      process.kill(ids.leader, "SIGKILL");
+      assert.deepEqual(await bounded(exited), [1, null], output);
+      assert.match(output, /cleanup was not confirmed and descendants may remain/);
+      assert.equal(alive(ids.command), true);
+      assert.deepEqual(signals.read(), [], "a dead leader's numeric group is never targeted");
+    } finally {
+      if (ids) {
+        if (alive(ids.command)) process.kill(ids.command, "SIGKILL");
+        await gone(ids.command);
+        await gone(ids.leader);
+      }
+      await stopChild(launcher);
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
+  },
+);
+
 function fake() {
   const child = new events.EventEmitter();
   Object.assign(child, {
