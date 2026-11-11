@@ -98,7 +98,10 @@ export interface Resource<T> {
   value: T | undefined;
   /** Why the last read failed, until one succeeds; the last value stays. */
   error: unknown;
-  /** Shows a value the caller got elsewhere (a save's answer) instead of any read still pending, which it drops. */
+  /**
+   * Shows a value the caller got elsewhere (a save's answer) instead of any read still pending, which it drops. A
+   * resource without `revisionOf` reads again afterwards, since the value may be older than what the backend holds.
+   */
   apply: (value: T) => void;
   /** Reads again now. */
   reload: () => void;
@@ -209,16 +212,17 @@ export function useResource<T>(
       )
         return;
       stop();
-      // An answer with a revision of its own is compared with what was announced; any other stands for the newest.
-      held.current = {
-        path,
-        started: own === undefined ? newest.current : undefined,
-        own,
-        backend,
-      };
       setShown({ path, value });
+      // An answer with no revision of its own cannot be told from an older one, so it is shown but not trusted: the
+      // newest is read once more. One with a revision is compared with what was announced.
+      if (own === undefined) {
+        held.current = null;
+        begin(path);
+        return;
+      }
+      held.current = { path, started: undefined, own, backend };
       // A notice newer than the answer came while a read it replaced was running.
-      if (own !== undefined && Number(newest.current) > own) begin(path);
+      if (Number(newest.current) > own) begin(path);
     },
     [path, revisions, begin, stop],
   );

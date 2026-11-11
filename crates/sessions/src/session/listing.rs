@@ -1,6 +1,11 @@
 //! The list of sessions a caller could attach to.
 
-use super::{Service, service::Sessions, state::SeatKind, transition::admission};
+use super::{
+    Service,
+    service::{Deferred, Sessions},
+    state::SeatKind,
+    transition::admission,
+};
 use crate::{JoinLink, SeatRole, SessionId, common};
 use std::sync::Mutex;
 use tokio::sync::watch;
@@ -72,6 +77,19 @@ impl<C: Clone + Send + 'static> Service<C> {
     /// change that is not in the list, such as a cursor moving, does not raise it.
     pub fn listing_revisions(&self) -> watch::Receiver<u64> {
         self.inner.listed.revision.subscribe()
+    }
+
+    /// Like `locked` for a seat's view, which no line of the list shows, so the list is not looked at again.
+    pub(super) fn locked_view<R>(
+        &self,
+        change: impl FnOnce(&mut Sessions<C>, &mut Deferred) -> R,
+    ) -> R {
+        self.changing(false, change)
+    }
+
+    /// Reads the sessions under the lock for a step that changes none of them, so the list is not looked at again.
+    pub(super) fn quietly<R>(&self, step: impl FnOnce(&Sessions<C>) -> R) -> R {
+        step(&common::locked(&self.inner.sessions))
     }
 
     /// Raises the listing's revision for a change of what the list shows that is not in a session, such as whether

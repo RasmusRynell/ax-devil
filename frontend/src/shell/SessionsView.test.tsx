@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { AccessContext } from "../access";
+import { ChangesProvider } from "../resource";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { EMPTY_VIEW } from "../session/views";
@@ -212,5 +213,26 @@ describe("sessions view", () => {
     expect(screen.queryByRole("menu")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("reads the list again when a setting changes, since Full access follows one and decides which Sessions it shows", async () => {
+    const fetched = vi.fn(async (_url: string) => ({ ok: true, json: async () => [] }));
+    vi.stubGlobal("fetch", fetched);
+    const listed = () => fetched.mock.calls.filter(([url]) => url === "/api/sessions").length;
+    render(
+      <AccessContext value={{ owner: true, fullAccess: false }}>
+        <ChangesProvider>
+          <SessionProvider>
+            <SessionsView />
+          </SessionProvider>
+        </ChangesProvider>
+      </AccessContext>,
+    );
+    await screen.findByRole("button", { name: "Start sharing" });
+    expect(listed()).toBe(1);
+    await act(async () =>
+      FakeSocket.latest.emit({ type: "changed", topic: "settings", revision: 2 }),
+    );
+    expect(listed()).toBe(2);
   });
 });

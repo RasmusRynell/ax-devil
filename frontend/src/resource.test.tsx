@@ -14,7 +14,7 @@ interface Value {
 }
 
 /** Reads held open until the test settles them, and the way to announce a revision as the Session connection does. */
-function harness(topics: Topic | Topic[] = "plugins") {
+function harness(topics: Topic | Topic[] = "plugins", versioned = true) {
   const reads: Array<{ resolve: (value: Value) => void; reject: (error: Error) => void }> = [];
   const read = vi.fn(
     () => new Promise<Value>((resolve, reject) => reads.push({ resolve, reject })),
@@ -24,7 +24,10 @@ function harness(topics: Topic | Topic[] = "plugins") {
   function Probe() {
     const sink = useNoticeSink();
     notice = (topic, revision, fresh) => sink?.(topic, revision, fresh);
-    const resource = useResource(topics, "/p", { read, revisionOf: (value) => value.revision });
+    const resource = useResource(topics, "/p", {
+      read,
+      ...(versioned && { revisionOf: (value: Value) => value.revision }),
+    });
     apply = resource.apply;
     return <p>{resource.value?.text ?? "none"}</p>;
   }
@@ -83,13 +86,18 @@ describe("useResource", () => {
     expect(screen.getByText("first save")).toBeTruthy();
   });
 
-  it("reads again for any topic its answer depends on", async () => {
-    const { read, answer, notice } = harness(["sessions", "settings"]);
-    await answer(0, "list", 0);
-    await notice(1, "settings");
-    expect(read).toHaveBeenCalledTimes(2);
-    await answer(1, "other list", 0);
-    await notice(1, "sessions");
+  it("reads again after an answer with no revision, which may be older than what it overtook", async () => {
+    const { read, answer, notice, apply } = harness("plugins", false);
+    await answer(0, "initial", 0);
+    await notice(1);
+    await answer(1, "newer list", 0);
+    // Another window's change was read first; this window's own, delayed answer is older.
+    await apply("delayed answer", 0);
+    expect(read).toHaveBeenCalledTimes(3);
+    await answer(2, "newer list", 0);
+    expect(screen.getByText("newer list")).toBeTruthy();
+    // The notice that repeats is no reason to read again.
+    await notice(1, "plugins", true);
     expect(read).toHaveBeenCalledTimes(3);
   });
 

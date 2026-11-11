@@ -257,18 +257,23 @@ impl<C: Clone + Send + 'static> Service<C> {
 
     /// Runs `change` on the sessions under the lock, then the effects it deferred once the lock is released.
     pub(super) fn locked<R>(&self, change: impl FnOnce(&mut Sessions<C>, &mut Deferred) -> R) -> R {
+        self.changing(true, change)
+    }
+
+    pub(super) fn changing<R>(
+        &self,
+        listed: bool,
+        change: impl FnOnce(&mut Sessions<C>, &mut Deferred) -> R,
+    ) -> R {
         let mut deferred = Deferred::default();
         let mut sessions = common::locked(&self.inner.sessions);
         let result = change(&mut sessions, &mut deferred);
-        self.publish_listing(&sessions);
+        if listed {
+            self.publish_listing(&sessions);
+        }
         drop(sessions);
         self.run(deferred);
         result
-    }
-
-    /// Reads the sessions under the lock for a step that changes none of them, so the list is not looked at again.
-    pub(super) fn quietly<R>(&self, step: impl FnOnce(&Sessions<C>) -> R) -> R {
-        step(&common::locked(&self.inner.sessions))
     }
 
     fn run(&self, deferred: Deferred) {
