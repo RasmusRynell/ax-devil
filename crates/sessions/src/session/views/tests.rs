@@ -53,8 +53,7 @@ fn looking(item: ItemId) -> ViewerView {
 }
 
 #[test]
-fn restricting_drops_the_viewers_of_closed_items_and_unplaced_ones_and_keeps_the_other_shares()
-{
+fn restricting_drops_the_viewers_of_closed_items_and_unplaced_ones_and_keeps_the_other_shares() {
     let video = workspace::intake::video(
         std::path::Path::new("v.mp4"),
         &[],
