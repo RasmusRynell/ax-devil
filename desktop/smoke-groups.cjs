@@ -12,6 +12,7 @@ module.exports = {
   chrome: [
     "appearance",
     "shell",
+    "native-input",
     "live",
     "gallery",
     "remote",

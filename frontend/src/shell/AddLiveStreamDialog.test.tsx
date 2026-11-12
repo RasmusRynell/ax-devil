@@ -273,13 +273,21 @@ describe("add live stream dialog", () => {
     const topic = () => screen.getByLabelText("DataHub Topic") as HTMLSelectElement;
     await waitFor(() => expect(topic().value).toBe("saved.topic"));
     expect(screen.getByRole("dialog", { name: "Edit Live Stream" })).toBeTruthy();
-    expect((screen.getByLabelText("Handler Type") as HTMLSelectElement).value).toBe("GONE_V1");
     const name = screen.getByLabelText("Name") as HTMLInputElement;
     expect(name.value).toBe("Gate");
     // Editing starts on the Name, selected for typing over.
     await waitFor(() => expect(document.activeElement).toBe(name));
     expect([name.selectionStart, name.selectionEnd]).toEqual([0, 4]);
     expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("");
+    const handler = screen.getByLabelText("Handler Type") as HTMLSelectElement;
+    expect(handler.value).toBe("GONE_V1");
+    expect(handler.selectedOptions[0]?.textContent).toBe("GONE_V1 (unavailable)");
+    type("Overlay Mode", "none");
+    expect(handler.disabled).toBe(true);
+    expect(handler.value).toBe("GONE_V1");
+    type("Overlay Mode", "datahub");
+    expect(handler.disabled).toBe(false);
+    expect(handler.selectedOptions[0]?.textContent).toBe("GONE_V1 (unavailable)");
     // The sizes are asked as the stream is saved: by its saved login.
     await waitFor(() => expect(asked.length).toBeGreaterThan(0));
     expect(asked.every((connection) => connection.like === live.ids.a)).toBe(true);

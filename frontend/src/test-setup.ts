@@ -8,6 +8,9 @@ if (typeof document !== "undefined") {
   };
 
   // jsdom does not implement modal dialogs.
+  HTMLDialogElement.prototype.close = function close() {
+    this.removeAttribute("open");
+  };
   HTMLDialogElement.prototype.showModal = function showModal() {
     this.setAttribute("open", "");
   };
