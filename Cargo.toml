@@ -24,16 +24,13 @@ members = [
   "crates/overlay-sync",
   "crates/overlays",
   "crates/playback",
-  "crates/playlist-resolvers",
   "crates/plugins",
   "crates/scene",
-  "crates/scene-decoders",
   "crates/scene-store",
   "crates/sessions",
   "crates/settings",
   "crates/workspace",
   "crates/workspace-files",
-  "crates/workspace-store",
 ]
 resolver = "3"
 
@@ -73,16 +70,13 @@ media = { path = "crates/media" }
 overlay-sync = { path = "crates/overlay-sync" }
 overlays = { path = "crates/overlays" }
 playback = { path = "crates/playback" }
-playlist-resolvers = { path = "crates/playlist-resolvers" }
 plugins = { path = "crates/plugins" }
 scene = { path = "crates/scene" }
-scene-decoders = { path = "crates/scene-decoders" }
 scene-store = { path = "crates/scene-store" }
 sessions = { path = "crates/sessions" }
 settings = { path = "crates/settings" }
 workspace = { path = "crates/workspace" }
 workspace-files = { path = "crates/workspace-files" }
-workspace-store = { path = "crates/workspace-store" }
 
 # Line tables only: panics and backtraces keep file:line, and test binaries shrink to a fraction of full debuginfo.
 [profile.dev]
@@ -145,7 +139,6 @@ settings.workspace = true
 tracing.workspace = true
 workspace.workspace = true
 workspace-files.workspace = true
-workspace-store.workspace = true
 mime_guess = { version = "2", optional = true }
 rust-embed = { version = "8", optional = true }
 tempfile = "3"

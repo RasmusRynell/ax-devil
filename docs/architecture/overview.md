@@ -64,7 +64,7 @@ system webview ([D0](../rebuild/14-build-order.md#d0-stack-choice)).
 ## Workspace
 
 A window's Workspace is the Doc of its Session: the items (videos, playlists), each item's resolution, the hidden
-refs and which items are open, as one pure `WorkspaceState` (`workspace-store`). It changes only by a `DocCommand`
+refs and which items are open, as one pure `WorkspaceState` (`workspace::store`). It changes only by a `DocCommand`
 the Session applies under its lock (add items, open and close a viewer, hide and unhide); resolving an item runs as
 a job outside the lock and commits through it. The runner records the files each item was read from (a video's
 overlays, a playlist resolver's folders, the overlays its Content names), and a poll in `sessions` reports a change:

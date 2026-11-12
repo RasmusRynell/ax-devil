@@ -89,7 +89,7 @@ impl Runner for OnRuntime {
             // Resolving reads the file system, which must not block the runtime's workers.
             let resolve = move || {
                 let (result, watch) = Watch::read(&job.recipe, &handlers, &cancel, || {
-                    workspace_store::resolve(&job, &handlers, &env, &cancel)
+                    workspace::store::resolve(&job, &handlers, &env, &cancel)
                 });
                 if let Some(watch) = watch {
                     watcher.record(job.item, watch);

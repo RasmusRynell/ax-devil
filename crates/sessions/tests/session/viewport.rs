@@ -8,7 +8,7 @@ use sessions::{
         Viewport,
     },
 };
-use workspace_store::DocCommand;
+use workspace::store::DocCommand;
 
 const ZOOMED: Viewport = Viewport {
     x: 0.25,

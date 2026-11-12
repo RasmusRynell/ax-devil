@@ -1,0 +1,106 @@
+//! What the user chose to hide or show, over how a resolver started the entries and lanes.
+
+use crate::{Content, ContentId, Entry, ItemId};
+use std::collections::HashMap;
+
+use crate::store::{Resolution, WorkspaceState};
+
+/// What the user hid.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum HiddenRef {
+    /// An entry, by its content id.
+    Entry(ContentId),
+    /// A lane of an entry, by the entry's content id and the lane's label.
+    Lane(ContentId, String),
+}
+
+impl HiddenRef {
+    /// The entry the reference is about.
+    pub(crate) fn content(&self) -> &ContentId {
+        let (Self::Entry(id) | Self::Lane(id, _)) = self;
+        id
+    }
+}
+
+impl WorkspaceState {
+    /// Whether this entry or lane is hidden: the user's choice, else `starts_hidden`, how its resolver started it.
+    pub fn is_hidden(&self, target: &HiddenRef, starts_hidden: bool) -> bool {
+        self.hidden.get(target).copied().unwrap_or(starts_hidden)
+    }
+
+    /// Whether `entry` is hidden, by the user's choice or else as its resolver started it.
+    pub fn entry_hidden(&self, entry: &Entry) -> bool {
+        self.is_hidden(&HiddenRef::Entry(entry.id.clone()), entry.starts_hidden)
+    }
+
+    /// Whether the user may hide `target`. A video's own entry, a live stream and its lane stay shown; where the item
+    /// is not resolved yet, the choice is kept for the Content it resolves to.
+    pub(crate) fn may_hide(&self, target: &HiddenRef) -> bool {
+        let Some(item) = self
+            .workspace
+            .items
+            .iter()
+            .find(|item| target.content().names_item(&item.id))
+        else {
+            return true;
+        };
+        match (self.resolutions.get(&item.id), target) {
+            (Some(Resolution::Resolved { content, .. }), _) => match content {
+                Content::SeekableVideo(_) => matches!(target, HiddenRef::Lane(..)),
+                Content::LiveVideo(_) => false,
+                Content::Playlist(_) => true,
+            },
+            _ => true,
+        }
+    }
+
+    /// Pins the visibility every entry and lane of `item`'s resolved playlist has now as the user's choice, so that
+    /// resolving again changes only what is new: an entry or lane that survives keeps its visibility, whatever the
+    /// resolver now starts it as.
+    pub(crate) fn pin_hidden(&mut self, item: &ItemId) {
+        let Some(Resolution::Resolved {
+            content: Content::Playlist(playlist),
+            ..
+        }) = self.resolutions.get(item)
+        else {
+            return;
+        };
+        let mut pinned = Vec::new();
+        for entry in &playlist.entries {
+            pinned.push((HiddenRef::Entry(entry.id.clone()), self.entry_hidden(entry)));
+            let hidden_lanes = entry.lanes_hidden_at_first();
+            for overlay in &entry.overlays {
+                let lane = HiddenRef::Lane(entry.id.clone(), overlay.label.clone());
+                let starts_hidden = hidden_lanes.contains(overlay.label.as_str());
+                pinned.push((lane.clone(), self.is_hidden(&lane, starts_hidden)));
+            }
+        }
+        self.hidden.extend(pinned);
+    }
+
+    /// Settles the choices of `item` against `content`, its new Content: one for an entry or lane it no longer has is
+    /// forgotten, so it comes back as its resolver starts it, and one that equals what the resolver now starts it as
+    /// is dropped, since [`Self::pin_hidden`] pins it again before the next resolution. Work grows with the entries,
+    /// lanes and choices, with no scan of one for each of another.
+    pub(crate) fn settle_hidden(&mut self, item: &ItemId, content: &Content) {
+        let mut starts: HashMap<HiddenRef, bool> = HashMap::new();
+        for entry in content.entries() {
+            starts.insert(HiddenRef::Entry(entry.id.clone()), entry.starts_hidden);
+            let hidden_lanes = entry.lanes_hidden_at_first();
+            for overlay in &entry.overlays {
+                let lane = HiddenRef::Lane(entry.id.clone(), overlay.label.clone());
+                starts.insert(lane, hidden_lanes.contains(overlay.label.as_str()));
+            }
+        }
+        self.hidden.retain(|target, &mut chosen| {
+            !target.content().names_item(item)
+                || starts.get(target).is_some_and(|&start| start != chosen)
+        });
+    }
+
+    /// Forgets every choice about the entries and lanes of `item`.
+    pub(crate) fn forget_hidden(&mut self, item: &ItemId) {
+        self.hidden
+            .retain(|target, _| !target.content().names_item(item));
+    }
+}

@@ -10,7 +10,7 @@ use sessions::{
 };
 use std::{sync::Arc, time::Duration};
 use workspace::Source;
-use workspace_store::{DocCommand, Resolution};
+use workspace::store::{DocCommand, Resolution};
 
 /// A resolver with the folder-pair form whose run panics, as a defective plugin's would.
 struct Panics(ResolverSpec);

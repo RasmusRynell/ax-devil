@@ -3,8 +3,8 @@
 use super::{Build, Recording, Scene, close_viewer, content, open_viewer, remove};
 use foundation::BookmarkId;
 use serde_json::{Value, json};
+use workspace::store::{BookmarkCommand, DocCommand};
 use workspace::{BookmarkKind, BookmarkTarget};
-use workspace_store::{BookmarkCommand, DocCommand};
 
 /// The scenarios of this file.
 pub(super) const SCENARIOS: &[(&str, Build)] = &[

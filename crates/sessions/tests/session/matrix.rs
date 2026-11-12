@@ -9,8 +9,8 @@ use sessions::{
         can, transition,
     },
 };
+use workspace::store::{DocCommand, HiddenRef};
 use workspace::{ItemId, WorkspaceItem};
-use workspace_store::{DocCommand, HiddenRef};
 
 /// A seat's row in the role table.
 #[derive(Clone, Copy, Debug)]

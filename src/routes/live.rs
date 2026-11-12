@@ -157,8 +157,8 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::{io::AsyncReadExt, net::TcpListener, time::timeout};
+    use workspace::store::DocCommand;
     use workspace::{Secret, intake};
-    use workspace_store::DocCommand;
 
     fn post(uri: &str, body: &Value) -> Request<Body> {
         Request::builder()

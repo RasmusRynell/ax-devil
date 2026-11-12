@@ -10,8 +10,8 @@ use playback::{Authority, ClockIntent, Priority};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use ts_rs::TS;
+use workspace::store::{ContentGen, Resolution, WorkspaceState};
 use workspace::{Content, ContentId, Entry, ItemId};
-use workspace_store::{ContentGen, Resolution, WorkspaceState};
 
 /// A stream a seat asks a ticket for: one entry of the Content at one commit of its resolution. Authority over the
 /// stream ends with the generation, and the Content's kind decides what a seat may demand of it. A video's one entry

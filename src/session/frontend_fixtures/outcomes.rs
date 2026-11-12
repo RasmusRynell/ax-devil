@@ -11,8 +11,8 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use workspace::store::ResolveJob;
 use workspace::{Content, Environment, Source};
-use workspace_store::ResolveJob;
 
 /// The playlists of a playlist item: each a name and its entries, each an entry name and its lanes.
 pub(super) type Groups<'a> = &'a [(&'a str, &'a [(&'a str, &'a [&'a str])])];

@@ -15,11 +15,11 @@ use handlers::Handlers;
 use sessions::session::{Command, Refusal, Scope};
 use std::path::Path;
 use tokio::time::Instant;
+use workspace::store::{BookmarkCommand, DocCommand, HiddenRef};
 use workspace::{
     BookmarkId, BookmarkKind, BookmarkTarget, Content, Secret, Watch, WorkspaceItem,
     intake::{LiveDefaults, NewLive, NewOverlay},
 };
-use workspace_store::{BookmarkCommand, DocCommand, HiddenRef};
 
 /// The scope a wire command needs, known without looking at what it names, so the seat is authorized before the
 /// command's content is checked and a refusal never tells a seat whether a path or resolver exists. `None` for a

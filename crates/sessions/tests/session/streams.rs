@@ -11,8 +11,8 @@ use sessions::{
 };
 use std::time::Duration;
 use tokio::time::{Instant, advance};
+use workspace::store::{DocCommand, Resolution};
 use workspace::{ContentId, ItemId, LiveOverlay, LiveRecipe, Protocol, Recipe, Secret, Source};
-use workspace_store::{DocCommand, Resolution};
 
 #[tokio::test(start_paused = true)]
 async fn a_ticket_opens_one_stream_once_and_only_for_the_seat_and_key_it_was_issued_for() {

@@ -17,11 +17,11 @@ use std::{
     time::Duration,
 };
 use tower::ServiceExt;
+use workspace::store::DocCommand;
 use workspace::{
     ItemId, Protocol, Secret,
     intake::{self, NewLive, NewLiveOverlay},
 };
-use workspace_store::DocCommand;
 
 const JPEG: &[u8] = &[0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F', 0];
 

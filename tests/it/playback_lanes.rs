@@ -16,7 +16,7 @@ use sessions::{
     session::{Access, Command, Control, Reply},
 };
 use std::collections::BTreeMap;
-use workspace_store::DocCommand;
+use workspace::store::DocCommand;
 
 fn policy(tolerance_ms: Option<u32>, timeout_ms: Option<u32>) -> LanePolicyWire {
     LanePolicyWire {

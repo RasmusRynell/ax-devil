@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, time::Duration};
 use tokio::time::Instant;
 use ts_rs::TS;
+use workspace::store::{Resolution, WorkspaceState};
 use workspace::{Content, ContentId, Entry, ItemId};
-use workspace_store::{Resolution, WorkspaceState};
 
 /// What the sidebar shows; part of the view a session shares.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -323,7 +323,7 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
 mod tests {
     use super::{super::layout::Axis, *};
     use serde_json::json;
-    use workspace_store::HiddenRef;
+    use workspace::store::HiddenRef;
 
     #[test]
     fn a_view_reads_as_the_wire_writes_it_and_an_id_that_names_no_item_is_refused() {
@@ -386,15 +386,15 @@ mod tests {
         )
         .unwrap();
         let (open, closed) = (video.id, ItemId::generate());
-        let (workspace, _) = workspace_store::apply(
+        let (workspace, _) = workspace::store::apply(
             &WorkspaceState::default(),
-            workspace_store::DocCommand::AddItems {
+            workspace::store::DocCommand::AddItems {
                 items: vec![video],
                 open: false,
             },
         );
         let (workspace, _) =
-            workspace_store::apply(&workspace, workspace_store::DocCommand::OpenViewer(open));
+            workspace::store::apply(&workspace, workspace::store::DocCommand::OpenViewer(open));
         let split = |axis, share, first, second| Layout::Split {
             axis,
             share,
@@ -448,15 +448,15 @@ mod tests {
         )
         .unwrap();
         let item = playlist.id;
-        let (state, jobs) = workspace_store::apply(
+        let (state, jobs) = workspace::store::apply(
             &WorkspaceState::default(),
-            workspace_store::DocCommand::AddItems {
+            workspace::store::DocCommand::AddItems {
                 items: vec![playlist],
                 open: false,
             },
         );
         let (state, _) =
-            workspace_store::apply(&state, workspace_store::DocCommand::OpenViewer(item));
+            workspace::store::apply(&state, workspace::store::DocCommand::OpenViewer(item));
         let viewer = |entry: Option<ContentId>| View {
             active: Some(ViewerId(1)),
             viewers: [(
@@ -504,10 +504,10 @@ mod tests {
             }],
             warnings: Vec::new(),
         });
-        let resolved = workspace_store::complete(&state, item, jobs[0].attempt, Ok(content));
+        let resolved = workspace::store::complete(&state, item, jobs[0].attempt, Ok(content));
         assert_eq!(shown(&resolved, Some(b.clone())), Some(b.clone()));
         let (reloading, _) =
-            workspace_store::apply(&resolved, workspace_store::DocCommand::Resolve(item));
+            workspace::store::apply(&resolved, workspace::store::DocCommand::Resolve(item));
         assert_eq!(
             shown(&reloading, Some(b.clone())),
             Some(b.clone()),
@@ -517,9 +517,9 @@ mod tests {
         let gone = ContentId::of_entry(&item, "P", "GONE");
         assert_eq!(shown(&resolved, Some(gone.clone())), Some(a.clone()));
 
-        let (hidden, _) = workspace_store::apply(
+        let (hidden, _) = workspace::store::apply(
             &resolved,
-            workspace_store::DocCommand::SetHidden {
+            workspace::store::DocCommand::SetHidden {
                 target: HiddenRef::Entry(a.clone()),
                 hidden: true,
             },
@@ -530,9 +530,9 @@ mod tests {
             Some(a),
             "asking for a hidden entry shows it"
         );
-        let (all, _) = workspace_store::apply(
+        let (all, _) = workspace::store::apply(
             &hidden,
-            workspace_store::DocCommand::SetHidden {
+            workspace::store::DocCommand::SetHidden {
                 target: HiddenRef::Entry(b),
                 hidden: true,
             },

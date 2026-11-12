@@ -2,11 +2,11 @@ use super::*;
 use foundation::{CancelToken, ErrorCode, HostPath, ItemId, UserError, Warning};
 use handlers::Handlers;
 use std::path::PathBuf;
+use workspace::store::{HiddenRef, WorkspaceState as State};
 use workspace::{
     ContentId, Environment, LiveOverlay, LiveRecipe, OverlayRef, PlaylistContent, PlaylistSpan,
     Protocol, Recipe, RtspRoute, Secret, VideoRecipe, VideoRef,
 };
-use workspace_store::{HiddenRef, WorkspaceState as State};
 
 fn item(id: ItemId, label: &str, folder: &str) -> WorkspaceItem {
     WorkspaceItem {

@@ -7,8 +7,8 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
+use workspace::store::WorkspaceState;
 use workspace_files::file_stem;
-use workspace_store::WorkspaceState;
 
 fn now_ms() -> u64 {
     SystemTime::now()

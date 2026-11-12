@@ -125,7 +125,7 @@ impl<C: Clone + Send + 'static> Service<C> {
     }
 
     /// Looks at the files every item was read from once, and tells each session whose item changed (see
-    /// [`DocCommand::SourceChanged`](workspace_store::DocCommand::SourceChanged)). Blocks on the disk.
+    /// [`DocCommand::SourceChanged`](workspace::store::DocCommand::SourceChanged)). Blocks on the disk.
     pub fn check_sources(&self) {
         // The count comes first: a record made after the items are listed is never forgotten for being missing.
         let known = self.inner.sources.version();

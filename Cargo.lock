@@ -172,7 +172,6 @@ dependencies = [
  "tungstenite",
  "workspace",
  "workspace-files",
- "workspace-store",
 ]
 
 [[package]]
@@ -947,10 +946,14 @@ dependencies = [
 name = "handlers"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "foundation",
  "handler-api",
- "playlist-resolvers",
- "scene-decoders",
+ "memchr",
+ "quick-xml",
+ "scene",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -1651,16 +1654,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "playlist-resolvers"
-version = "0.1.0"
-dependencies = [
- "foundation",
- "handler-api",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "plugins"
 version = "0.1.0"
 dependencies = [
@@ -2155,20 +2148,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "scene-decoders"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "foundation",
- "handler-api",
- "memchr",
- "quick-xml",
- "scene",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "scene-store"
 version = "0.1.0"
 dependencies = [
@@ -2324,7 +2303,6 @@ dependencies = [
  "tokio",
  "ts-rs",
  "workspace",
- "workspace-store",
 ]
 
 [[package]]
@@ -3180,19 +3158,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tracing",
- "workspace",
-]
-
-[[package]]
-name = "workspace-store"
-version = "0.1.0"
-dependencies = [
- "foundation",
- "handlers",
- "overlay-sync",
- "serde",
- "serde_json",
- "tempfile",
  "workspace",
 ]
 

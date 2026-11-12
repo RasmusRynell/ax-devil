@@ -22,7 +22,6 @@ serde.workspace = true
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 ts-rs.workspace = true
 workspace.workspace = true
-workspace-store.workspace = true
 
 [dev-dependencies]
 handler-api.workspace = true

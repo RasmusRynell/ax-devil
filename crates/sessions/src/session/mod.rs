@@ -4,7 +4,7 @@
 //! state and the [`Effects`] to run once the session's lock is released; [`Service`] runs it under that lock and
 //! publishes the result. [`authorize`] is the one rule for what a seat may do: commands and streams alike. Three
 //! generations make old authority dead for good: the [`SharingGen`] of a "Start sharing", the
-//! [`ContentGen`](workspace_store::ContentGen) of a resolved Content, and the seat's [`Lease`].
+//! [`ContentGen`](workspace::store::ContentGen) of a resolved Content, and the seat's [`Lease`].
 
 mod authorize;
 mod commands;
