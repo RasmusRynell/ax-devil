@@ -1,5 +1,7 @@
 /** What a viewer holds of its lanes' data: Sample Items, Frame Maps and catalogs, and what each lane draws from them. */
 
+import { refusalOf } from "../client/resource";
+import { reasonOf } from "../client/errors";
 import { Catalogs } from "../lanes/catalogs";
 import { FileScope } from "../inspect/fileScope";
 import { FrameMaps } from "../stream/data/FrameMaps";
@@ -95,11 +97,7 @@ export class ViewerData {
       return this.#lanes.copyFrom(lane, before);
     } catch (error) {
       if (request === this.#applyRequest && this.#lanes.states[lane]?.settings === source)
-        this.#laneCatalogs.refuseApply(
-          lane,
-          source.catalog,
-          error instanceof Error ? error.message : String(error),
-        );
+        this.#laneCatalogs.refuseApply(lane, source.catalog, reasonOf(refusalOf(error)));
       return [];
     }
   }

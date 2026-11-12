@@ -84,7 +84,10 @@ describe("catalog actions", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
-        Response.json({ code: "CatalogInvalid", reason: "Reload refused" }, { status: 400 }),
+        Response.json(
+          { code: "CatalogInvalid", params: {}, reason: "Reload refused" },
+          { status: 400 },
+        ),
       ),
     );
     const refusal = () => session.getSnapshot().lanes[0].catalogActionProblem;
@@ -110,7 +113,10 @@ describe("catalog actions", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
-        Response.json({ code: "CatalogInvalid", reason: "Reload refused" }, { status: 400 }),
+        Response.json(
+          { code: "CatalogInvalid", params: {}, reason: "Reload refused" },
+          { status: 400 },
+        ),
       ),
     );
     await session.applyToAll(0);

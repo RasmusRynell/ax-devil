@@ -12,6 +12,7 @@ import type {
 import { Button } from "../kit/Button";
 import { ChoiceDialog } from "../kit/ChoiceDialog";
 import { TextField } from "../kit/Fields";
+import { refusalOf } from "../client/resource";
 import { ask } from "../client/ask";
 import { useSettings } from "../client/settings";
 import { Refusal } from "../kit/Refusal";
@@ -138,7 +139,7 @@ export function LaneCatalogActions({
       if (asked !== selection.current) return;
       setRefusal(refused ? reasonOf(refused) : null);
     } catch (error) {
-      if (asked === selection.current) setRefusal(String(error));
+      if (asked === selection.current) setRefusal(reasonOf(refusalOf(error)));
     } finally {
       if (asked === selection.current) setBusy(false);
     }

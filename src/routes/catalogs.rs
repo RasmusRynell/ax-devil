@@ -201,8 +201,24 @@ mod tests {
             .header("content-type", "application/json")
             .body(Body::from(settings.to_string()))
             .unwrap();
-        assert_eq!(test.send(put).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+        let (status, body) = test.send(put).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(json(&body)["code"], "InvalidRequest");
+        assert_eq!(json(&body)["location"], "overlays.default_catalog");
+        assert_eq!(
+            json(&body)["reason"],
+            "The catalog changed; reload and validate it before saving the default"
+        );
         assert_eq!(default_catalog(&test, None).await, "");
+        let (status, body) = test
+            .send(post(
+                "/api/catalogs/reload",
+                json!({ "id": "user:gone.json" }),
+            ))
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(json(&body)["code"], "CatalogInvalid");
+        assert_eq!(json(&body)["reason"], "The catalog cannot be read");
     }
 
     #[tokio::test]

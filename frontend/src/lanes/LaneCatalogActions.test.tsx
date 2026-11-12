@@ -131,17 +131,22 @@ describe("catalog copy and delete", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
     await act(async () => {
-      replies[1](new Response(null, { status: 204 }));
+      replies[1](Response.json({ revision: 2, document: catalogDocument }));
     });
     await act(async () => {
-      replies[0](Response.json({ code: "CatalogInvalid", reason: "old failure" }, { status: 400 }));
+      replies[0](
+        Response.json(
+          { code: "CatalogInvalid", params: {}, reason: "old failure" },
+          { status: 400 },
+        ),
+      );
     });
     expect(onReload).toHaveBeenCalledOnce();
     expect(screen.queryByRole("alert")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
     moveTo("built-in:tracking");
     await act(async () => {
-      replies[2](new Response(null, { status: 204 }));
+      replies[2](Response.json({ revision: 2, document: catalogDocument }));
     });
     expect(onReload).toHaveBeenCalledOnce();
   });
@@ -250,6 +255,14 @@ describe("catalog copy and delete", () => {
       ),
     );
     expect(refused.onChange).not.toHaveBeenCalled();
+  });
+
+  it("shows a reload ErrorWire's specific refusal when making a default and stores nothing", async () => {
+    routes({ ok: false, reason: "The catalog cannot be read" });
+    const { save } = setup("user:night.json", "built-in:standard");
+    fireEvent.click(screen.getByRole("button", { name: "Use as default" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("The catalog cannot be read");
+    expect(save).not.toHaveBeenCalled();
   });
 
   it("lets Standard be saved as the default while the stored one names a catalog that is gone", async () => {

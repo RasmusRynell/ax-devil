@@ -1,16 +1,13 @@
-import { ask } from "../resolvers/handlers";
-import { reasonOf } from "../errors";
+import { ask } from "../ask";
 import { compileCatalog } from "../present";
-import type { FreshCatalog } from "../generated/api";
+import type { ErrorWire, FreshCatalog } from "../generated/api";
 
 /** Rereads the saved document; the action owner reconciles and compiles it before committing. */
 export async function readFreshCatalog(id: string): Promise<FreshCatalog> {
   const answer = await ask<FreshCatalog>("/api/catalogs/reload", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id }),
+    json: { id },
   });
-  if (!answer.ok) throw new Error(reasonOf(answer.refusal));
+  if (!answer.ok) throw answer.error;
   return answer.value;
 }
 
@@ -18,6 +15,11 @@ export async function readFreshCatalog(id: string): Promise<FreshCatalog> {
 export async function freshCatalog(id: string): Promise<number> {
   const fresh = await readFreshCatalog(id);
   const result = compileCatalog(fresh.document);
-  if (!result.ok) throw new Error(result.diagnostics.map((d) => d.message).join("\n"));
+  if (!result.ok)
+    throw {
+      code: "CatalogInvalid",
+      params: {},
+      reason: result.diagnostics.map((d) => d.message).join("\n"),
+    } satisfies ErrorWire;
   return fresh.revision;
 }
