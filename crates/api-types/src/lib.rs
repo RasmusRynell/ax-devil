@@ -120,6 +120,14 @@ pub struct SettingsState {
         type = "Record<SettingKey, string | boolean | number | SecretState | Array<LoginView> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<\"score\" | \"confidence\", { min: number | null; max: number | null }>; expression: string }>"
     )]
     pub values: BTreeMap<String, serde_json::Value>,
+    /// Keys with a preserved raw value different from the displayed fallback; only explicit edits repair them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "Array<SettingKey>")]
+    pub recovered: Option<Vec<String>>,
+    /// Commands with a preserved raw override different from the displayed binding.
+    #[serde(rename = "recoveredShortcuts", skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "Array<CommandId>")]
+    pub recovered_shortcuts: Option<Vec<String>>,
     /// What each non-secret setting among `values` that holds a `$NAME` reference gives as it is used (a number for a
     /// whole-number setting), for a form that starts from the value. Only with Full access, since it is the server's
     /// environment; absent for a setting without a reference.

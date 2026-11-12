@@ -24,6 +24,10 @@ fn invalid_saved_preferences_survive_unrelated_saves_until_edited() {
     assert_eq!(loaded.state().values(), defaults.state().values());
     assert_eq!(loaded.state().shortcuts(), defaults.state().shortcuts());
     assert_eq!(read(&path), document);
+    let mut recovered = loaded.state().recovered();
+    recovered.sort();
+    assert_eq!(recovered, invalid.keys().cloned().collect::<Vec<_>>());
+    assert_eq!(loaded.state().recovered_shortcuts(), vec!["exit"]);
     let unrelated = Patch {
         set: BTreeMap::from([("scan.on_startup".into(), json!(false))]),
         ..Patch::default()
@@ -59,6 +63,14 @@ fn invalid_saved_preferences_survive_unrelated_saves_until_edited() {
             ..Patch::default()
         })
         .unwrap();
+    let reloaded = Settings::load(&path).unwrap();
+    assert!(
+        !reloaded
+            .state()
+            .recovered()
+            .contains(&"overlays.default_sticky".to_owned())
+    );
+    assert!(reloaded.state().recovered_shortcuts().is_empty());
     let mut malformed_shortcut = Patch::default();
     malformed_shortcut
         .shortcuts_set
