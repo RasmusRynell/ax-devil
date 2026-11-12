@@ -109,16 +109,9 @@ module.exports.run = async ({ window }) => {
       Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'rtsp');
       select.dispatchEvent(new Event('change', { bubbles: true }));
     })()`);
-    // Choosing a mode before handlers load deliberately suppresses the configured default.
-    // Establish this scenario's decoder explicitly instead of depending on response timing.
+    // The initial shared handler arrives even when its discovery finishes after the mode edit.
     const handler = `document.getElementById([...document.querySelectorAll('dialog[open] label')].find(l => l.textContent === 'Handler Type').htmlFor)`;
-    await wait(`${handler}?.querySelector('option[value=ADF_V1_FRAME]')`);
-    await js(`(() => {
-      const select = ${handler};
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'ADF_V1_FRAME');
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    })()`);
-    await wait(`${handler}.value === 'ADF_V1_FRAME'`);
+    await wait(`${handler}?.value === 'ADF_V1_FRAME'`);
     const add =
       "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'OK')";
     await wait(`${add}?.disabled === false`);
