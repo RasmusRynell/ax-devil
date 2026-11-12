@@ -2,8 +2,8 @@ import { MenuButton } from "../kit/Button";
 import { SearchField } from "../kit/Fields";
 import { IconToggle } from "../kit/IconToggle";
 import type { MenuCommand, MenuEntry } from "../kit/Menu";
-import { ORDERS, type Order } from "../live/network";
-import { facetKey, type Facet } from "../live/rows";
+import { ORDERS, type Order } from "./network";
+import { facetKey, type Facet } from "./rows";
 
 const ORDER_IDS: ReadonlySet<string> = new Set(ORDERS.map(([id]) => id));
 

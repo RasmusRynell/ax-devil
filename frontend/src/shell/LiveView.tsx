@@ -20,7 +20,7 @@ import { useCan, useCommand, useDoc } from "../session/session";
 import { useShow, useShownItems } from "../viewer/useViewers";
 import { useItemDialogs } from "./ItemDialogs";
 import { useKept } from "../kit/keptState";
-import { LiveToolbar } from "./LiveToolbar";
+import { LiveToolbar } from "../live/LiveToolbar";
 import { LiveTree } from "./LiveTree";
 import { ScanSettings } from "./ScanSettings";
 import { Refusal } from "../kit/Refusal";

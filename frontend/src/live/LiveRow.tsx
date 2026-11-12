@@ -2,8 +2,8 @@ import { Button } from "../kit/Button";
 import { Chip } from "../kit/Chips";
 import { Icon } from "../kit/Icon";
 import { KIND } from "../kit/look";
-import { ACTIONS, type Row, type RowAction } from "../live/rows";
-import type { MarkColor } from "../live/streamState";
+import { ACTIONS, type Row, type RowAction } from "./rows";
+import type { MarkColor } from "./streamState";
 
 const MARK: Record<MarkColor, string> = {
   live: KIND.live,

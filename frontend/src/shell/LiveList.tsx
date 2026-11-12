@@ -1,6 +1,6 @@
 import { useState, type KeyboardEvent, type RefObject } from "react";
 import type { Row, RowAction } from "../live/rows";
-import { LiveRow } from "./LiveRow";
+import { LiveRow } from "../live/LiveRow";
 import { useSpanWindow } from "./useSpanWindow";
 
 /** A row shown in a section's tree, in the order the keyboard walks them. */
