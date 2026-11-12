@@ -187,6 +187,7 @@ export class FileScope {
   /** The lanes changed: ask again for each list whose answer would differ. */
   refresh(): void {
     for (const requests of this.#requests) requests.refresh();
+    this.#listeners.forEach((listener) => listener());
   }
 
   /** The backend opened the entry on a new socket: nothing asked before was heard, so every list is asked for again. */

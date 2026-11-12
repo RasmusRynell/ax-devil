@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { answersEvent } from "../inspect/fileEvents";
+import { useMemo, useSyncExternalStore } from "react";
 import type { EventLog } from "../live/eventLog";
 import { frameObjects, drawnIds } from "./objects";
 import type { PlaybackView } from "../playback/view";
@@ -7,15 +8,12 @@ import { EventPage, type EventDetail } from "./EventPage";
 import { whyUnavailable } from "./listStatus";
 import type { ObjectSource } from "./ObjectsList";
 
-/** How many spans of presence the backend sends per object: what a strip in a row can draw. */
-const BINS = 64;
-
 const EMPTY: EventDetail = { objects: [], sameMoment: [], truncated: false };
 
 /**
  * An event's page over a lane. A recording asks the backend for the event, the objects it involves and the events of
  * its moment; a live stream (`live`) has only the event's line and the frame on screen to describe it by. The page
- * closes (`onGone`) when the file no longer has the event it was opened for.
+ * reads the event identity retained by the navigation owner.
  */
 export function EventPageBody({
   source,
@@ -26,7 +24,6 @@ export function EventPageBody({
   canSeek,
   onObject,
   onEvent,
-  onGone,
 }: {
   source: ObjectSource;
   view: PlaybackView;
@@ -38,28 +35,19 @@ export function EventPageBody({
   /** Opens an object's page; absent where selecting objects is switched off. */
   onObject?: (id: string) => void;
   onEvent: (item: EventItem) => void;
-  onGone: () => void;
 }) {
   const events = source.files.events;
-  // A new event on the same lane replaces the old one and keeps what the backend holds for the lane.
-  useEffect(() => () => events.want(lane, null), [events, lane]);
-  useEffect(() => {
-    if (!live) events.want(lane, item.id, BINS);
-  }, [events, live, lane, item.id]);
   const held = useSyncExternalStore(source.files.subscribe, () => events.event(lane));
   const unavailable = useSyncExternalStore(source.files.subscribe, () =>
     events.eventUnavailable(lane),
   );
   const timeOf = (at: number) => source.frameTime(at);
-  const found = held?.event === item.id ? held : null;
+  const found = answersEvent(held, item, events.revision(lane)) ? held : null;
   const row = found?.detail?.row;
   // The file was replaced by one without this event, or with another at its place.
-  const gone = found !== null && (!row || row.label !== item.label || row.kind !== item.kind);
+  const gone = found !== null && !row;
   // The frame the video shows it on follows how the lane matches, which can change while the page is open.
-  const current = row && !gone ? itemOf(row, timeOf) : item;
-  useEffect(() => {
-    if (gone) onGone();
-  }, [gone, onGone]);
+  const current = row && !gone ? itemOf(row, timeOf, found?.revision) : item;
 
   const frame = source.shown(lane);
   const shown = view.shown !== undefined;
@@ -83,7 +71,7 @@ export function EventPageBody({
   else if (found?.detail)
     detail = {
       objects: found.detail.objects,
-      sameMoment: found.detail.same_moment.map((other) => itemOf(other, timeOf)),
+      sameMoment: found.detail.same_moment.map((other) => itemOf(other, timeOf, found.revision)),
       truncated: found.detail.same_moment_truncated,
     };
   const message =

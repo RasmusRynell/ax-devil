@@ -281,3 +281,75 @@ fn an_event_shows_each_object_once_where_it_is_seen_and_the_other_events_of_its_
     );
     assert_eq!(view.object_events("nobody", 9), (Vec::new(), false));
 }
+
+#[test]
+fn replacement_follows_the_nearest_equal_event_or_none() {
+    let wide = "a".repeat(40_000);
+    let mut fixture = fixture(MatchBasis::Frame);
+    fixture.history = history_of(
+        &(0..5)
+            .map(|sample| {
+                scene_of(sample, &[])
+                    .with_events(vec![event(
+                        sample,
+                        Operation::Rename {
+                            from: id(&wide),
+                            to: id("z"),
+                        },
+                    )])
+                    .expect("same clock")
+            })
+            .collect::<Vec<_>>(),
+        &policy_of(&[]),
+    );
+    let cancel = CancelToken::new();
+    fixture.events = EventPlacement::new(
+        &fixture.history,
+        &keys(),
+        &timeline(),
+        MatchBasis::Frame,
+        &cancel,
+    )
+    .expect("not cancelled");
+    let view = fixture.view();
+    let mut previous = view.row(1).expect("rename");
+    previous.event = 99;
+    previous.frame = 2;
+    assert_eq!(
+        view.nearest(&previous.anchor, previous.frame, &cancel)
+            .expect("not cancelled"),
+        Some(1),
+        "a tie takes the first event"
+    );
+    previous.frame = 4;
+    assert_eq!(
+        view.nearest(&previous.anchor, previous.frame, &cancel)
+            .expect("not cancelled"),
+        Some(3)
+    );
+    previous.objects.reverse();
+    assert_eq!(
+        view.nearest(&previous.anchor, previous.frame, &cancel)
+            .expect("not cancelled"),
+        Some(3),
+        "display data never travels back as identity"
+    );
+    previous.anchor[0] ^= 1;
+    assert_eq!(
+        view.nearest(&previous.anchor, previous.frame, &cancel)
+            .expect("not cancelled"),
+        None
+    );
+    previous = view.row(1).expect("rename");
+    previous.anchor[31] ^= 1;
+    assert_eq!(
+        view.nearest(&previous.anchor, previous.frame, &cancel)
+            .expect("not cancelled"),
+        None
+    );
+    cancel.cancel();
+    assert!(
+        view.nearest(&previous.anchor, previous.frame, &cancel)
+            .is_err()
+    );
+}

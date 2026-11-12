@@ -268,7 +268,14 @@ export function Gallery() {
 
       <Section title="Tabs">
         <div className="flex flex-col gap-m border border-line">
-          <Tabs label="Sections" tabs={TABS} value={tab} onChange={setTab} panelId="gallery-tab" />
+          <Tabs
+            active={{ General: true }}
+            label="Sections"
+            tabs={TABS}
+            value={tab}
+            onChange={setTab}
+            panelId="gallery-tab"
+          />
           <p id="gallery-tab" role="tabpanel" className="m-0 px-m pb-m">
             {tab} panel
           </p>

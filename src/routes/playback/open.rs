@@ -169,6 +169,8 @@ pub(super) async fn open_video<T: Send + 'static>(
                     | ClientMessage::FileQuery { .. }
                     | ClientMessage::Appearances { .. }
                     | ClientMessage::EventQuery(_)
+                    | ClientMessage::EventRelease { .. }
+                    | ClientMessage::FindEvent(_)
                     | ClientMessage::Event(_)
                     | ClientMessage::FileRelease { .. }
                     | ClientMessage::Live { .. },

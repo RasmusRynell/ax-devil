@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Selection } from "../lanes/contract";
 import { freshEvents, freshList, type EventsState, type ListState } from "./listState";
 import type { Place } from "./MediaToolsPanel";
+import type { ObjectSource } from "./ObjectsList";
+import { useEventNavigation } from "./useEventNavigation";
 import { EMPTY, jump, topObject, type PageStack } from "./pageStack";
 
 /**
@@ -16,6 +18,7 @@ export function useMediaTools(
   session: { select(selection: Selection): void },
   objectDetails: boolean,
   visible = false,
+  source?: Pick<ObjectSource, "files" | "frameTime">,
 ) {
   const [width, onWidth] = useState<number | null>(null);
   const [pages, setPages] = useState<PageStack>(EMPTY);
@@ -44,6 +47,19 @@ export function useMediaTools(
     },
     [session],
   );
+  const remap = useCallback(
+    (next: PageStack) => {
+      const before = topObject(pages);
+      const after = topObject(next);
+      const at = pagePlace.current;
+      setPages(next);
+      if (before?.entity !== after?.entity)
+        session.select(after && at ? { ...at, entity: after.entity } : null);
+      if (next.entries.length === 0) pagePlace.current = null;
+    },
+    [pages, session],
+  );
+  useEventNavigation(source, chosen, pages, remap, visible);
   const pick = (selection: Selection) => {
     const cancelled = pending.current;
     pending.current = null;

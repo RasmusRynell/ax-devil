@@ -21,8 +21,8 @@ use api_types::{
     Audience,
     live::{LiveEventWire, LiveEventsWire, LiveGapWire, LiveOpenedWire, LiveSampleEventsWire},
     playback::{
-        ClientMessage, EventAskWire, EventQueryWire, FileAnswer, FileScopeUnavailable, LaneInfo,
-        PLAYBACK_PROTOCOL, ServerMessage, envelope,
+        ClientMessage, EventAskWire, EventQueryWire, FileAnswer, FileScopeUnavailable,
+        FindEventWire, LaneInfo, PLAYBACK_PROTOCOL, ServerMessage, envelope,
     },
 };
 use axum::extract::ws::Message;
@@ -264,6 +264,7 @@ impl<I: Incoming> Live<'_, I> {
                 ClientMessage::FileQuery { lane, request, .. }
                 | ClientMessage::Appearances { lane, request, .. }
                 | ClientMessage::EventQuery(EventQueryWire { lane, request, .. })
+                | ClientMessage::FindEvent(FindEventWire { lane, request, .. })
                 | ClientMessage::Event(EventAskWire { lane, request, .. }),
             )) => self.notify(&ServerMessage::File {
                 lane,
@@ -278,6 +279,7 @@ impl<I: Incoming> Live<'_, I> {
                 | ClientMessage::Prepare { .. }
                 | ClientMessage::Export { .. }
                 | ClientMessage::CancelExport { .. }
+                | ClientMessage::EventRelease { .. }
                 | ClientMessage::FileRelease { .. },
             )) => Ok(()),
             Some(Err(error)) => Err(End::Failed(error)),

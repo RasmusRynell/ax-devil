@@ -15,6 +15,7 @@ afterEach(cleanup);
 const timeOf = (frame: number) => 3_723_004_000 + frame * 40_000;
 
 const event = (index: number, frame: number): EventRowWire => ({
+  anchor: Array(32).fill(0) as EventRowWire["anchor"],
   event: index,
   frame,
   kind: "merge",
@@ -88,7 +89,7 @@ it("marks the object's events on its strip, lists them under its fields and open
       "01:02:03.804merge7 → 5",
     ]);
     fireEvent.click(events.getAllByRole("option")[1]);
-    expect(onEvent).toHaveBeenCalledWith(event(4, 20));
+    expect(onEvent).toHaveBeenCalledWith(event(4, 20), 1);
     cleanup();
   }
 });

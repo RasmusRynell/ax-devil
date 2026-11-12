@@ -56,3 +56,33 @@ locate: number | null,
  * A frame whose place in the list is wanted: the answer's `frame_row`.
  */
 frame: number | null, };
+
+/**
+ * Finds the nearest event equal in kind, label and ordered entity ids after a file replacement.
+ * Uses the same File scope authority and answer as `Event`; `event` echoes the prior index.
+ */
+export type FindEventWire = { 
+/**
+ * The lane's position.
+ */
+lane: number, 
+/**
+ * The request id.
+ */
+request: number, 
+/**
+ * The prior index, echoed in the answer.
+ */
+event: number, 
+/**
+ * Server-issued identity; fixed size regardless of event content.
+ */
+anchor: [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number], 
+/**
+ * The previously shown frame.
+ */
+frame: number, 
+/**
+ * At most 256 presence bins per object.
+ */
+bins: number, };

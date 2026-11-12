@@ -52,14 +52,16 @@ pub(crate) const GROUP_BYTES: usize = 256 << 20;
 const PUBLISH_EVERY: Duration = Duration::from_millis(250);
 
 /// Limits a test may lower.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct Tuning {
     /// Entry memory of the sorter before it writes runs to disk.
     pub sort_budget: usize,
     /// The shortest time between two publications.
     pub publish_every: Duration,
-    /// The memory the file history may take before the file has none.
+    /// The history bytes to store in the artifact; larger histories stay in memory.
     pub history_bytes: usize,
+    #[cfg(test)]
+    pub finalizing: Option<crate::history::Finalizing>,
 }
 
 impl Default for Tuning {
@@ -68,6 +70,8 @@ impl Default for Tuning {
             sort_budget: SORT_BUDGET_BYTES,
             publish_every: PUBLISH_EVERY,
             history_bytes: HISTORY_BYTES,
+            #[cfg(test)]
+            finalizing: None,
         }
     }
 }
@@ -209,7 +213,7 @@ impl Store {
             replaced: 0,
             keys: KeyLog::new(TimeKind::Frame, by_position),
             by_position,
-            history: HistoryBuilder::new(tuning.history_bytes),
+            history: HistoryBuilder::new(),
             warnings: Warnings::default(),
             refused: None,
             last_publish: None,
@@ -296,7 +300,7 @@ impl Store {
         }
         self.frozen = Some(sorter);
         // The pass over the sorted fragments builds the history of the final numbering.
-        self.history = HistoryBuilder::new(self.tuning.history_bytes);
+        self.history = HistoryBuilder::new();
         Ok(())
     }
 
@@ -383,6 +387,9 @@ impl Store {
                 writer: self.writer,
                 keys: self.keys,
                 history: self.history,
+                history_bytes: self.tuning.history_bytes,
+                #[cfg(test)]
+                finalizing: self.tuning.finalizing,
                 output: self.output,
                 header: self.header,
                 warnings: self.warnings.into_list(),
@@ -425,6 +432,9 @@ impl Store {
             writer,
             keys,
             history: self.history,
+            history_bytes: self.tuning.history_bytes,
+            #[cfg(test)]
+            finalizing: self.tuning.finalizing,
             output,
             header: self.header,
             warnings: self.warnings.into_list(),

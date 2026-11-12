@@ -41,8 +41,45 @@ export type EventsPage = {
 /** What a lane's Events list shows now. */
 export type EventsView = FileView<EventsPage>;
 
+/** The navigation identity a detail request was made for, independent of reused file indices. */
+export type EventIdentity = {
+  id: number;
+  anchor?: EventRowWire["anchor"];
+  frame: number;
+  revision?: number;
+};
+
+/** Whether two references name the same event at the same place in the same history revision. */
+export function sameEventIdentity(left: EventIdentity, right: EventIdentity): boolean {
+  return (
+    left.id === right.id &&
+    left.frame === right.frame &&
+    left.revision === right.revision &&
+    (left.anchor === right.anchor ||
+      (left.anchor !== undefined &&
+        right.anchor !== undefined &&
+        left.anchor.every((byte, index) => byte === right.anchor?.[index])))
+  );
+}
+
+/** An answer belongs only to the navigation identity it was requested for, in the expected current revision. */
+export function answersEvent(
+  view: EventView | null,
+  identity: EventIdentity,
+  revision: number,
+): view is EventView {
+  return (
+    view !== null &&
+    view.identity !== null &&
+    view.revision === revision &&
+    sameEventIdentity(view.identity, identity)
+  );
+}
+
 /** One event of a lane, as the backend answered it; `detail` is `null` when the file has no such event. */
 export type EventView = {
+  /** Original anchor, frame and revision sent with the request, including on a FindEvent answer. */
+  identity: EventIdentity | null;
   event: number;
   /** The data revision it was read under. */
   revision: number;
@@ -88,15 +125,37 @@ const EVENTS: FileRequestSpec<"Events", Wanted, Basis, EventsPage> = {
 };
 
 /** What an event is wanted to be: which, and how finely its objects' presence is binned. */
-type Event = { event: number; bins: number };
+type Event = {
+  event: number;
+  bins: number;
+  previous?: { anchor: EventRowWire["anchor"]; frame: number; revision: number };
+};
 
 const EVENT: FileRequestSpec<"Event", Event, Basis, EventView> = {
   kind: "Event",
   shape: "lookup",
   basis: basisOf,
-  message: (lane, request, { event, bins }) => ({ type: "Event", lane, request, event, bins }),
-  page: (body, { event }, revision) =>
-    body.event === event ? { event, revision, detail: body.detail } : null,
+  message: (lane, request, { event, bins, previous }, basis) =>
+    previous && previous.revision !== basis.data
+      ? {
+          type: "FindEvent",
+          lane,
+          request,
+          event,
+          anchor: previous.anchor,
+          frame: previous.frame,
+          bins,
+        }
+      : { type: "Event", lane, request, event, bins },
+  page: (body, wanted, revision) =>
+    body.event === wanted.event
+      ? {
+          event: wanted.event,
+          revision,
+          detail: body.detail,
+          identity: wanted.previous ? { id: wanted.event, ...wanted.previous } : null,
+        }
+      : null,
 };
 
 export class FileEvents {
@@ -105,14 +164,25 @@ export class FileEvents {
   /** The asking of one event, for the File scope to drive. */
   readonly one: FileRequests<"Event", Event, Basis, EventView>;
 
-  constructor(host: FileRequestsHost) {
+  constructor(private readonly host: FileRequestsHost) {
     this.list = new FileRequests(EVENTS, host);
-    this.one = new FileRequests(EVENT, host);
+    this.one = new FileRequests(EVENT, {
+      ...host,
+      released: (lane) => {
+        host.send({ type: "EventRelease", lane });
+        host.released(lane);
+      },
+    });
   }
 
   /** What the lane's Events list shows now; the same object until it changes. */
   view(lane: number): EventsView {
     return this.list.view(lane);
+  }
+
+  /** The current history revision, used by the navigation owner. */
+  revision(lane: number): number {
+    return basisOf(this.host.lanes, lane, this.host.owner()).data;
   }
 
   /** The event the lane wants, once the backend has answered; `null` until then. */
@@ -170,9 +240,19 @@ export class FileEvents {
   }
 
   /** Wants `event` of the lane, with presence in at most `bins` spans per object, or nothing with `null`. */
-  want(lane: number, event: number | null, bins = 0): void {
+  want(lane: number, event: number | null, bins = 0, previous?: Event["previous"]): void {
     const held = this.one.wanted(lane);
-    if (event === null) this.one.release(lane);
-    else if (held?.event !== event || held.bins !== bins) this.one.want(lane, { event, bins });
+    if (event === null) {
+      this.one.release(lane);
+    } else if (
+      held?.event !== event ||
+      held.bins !== bins ||
+      JSON.stringify(held.previous) !== JSON.stringify(previous)
+    )
+      this.one.want(lane, {
+        event,
+        bins,
+        previous,
+      });
   }
 }

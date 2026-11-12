@@ -6,7 +6,7 @@
 use super::{Cache, MAX_BINS, MAX_LIMIT, Reply, Stop, found, latest::Latest, read};
 use api_types::{
     Audience,
-    playback::{EventAskWire, EventQueryWire, FileAnswer, FileBody},
+    playback::{EventAskWire, EventQueryWire, FileAnswer, FileBody, FindEventWire},
 };
 use foundation::CancelToken;
 use overlays::{FileScopeInput, ViewerOverlays};
@@ -19,6 +19,8 @@ pub(in crate::routes::playback) enum Ask {
     List(EventQueryWire),
     /// One event.
     Detail(EventAskWire),
+    /// Finds an event after replacement.
+    Find(FindEventWire),
 }
 
 impl Ask {
@@ -26,6 +28,7 @@ impl Ask {
         match self {
             Self::List(wire) => wire.lane,
             Self::Detail(wire) => wire.lane,
+            Self::Find(wire) => wire.lane,
         }
     }
 }
@@ -56,6 +59,45 @@ impl Events {
         ask: Ask,
     ) {
         match ask {
+            Ask::Find(wire) => {
+                let (lane, request) = (wire.lane, wire.request);
+                if wire.bins > MAX_BINS {
+                    self.detail.release(lane);
+                    if self.audience.host_details {
+                        let reason = format!(
+                            "An event request asks for 0 to {MAX_BINS} spans, not {}",
+                            wire.bins
+                        );
+                        self.detail.say(Reply::problem(lane, reason));
+                    }
+                    return;
+                }
+                self.detail.ask(
+                    overlays,
+                    cache,
+                    own,
+                    (lane, request),
+                    move |input, cache, cancel, audience| {
+                        let cached =
+                            cache.prepared(lane, input, || read(input, cancel, audience))?;
+                        let view = EventView {
+                            history: &cached.history,
+                            events: &cached.events,
+                            placement: &cached.placement,
+                        };
+                        let matched = view.nearest(&wire.anchor, wire.frame, cancel)?;
+                        Ok(found(
+                            &cached,
+                            FileBody::Event {
+                                event: wire.event,
+                                detail: matched.and_then(|event| {
+                                    view.detail(event, wire.bins, MAX_LIMIT as usize)
+                                }),
+                            },
+                        ))
+                    },
+                );
+            }
             Ask::List(wire) => {
                 let (lane, request) = (wire.lane, wire.request);
                 if wire.limit == 0 || wire.limit > MAX_LIMIT {
@@ -65,7 +107,7 @@ impl Events {
                             "An event query asks for 1 to {MAX_LIMIT} rows, not {}",
                             wire.limit
                         );
-                        self.list.say(Reply::problem(lane, request, reason));
+                        self.list.say(Reply::problem(lane, reason));
                     }
                     return;
                 }
@@ -84,7 +126,7 @@ impl Events {
                             "An event request asks for 0 to {MAX_BINS} spans, not {}",
                             wire.bins
                         );
-                        self.detail.say(Reply::problem(lane, request, reason));
+                        self.detail.say(Reply::problem(lane, reason));
                     }
                     return;
                 }
@@ -101,6 +143,11 @@ impl Events {
     /// The lane's events are no longer wanted: its running requests stop without an answer.
     pub(super) fn release(&mut self, lane: u16) {
         self.list.release(lane);
+        self.detail.release(lane);
+    }
+
+    /// Cancels only the event detail subscription.
+    pub(super) fn release_detail(&mut self, lane: u16) {
         self.detail.release(lane);
     }
 

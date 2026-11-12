@@ -232,7 +232,6 @@ export function MediaToolsPanel({
                   canSeek={canSeek}
                   onObject={selectable ? openObject : undefined}
                   onEvent={openEvent}
-                  onGone={goBack}
                 />
               ) : (
                 view.inspection.state !== "none" && (
@@ -241,7 +240,9 @@ export function MediaToolsPanel({
                     memory={memory}
                     onMemory={onMemory}
                     reach={reachOf(source, view, canSeek)}
-                    onEvent={(row) => openEvent(itemOf(row, (at) => source.frameTime(at)))}
+                    onEvent={(row, revision) =>
+                      openEvent(itemOf(row, (at) => source.frameTime(at), revision))
+                    }
                   />
                 )
               )}
@@ -324,7 +325,7 @@ export function MediaToolsPanel({
             lane={lane}
             state={events}
             onState={onEvents}
-            mark={marked}
+            mark={pages.mark?.kind === "event" ? pages.mark.event : null}
             open={open("events")}
             onOpen={openEvent}
             header={header}

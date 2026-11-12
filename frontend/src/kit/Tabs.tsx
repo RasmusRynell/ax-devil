@@ -13,6 +13,8 @@ interface Props<T extends string> {
   onChange: (tab: T) => void;
   /** The `id` of the panel the selected tab shows. */
   panelId: string;
+  /** Tabs whose controls are active, independently of selection. */
+  active?: Partial<Record<T, boolean>>;
   /** How many a tab holds, shown after its name. */
   counts?: Partial<Record<T, number>>;
   /** Help available even when a tab has no entries. */
@@ -31,6 +33,7 @@ export function Tabs<T extends string>({
   onChange,
   panelId,
   counts = {},
+  active = {},
   help = {},
   trailing,
   scrollable = false,
@@ -91,6 +94,7 @@ export function Tabs<T extends string>({
           role="tab"
           title={help[name]}
           aria-description={help[name]}
+          data-active={active[name] ?? false}
           aria-selected={name === value}
           aria-controls={panelId}
           tabIndex={name === value ? 0 : -1}
@@ -100,7 +104,7 @@ export function Tabs<T extends string>({
             onKeyDown(event, at);
           }}
           onKeyUp={tabKeys}
-          className={`${QUIET} ${scrollable ? "shrink-0 whitespace-nowrap" : "-mb-hairline"} [--stroke-focus:var(--spacing-hairline)] border-b-edge border-transparent aria-selected:border-accent`}
+          className={`${QUIET} ${scrollable ? "shrink-0 whitespace-nowrap" : "-mb-hairline"} [--stroke-focus:var(--spacing-hairline)] border-b-edge border-transparent aria-selected:border-accent data-[active=true]:bg-accent/15 data-[active=true]:text-accent`}
         >
           {name}
           {counts[name] !== undefined && (

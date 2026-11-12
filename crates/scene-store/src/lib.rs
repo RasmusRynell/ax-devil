@@ -42,8 +42,8 @@ pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
 mod tests;
 
 pub use events::{
-    EventDetail, EventMatches, EventObject, EventPlacement, EventQuery, EventRow, EventView,
-    Involved,
+    EventAnchor, EventDetail, EventMatches, EventObject, EventPlacement, EventQuery, EventRow,
+    EventView, Involved,
 };
 pub use format::STORE_FORMAT_VERSION;
 pub use history::{EventRef, History, HistoryUnavailable};

@@ -12,7 +12,7 @@ use workspace::OverlayRef;
 
 /// A viewer of a MOT file on two lanes, ready, whose lanes have policy revision 1: object 1 is on every one of 90
 /// frames and object 2 on the first 30. Returns the data revision.
-async fn viewer(folder: &Path) -> (ViewerOverlays, u32) {
+pub(super) async fn viewer(folder: &Path) -> (ViewerOverlays, u32) {
     let gt = folder.join("gt.txt");
     let rows: String = (1..=90)
         .flat_map(|frame| {

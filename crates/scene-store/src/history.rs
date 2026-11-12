@@ -16,9 +16,11 @@ use crate::{format::read_history, track::Ingest};
 
 mod build;
 
+#[cfg(test)]
+pub(crate) use build::Finalizing;
 pub(crate) use build::HistoryBuilder;
 
-/// The most memory a history may take, estimated while it is built. A larger one is not kept; the file has none.
+/// The most bytes of history stored in the artifact. Larger histories stay with the track.
 pub(crate) const HISTORY_BYTES: usize = 256 << 20;
 
 /// The kinds of event in the order of their bits in [`History`]'s per-entity event set.
@@ -54,7 +56,7 @@ pub enum HistoryUnavailable {
 struct Strings {
     text: String,
     /// Where each string ends in `text`.
-    ends: Vec<u32>,
+    ends: Vec<usize>,
 }
 
 impl Strings {
@@ -68,19 +70,14 @@ impl Strings {
 
     fn get(&self, id: u32) -> &str {
         let at = id as usize;
-        let start = if at == 0 {
-            0
-        } else {
-            self.ends[at - 1] as usize
-        };
-        &self.text[start..self.ends[at] as usize]
+        let start = if at == 0 { 0 } else { self.ends[at - 1] };
+        &self.text[start..self.ends[at]]
     }
 
-    /// Adds `text` as the next string. The history cap keeps the arena far below `u32::MAX` bytes.
+    /// Adds `text` as the next string.
     fn push(&mut self, text: &str) -> u32 {
         self.text.push_str(text);
-        self.ends
-            .push(u32::try_from(self.text.len()).unwrap_or(u32::MAX));
+        self.ends.push(self.text.len());
         (self.ends.len() - 1) as u32
     }
 
@@ -88,7 +85,6 @@ impl Strings {
     fn is_valid(&self) -> bool {
         let mut last = 0;
         self.ends.iter().all(|&end| {
-            let end = end as usize;
             let ok = last <= end && self.text.is_char_boundary(end);
             last = end;
             ok
@@ -324,13 +320,11 @@ fn encode(stored: &StoredRef<'_>) -> Result<Vec<u8>, String> {
 #[derive(Serialize)]
 enum StoredRef<'a> {
     Ready(&'a History),
-    TooLarge,
 }
 
 #[derive(Deserialize)]
 enum Stored {
     Ready(Box<History>),
-    TooLarge,
 }
 
 fn damaged(reason: &str) -> HistoryUnavailable {
@@ -354,36 +348,33 @@ fn load(file: &File) -> Result<History, HistoryUnavailable> {
     match postcard::from_bytes(payload) {
         Ok(Stored::Ready(history)) if history.is_consistent() => Ok(*history),
         Ok(Stored::Ready(_)) => Err(damaged("it is inconsistent")),
-        Ok(Stored::TooLarge) => Err(HistoryUnavailable::TooLarge),
         Err(error) => Err(damaged(&error.to_string())),
     }
 }
 
-/// A finished history, or the fact that it would not fit.
+/// A finished history.
 pub(crate) enum Built {
     Ready(Box<History>),
-    TooLarge,
 }
 
 impl Built {
-    /// The artifact's history section. A history that encodes to more than the cap is stored as too large.
-    pub(crate) fn section(&self) -> Result<Vec<u8>, String> {
+    /// The artifact's history section, or none when it exceeds the cache budget.
+    pub(crate) fn section(&self, cap: usize) -> Result<Option<Vec<u8>>, String> {
         let stored = match self {
+            Self::Ready(history) if history.bytes() > cap => return Ok(None),
             Self::Ready(history) => StoredRef::Ready(history),
-            Self::TooLarge => StoredRef::TooLarge,
         };
         let bytes = encode(&stored)?;
-        if bytes.len() > HISTORY_BYTES {
-            return encode(&StoredRef::TooLarge);
+        if bytes.len() > cap {
+            return Ok(None);
         }
-        Ok(bytes)
+        Ok(Some(bytes))
     }
 
     /// The slot of a track whose ingest ended without an artifact to read the history from.
     pub(crate) fn held(self) -> Slot {
         match self {
             Self::Ready(history) => Slot::Held(Arc::new(*history)),
-            Self::TooLarge => Slot::Unavailable(HistoryUnavailable::TooLarge),
         }
     }
 }

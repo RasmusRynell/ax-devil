@@ -84,7 +84,7 @@ export function Playback({
   const [waiting, setWaiting] = useState(false);
   const [tools, setTools] = useState(false);
   // The media tools' pages, lists and width, kept while they are closed; the selected object is the page on top.
-  const { outlined, pick, chooseLane, panel } = useMediaTools(stream, objectDetails, tools);
+  const { outlined, pick, chooseLane, panel } = useMediaTools(stream, objectDetails, tools, stream);
   // One switch for every lane; it lives here so it stays across entries.
   const [info, setInfo] = useState(false);
   useChromeVisibility(pane);

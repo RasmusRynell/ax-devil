@@ -22,6 +22,9 @@ pub(crate) struct Settled {
     pub(crate) writer: RecordWriter<BufWriter<File>>,
     pub(crate) keys: KeyLog,
     pub(crate) history: HistoryBuilder,
+    pub(crate) history_bytes: usize,
+    #[cfg(test)]
+    pub(crate) finalizing: Option<crate::history::Finalizing>,
     pub(crate) output: Output,
     /// The records readers already have of this artifact.
     pub(crate) known: usize,
@@ -67,17 +70,25 @@ impl Settled {
         let digest = source.digest(&self.cancel)?;
         identity.digest = source.unchanged().then_some(digest);
         self.cancel.check()?;
-        let history = self
-            .history
-            .finish(Some(&decoded.filter))
-            .section()
-            .map_err(internal)?;
+        #[cfg(test)]
+        {
+            self.history.finalizing = self.finalizing.take();
+        }
+        let built = self.history.finish(Some(&decoded.filter), &self.cancel)?;
+        let section = built.section(self.history_bytes).map_err(internal)?;
+        let held = section.is_none();
+        if held {
+            identity.digest = None;
+        }
+        let history = section.unwrap_or_default();
+        self.cancel.check()?;
         let finished = self
             .writer
             .finish(self.keys.all(), &stored, &identity, &history)
             .map_err(internal)?;
         drop(finished.out);
         let target = self.output.target().map(std::path::Path::to_path_buf);
+        self.cancel.check()?;
         let file = self.output.publish();
         let restored = stored.restore().map_err(internal)?;
         let Layout {
@@ -101,7 +112,11 @@ impl Settled {
                 decided: Decided::All,
                 stored: target,
                 fresh: self.fresh,
-                history: Some(Slot::initial(&State::Complete)),
+                history: Some(if held {
+                    built.held()
+                } else {
+                    Slot::initial(&State::Complete)
+                }),
             },
             move || Meta {
                 coverage,
@@ -130,7 +145,7 @@ impl Settled {
         let header = self.header.take();
         let history = self
             .history
-            .finish(header.as_ref().map(|h| &h.filter))
+            .finish(header.as_ref().map(|h| &h.filter), &self.cancel)?
             .held();
         link.present(
             Presented {

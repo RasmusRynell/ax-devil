@@ -1,3 +1,4 @@
+import { useEventNavigation } from "./useEventNavigation";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { vi } from "vite-plus/test";
@@ -88,6 +89,7 @@ function Viewer({
   const [chosen, onChosen] = useState<number | null>(null);
   const [memory, onMemory] = useState(FRESH_MEMORY);
   const [open, setOpen] = useState(true);
+  useEventNavigation(props.source, chosen ?? 0, pages, setPages, open);
   return open ? (
     <MediaToolsPanel
       {...props}
@@ -284,7 +286,8 @@ export function mount(
   /** The requests for one event, oldest first. */
   const eventAsks = () =>
     sent.filter(
-      (message): message is Extract<ClientMessage, { type: "Event" }> => message.type === "Event",
+      (message): message is Extract<ClientMessage, { type: "Event" | "FindEvent" }> =>
+        message.type === "Event" || message.type === "FindEvent",
     );
   /** Lets the debounced request for the Events list go and answers it. */
   const answerEvents = (
@@ -327,9 +330,11 @@ export function mount(
     );
   };
   /** Answers the newest request for an event with `detail`. */
-  const answerEvent = (detail: EventDetailWire | null) => {
-    const { request, event } = eventAsks().at(-1) ?? { request: 0, event: 0 };
-    act(() => files.receive(found(request, { kind: "Event", event, detail })));
+  const answerEvent = (detail: EventDetailWire | null, data_revision = 1) => {
+    const ask = eventAsks().at(-1);
+    const request = ask?.request ?? 0;
+    const event = ask?.type === "FindEvent" ? ask.event : (ask?.event ?? 0);
+    act(() => files.receive(found(request, { kind: "Event", event, detail }, { data_revision })));
   };
   return {
     source,
@@ -370,6 +375,7 @@ export const fileEvent = (
   kind: EventRowWire["kind"] = "merge",
   objects = ["1", "2"],
 ): EventRowWire => ({
+  anchor: Array(32).fill(0) as EventRowWire["anchor"],
   event,
   frame,
   kind,

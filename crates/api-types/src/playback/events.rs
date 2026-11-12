@@ -42,8 +42,34 @@ pub struct EventAskWire {
     pub bins: u16,
 }
 
+/// Finds the nearest event equal in kind, label and ordered entity ids after a file replacement.
+/// Uses the same File scope authority and answer as `Event`; `event` echoes the prior index.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct FindEventWire {
+    /// The lane's position.
+    pub lane: u16,
+    /// The request id.
+    pub request: u32,
+    /// The prior index, echoed in the answer.
+    pub event: u32,
+    /// Server-issued identity; fixed size regardless of event content.
+    pub anchor: scene_store::EventAnchor,
+    /// The previously shown frame.
+    #[ts(type = "number")]
+    pub frame: u64,
+    /// At most 256 presence bins per object.
+    pub bins: u16,
+}
+
+// No heap-owning fields: the find request remains bounded independently of event content.
+const _: () = {
+    assert!(size_of::<FindEventWire>() <= 64);
+    assert!(!std::mem::needs_drop::<FindEventWire>());
+};
+
 /// Visits the types this module sends to the frontend.
 pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<EventQueryWire>();
     types.visit::<EventAskWire>();
+    types.visit::<FindEventWire>();
 }

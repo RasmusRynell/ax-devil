@@ -224,7 +224,7 @@ fn build(
         identity,
         artifact: request.artifact.map(Path::to_path_buf),
         cache_bytes: request.cache_bytes,
-        tuning: request.tuning,
+        tuning: request.tuning.clone(),
         cancel: ingest.clone(),
         first,
     })

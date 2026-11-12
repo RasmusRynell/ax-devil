@@ -12,7 +12,7 @@ use crate::{io::read_exact_at, stat::Stat};
 
 /// Changes when the layout of an artifact file changes; older files are rebuilt.
 // Rebuild histories from both Scene-clock sorting (v5) and frame-first ordering (v6).
-pub const STORE_FORMAT_VERSION: u32 = 7;
+pub const STORE_FORMAT_VERSION: u32 = 8;
 
 const MAGIC: &[u8; 4] = b"AXSC";
 const END: &[u8; 4] = b"AXSE";

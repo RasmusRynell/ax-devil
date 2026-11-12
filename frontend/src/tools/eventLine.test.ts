@@ -1,9 +1,11 @@
+import type { EventRowWire } from "../generated/api";
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
 import type { EventsPage } from "../inspect/fileEvents";
 import { eventRow, lineFor, lineOf } from "./eventLine";
 
 const at = (event: number, frame: number) => ({
+  anchor: Array(32).fill(0) as EventRowWire["anchor"],
   event,
   frame,
   kind: "delete" as const,
