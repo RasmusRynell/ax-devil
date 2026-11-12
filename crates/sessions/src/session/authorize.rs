@@ -36,6 +36,8 @@ pub struct ContentRef {
 /// What a seat is trying to do.
 #[derive(Clone, Debug)]
 pub enum Use<'a> {
+    /// Belong to this seat, without needing a stream or command right.
+    Seat,
     /// A command of this scope.
     Command(Scope),
     /// Receive the stream of this Content.
@@ -191,6 +193,7 @@ pub fn authorize(
     use_: Use<'_>,
 ) -> Result<(), Refusal> {
     match use_ {
+        Use::Seat => standing(state, seat, lease).map(drop),
         Use::Command(scope) => {
             if standing(state, seat, lease)?.allows(scope) {
                 Ok(())

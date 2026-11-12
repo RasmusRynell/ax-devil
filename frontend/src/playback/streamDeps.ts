@@ -11,6 +11,8 @@ export const BUFFER_BUDGET_BYTES = 512 * 1024 * 1024;
 export interface StreamDeps {
   /** A ticket for one socket: the first message of every connection spends one. Rejects when it cannot get one. */
   ticket: () => Promise<string>;
+  /** Release this viewer's stream and pending tickets on the Session socket. */
+  release: () => void;
   connect: Connect;
   /** Monotonic milliseconds. */
   now: () => number;

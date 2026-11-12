@@ -11,7 +11,7 @@ use playback::DECODE_WORKERS;
 use playback::{Delivery, Want};
 use sessions::{
     CursorOptions,
-    session::{Access, Command, Control, Reply},
+    session::{Access, Command, ContentRef, Control, Reply, ViewerId},
 };
 use std::{collections::BTreeSet, time::Duration};
 use workspace::VideoRef;
@@ -187,7 +187,17 @@ async fn two_viewers_of_one_file_share_one_source_until_the_last_leaves() {
     first.frames(0..=0).await;
 
     let mut second = backend.viewer().await;
-    second.open(&id.ticket(), Some(30)).await;
+    let Reply::Ticket(ticket) = id
+        .owner
+        .command(Command::RequestTicket(ContentRef {
+            viewer: ViewerId(2),
+            ..id.key.clone()
+        }))
+        .unwrap()
+    else {
+        panic!("a ticket for the second viewer");
+    };
+    second.open(&ticket.to_string(), Some(30)).await;
     let video = second.opened().await;
     assert_eq!(video.frame_count, 90);
     second.frames(30..=30).await;

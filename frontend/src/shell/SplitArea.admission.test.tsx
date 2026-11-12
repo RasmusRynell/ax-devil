@@ -15,7 +15,7 @@ import type { Incoming } from "../stream/wire";
 import type { ToWorker } from "../stream/worker";
 import { SplitArea } from "./SplitArea";
 
-// Only drawing and the transports are fake: viewers, tickets, links and worker-close completion stay real.
+// Only drawing and the transports are fake: viewers, tickets, links and Session releases stay real.
 vi.mock("../playback/VideoCanvas", () => ({
   VideoCanvas: ({ stream }: { stream: LaneDisplay }) => {
     useEffect(() => {
@@ -25,29 +25,22 @@ vi.mock("../playback/VideoCanvas", () => ({
     return <div />;
   },
 }));
-function barrier() {
-  let resolve = () => {};
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
 installViewerHarness();
 
-it("reopens a preview at eight streams only after its predecessor releases its grant", async () => {
-  const release = barrier();
-  const closing = barrier();
-  const replacement = barrier();
-  let grants = 0;
+it("reopens a preview twice at eight streams even when the old worker never acknowledges close", async () => {
+  const streams = new Set<number>();
   let requests = 0;
   let refusals = 0;
   let workers = 0;
   class AdmissionSocket extends FakeSocket {
     override send(text: string) {
       const message = JSON.parse(text) as SessionClientMessage;
+      if (message.type === "command" && message.cmd.type === "releaseStream")
+        streams.delete(message.cmd.viewer);
       if (message.type === "command" && message.cmd.type === "requestTicket") {
+        streams.delete(message.cmd.key.viewer);
         requests++;
-        if (grants === 8) {
+        if (streams.size === 8) {
           refusals++;
           this.emit({
             type: "ack",
@@ -56,7 +49,7 @@ it("reopens a preview at eight streams only after its predecessor releases its g
           });
           return;
         }
-        grants++;
+        streams.add(message.cmd.key.viewer);
       }
       super.send(text);
     }
@@ -79,15 +72,8 @@ it("reopens a preview at eight streams only after its predecessor releases its g
           },
         });
         this.say({ type: "envelope", envelope: { kind: "frame", frame: videoFrame(0) } });
-        if (this.id === 9) replacement.resolve();
-      } else if (data.type === "close") {
-        const done = this.id === 8 ? release.promise : Promise.resolve();
-        if (this.id === 8) closing.resolve();
-        void done.then(() => {
-          grants--;
-          this.say({ type: "closed", code: 1000 });
-        });
       }
+      // A stuck worker never acknowledges close; the Session release owns admission.
     }
   }
   vi.stubGlobal("WebSocket", AdmissionSocket);
@@ -120,22 +106,15 @@ it("reopens a preview at eight streams only after its predecessor releases its g
     room.show(scene, "eight-open");
   });
   flushFrames();
-  expect(grants).toBe(8);
+  expect(streams.size).toBe(8);
   const pane = () => screen.getByRole("group", { name: "h.mp4" });
-  fireEvent.contextMenu(pane().querySelector("[draggable]")!);
-  fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
-  await act(async () => {
-    await closing.promise;
-  });
-  expect(requests).toBe(8);
-  expect(within(pane()).getByRole("status").textContent).toBe("Opening h.mp4…");
-  expect(screen.queryByRole("alert")).toBeNull();
-  await act(async () => {
-    release.resolve();
-    await replacement.promise;
-  });
+  for (let reopen = 0; reopen < 2; reopen++) {
+    fireEvent.contextMenu(pane().querySelector("[draggable]")!);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+  }
+  await act(async () => {});
   flushFrames();
   expect(within(pane()).getByRole("button", { name: "Pause" })).toBeTruthy();
-  expect([requests, grants, refusals]).toEqual([9, 8, 0]);
+  expect([requests, streams.size, refusals]).toEqual([10, 8, 0]);
   expect(screen.queryByRole("alert")).toBeNull();
 }, 5000);

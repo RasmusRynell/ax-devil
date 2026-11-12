@@ -52,7 +52,7 @@ export function Opening({ view, name }: { view: PlaybackView; name: string }) {
           ? `Building frame index: ${name}`
           : view.status === "reconnecting"
             ? RECONNECTING
-            : `Opening ${name}…`
+            : ""
       }
     />
   );

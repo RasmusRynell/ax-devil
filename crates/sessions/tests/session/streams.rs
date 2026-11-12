@@ -81,15 +81,39 @@ async fn a_seat_holds_eight_streams_and_a_session_sixty_four() {
         }))
         .unwrap();
     let (_, key) = rig.open_video(&owner, "a.mp4");
-    let guests: Vec<_> = (0..8).map(|_| rig.join(&owner)).collect();
+    let seats: Vec<_> = (0..8)
+        .map(|_| {
+            rig.service
+                .attach(owner.session(), true, CursorOptions::default())
+                .unwrap()
+        })
+        .collect();
     let mut leases = Vec::new();
 
-    for guest in &guests {
-        for _ in 0..8 {
-            leases.push(stream(&rig.service, guest, &key).unwrap());
+    for seat in &seats {
+        for viewer in 1..=8 {
+            leases.push(
+                stream(
+                    &rig.service,
+                    seat,
+                    &ContentRef {
+                        viewer: ViewerId(viewer),
+                        ..key.clone()
+                    },
+                )
+                .unwrap(),
+            );
         }
         assert_eq!(
-            stream(&rig.service, guest, &key).err(),
+            stream(
+                &rig.service,
+                seat,
+                &ContentRef {
+                    viewer: ViewerId(9),
+                    ..key.clone()
+                }
+            )
+            .err(),
             Some(Refusal::TooManyStreams)
         );
     }
@@ -104,6 +128,53 @@ async fn a_seat_holds_eight_streams_and_a_session_sixty_four() {
         stream(&rig.service, &owner, &key).is_ok(),
         "a released stream frees its place"
     );
+}
+
+#[tokio::test]
+async fn releasing_and_replacing_viewers_frees_grants_and_pending_tickets_at_the_cap() {
+    let rig = Rig::new();
+    let (owner, _) = rig.shared(Access::Watch);
+    let (_, key) = rig.open_video(&owner, "a.mp4");
+    let leases: Vec<_> = (1..=8)
+        .map(|viewer| {
+            stream(
+                &rig.service,
+                &owner,
+                &ContentRef {
+                    viewer: ViewerId(viewer),
+                    ..key.clone()
+                },
+            )
+            .unwrap()
+        })
+        .collect();
+    let ticket = |viewer| {
+        let Reply::Ticket(ticket) = owner
+            .command(Command::RequestTicket(ContentRef {
+                viewer: ViewerId(viewer),
+                ..key.clone()
+            }))
+            .unwrap()
+        else {
+            panic!("a ticket");
+        };
+        ticket
+    };
+    owner.command(Command::ReleaseStream(ViewerId(8))).unwrap();
+    let cancelled = ticket(9);
+    owner.command(Command::ReleaseStream(ViewerId(9))).unwrap();
+    let last = ticket(10);
+    assert_eq!(authority(&leases[7]), Authority::Revoked);
+    assert_eq!(
+        rig.service.redeem(&cancelled).err(),
+        Some(Refusal::BadTicket)
+    );
+    let last = rig.service.redeem(&last).unwrap();
+    let first = ticket(10);
+    assert_eq!(authority(&last), Authority::Revoked);
+    let second = ticket(10);
+    assert_eq!(rig.service.redeem(&first).err(), Some(Refusal::BadTicket));
+    assert!(rig.service.redeem(&second).is_ok());
 }
 
 #[tokio::test(start_paused = true)]

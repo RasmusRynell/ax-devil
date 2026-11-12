@@ -79,7 +79,6 @@ export class SessionStore {
   /** A seat part whose Doc has not arrived; the backend sends the Doc first, so this only guards the order. */
   #waiting: SeatPart | null = null;
   #pending: Pending | null = null;
-  #retiring = new Set<Promise<void>>();
   /** The highest view number this window has used, and the highest it has sent. */
   #seq = 0;
   #sent = 0;
@@ -92,7 +91,7 @@ export class SessionStore {
   #syncId = 0;
   #syncLeft = 0;
   #syncTimer: ReturnType<typeof setTimeout> | undefined;
-  #waiters: Asked[] = [];
+  #queued: { send: () => void; reject?: (reason: Error) => void }[] = [];
   /** The newest name typed and not sent, the timer that sends it, and when a name was last sent. */
   #name: string | null = null;
   #nameTimer: ReturnType<typeof setTimeout> | undefined;
@@ -269,22 +268,28 @@ export class SessionStore {
     this.#name = null;
   }
 
-  /** Holds admission until a retiring playback socket has released its grant. */
-  releaseStream(closed: Promise<void>): void {
-    this.#retiring.add(closed);
-    void closed.then(() => this.#retiring.delete(closed));
+  /** Releases this seat's viewer, ordered with tickets even while the Session connection is down. */
+  releaseStream(viewer: number): void {
+    this.#whenOnline(() => {
+      void this.#ask({ type: "releaseStream", viewer }).catch(() => undefined);
+    });
   }
 
-  /** A ticket for one playback socket, once the session is connected; every socket needs its own. */
-  async requestTicket(key: ContentRef): Promise<string> {
-    await new Promise<void>((resolve, reject) => {
-      if (this.#state.connection === "online" && this.#state.session) resolve();
-      else this.#waiters.push({ resolve: () => resolve(), reject });
+  /** A ticket for one socket; an online request is sent immediately, in call order with releases. */
+  requestTicket(key: ContentRef): Promise<string> {
+    return new Promise((resolve, reject) => {
+      this.#whenOnline(() => {
+        void this.#ask({ type: "requestTicket", key }).then((ticket) => {
+          if (ticket === undefined) reject(new Error("The backend sent no ticket."));
+          else resolve(ticket);
+        }, reject);
+      }, reject);
     });
-    while (this.#retiring.size > 0) await Promise.all(this.#retiring);
-    const ticket = await this.#ask({ type: "requestTicket", key });
-    if (ticket === undefined) throw new Error("The backend sent no ticket.");
-    return ticket;
+  }
+
+  #whenOnline(send: () => void, reject?: (reason: Error) => void): void {
+    if (this.#state.connection === "online" && this.#state.session) send();
+    else this.#queued.push({ send, reject });
   }
 
   setCursorOptions(options: CursorOptions): void {
@@ -316,9 +321,12 @@ export class SessionStore {
 
   /** Rejects whatever waits for the backend: its answer will never come. */
   #refuse(reason: Error): void {
-    const waiting = [...this.#asked.values(), ...this.#waiters];
+    const waiting = [...this.#asked.values()];
     this.#asked.clear();
-    this.#waiters = [];
+    this.#queued = this.#queued.filter((queued) => {
+      queued.reject?.(reason);
+      return !queued.reject;
+    });
     for (const { reject } of waiting) reject(reason);
   }
 
@@ -479,11 +487,13 @@ export class SessionStore {
     };
     this.#syncLeft = SYNC_BURST;
     this.#ping();
-    for (const { resolve } of this.#waiters.splice(0)) resolve();
+    this.#flush();
     this.#publish();
   }
 
   #flush(): void {
+    if (this.#state.connection === "online" && this.#state.session)
+      for (const { send } of this.#queued.splice(0)) send();
     const pending = this.#pending;
     if (pending && pending.seq > this.#sent) {
       if (this.#connection?.send({ type: "view", seq: pending.seq, view: pending.view }))

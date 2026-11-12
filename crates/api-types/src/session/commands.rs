@@ -169,6 +169,12 @@ pub enum SessionCommand {
         /// The stream.
         key: ContentRef,
     },
+    /// Release this seat's stream and pending tickets for a viewer; answered with an acknowledgement.
+    ReleaseStream {
+        /// The viewer whose streams this seat releases.
+        #[ts(type = "number")]
+        viewer: ViewerId,
+    },
     /// Open, save or close the workspace file; the owner only.
     Workspace {
         /// The change.

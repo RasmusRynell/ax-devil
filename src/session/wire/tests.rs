@@ -44,6 +44,7 @@ variants! {
     SessionCommand::SetOverlay { .. } => "setOverlay",
     SessionCommand::Control { .. } => "control",
     SessionCommand::RequestTicket { .. } => "requestTicket",
+    SessionCommand::ReleaseStream { .. } => "releaseStream",
     SessionCommand::Workspace { command: WorkspaceCommand::New } => "workspaceNew",
     SessionCommand::Workspace { command: WorkspaceCommand::Open { .. } } => "workspaceOpen",
     SessionCommand::Workspace { command: WorkspaceCommand::Save { .. } } => "workspaceSave",
@@ -173,6 +174,7 @@ fn cases() -> Vec<(Value, Expect)> {
             json!({ "type": "control", "control": { "type": "stop" } }),
             Converted,
         ),
+        (json!({ "type": "releaseStream", "viewer": 1 }), Converted),
         (
             json!({ "type": "requestTicket", "key": {
                 "content": item, "generation": 0, "entry": item, "viewer": 0 } }),
@@ -212,7 +214,7 @@ async fn the_wire_scope_is_the_scope_the_converted_command_needs() {
                 let sent = sent(command, Workspace::default(), file);
                 sent.as_ref().and_then(|sent| match sent.needs() {
                     Use::Command(scope) => Some(scope),
-                    Use::Stream(_) => None,
+                    Use::Stream(_) | Use::Seat => None,
                 })
             }
             Expect::Converted => {
@@ -237,7 +239,7 @@ async fn the_wire_scope_is_the_scope_the_converted_command_needs() {
                 };
                 match command.needs() {
                     Use::Command(scope) => Some(scope),
-                    Use::Stream(_) => None,
+                    Use::Stream(_) | Use::Seat => None,
                 }
             }
         };

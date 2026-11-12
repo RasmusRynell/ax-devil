@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { SidebarView, View } from "../generated/api";
 import { scenario, seatAccess } from "./fakeScenario";
+import { SessionStore } from "./store";
 import { EMPTY_VIEW } from "./views";
 import { FakeSocket, type Room } from "./fakeSession";
 import {
@@ -175,6 +176,33 @@ describe("session", () => {
       }),
     );
     expect(screen.getByText("live open editable")).toBeTruthy();
+  });
+
+  it("sends an offline release before a later ticket request when its seat returns", async () => {
+    const store = new SessionStore();
+    render(
+      <SessionProvider store={store}>
+        <Probe />
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    vi.useFakeTimers();
+    act(() => FakeSocket.latest.drop());
+    store.releaseStream(8);
+    const scene = scenario("one-video");
+    const ticket = store.requestTicket({
+      content: scene.ids.a,
+      entry: scene.ids.a,
+      generation: 10,
+      viewer: 9,
+    });
+    await act(() => vi.advanceTimersByTimeAsync(600));
+    await ticket;
+    expect(
+      FakeSocket.latest.received
+        .filter((message) => message.type === "command")
+        .map((message) => message.cmd.type),
+    ).toEqual(["releaseStream", "requestTicket"]);
   });
 
   it("takes the seat back after a drop, with the rotated token, and sends the change that was on its way again", async () => {

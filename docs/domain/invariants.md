@@ -25,6 +25,8 @@ Rules for Workspace content, viewers, the sidebar, UI lifecycle, plugins and set
 - GPU resources are created and released only in the renderer's resource phase.
 - Display and export run the same presentation code; pixels differ only by documented tolerances.
 
+A seat holds at most one stream per viewer; closing a viewer releases it on the Session socket, ordered with ticket requests.
+
 ## Offline Delivery
 
 - A viewer keeps exactly the frames inside the window of its last report and evicts the rest. The window is

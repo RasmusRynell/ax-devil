@@ -23,7 +23,7 @@ use workspace::{
 
 /// The scope a wire command needs, known without looking at what it names, so the seat is authorized before the
 /// command's content is checked and a refusal never tells a seat whether a path or resolver exists. `None` for a
-/// ticket request, which the Session authorizes against the Content it names. Mirrors `Command::needs`, which decides;
+/// ticket request or release, which the Session authorizes against its Content or seat. Mirrors `Command::needs`, which decides;
 /// a test keeps them equal except for these, which only the wire can decide:
 /// - a scanned camera's stream needs `Control`: its `found` address is gone once the command is converted;
 /// - `AddResolved` and `EditResolved` always need `Host`: the staged item came from a resolve that read the host's
@@ -72,7 +72,7 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
         SessionCommand::Follow => Some(Scope::Follow),
         SessionCommand::SetViewport { .. } | SessionCommand::SetOverlay { .. } => Some(Scope::View),
         SessionCommand::Control { .. } => Some(Scope::Control),
-        SessionCommand::RequestTicket { .. } => None,
+        SessionCommand::RequestTicket { .. } | SessionCommand::ReleaseStream { .. } => None,
         // New replaces the workspace, which only a seat with the files grant may.
         SessionCommand::Workspace { command } => Some(match command {
             WorkspaceCommand::Keep => Scope::Content,
@@ -159,6 +159,9 @@ pub(super) fn command(
             Request::Session(Command::SetOverlay { overlay, shown }, None)
         }
         SessionCommand::Control { control } => Request::Session(Command::Control(control), None),
+        SessionCommand::ReleaseStream { viewer } => {
+            Request::Session(Command::ReleaseStream(viewer), None)
+        }
         SessionCommand::RequestTicket { key } => {
             Request::Session(Command::RequestTicket(key), None)
         }

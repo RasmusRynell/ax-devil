@@ -135,7 +135,11 @@ control: ControlCommand, } | { "type": "requestTicket",
 /**
  * The stream.
  */
-key: ContentRef, } | { "type": "workspace", 
+key: ContentRef, } | { "type": "releaseStream", 
+/**
+ * The viewer whose streams this seat releases.
+ */
+viewer: number, } | { "type": "workspace", 
 /**
  * The change.
  */

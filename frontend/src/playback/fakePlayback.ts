@@ -60,6 +60,7 @@ export async function setup(
   let closedConnections = 0;
   const stream = new PlaybackStream({
     ticket: () => ticket(),
+    release: () => {},
     onIntent: (intent) => intents.push(intent),
     connect: (onIncoming) => {
       connections++;

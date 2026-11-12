@@ -194,18 +194,13 @@ export function useRenameWorkspace(): { edit: (name: string) => void; done: () =
  */
 export function useStream(key: ContentRef): {
   ticket: () => Promise<string>;
-  release: (closed: Promise<void>) => void;
+  release: () => void;
 } {
   const store = useStore();
   const seatings = useSelect((state) => state.seatings);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `seatings` only gives the function a new identity.
   const ticket = useCallback(() => store.requestTicket(key), [store, key, seatings]);
-  const release = useCallback(
-    (closed: Promise<void>) => {
-      store.releaseStream(closed);
-    },
-    [store],
-  );
+  const release = useCallback(() => store.releaseStream(key.viewer), [store, key.viewer]);
   return { ticket, release };
 }
 

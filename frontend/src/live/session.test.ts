@@ -23,6 +23,7 @@ async function setup(lane = OVERLAY) {
   let connections = 0;
   const session = new LiveSession({
     ticket: async () => "ticket",
+    release: () => {},
     connect: (onIncoming) => {
       connections++;
       deliver = onIncoming;

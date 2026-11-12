@@ -86,7 +86,7 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
             }
         }
     }));
-    let (outbox, writer) = spawn_writer(socket, gate.clone(), || {});
+    let (outbox, writer) = spawn_writer(socket, gate.clone());
     let (asks, asked) = mpsc::channel::<Message>(1);
     let mut viewer = Box::pin(streams::unfold(asked, |mut asked| async {
         asked.recv().await.map(|message| (Ok(message), asked))

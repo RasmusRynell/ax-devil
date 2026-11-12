@@ -10,22 +10,14 @@ function playbackUrl(): string {
 /** Opens `/api/playback` in a worker of its own, which ends with the socket. */
 export const connectWorker: Connect = (onIncoming) => {
   const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
-  let resolve = () => {};
-  const closed = new Promise<void>((done) => {
-    resolve = done;
-  });
   const post = (message: ToWorker) => worker.postMessage(message);
   worker.onmessage = ({ data }: MessageEvent<Incoming>) => {
     onIncoming(data);
-    if (data.type === "closed") {
-      worker.terminate();
-      resolve();
-    }
+    if (data.type === "closed") worker.terminate();
   };
   post({ type: "connect", url: playbackUrl() });
   return {
     send: (message) => post({ type: "send", message }),
-    closed,
     close: () => post({ type: "close" }),
   };
 };
