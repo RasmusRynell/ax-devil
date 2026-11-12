@@ -8,7 +8,6 @@ on:
     branches: [main, rewrite]
     tags: ["v*"]
   pull_request:
-    branches: [main, rewrite]
 
 permissions:
   contents: read
