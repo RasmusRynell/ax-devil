@@ -1,4 +1,4 @@
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import { noticeOf, type Notice } from "../kit/NoticeList";
 import type { LaneState } from "./lanes";
 

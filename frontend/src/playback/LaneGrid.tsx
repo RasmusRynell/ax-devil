@@ -1,4 +1,4 @@
-import { useAccess } from "../access";
+import { useAccess } from "../client/access";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { choicesOf } from "../export/lanes";
 import type { Hidden } from "../viewer/hidden";

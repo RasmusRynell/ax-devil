@@ -1,4 +1,4 @@
-import { ask } from "../ask";
+import { ask } from "../client/ask";
 import { compileCatalog } from "../present";
 import type { ErrorWire, FreshCatalog } from "../generated/api";
 
