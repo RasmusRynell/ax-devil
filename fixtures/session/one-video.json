@@ -257,7 +257,7 @@
               "label": "a.mp4",
               "open": false,
               "recipe": {
-                "label": "a.mp4",
+                "label": null,
                 "overlays": [],
                 "path": "/data/a/a.mp4",
                 "type": "Video"
