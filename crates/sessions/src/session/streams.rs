@@ -7,6 +7,7 @@
 use super::{
     ContentRef, GrantId, Lease, Refusal, SeatId, SeatKind, SessionState, SharingGen, Use,
     authorize::{authorize, authorize_stream, open_stream},
+    layout::ViewerId,
     transition::{Effects, Fresh, Outcome},
 };
 use crate::Secret;
@@ -17,7 +18,7 @@ use tokio::time::Instant;
 /// How long a ticket can be redeemed.
 pub const TICKET_TTL: Duration = Duration::from_secs(10);
 /// The most streams (granted and still ticketed) one seat holds.
-const MAX_STREAMS_PER_SEAT: usize = 8;
+pub(super) const MAX_STREAMS_PER_SEAT: usize = 8;
 /// The most streams the whole session holds.
 const MAX_STREAMS_PER_SESSION: usize = 64;
 
@@ -110,11 +111,13 @@ impl SessionState {
 /// Issues a ticket whose secret is `fresh.secret`, if `seat` may receive `key` and has room for another stream.
 pub(super) fn request(
     next: &mut SessionState,
+    fx: &mut Effects,
     seat: SeatId,
     lease: Lease,
     key: ContentRef,
     fresh: &Fresh,
 ) -> Result<(), Refusal> {
+    end(next, fx, seat, key.viewer);
     next.tickets.retain(|ticket| ticket.expires > fresh.now);
     if next.streams_of(seat) >= MAX_STREAMS_PER_SEAT
         || next.grants.len() + next.tickets.len() >= MAX_STREAMS_PER_SESSION
@@ -130,6 +133,34 @@ pub(super) fn request(
         key,
         expires: fresh.now + TICKET_TTL,
     });
+    Ok(())
+}
+
+fn end(next: &mut SessionState, fx: &mut Effects, seat: SeatId, viewer: ViewerId) {
+    next.tickets
+        .retain(|ticket| ticket.seat != seat || ticket.key.viewer != viewer);
+    next.grants.retain(|id, grant| {
+        let keep = grant.seat != seat || grant.key.viewer != viewer;
+        if !keep {
+            fx.revoke.push(*id);
+        }
+        keep
+    });
+}
+
+/// Releases only this seat's tickets and grants, rejecting a list larger than its pane allowance.
+pub(super) fn release(
+    next: &mut SessionState,
+    fx: &mut Effects,
+    seat: SeatId,
+    viewers: &[ViewerId],
+) -> Result<(), Refusal> {
+    if viewers.len() > MAX_STREAMS_PER_SEAT {
+        return Err(Refusal::Invalid);
+    }
+    for viewer in viewers {
+        end(next, fx, seat, *viewer);
+    }
     Ok(())
 }
 

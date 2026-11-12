@@ -18,7 +18,7 @@ export interface LinkHandlers {
 
 /** One viewer's socket to the backend: the ticket each connection spends, the Open it starts with, and the retries. */
 export class Link {
-  readonly #deps: Pick<StreamDeps, "ticket" | "connect" | "after">;
+  readonly #deps: Pick<StreamDeps, "ticket" | "release" | "connect" | "after">;
   readonly #handlers: LinkHandlers;
   #connection: Connection | undefined;
   /** Names this connection, so a late message of an earlier one is ignored. */
@@ -27,7 +27,10 @@ export class Link {
   #cancelRetry: (() => void) | undefined;
   #closed = false;
 
-  constructor(deps: Pick<StreamDeps, "ticket" | "connect" | "after">, handlers: LinkHandlers) {
+  constructor(
+    deps: Pick<StreamDeps, "ticket" | "release" | "connect" | "after">,
+    handlers: LinkHandlers,
+  ) {
     this.#deps = deps;
     this.#handlers = handlers;
   }
@@ -77,7 +80,9 @@ export class Link {
 
   /** Ends the stream: tells the backend, closes the socket and ignores whatever comes later. */
   close(): void {
+    if (this.#closed) return;
     this.#closed = true;
+    this.#deps.release();
     this.send({ type: "Close" });
     this.drop();
     this.#cancelRetry?.();

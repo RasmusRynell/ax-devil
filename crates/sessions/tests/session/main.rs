@@ -2,6 +2,7 @@
 //!
 //! `matrix` checks the role table on the pure transition; `revocation` and `streams` run real handles on paused time.
 
+mod admission;
 mod matrix;
 mod owner_seats;
 mod retirement;
@@ -232,7 +233,7 @@ pub(crate) fn stream(
     seat: &Handle<u8>,
     key: &ContentRef,
 ) -> Result<StreamLease, sessions::session::Refusal> {
-    let Reply::Ticket(ticket) = seat.command(Command::RequestTicket(key.clone()))? else {
+    let Reply::Ticket(ticket) = seat.command(Command::RequestTicket(key.clone(), vec![]))? else {
         panic!("a ticket request answers with a ticket");
     };
     service.redeem(&ticket)

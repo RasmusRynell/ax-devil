@@ -34,30 +34,22 @@ const viewerOf = (item: string, entry: string | undefined, pinned: boolean): Vie
 });
 
 /**
- * Opens an item in a window that has not been told where: beside the largest pane, or alone when there is none.
- * The viewer is a preview, and comes to the front.
+ * Places newly added content by the same preview rule as ordinary Open. Without a front pane, split the largest.
  */
 export function autoPlace(view: View, item: string, entry?: string): View | undefined {
-  const target = largest(view.layout);
-  return put(
-    view,
-    target === undefined ? undefined : { beside: target },
-    viewerOf(item, entry, false),
-  );
+  return open(view, item, entry);
 }
 
-/**
- * Ordinary Open: with no front pane, as `autoPlace`; a preview in front is replaced in place, and a pinned pane
- * gets the new viewer to its right. `entry` is the entry of the item's Content the viewer starts on. [AI] Opening
- * what the front pane already shows (the item, and the entry when given) changes nothing, so the frame and the clock
- * it has are not lost to a second open of the same row; the reference opens it again.
- */
+/** Ordinary Open creates a fresh preview, replacing the front preview or splitting beside a pinned pane. */
 export function open(view: View, item: string, entry?: string): View | undefined {
   const front = frontPane(view);
-  if (front === undefined) return autoPlace(view, item, entry);
-  const shown = view.viewers[front];
-  if (shown?.item === item && (entry === undefined || shown.entry === entry)) return view;
-  const spot = view.viewers[front]?.pinned ? { beside: front } : { replacing: front };
+  const target = front ?? largest(view.layout);
+  const spot =
+    target === undefined
+      ? undefined
+      : front !== undefined && !view.viewers[front]?.pinned
+        ? { replacing: front }
+        : { beside: target };
   return put(view, spot, viewerOf(item, entry, false));
 }
 

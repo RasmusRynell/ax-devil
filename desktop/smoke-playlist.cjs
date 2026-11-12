@@ -164,12 +164,8 @@ module.exports.run = async ({ window }) => {
   await openAddPlaylist();
   await clickButton("Load Playlist");
   await wait("!document.querySelector('dialog')");
-  // The video's pane makes room: these scenarios read the one viewer on screen.
+  // Adding the playlist replaces the active video preview; these scenarios read that one viewer.
   const panes = "[...document.querySelectorAll('[role=group][data-cursor-id^=\"pane:\"]')]";
-  await wait(`${panes}.length === 2`);
-  await js(
-    `${panes}.find((pane) => pane.ariaLabel.endsWith('.mp4')).querySelector('[aria-label="Close this pane"]').click()`,
-  );
   await wait(`${panes}.length === 1`);
 
   const goToFrame = (target) => kit.goToFrame(window, target);
@@ -324,13 +320,15 @@ module.exports.run = async ({ window }) => {
   // The playlist's pane closes and the video opens again, as the one open item for the scenarios that follow.
   await js(`${panes}[0].querySelector('[aria-label="Close this pane"]').click()`);
   await wait(`${panes}.length === 0`);
+
+  // A resolver that returns two playlists: the dialog's states and the tree they make.
+  begin("playlist: multiplaylist");
+  await multiplaylist(window);
+
+  // Restore the video after the resolver scenario has replaced and closed its preview.
   const videoRow =
     "[...document.querySelectorAll('[role=treeitem]')].find((row) => row.textContent.startsWith('long_gop_h264.mp4'))";
   await wait(videoRow);
   await js(`${videoRow}.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
   await wait(`${panes}.map((pane) => pane.ariaLabel).join() === 'long_gop_h264.mp4'`);
-
-  // A resolver that returns two playlists: the dialog's states and the tree they make.
-  begin("playlist: multiplaylist");
-  await multiplaylist(window);
 };

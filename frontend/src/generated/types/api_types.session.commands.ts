@@ -135,7 +135,11 @@ control: ControlCommand, } | { "type": "requestTicket",
 /**
  * The stream.
  */
-key: ContentRef, } | { "type": "workspace", 
+key: ContentRef, 
+/**
+ * Other viewers this seat releases even when admission is refused; at most eight.
+ */
+release: number[], } | { "type": "workspace", 
 /**
  * The change.
  */

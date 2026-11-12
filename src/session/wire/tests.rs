@@ -174,7 +174,7 @@ fn cases() -> Vec<(Value, Expect)> {
             Converted,
         ),
         (
-            json!({ "type": "requestTicket", "key": {
+            json!({ "type": "requestTicket", "release": [], "key": {
                 "content": item, "generation": 0, "entry": item, "viewer": 0 } }),
             Converted,
         ),

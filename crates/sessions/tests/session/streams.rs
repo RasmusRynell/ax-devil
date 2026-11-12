@@ -1,110 +1,18 @@
-//! Tickets, demand, stale jobs, the View lane and the session of one.
+//! Stream authority, demand, stale jobs, the View lane and the session of one.
 
 use crate::{Rig, authority, entry_key, looking, pane, playlist_in, stream};
 use playback::{Authority, ClockIntent, Priority};
 use sessions::{
     CursorOptions, SeatRole,
     session::{
-        Access, Axis, Command, ContentRef, Control, Layout, Refusal, Reply, Sidebar, SidebarView,
-        View, ViewLane, ViewerId, ViewerView,
+        Access, Axis, Command, ContentRef, Control, Layout, Refusal, Sidebar, SidebarView, View,
+        ViewLane, ViewerId, ViewerView,
     },
 };
 use std::time::Duration;
 use tokio::time::{Instant, advance};
 use workspace::store::{DocCommand, Resolution};
 use workspace::{ContentId, ItemId, LiveOverlay, LiveRecipe, Protocol, Recipe, Secret, Source};
-
-#[tokio::test(start_paused = true)]
-async fn a_ticket_opens_one_stream_once_and_only_for_the_seat_and_key_it_was_issued_for() {
-    let rig = Rig::new();
-    let (owner, guest) = rig.shared(Access::Watch);
-    let (_, key) = rig.open_video(&owner, "a.mp4");
-    let Reply::Ticket(ticket) = guest.command(Command::RequestTicket(key.clone())).unwrap() else {
-        panic!("a ticket");
-    };
-
-    let lease = rig.service.redeem(&ticket).unwrap();
-    assert!(matches!(authority(&lease), Authority::Follow { .. }));
-    assert_eq!(
-        rig.service.redeem(&ticket).err(),
-        Some(Refusal::BadTicket),
-        "single use"
-    );
-
-    let Reply::Ticket(late) = guest.command(Command::RequestTicket(key.clone())).unwrap() else {
-        panic!("a ticket");
-    };
-    advance(Duration::from_secs(11)).await;
-    assert_eq!(
-        rig.service.redeem(&late).err(),
-        Some(Refusal::BadTicket),
-        "expired"
-    );
-
-    let Reply::Ticket(bound) = guest.command(Command::RequestTicket(key.clone())).unwrap() else {
-        panic!("a ticket");
-    };
-    let newer = rig.service.resume(guest.resume_token()).unwrap();
-    assert_eq!(
-        rig.service.redeem(&bound).err(),
-        Some(Refusal::BadTicket),
-        "bound to the lease it was asked under"
-    );
-    let Reply::Ticket(for_key) = newer.command(Command::RequestTicket(key.clone())).unwrap() else {
-        panic!("a ticket");
-    };
-    let item = *owner.state().doc.workspace.open.iter().next().unwrap();
-    owner
-        .command(Command::Content(DocCommand::CloseViewer(item)))
-        .unwrap();
-    owner
-        .command(Command::Content(DocCommand::OpenViewer(item)))
-        .unwrap();
-    rig.jobs.finish_all();
-    assert_eq!(
-        rig.service.redeem(&for_key).err(),
-        Some(Refusal::BadTicket),
-        "bound to the generation in its key"
-    );
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_seat_holds_eight_streams_and_a_session_sixty_four() {
-    let rig = Rig::new();
-    let owner = rig
-        .service
-        .create(true, CursorOptions::default(), Default::default())
-        .unwrap();
-    owner
-        .command(Command::Control(Control::Share {
-            access: Access::Watch,
-        }))
-        .unwrap();
-    let (_, key) = rig.open_video(&owner, "a.mp4");
-    let guests: Vec<_> = (0..8).map(|_| rig.join(&owner)).collect();
-    let mut leases = Vec::new();
-
-    for guest in &guests {
-        for _ in 0..8 {
-            leases.push(stream(&rig.service, guest, &key).unwrap());
-        }
-        assert_eq!(
-            stream(&rig.service, guest, &key).err(),
-            Some(Refusal::TooManyStreams)
-        );
-    }
-    assert_eq!(
-        stream(&rig.service, &owner, &key).err(),
-        Some(Refusal::TooManyStreams),
-        "the session is full"
-    );
-
-    leases.pop();
-    assert!(
-        stream(&rig.service, &owner, &key).is_ok(),
-        "a released stream frees its place"
-    );
-}
 
 #[tokio::test(start_paused = true)]
 async fn a_following_seat_gets_the_clock_and_entry_of_the_presenter_pane_it_streams() {

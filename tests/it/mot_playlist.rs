@@ -67,7 +67,7 @@ impl Playlist {
             "entry": self.entries()[index]["id"],
             "viewer": 1,
         });
-        let request = json!({"type": "command", "seq": self.seq, "cmd": {"type": "requestTicket", "key": key}});
+        let request = json!({"type": "command", "seq": self.seq, "cmd": {"type": "requestTicket", "release": [], "key": key}});
         self.owner.say(request).await;
         let seq = self.seq;
         let ticket = self

@@ -30,6 +30,7 @@ export type { LiveView } from "./view";
 export type LiveDeps = Pick<
   StreamDeps,
   | "ticket"
+  | "release"
   | "connect"
   | "frame"
   | "after"
@@ -93,7 +94,9 @@ export class LiveSession implements LaneDisplay {
 
   /** Stops the stream for good: tells the backend, which ends its connections, and drops every frame. */
   close(): void {
+    if (this.#closed) return;
     this.#closed = true;
+    this.#deps.release();
     this.#connection?.send({ type: "Close" });
     this.#connection?.close();
     this.#connection = undefined;

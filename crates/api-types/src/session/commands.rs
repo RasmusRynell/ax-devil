@@ -168,6 +168,9 @@ pub enum SessionCommand {
     RequestTicket {
         /// The stream.
         key: ContentRef,
+        /// Other viewers this seat releases even when admission is refused; at most eight.
+        #[ts(type = "number[]")]
+        release: Vec<ViewerId>,
     },
     /// Open, save or close the workspace file; the owner only.
     Workspace {

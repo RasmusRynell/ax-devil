@@ -1,3 +1,4 @@
+import { StreamRequests } from "./streamRequests";
 import { credential } from "../client/access";
 import { CommandFailed, CommandRefused } from "../client/errors";
 import type {
@@ -91,7 +92,10 @@ export class SessionStore {
   #syncId = 0;
   #syncLeft = 0;
   #syncTimer: ReturnType<typeof setTimeout> | undefined;
-  #waiters: Asked[] = [];
+  #streams = new StreamRequests(
+    () => this.#state.connection === "online" && this.#state.session !== null,
+    (command) => this.#ask(command),
+  );
   /** The newest name typed and not sent, the timer that sends it, and when a name was last sent. */
   #name: string | null = null;
   #nameTimer: ReturnType<typeof setTimeout> | undefined;
@@ -268,15 +272,14 @@ export class SessionStore {
     this.#name = null;
   }
 
-  /** A ticket for one playback socket, once the session is connected; every socket needs its own. */
-  async requestTicket(key: ContentRef): Promise<string> {
-    await new Promise<void>((resolve, reject) => {
-      if (this.#state.connection === "online" && this.#state.session) resolve();
-      else this.#waiters.push({ resolve: () => resolve(), reject });
-    });
-    const ticket = await this.#ask({ type: "requestTicket", key });
-    if (ticket === undefined) throw new Error("The backend sent no ticket.");
-    return ticket;
+  /** Carries cleanup on the next admission, or cancels this viewer's queued offline request. */
+  releaseStream(viewer: number): void {
+    this.#streams.release(viewer);
+  }
+
+  /** Requests a ticket immediately when online, taking the pending releases with it. */
+  requestTicket(key: ContentRef): Promise<string> {
+    return this.#streams.request(key);
   }
 
   setCursorOptions(options: CursorOptions): void {
@@ -308,9 +311,9 @@ export class SessionStore {
 
   /** Rejects whatever waits for the backend: its answer will never come. */
   #refuse(reason: Error): void {
-    const waiting = [...this.#asked.values(), ...this.#waiters];
+    const waiting = [...this.#asked.values()];
     this.#asked.clear();
-    this.#waiters = [];
+    this.#streams.refuse(reason);
     for (const { reject } of waiting) reject(reason);
   }
 
@@ -469,9 +472,10 @@ export class SessionStore {
       you: message.seat,
       seatings: this.#state.seatings + 1,
     };
+    this.#streams.welcome();
     this.#syncLeft = SYNC_BURST;
     this.#ping();
-    for (const { resolve } of this.#waiters.splice(0)) resolve();
+    this.#flush();
     this.#publish();
   }
 

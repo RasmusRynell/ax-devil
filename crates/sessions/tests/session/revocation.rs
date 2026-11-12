@@ -24,7 +24,7 @@ async fn stopping_ends_every_watcher_and_restarting_revives_nothing() {
     let (_, key) = rig.open_video(&owner, "a.mp4");
     let first = stream(&rig.service, &guest, &key).unwrap();
     let Ok(sessions::session::Reply::Ticket(unused)) =
-        guest.command(Command::RequestTicket(key.clone()))
+        guest.command(Command::RequestTicket(key.clone(), vec![]))
     else {
         panic!("a ticket")
     };
@@ -134,7 +134,9 @@ async fn a_seat_taken_over_by_a_newer_connection_loses_its_streams_and_its_say()
         Change::Ended(EndReason::Replaced)
     ));
     assert_eq!(
-        guest.command(Command::RequestTicket(key.clone())).err(),
+        guest
+            .command(Command::RequestTicket(key.clone(), vec![]))
+            .err(),
         Some(Refusal::SeatGone)
     );
     assert!(stream(&rig.service, &newer, &key).is_ok());

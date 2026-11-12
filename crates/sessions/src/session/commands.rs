@@ -83,7 +83,7 @@ pub enum Command {
     /// Change sharing.
     Control(Control),
     /// Ask for a ticket to receive a stream.
-    RequestTicket(ContentRef),
+    RequestTicket(ContentRef, Vec<ViewerId>),
 }
 
 impl Command {
@@ -94,7 +94,7 @@ impl Command {
             Self::Follow => Use::Command(Scope::Follow),
             Self::SetViewport { .. } | Self::SetOverlay { .. } => Use::Command(Scope::View),
             Self::Control(_) => Use::Command(Scope::Control),
-            Self::RequestTicket(key) => Use::Stream(key),
+            Self::RequestTicket(key, _) => Use::Stream(key),
         }
     }
 }
@@ -168,7 +168,7 @@ pub(super) fn run(
         }
         Command::SetOverlay { overlay, shown } => set_overlay(next, seat, lease, overlay, shown),
         Command::Control(control) => self::control(next, control, fresh),
-        Command::RequestTicket(key) => streams::request(next, seat, lease, key, fresh),
+        Command::RequestTicket(key, _) => streams::request(next, fx, seat, lease, key, fresh),
     }
 }
 

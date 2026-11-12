@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { SidebarView, View } from "../generated/api";
 import { scenario, seatAccess } from "./fakeScenario";
+import { SessionStore } from "./store";
 import { EMPTY_VIEW } from "./views";
 import { FakeSocket, type Room } from "./fakeSession";
 import {
@@ -176,6 +177,31 @@ describe("session", () => {
     );
     expect(screen.getByText("live open editable")).toBeTruthy();
   });
+
+  it("cancels only the released viewer's queued request while offline", async () => {
+    const store = new SessionStore();
+    render(
+      <SessionProvider store={store}>
+        <Probe />
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    vi.useFakeTimers();
+    act(() => FakeSocket.latest.drop());
+    const scene = scenario("one-video");
+    const key = { content: scene.ids.a, entry: scene.ids.a, generation: 10 };
+    const cancelled = store.requestTicket({ ...key, viewer: 8 }).catch((error: unknown) => error);
+    const kept = store.requestTicket({ ...key, viewer: 9 });
+    store.releaseStream(8);
+    expect(await cancelled).toBeInstanceOf(Error);
+    await act(() => vi.advanceTimersByTimeAsync(600));
+    await kept;
+    expect(
+      FakeSocket.latest.received
+        .filter((message) => message.type === "command")
+        .map((message) => message.cmd),
+    ).toEqual([{ type: "requestTicket", key: { ...key, viewer: 9 }, release: [] }]);
+  }, 5000);
 
   it("takes the seat back after a drop, with the rotated token, and sends the change that was on its way again", async () => {
     const room = watch("explore");

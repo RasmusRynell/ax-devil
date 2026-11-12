@@ -75,7 +75,7 @@ export function VideoViewer({
     () => ({ content: content.id, generation: content.generation, entry: entry.id, viewer }),
     [content.id, content.generation, entry.id, viewer],
   );
-  const ticket = useStream(key);
+  const { ticket, release } = useStream(key);
   const [viewers, setViewers] = useView("viewers");
   // A clock belongs to the entry the view names beside it; one left from another entry is not this viewer's.
   const shown = viewers[viewer];
@@ -161,6 +161,7 @@ export function VideoViewer({
       !handed && !carried && !latest.current.following && anchor?.playing ? anchor : undefined;
     const created = new PlaybackStream({
       ticket,
+      release,
       connect,
       resume: start,
       // An open with no position to come back to plays; a resumed tab or a followed clock stays as it is. A seat that
@@ -210,7 +211,17 @@ export function VideoViewer({
         heldSpeed.current = speed;
       }
     };
-  }, [item, viewer, content.id, content.generation, entry.id, ticket, connect, setViewers]);
+  }, [
+    item,
+    viewer,
+    content.id,
+    content.generation,
+    entry.id,
+    ticket,
+    release,
+    connect,
+    setViewers,
+  ]);
 
   // The share of the window's frame memory follows the panes that are open.
   const budget = usePaneBudget();

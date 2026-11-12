@@ -23,8 +23,8 @@ use workspace::{
 
 /// The scope a wire command needs, known without looking at what it names, so the seat is authorized before the
 /// command's content is checked and a refusal never tells a seat whether a path or resolver exists. `None` for a
-/// ticket request, which the Session authorizes against the Content it names. Mirrors `Command::needs`, which decides;
-/// a test keeps them equal except for these, which only the wire can decide:
+/// ticket request: the Session applies any carried releases before authorizing its Content. Mirrors
+/// `Command::needs`, which decides; a test keeps them equal except for these, which only the wire can decide:
 /// - a scanned camera's stream needs `Control`: its `found` address is gone once the command is converted;
 /// - `AddResolved` and `EditResolved` always need `Host`: the staged item came from a resolve that read the host's
 ///   files, though `needs` says `Content` for a live recipe;
@@ -159,8 +159,8 @@ pub(super) fn command(
             Request::Session(Command::SetOverlay { overlay, shown }, None)
         }
         SessionCommand::Control { control } => Request::Session(Command::Control(control), None),
-        SessionCommand::RequestTicket { key } => {
-            Request::Session(Command::RequestTicket(key), None)
+        SessionCommand::RequestTicket { key, release } => {
+            Request::Session(Command::RequestTicket(key, release), None)
         }
         SessionCommand::Workspace { command } => Request::Workspace(workspace_command(command)?),
     })

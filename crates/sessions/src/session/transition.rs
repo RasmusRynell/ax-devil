@@ -5,7 +5,7 @@ use super::{
     authorize::{Standing, authorize, standing},
     commands::{self, Scope, set_workspace},
     jobs,
-    layout::Layout,
+    layout::{Layout, ViewerId},
     state::{Seat, SeatKind},
     streams,
     views::{View, restrict},
@@ -57,6 +57,15 @@ pub enum Input {
         command: Command,
         /// Secret and time for the command.
         fresh: Fresh,
+    },
+    /// Releases carried by a ticket request, committed independently of its admission.
+    ReleaseStreams {
+        /// The connection's seat.
+        seat: SeatId,
+        /// The connection's lease.
+        lease: Lease,
+        /// The seat's viewers to release.
+        viewers: Vec<ViewerId>,
     },
     /// A seat's view, from the View lane. Its sequence number is settled whether or not the seat may set a view.
     View {
@@ -210,6 +219,14 @@ fn apply(next: &mut SessionState, fx: &mut Effects, input: Input) -> Result<(), 
         } => {
             authorize(next, seat, lease, command.needs())?;
             commands::run(next, fx, seat, lease, command, &fresh)
+        }
+        Input::ReleaseStreams {
+            seat,
+            lease,
+            viewers,
+        } => {
+            current(next, seat, lease)?;
+            streams::release(next, fx, seat, &viewers)
         }
         Input::View {
             seat,
