@@ -6,10 +6,17 @@ const os = require("node:os");
 const path = require("node:path");
 const { createHash } = require("node:crypto");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, SHOWN, page, setView, settled, goToFrame } = require("./smoke-kit.cjs");
+const { SCREENSHOTS, SHOWN, page, setView, settled, goToFrame, until } = require("./smoke-kit.cjs");
 const { VIDEO, inBackendWindow } = require("./smoke-twice.cjs");
 
 const INSPECTOR = 'section[aria-label="Object page"]';
+
+// The renderer's writeText promise is not a barrier for native clipboard readback.
+async function expectClipboard(text, what) {
+  const hash = (value) => createHash("sha256").update(value).digest("hex");
+  const expected = hash(text);
+  await until(async () => hash(await clipboard.readText()) === expected, what);
+}
 
 async function openObject(window) {
   const { js, wait } = page(window);
@@ -126,11 +133,7 @@ module.exports.run = async () => {
         await wait(
           `document.querySelector('${INSPECTOR} [aria-label="Copied debug.cvat.shape.extra.field4999"]')`,
         );
-        assert.equal(
-          await clipboard.readText(),
-          "4999",
-          "a page-two pin copies its value on page one",
-        );
+        await expectClipboard("4999", "a page-two pin copies its value on page one");
         for (const theme of ["light", "dark"]) {
           nativeTheme.themeSource = theme;
           await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
@@ -217,10 +220,8 @@ module.exports.run = async () => {
           /[\u007f-\uffff]/g,
           (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`,
         );
-        const hash = (text) => createHash("sha256").update(text).digest("hex");
-        assert.equal(
-          hash(await clipboard.readText()),
-          hash(expected),
+        await expectClipboard(
+          expected,
           "Raw copies the complete JSON, including the value absent from its preview",
         );
       },
