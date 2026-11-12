@@ -79,6 +79,7 @@ export class SessionStore {
   /** A seat part whose Doc has not arrived; the backend sends the Doc first, so this only guards the order. */
   #waiting: SeatPart | null = null;
   #pending: Pending | null = null;
+  #retiring = new Set<Promise<void>>();
   /** The highest view number this window has used, and the highest it has sent. */
   #seq = 0;
   #sent = 0;
@@ -268,12 +269,19 @@ export class SessionStore {
     this.#name = null;
   }
 
+  /** Holds admission until a retiring playback socket has released its grant. */
+  releaseStream(closed: Promise<void>): void {
+    this.#retiring.add(closed);
+    void closed.then(() => this.#retiring.delete(closed));
+  }
+
   /** A ticket for one playback socket, once the session is connected; every socket needs its own. */
   async requestTicket(key: ContentRef): Promise<string> {
     await new Promise<void>((resolve, reject) => {
       if (this.#state.connection === "online" && this.#state.session) resolve();
       else this.#waiters.push({ resolve: () => resolve(), reject });
     });
+    while (this.#retiring.size > 0) await Promise.all(this.#retiring);
     const ticket = await this.#ask({ type: "requestTicket", key });
     if (ticket === undefined) throw new Error("The backend sent no ticket.");
     return ticket;

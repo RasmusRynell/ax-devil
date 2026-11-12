@@ -65,7 +65,7 @@ use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use gate::Gate;
 use overlays::OverlayEvent;
 use sessions::session::{StreamLease, Ticket};
-use std::{net::SocketAddr, ops::RangeInclusive, time::Duration};
+use std::{net::SocketAddr, ops::RangeInclusive, sync::Arc, time::Duration};
 use tokio::{
     sync::{mpsc, watch},
     task::JoinHandle,
@@ -171,13 +171,17 @@ async fn serve(state: AppState, socket: WebSocket, mut slot: Slot) {
         Ok(opened) => opened,
         Err(ended) => return refuse(&mut sink, ended).await,
     };
+    let lease = Arc::new(lease);
     let clock = state.sessions.clone();
     let gate = Gate::new(lease.authority(), move || clock.now_us())
         .with_inspection(lease.inspection_permission());
     let audience = Audience {
         host_details: lease.host_details(),
     };
-    let (outbox, writer) = spawn_writer(sink, gate.clone());
+    let (outbox, writer) = spawn_writer(sink, gate.clone(), {
+        let lease = lease.clone();
+        move || drop(lease)
+    });
     let abort = writer.abort_handle();
     let ended = open::run(
         &state,
@@ -189,6 +193,8 @@ async fn serve(state: AppState, socket: WebSocket, mut slot: Slot) {
         gate,
     )
     .await;
+    // The writer keeps the lease until its final messages have drained.
+    drop(lease);
     // One deadline covers telling the viewer why, sending what is queued and closing the socket, so a viewer that
     // stopped reading cannot hold this task, the writer or the socket. Dropping the outbox lets the writer finish.
     let finish = async move {
@@ -277,7 +283,11 @@ async fn refuse<S: Sink<Message> + Unpin>(sink: &mut S, ended: End) {
 /// queued when the authority is revoked is dropped, not sent, and the socket closes with the revoked code. A queued
 /// frame, sample or map run the authority no longer reaches is dropped too, and the overlays are told to offer it
 /// again if the viewer still needs it.
-fn spawn_writer<S>(mut sink: S, gate: Gate) -> (Outbox, JoinHandle<()>)
+fn spawn_writer<S>(
+    mut sink: S,
+    gate: Gate,
+    release: impl FnOnce() + Send + 'static,
+) -> (Outbox, JoinHandle<()>)
 where
     S: Sink<Message> + Unpin + Send + 'static,
 {
@@ -316,6 +326,8 @@ where
         if gate.is_revoked() {
             let _ = sink.send(gate::revoked_close()).await;
         }
+        // Closure acknowledges release, so a successor never needs a ninth grant.
+        release();
         let _ = sink.close().await;
     });
     (outbox, writer)

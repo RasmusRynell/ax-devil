@@ -1,3 +1,5 @@
+import { LoadingIndicator } from "../kit/LoadingIndicator";
+import { usePlaybackLink } from "./usePlaybackLink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ContentInfo, ContentRef, EntryInfo, LanePolicyWire } from "../generated/api";
 import {
@@ -7,7 +9,6 @@ import {
   usePresenterChange,
   useOwnerSeat,
   useServerClock,
-  useStream,
   useView,
 } from "../session/session";
 import { useSettings } from "../client/settings";
@@ -75,7 +76,7 @@ export function VideoViewer({
     () => ({ content: content.id, generation: content.generation, entry: entry.id, viewer }),
     [content.id, content.generation, entry.id, viewer],
   );
-  const ticket = useStream(key);
+  const { ticket, connect: trackedConnect } = usePlaybackLink(key, connect);
   const [viewers, setViewers] = useView("viewers");
   // A clock belongs to the entry the view names beside it; one left from another entry is not this viewer's.
   const shown = viewers[viewer];
@@ -161,7 +162,7 @@ export function VideoViewer({
       !handed && !carried && !latest.current.following && anchor?.playing ? anchor : undefined;
     const created = new PlaybackStream({
       ticket,
-      connect,
+      connect: trackedConnect,
       resume: start,
       // An open with no position to come back to plays; a resumed tab or a followed clock stays as it is. A seat that
       // cannot publish its clock would play again on every return, as nothing remembers it was left.
@@ -210,7 +211,7 @@ export function VideoViewer({
         heldSpeed.current = speed;
       }
     };
-  }, [item, viewer, content.id, content.generation, entry.id, ticket, connect, setViewers]);
+  }, [item, viewer, content.id, content.generation, entry.id, ticket, trackedConnect, setViewers]);
 
   // The share of the window's frame memory follows the panes that are open.
   const budget = usePaneBudget();
@@ -236,24 +237,24 @@ export function VideoViewer({
     if (takes) stream.follow(intent, () => clock.nowUs() ?? intent.atUs, true);
   }, [stream, ownerSeat, intent, clock, viewer, takesPresenter, presenter.rev, presenter.byOther]);
 
-  return (
-    stream && (
-      <Playback
-        stream={stream}
-        viewer={viewer}
-        item={item}
-        name={entry.label}
-        title={content.display_name}
-        entry={entry.id}
-        hidden={hidden}
-        canChange={canChange}
-        onHideLane={onHideLane}
-        viewport={viewport}
-        onViewport={onViewport}
-        onDrawn={onDrawn}
-        inspector={inspector}
-        onInspector={setInspector}
-      />
-    )
+  return stream ? (
+    <Playback
+      stream={stream}
+      viewer={viewer}
+      item={item}
+      name={entry.label}
+      title={content.display_name}
+      entry={entry.id}
+      hidden={hidden}
+      canChange={canChange}
+      onHideLane={onHideLane}
+      viewport={viewport}
+      onViewport={onViewport}
+      onDrawn={onDrawn}
+      inspector={inspector}
+      onInspector={setInspector}
+    />
+  ) : (
+    <LoadingIndicator message={`Opening ${entry.label}…`} />
   );
 }

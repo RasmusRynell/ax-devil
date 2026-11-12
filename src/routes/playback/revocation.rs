@@ -34,7 +34,7 @@ async fn a_message_queued_when_the_authority_is_revoked_is_dropped_and_the_socke
             }
         }
     }));
-    let (outbox, writer) = spawn_writer(socket, gate);
+    let (outbox, writer) = spawn_writer(socket, gate, || {});
 
     let frame = |n: u8| Message::Binary(vec![n].into());
     outbox.send(frame(1).into()).await.unwrap();
@@ -79,7 +79,7 @@ async fn a_frame_queued_outside_a_narrowed_authority_is_dropped_and_the_rest_sti
             }
         }
     }));
-    let (outbox, writer) = spawn_writer(socket, gate);
+    let (outbox, writer) = spawn_writer(socket, gate, || {});
     let frame = |id: u8| Outgoing::frame(Message::Binary(vec![id].into()), u64::from(id));
 
     outbox.send(frame(60)).await.unwrap();
@@ -117,7 +117,7 @@ async fn a_map_run_queued_with_a_frame_outside_a_narrowed_authority_is_dropped_w
             }
         }
     }));
-    let (outbox, writer) = spawn_writer(socket, gate.clone());
+    let (outbox, writer) = spawn_writer(socket, gate.clone(), || {});
     let run = |first: u64| {
         let run = MapRun {
             lane: 0,

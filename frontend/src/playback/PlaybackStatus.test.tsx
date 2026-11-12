@@ -12,7 +12,7 @@ const opening = (view: Partial<PlaybackView>) => (
 describe("the offline pane before the video is ready", () => {
   it("says what it is waiting for in one status, and why it failed instead of spinning", () => {
     const pane = render(opening({ status: "connecting" }));
-    expect(screen.getByRole("status").textContent).toBe("Loading");
+    expect(screen.getByRole("status").textContent).toBe("Opening a.mp4…");
     pane.rerender(opening({ status: "indexing" }));
     expect(screen.getByRole("status").textContent).toBe("Building frame index: a.mp4");
     pane.rerender(

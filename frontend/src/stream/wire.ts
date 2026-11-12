@@ -25,6 +25,8 @@ export type Received = Incoming | { type: "jpeg"; frame: JpegFrame };
 export interface Connection {
   send(message: ClientMessage): void;
   close(): void;
+  /** Resolves after the peer releases the stream and acknowledges closure; absent for synchronous transports. */
+  closed?: Promise<void>;
 }
 
 /** Opens a socket and reports everything it receives, in order. */

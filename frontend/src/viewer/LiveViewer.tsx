@@ -1,3 +1,4 @@
+import { usePlaybackLink } from "../playback/usePlaybackLink";
 import {
   useCallback,
   useContext,
@@ -227,7 +228,7 @@ export function LiveVideoViewer({
     () => ({ content: content.id, generation: content.generation, entry: content.id, viewer }),
     [content.id, content.generation, viewer],
   );
-  const ticket = useStream(key);
+  const { ticket, connect: trackedConnect } = usePlaybackLink(key, connect);
   const command = useCommand();
   const changes = useCan("content");
   const { values } = useSettings();
@@ -253,7 +254,7 @@ export function LiveVideoViewer({
   useEffect(() => {
     const created = new LiveSession({
       ticket,
-      connect,
+      connect: trackedConnect,
       lanes: priorLanes.current,
       defaultCatalog: () => (defaultCatalog.current as string) || null,
       savedDefaults: () => saved.current,
@@ -274,7 +275,7 @@ export function LiveVideoViewer({
       if (lanes.length > 0) priorLanes.current = lanes;
       created.close();
     };
-  }, [ticket, connect]);
+  }, [ticket, trackedConnect]);
 
   return (
     session && (
