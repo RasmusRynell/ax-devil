@@ -1,3 +1,4 @@
+const { pressShortcut } = require("./shortcut-input.cjs");
 const { clickVisible } = require("./settings-smoke-kit.cjs");
 // The kit gallery scenario of the desktop smoke test: the page at `#kit-gallery` shows every shared component, is
 // photographed in both themes, and is checked where components must wrap instead of overflowing.
@@ -87,11 +88,7 @@ function galleryProblems() {
 const inPage = (check) =>
   `(() => { try { return (${check.toString()})(); } catch (error) { return [String(error.stack)]; } })()`;
 
-const key = (window, keyCode) => {
-  window.webContents.sendInputEvent({ type: "keyDown", keyCode });
-  if (keyCode === "Return") window.webContents.sendInputEvent({ type: "char", keyCode: "\r" });
-  window.webContents.sendInputEvent({ type: "keyUp", keyCode });
-};
+const key = (window, chord) => pressShortcut(window, chord, { character: true });
 
 async function gallery(window) {
   const { js, wait } = page(window);

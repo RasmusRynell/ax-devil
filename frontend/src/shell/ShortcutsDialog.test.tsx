@@ -54,6 +54,23 @@ describe("shortcuts dialog", () => {
     expect(save).toHaveBeenLastCalledWith({ shortcutsSet: { "save-workspace": null } });
   });
 
+  it("starts capture with F2 only on the focused chip", () => {
+    render(
+      <FakeSettings>
+        <ShortcutsDialog onClose={() => {}} />
+      </FakeSettings>,
+    );
+    const search = screen.getByRole("searchbox", { name: "Search shortcuts" });
+    fireEvent.keyDown(search, { key: "F2" });
+    expect(screen.queryByText("Press a key…")).toBeNull();
+    const chip = screen.getByRole("button", { name: "Key for Exit" });
+    chip.focus();
+    fireEvent.keyDown(chip, { key: "F2", shiftKey: true });
+    expect(screen.queryByText("Press a key…")).toBeNull();
+    fireEvent.keyDown(chip, { key: "F2" });
+    expect(chip.textContent).toBe("Press a key…");
+  });
+
   it("stages every default again with Reset to Defaults, and keeps it for OK", async () => {
     const save = vi.fn(async () => null);
     const state = {

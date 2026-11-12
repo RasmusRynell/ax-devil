@@ -1,6 +1,7 @@
 // The smoke test's export scenario on the video that is open: Ctrl+E opens the export dialog with the video's lane
 // ready, Export asks the native save dialog (answered by a stub here) and exports nothing when it is cancelled, and the
 // dialog fits the smallest window at 200% text size, in both themes.
+const { pressShortcut } = require("./shortcut-input.cjs");
 const { dialog, nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -16,10 +17,7 @@ module.exports.run = async ({ window }) => {
   // The shell's key handler hears a real key only while the window has the keyboard.
   await wait("document.hasFocus()");
   await frames({ js });
-  const key = (type) =>
-    window.webContents.sendInputEvent({ type, keyCode: "E", modifiers: ["control"] });
-  key("keyDown");
-  key("keyUp");
+  pressShortcut(window, "Ctrl+E");
   await wait(
     "document.querySelector('dialog[open] h2')?.textContent === 'Export Video with Overlays'",
   );
@@ -84,7 +82,6 @@ module.exports.run = async ({ window }) => {
     true,
     "Cancel must be disabled before an export starts",
   );
-  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
-  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+  pressShortcut(window, "Escape");
   await wait("!document.querySelector('dialog')");
 };

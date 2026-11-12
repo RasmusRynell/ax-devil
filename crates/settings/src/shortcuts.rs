@@ -1,7 +1,7 @@
 //! The keyboard commands, their default keys, and the rules for personal key overrides.
 //!
 //! Pure data and functions: the file I/O and the live state live in the crate root. A key is written
-//! `Ctrl+Alt+Shift+<key>` (modifiers in that order, omitted when unused); the frontend matches events against the
+//! `Meta+Ctrl+Alt+Shift+<key>` (modifiers in that order, omitted when unused); the frontend matches events against the
 //! same grammar. `<key>` is a letter (upper case), a digit, one ASCII symbol, `F1`..`F24`, or one of [`NAMED_KEYS`].
 
 use std::collections::BTreeMap;
@@ -305,7 +305,7 @@ const NAMED_KEYS: &[&str] = &[
 
 /// The canonical spelling of `key`, or why it is not a valid shortcut.
 ///
-/// Modifiers are `Ctrl`, `Alt`, `Shift` (any case, any order, each at most once) and come out in that order. Shift
+/// Modifiers are `Meta`, `Ctrl`, `Alt`, `Shift` (any case, any order, each at most once) and come out in that order. Shift
 /// is refused with a symbol key, because the browser reports the shifted character instead of the key.
 pub fn canonical(key: &str) -> Result<String, String> {
     let (modifiers, name) = if key == "+" {
@@ -318,23 +318,23 @@ pub fn canonical(key: &str) -> Result<String, String> {
             None => (None, key),
         }
     };
-    let mut held = [false; 3];
+    let mut held = [false; 4];
     for part in modifiers.map_or_else(Vec::new, |rest| rest.split('+').collect()) {
-        let slot = ["ctrl", "alt", "shift"]
+        let slot = ["meta", "ctrl", "alt", "shift"]
             .iter()
             .position(|modifier| part.eq_ignore_ascii_case(modifier))
-            .ok_or_else(|| format!("\"{part}\" is not a modifier; use Ctrl, Alt or Shift"))?;
+            .ok_or_else(|| format!("\"{part}\" is not a modifier; use Meta, Ctrl, Alt or Shift"))?;
         if std::mem::replace(&mut held[slot], true) {
             return Err(format!("{part} is given twice"));
         }
     }
     let name = canonical_name(name)?;
     let symbol = name.len() == 1 && !name.as_bytes()[0].is_ascii_alphanumeric();
-    if symbol && held[2] {
+    if symbol && held[3] {
         return Err(format!("Shift cannot be combined with {name}"));
     }
     let mut out = String::new();
-    for (held, modifier) in held.iter().zip(["Ctrl", "Alt", "Shift"]) {
+    for (held, modifier) in held.iter().zip(["Meta", "Ctrl", "Alt", "Shift"]) {
         if *held {
             out.push_str(modifier);
             out.push('+');
@@ -507,11 +507,6 @@ mod tests {
                 "shortcuts.exit",
                 "reserved",
             ),
-            (
-                map(&[("exit", Some("Meta+Q"))]),
-                "shortcuts.exit",
-                "not a modifier",
-            ),
             (map(&[("nope", None)]), "shortcuts.nope", "not a command"),
         ] {
             let mut full = all.clone();
@@ -520,6 +515,37 @@ mod tests {
             assert_eq!(error.location, location);
             assert!(error.reason.contains(reason), "{}", error.reason);
         }
+    }
+
+    #[test]
+    fn meta_binding_survives_save_reload_and_conflicts_are_refused() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("settings.json");
+        let settings = crate::Settings::load(&path).unwrap();
+        let edit = crate::Patch {
+            shortcuts_set: map(&[("exit", Some("ctrl+meta+alt+shift+q"))]),
+            ..Default::default()
+        };
+        settings.patch(&edit).unwrap();
+        let saved: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["shortcuts"]["exit"], "Meta+Ctrl+Alt+Shift+Q");
+        let loaded = crate::Settings::load(&path).unwrap();
+        assert_eq!(
+            loaded.state().shortcuts()["exit"].as_deref(),
+            Some("Meta+Ctrl+Alt+Shift+Q")
+        );
+        let duplicate = crate::Patch {
+            shortcuts_set: map(&[("about", Some("Meta+Ctrl+Alt+Shift+Q"))]),
+            ..Default::default()
+        };
+        assert!(
+            loaded
+                .patch(&duplicate)
+                .unwrap_err()
+                .reason
+                .contains("already used")
+        );
     }
 
     #[test]

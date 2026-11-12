@@ -1,5 +1,6 @@
 // The smoke test's shell scenario: the start panel, the window chrome, the title, and every dialog and menu fit-checked
 // at the window minimum and 200% zoom, in both themes.
+const { pressShortcut } = require("./shortcut-input.cjs");
 const { dialog, nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -68,8 +69,7 @@ module.exports.run = async ({ window }) => {
     asked = true;
     return { canceled: true, filePaths: [] };
   };
-  for (const type of ["keyDown", "char", "keyUp"])
-    window.webContents.sendInputEvent({ type, keyCode: type === "char" ? "\r" : "Enter" });
+  pressShortcut(window, "Enter", { character: true });
   await until(() => asked, "Enter to open the Open Workspace dialog");
   dialog.showOpenDialog = showOpenDialog;
 
@@ -93,8 +93,7 @@ module.exports.run = async ({ window }) => {
     for (const letter of text) window.webContents.insertText(letter);
     await wait(`${title}.querySelector('input').value === ${JSON.stringify(text)}`);
   };
-  const press = (keyCode) =>
-    ["keyDown", "keyUp"].forEach((type) => window.webContents.sendInputEvent({ type, keyCode }));
+  const press = (chord) => pressShortcut(window, chord);
   await editTitle("Review");
   await wait("document.title.startsWith('● ')");
   press("Escape");
@@ -120,12 +119,10 @@ module.exports.run = async ({ window }) => {
     "[aria-label=Close]",
   ])
     assert.ok(await js(`document.querySelector("${selector}") !== null`), selector);
-  const zoomKey = (keyCode) =>
-    window.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers: ["control"] });
   const density = await js("window.devicePixelRatio");
-  zoomKey("=");
+  pressShortcut(window, "Ctrl+=");
   await wait(`window.devicePixelRatio > ${density}`);
-  zoomKey("0");
+  pressShortcut(window, "Ctrl+0");
   await wait(`window.devicePixelRatio === ${density}`);
 
   // The smallest window, at normal zoom and at 200%: the View menu, then the Settings and Keyboard Shortcuts dialogs, in both themes.

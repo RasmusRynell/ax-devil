@@ -1,3 +1,4 @@
+import { shortcutDisplay } from "./shortcut";
 import { useState } from "react";
 import { Icon } from "./Icon";
 
@@ -148,7 +149,9 @@ function Entries({ entries, checked, expanded, toggle, onSelect }: EntriesProps)
           <span className="size-icon shrink-0">{isChecked && <Icon name="check" />}</span>
         )}
         <span className="flex-1 whitespace-nowrap">{entry.label}</span>
-        {entry.shortcut && <span className="ml-xl text-muted">{entry.shortcut}</span>}
+        {entry.shortcut && (
+          <span className="ml-xl text-muted">{shortcutDisplay(entry.shortcut).text}</span>
+        )}
       </button>
     );
   });

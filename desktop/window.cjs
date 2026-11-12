@@ -109,7 +109,9 @@ async function openWindow(
   window.on("leave-full-screen", sendFullScreen);
   // There is no application menu, so zoom is handled here; Chromium remembers it per host.
   contents.on("before-input-event", (event, input) => {
-    if (input.type !== "keyDown" || !input.control || input.alt) return;
+    const zoomModifier =
+      process.platform === "darwin" ? input.meta && !input.control : input.control && !input.meta;
+    if (input.type !== "keyDown" || !zoomModifier || input.alt) return;
     const step = ZOOM_STEPS[input.key];
     if (step === undefined || !reserved.includes(`Ctrl+${input.key}`)) return;
     contents.setZoomLevel(step === null ? 0 : contents.getZoomLevel() + step);

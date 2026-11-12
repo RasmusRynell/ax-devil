@@ -9,7 +9,7 @@ import { IconButton } from "../kit/IconButton";
 import { KeyChips } from "../kit/KeyChips";
 import { QUIET } from "../kit/look";
 import { SectionCaption } from "../kit/SectionCaption";
-import { shortcutOf } from "../kit/shortcut";
+import { shortcutDisplay, shortcutOf } from "../kit/shortcut";
 import { shortcutsPatch, useSettings } from "../client/settings";
 import { useRepairIntent } from "./useRepairIntent";
 import { useSaveDialog } from "./useSaveDialog";
@@ -58,11 +58,15 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const needle = search.trim().toLowerCase();
   const sections = SECTIONS.map(({ category, commands }) => ({
     category,
-    commands: commands.filter((command) =>
-      [command.label, command.category, draft[command.id] ?? ""].some((text) =>
-        text.toLowerCase().includes(needle),
-      ),
-    ),
+    commands: commands.filter((command) => {
+      const binding = draft[command.id];
+      return [
+        command.label,
+        command.category,
+        binding ?? "",
+        binding ? shortcutDisplay(binding).text : "",
+      ].some((text) => text.toLowerCase().includes(needle));
+    }),
   })).filter(({ commands }) => commands.length > 0);
 
   /** Binds `key` (or unbinds with null) unless it is reserved or another command holds it. */
@@ -70,11 +74,11 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
     setRecording(null);
     const owner = key ? COMMANDS.find((other) => other.id !== id && draft[other.id] === key) : null;
     if (key && (RESERVED as readonly string[]).includes(key))
-      setNote({ id, text: `${key} is reserved for zooming the page` });
+      setNote({ id, text: `${shortcutDisplay(key).text} is reserved for zooming the page` });
     else if (key && owner)
       setNote({
         id,
-        text: `${key} is already used by ${owner.label}`,
+        text: `${shortcutDisplay(key).text} is already used by ${owner.label}`,
         takeFrom: { owner: owner.id, key },
       });
     else {
@@ -84,7 +88,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
       const verb = reset ? "reset to" : "set to";
       setAnnouncement(
         key
-          ? `${labelOf(id)} ${verb} ${key}`
+          ? `${labelOf(id)} ${verb} ${shortcutDisplay(key).text}`
           : `${labelOf(id)} ${reset ? "reset to not set" : "cleared"}`,
       );
     }
@@ -95,10 +99,27 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
     repair.edit(id);
     setDraft({ ...draft, [owner]: null, [id]: key });
     setNote(null);
-    setAnnouncement(`${labelOf(id)} set to ${key}, taken from ${labelOf(owner)}`);
+    setAnnouncement(
+      `${labelOf(id)} set to ${shortcutDisplay(key).text}, taken from ${labelOf(owner)}`,
+    );
   };
   const record = (event: KeyboardEvent, id: CommandId) => {
-    if (recording !== id) return;
+    if (recording !== id) {
+      if (
+        event.key === "F2" &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        !event.metaKey
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        setNote(null);
+        setRecording(id);
+        setAnnouncement(`Press a key for ${labelOf(id)}`);
+      }
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     swallowKeyUp.current = true;
@@ -140,8 +161,13 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
                 {commands.map(({ id, label, key: standard }) => {
                   const shown = note?.id === id ? note : null;
                   const takeFrom = shown?.takeFrom;
+                  const serverText = serverNote?.id === id && refusal ? reasonOf(refusal) : null;
+                  const binding = draft[id];
                   const text =
-                    shown?.text ?? (serverNote?.id === id && refusal ? reasonOf(refusal) : null);
+                    shown?.text ??
+                    (serverText && binding
+                      ? serverText.replaceAll(binding, shortcutDisplay(binding).text)
+                      : serverText);
                   return (
                     <li key={id} className="flex flex-col border-b border-line">
                       <div className="flex min-h-row items-center gap-m">

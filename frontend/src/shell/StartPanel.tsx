@@ -1,3 +1,4 @@
+import { shortcutDisplay } from "../kit/shortcut";
 import { command, scopeOf } from "../client/commands";
 import type { CommandId } from "../generated/settings";
 import { Icon } from "../kit/Icon";
@@ -28,7 +29,11 @@ export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
             key={id}
             type="button"
             data-cursor-id={`sidebar:${id}`}
-            title={shortcuts[id] ? `${command(id).label} (${shortcuts[id]})` : undefined}
+            title={
+              shortcuts[id]
+                ? `${command(id).label} (${shortcutDisplay(shortcuts[id]).text})`
+                : undefined
+            }
             className={`${QUIET} py-xs text-left`}
             disabled={!allowed[scopeOf(id)]}
             onClick={() => onRun(id)}
