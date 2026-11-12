@@ -8,6 +8,10 @@ import type { LeafWire } from "./scene.inspection.leaf";
  */
 export type FieldWire = { 
 /**
+ * Stable digest of the full segmented path, only when its display path is abbreviated.
+ */
+identity?: string, 
+/**
  * The section the field is listed in.
  */
 group: FieldGroupWire, 
@@ -74,6 +78,10 @@ token: string,
  */
 field: number | null, 
 /**
+ * Retrieve the complete Raw section as JSON, independently of the current page.
+ */
+raw?: boolean, 
+/**
  * Retrieve the dotted path instead of the value.
  */
 path: boolean, 
@@ -126,7 +134,11 @@ continuation?: InspectionContinuation,
 /**
  * Whether fields were left out.
  */
-truncated: boolean, } | { "state": "Absent" } | { "state": "Unavailable" };
+truncated: boolean, } | { "state": "Refused", 
+/**
+ * Reason shown by the Inspector.
+ */
+reason: string, } | { "state": "Absent" } | { "state": "Unavailable" };
 
 /**
  * One leaf of an object a search compares, at the key a search names it by.

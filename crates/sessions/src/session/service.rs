@@ -448,6 +448,14 @@ impl<C: Clone + Send + 'static> Service<C> {
                     _ => Err(Refusal::BadTicket),
                 }
             })?;
+        let inspect_service = self.clone();
+        let inspection = Arc::new(move || {
+            inspect_service.quietly(|sessions| {
+                sessions
+                    .get(&session)
+                    .is_some_and(|live| live.state.inspection_allowed(grant))
+            })
+        });
         let service = self.clone();
         Ok(StreamLease::new(
             (session, grant),
@@ -455,7 +463,7 @@ impl<C: Clone + Send + 'static> Service<C> {
             *content,
             entry.map(|entry| *entry),
             matching,
-            host_details,
+            (host_details, inspection),
             move || {
                 service.locked(|sessions, deferred| {
                     // A session that already ended has released everything.

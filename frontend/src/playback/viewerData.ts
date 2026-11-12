@@ -193,7 +193,7 @@ export class ViewerData {
     this.#presentation = [];
     this.#matched = [];
     this.samples.clear();
-    this.inspections.suspend();
+    this.inspections.disconnect();
     this.files.suspend();
     this.next.close();
   }

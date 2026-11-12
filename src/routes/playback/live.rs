@@ -157,9 +157,9 @@ pub(super) async fn stream(
     ));
     let mut live = Live {
         viewer,
-        gate,
+        gate: gate.clone(),
         catalogs,
-        inspections: Inspections::default(),
+        inspections: Inspections::new(gate.inspection_permission()),
         incoming,
         outbox,
         closing,

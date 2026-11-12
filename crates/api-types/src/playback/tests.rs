@@ -168,6 +168,7 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
             continuation: None,
             fields: vec![
                 FieldWire {
+                    identity: None,
                     cut: None,
                     path_cut: None,
                     group: FieldGroup::Debug,
@@ -179,6 +180,7 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
                     fraction: None,
                 },
                 FieldWire {
+                    identity: None,
                     cut: None,
                     path_cut: None,
                     group: FieldGroup::Classification,

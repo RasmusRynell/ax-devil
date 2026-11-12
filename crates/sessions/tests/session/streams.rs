@@ -515,3 +515,51 @@ async fn the_listing_revision_rises_with_the_list_and_not_with_a_cursor() {
     owner.leave();
     assert!(listed.has_changed().unwrap(), "the session ended");
 }
+
+#[tokio::test(start_paused = true)]
+async fn inspection_permission_tracks_the_seats_current_view_without_restricting_owner_seats() {
+    use sessions::session::Overlay;
+    for access in [Access::Watch, Access::Explore] {
+        let rig = Rig::new();
+        let (owner, guest) = rig.shared(access);
+        let (_, key) = rig.open_video(&owner, "a.mp4");
+        let watching = stream(&rig.service, &guest, &key).unwrap();
+        let own = stream(&rig.service, &owner, &key).unwrap();
+        let allowed = watching.inspection_permission();
+        assert!(allowed());
+        owner
+            .command(Command::SetOverlay {
+                overlay: Overlay::ObjectDetails,
+                shown: false,
+            })
+            .unwrap();
+        assert!(
+            !allowed(),
+            "a following Guest cannot inspect when details are hidden"
+        );
+        assert!(
+            (own.inspection_permission())(),
+            "Owner inspection is independent of the Presenter toggle"
+        );
+        if access == Access::Explore {
+            guest
+                .command(Command::SetOverlay {
+                    overlay: Overlay::ObjectDetails,
+                    shown: true,
+                })
+                .unwrap();
+            assert!(allowed(), "an explorer uses its own view");
+            guest.command(Command::Follow).unwrap();
+            assert!(!allowed(), "following returns to the Presenter permission");
+        }
+        owner
+            .command(Command::SetOverlay {
+                overlay: Overlay::ObjectDetails,
+                shown: true,
+            })
+            .unwrap();
+        assert!(allowed());
+        drop(watching);
+        assert!(!allowed(), "a released stream cannot retain permission");
+    }
+}

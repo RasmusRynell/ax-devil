@@ -38,6 +38,10 @@ async fn viewer(folder: &Path) -> (ViewerOverlays, u32) {
         ]),
         metadata: Default::default(),
     };
+    open_overlay(overlay).await
+}
+
+async fn open_overlay(overlay: OverlayRef) -> (ViewerOverlays, u32) {
     let service = OverlayService::new(scene_store::TrackRegistry::new(
         handlers::Handlers::built_in().decoder_lookup(),
         None,
@@ -319,6 +323,7 @@ async fn a_cursor_cannot_cross_sockets_or_outlast_its_held_sample() {
         panic!("cursor");
     };
     let read = InspectionRead {
+        raw: None,
         path: false,
         token: cursor.token,
         request: 1,
@@ -388,6 +393,7 @@ fn an_abbreviated_path_advertises_how_to_retrieve_its_last_byte() {
         .expect("full path access");
     assert_eq!(bytes, 9 * 1024 * 1024);
     let read = InspectionRead {
+        raw: None,
         token: "held".into(),
         request: 1,
         field: Some(ordinal as u32),
@@ -402,3 +408,5 @@ fn an_abbreviated_path_advertises_how_to_retrieve_its_last_byte() {
     assert_eq!(u64::from(total), bytes);
     assert_eq!(next, None);
 }
+
+mod permission;

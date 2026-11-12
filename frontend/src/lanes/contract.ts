@@ -185,10 +185,14 @@ export type InspectionView =
       fields: readonly FieldWire[];
       truncated: boolean;
       access?: InspectionAccess;
+      /** A safe refusal before field preparation. */
+      error?: string;
     };
 
 /** Bounded field navigation and one explicit whole-value copy, owned by Inspections. */
 export interface InspectionAccess {
+  /** Copies the complete Raw section through the same bounded transfer. */
+  raw: () => void;
   revision: number;
   next: (() => void) | null;
   first: (() => void) | null;

@@ -325,9 +325,11 @@ export function InspectorLines({
   memory,
   onMemory,
   onCopyLarge,
+  onCopyRaw,
   onCopyStart,
 }: {
   fields: readonly FieldWire[];
+  onCopyRaw?: () => void;
   onCopyLarge?: (ordinal: number, path?: boolean) => void;
   onCopyStart?: () => void;
   /** The object's id, which leads the list. */
@@ -375,15 +377,23 @@ export function InspectorLines({
     if (!next.delete(group)) next.add(group);
     report({ ...now, folded: next });
   }, []);
+  const copyRaw = () => {
+    if (!lines.some((line) => line.kind === "caption" && line.fold === "raw" && line.copyable))
+      return false;
+    onCopyStart?.();
+    if (onCopyRaw) onCopyRaw();
+    else copied.copy(RAW_COPIED, rawJson(fields));
+    return true;
+  };
   /** Copies what the row's copy button would; false for a row with nothing to copy. */
   const copyRow = (row: HTMLElement): boolean => {
     const { index, group } = row.dataset;
     const line = index === undefined ? undefined : all[Number(index)];
-    onCopyStart?.();
     if (line?.kind === "field") {
+      onCopyStart?.();
       if (line.cut) onCopyLarge?.(line.cut[0]);
       else copied.copy(ids[Number(index)] ?? "", copyValue(line));
-    } else if (group === "raw") copied.copy(RAW_COPIED, rawJson(fields));
+    } else if (group === "raw") return copyRaw();
     else return false;
     return true;
   };
@@ -403,8 +413,8 @@ export function InspectorLines({
     if (row && copyRow(row)) event.preventDefault();
   };
   const onContextMenu = (event: MouseEvent<HTMLDivElement>) => {
-    const key = (event.target as Element).closest<HTMLElement>("[data-field]")?.dataset.field;
-    // Off a field the browser's own menu stays.
+    const row = (event.target as Element).closest<HTMLElement>("[data-field],[data-group]");
+    const key = row?.dataset.field ?? (row?.dataset.group === "raw" ? RAW_COPIED : undefined);
     if (key === undefined) event.stopPropagation();
     else setMenuKey(key);
   };
@@ -413,33 +423,36 @@ export function InspectorLines({
   const entries: MenuEntry[] =
     menuKey === null
       ? []
-      : [
-          ...(pathCut?.id
-            ? [
-                {
-                  kind: "action" as const,
-                  id: "pin",
-                  label: pinnedKeys.has(menuKey) ? "Unpin field" : "Pin field",
-                },
-              ]
-            : []),
-          ...(longPath
-            ? [
-                {
-                  kind: "action" as const,
-                  id: "copy-path",
-                  label: `Copy path (${longPath[1]} bytes)`,
-                },
-              ]
-            : []),
-        ];
+      : menuKey === RAW_COPIED
+        ? [{ kind: "action", id: "copy-raw", label: "Copy Raw" }]
+        : [
+            ...(pathCut?.id
+              ? [
+                  {
+                    kind: "action" as const,
+                    id: "pin",
+                    label: pinnedKeys.has(menuKey) ? "Unpin field" : "Pin field",
+                  },
+                ]
+              : []),
+            ...(longPath
+              ? [
+                  {
+                    kind: "action" as const,
+                    id: "copy-path",
+                    label: `Copy path (${longPath[1]} bytes)`,
+                  },
+                ]
+              : []),
+          ];
 
   return (
     <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)]">
       <ContextMenu
         entries={entries}
         onSelect={(id) => {
-          if (id.id === "copy-path" && longPath) onCopyLarge?.(longPath[0], true);
+          if (id.id === "copy-raw") copyRaw();
+          else if (id.id === "copy-path" && longPath) onCopyLarge?.(longPath[0], true);
           else if (menuKey !== null) pin(menuKey);
         }}
       >

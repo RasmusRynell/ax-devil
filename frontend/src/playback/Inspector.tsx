@@ -182,6 +182,7 @@ export function Inspector({
         )}
         {!unknown && (
           <InspectorLines
+            onCopyRaw={access?.raw}
             onCopyLarge={access?.copy}
             onCopyStart={access?.cancel}
             fields={fields}
@@ -192,6 +193,11 @@ export function Inspector({
           />
         )}
       </div>
+      {!absent && inspection.error && (
+        <p role="alert" className="p-s text-small text-danger">
+          {inspection.error}
+        </p>
+      )}
       {access &&
         (access.next ||
           access.first ||

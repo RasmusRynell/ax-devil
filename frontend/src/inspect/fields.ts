@@ -11,7 +11,11 @@ const GROUPS: readonly (readonly [FieldGroupWire, string])[] = [
 ];
 
 /** A field by where it is, not whose it is: its group and its path inside the group. */
-export type FieldId = { readonly group: FieldGroupWire; readonly path: readonly string[] };
+export type FieldId = {
+  readonly identity?: string;
+  readonly group: FieldGroupWire;
+  readonly path: readonly string[];
+};
 
 /** What the inspector keeps across the objects a viewer shows: the pinned fields in pin order, and the folded groups. */
 export interface InspectorMemory {
@@ -73,7 +77,8 @@ const idLine = (entity: string): Line => ({
 });
 
 /** The identity of a field: a path may contain dots, so its parts are not joined by one. */
-export const fieldKey = ({ group, path }: FieldId): string => [group, ...path].join("\u0000");
+export const fieldKey = ({ group, path, identity }: FieldId): string =>
+  identity ? `${group}\u0000sha256:${identity}` : [group, ...path].join("\u0000");
 
 /** `group.path`, as the Objects query names the field. */
 export const fieldLabel = ({ group, path }: FieldId): string => [group, ...path].join(".");
@@ -125,11 +130,11 @@ function debugLines(own: readonly FieldWire[]): Line[] {
 
 /** A colour field is named by its colour, the last part of its path. */
 function fieldLine(field: FieldWire): Line {
-  const id = { group: field.group, path: field.path };
+  const id = { group: field.group, path: field.path, identity: field.identity };
   return {
     kind: "field",
-    key: field.path_cut ? `${fieldKey(id)}\u0000${field.path_cut[0]}` : fieldKey(id),
-    id: field.path_cut ? null : id,
+    key: fieldKey(id),
+    id,
     label: (field.rgb ? field.path.slice(-1) : field.path).join(".") || "value",
     value: field.value,
     cut: field.cut,
@@ -186,7 +191,7 @@ export function inspectorLines(
       heading,
       fold: group,
       folded: isFolded,
-      copyable: group === "raw" && !own.some((field) => field.cut || field.path_cut),
+      copyable: group === "raw",
       count: own.length,
     };
     if (isFolded) return [caption];

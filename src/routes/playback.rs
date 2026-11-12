@@ -131,6 +131,7 @@ struct Outgoing {
     message: Message,
     frames: Option<RangeInclusive<u64>>,
     data: Option<OverlayEvent>,
+    inspection: bool,
 }
 
 impl Outgoing {
@@ -140,6 +141,7 @@ impl Outgoing {
             message,
             frames: Some(frame..=frame),
             data: None,
+            inspection: false,
         }
     }
 }
@@ -150,6 +152,7 @@ impl From<Message> for Outgoing {
             message,
             frames: None,
             data: None,
+            inspection: false,
         }
     }
 }
@@ -169,7 +172,8 @@ async fn serve(state: AppState, socket: WebSocket, mut slot: Slot) {
         Err(ended) => return refuse(&mut sink, ended).await,
     };
     let clock = state.sessions.clone();
-    let gate = Gate::new(lease.authority(), move || clock.now_us());
+    let gate = Gate::new(lease.authority(), move || clock.now_us())
+        .with_inspection(lease.inspection_permission());
     let audience = Audience {
         host_details: lease.host_details(),
     };
@@ -283,10 +287,14 @@ where
             message,
             frames,
             data,
+            inspection,
         }) = queue.recv().await
         {
             if gate.is_revoked() {
                 break;
+            }
+            if inspection && !gate.can_inspect() {
+                continue;
             }
             if frames.is_some_and(|frames| !gate.admits(&frames)) {
                 if let Some(data) = data {

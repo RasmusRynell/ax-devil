@@ -285,6 +285,7 @@ pub struct StreamLease {
     entry: Option<ContentEntry>,
     matching: BTreeMap<String, MatchPolicy>,
     host_details: bool,
+    inspection: Arc<dyn Fn() -> bool + Send + Sync>,
     release: Option<Box<dyn FnOnce() + Send + Sync>>,
 }
 
@@ -296,7 +297,7 @@ impl StreamLease {
         content: Content,
         entry: Option<ContentEntry>,
         matching: BTreeMap<String, MatchPolicy>,
-        host_details: bool,
+        (host_details, inspection): (bool, Arc<dyn Fn() -> bool + Send + Sync>),
         release: impl FnOnce() + Send + Sync + 'static,
     ) -> Self {
         Self {
@@ -307,6 +308,7 @@ impl StreamLease {
             entry,
             matching,
             host_details,
+            inspection,
             release: Some(Box::new(release)),
         }
     }
@@ -341,6 +343,11 @@ impl StreamLease {
     /// Whether the holder may learn the host's paths and diagnostic text, or only public error codes.
     pub fn host_details(&self) -> bool {
         self.host_details
+    }
+
+    /// Reads current inspection permission; a released or revoked grant always refuses.
+    pub fn inspection_permission(&self) -> Arc<dyn Fn() -> bool + Send + Sync> {
+        self.inspection.clone()
     }
 
     /// What the holder may demand, now and as it changes. [`Authority::Revoked`] is final.

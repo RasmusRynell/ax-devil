@@ -78,6 +78,28 @@ impl SessionState {
             .fold(false, |found, pending| (pending.secret == ticket.0) | found)
     }
 
+    /// Current object-detail permission for one live stream grant, derived from its seat and view.
+    pub(super) fn inspection_allowed(&self, id: GrantId) -> bool {
+        let Some(grant) = self.grants.get(&id) else {
+            return false;
+        };
+        if authority_now(self, grant).is_none() {
+            return false;
+        }
+        match super::authorize::standing(self, grant.seat, grant.lease) {
+            Ok(super::authorize::Standing::Owner) => true,
+            Ok(super::authorize::Standing::Exploring) => self
+                .seats
+                .get(&grant.seat)
+                .and_then(|seat| seat.view.as_ref())
+                .is_some_and(|view| view.overlays.object_details),
+            Ok(super::authorize::Standing::Watching | super::authorize::Standing::Following) => {
+                self.presenter.overlays.object_details
+            }
+            Err(_) => false,
+        }
+    }
+
     fn streams_of(&self, seat: SeatId) -> usize {
         let granted = self.grants.values().filter(|grant| grant.seat == seat);
         let ticketed = self.tickets.iter().filter(|ticket| ticket.seat == seat);

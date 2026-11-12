@@ -7,10 +7,14 @@ pub const MAX_COPY_BYTES: usize = 256 << 20;
 const PAGE_FIELDS: usize = super::MAX_FIELDS;
 const PAGE_BYTES: usize = super::MAX_INSPECTION_BYTES;
 const TEXT_BYTES: usize = 16 << 10;
-const CHUNK_BYTES: usize = 64 << 10;
+pub(super) const CHUNK_BYTES: usize = 64 << 10;
 
 /// A field and the position and full byte count of a text abbreviated for display.
 pub struct PageField {
+    /// Digest of the full segmented path when its display is abbreviated; stable across samples and ordering.
+    pub identity: Option<String>,
+    /// Bounded structural address in the held entity, independent of its display path.
+    pub address: Vec<usize>,
     /// The displayed field.
     pub field: InspectionField,
     /// The ordinal and full UTF-8 size, only when the text is abbreviated.
@@ -21,6 +25,8 @@ pub struct PageField {
 
 /// One bounded window of fields; prior windows need not be retained.
 pub struct FieldPage {
+    /// Structural address of the next field.
+    pub next_address: Option<Vec<usize>>,
     /// Fields in stable traversal order.
     pub fields: Vec<PageField>,
     /// First ordinal of the next page, if there is one.
@@ -45,14 +51,71 @@ fn prefix(text: &str, bytes: usize) -> &str {
     &text[..end]
 }
 
-struct Page {
+struct Page<'a> {
+    work: usize,
+    digest: sha2::Sha256,
+    order: Option<&'a super::Traversal>,
+    resume: Vec<usize>,
+    address: Vec<usize>,
     start: usize,
     ordinal: usize,
     bytes: usize,
     result: FieldPage,
 }
 
-impl Sink for Page {
+impl Page<'_> {
+    fn pause(&mut self, address: &[usize]) {
+        self.result.next = Some(self.ordinal);
+        self.result.next_address = Some(address.to_vec());
+    }
+}
+
+impl Sink for Page<'_> {
+    fn wants_fingerprint(&self) -> bool {
+        true
+    }
+    fn fingerprint(&mut self, digest: &sha2::Sha256) {
+        self.digest = digest.clone();
+    }
+    fn enter(&mut self, address: &[usize]) -> bool {
+        if self.work == 0 {
+            self.pause(address);
+            return false;
+        }
+        self.work -= 1;
+        true
+    }
+    fn colors(&mut self, address: &[usize], items: &[crate::Value]) -> Option<bool> {
+        // A resume below an element's children proves this list was not a collapsed colour list.
+        if self.resume.starts_with(address) && self.resume.len() > address.len() + 1 {
+            return Some(false);
+        }
+        let result = if let Some(order) = self.order {
+            order.colors(address, items, &mut self.work)
+        } else {
+            Some(
+                !items.is_empty()
+                    && items
+                        .iter()
+                        .all(|item| crate::ColorEntry::read_exact(item).is_some()),
+            )
+        };
+        if result.is_none() {
+            self.pause(address);
+        }
+        result
+    }
+
+    fn ranked(&self) -> Option<&[u32]> {
+        self.order.map(super::Traversal::order)
+    }
+    fn resume(&self) -> &[usize] {
+        &self.resume
+    }
+    fn address(&mut self, address: &[usize]) {
+        self.address = address.to_vec();
+    }
+
     fn full(&mut self) -> bool {
         self.result.next.is_some()
     }
@@ -74,6 +137,7 @@ impl Sink for Page {
         } + bytes;
         if self.result.fields.len() == PAGE_FIELDS || self.bytes + size > PAGE_BYTES {
             self.result.next = Some(ordinal);
+            self.result.next_address = Some(self.address.clone());
             return false;
         }
         self.bytes += size;
@@ -84,6 +148,7 @@ impl Sink for Page {
         let display_bytes = marks.text.as_ref().map_or(0, String::len);
         if self.bytes + display_bytes > PAGE_BYTES {
             self.result.next = Some(self.ordinal - 1);
+            self.result.next_address = Some(self.address.clone());
             return;
         }
         self.bytes += display_bytes;
@@ -95,6 +160,15 @@ impl Sink for Page {
         } else {
             path_bytes
         };
+        let identity = path_cut.map(|_| {
+            use sha2::Digest;
+            self.digest
+                .clone()
+                .finalize()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect()
+        });
         let path = path
             .iter()
             .map(|part| {
@@ -104,6 +178,8 @@ impl Sink for Page {
             })
             .collect();
         self.result.fields.push(PageField {
+            identity,
+            address: self.address.clone(),
             field: InspectionField {
                 group: place.group,
                 origin: place.origin,
@@ -119,11 +195,7 @@ impl Sink for Page {
     }
 
     fn text(&mut self, place: Place, path: &[&str], text: &str) {
-        // Raw's caption copies its JSON. Preserve complete Raw values that already fit the original budget.
-        let complete_raw = place.group == super::FieldGroup::Raw
-            && text.len()
-                <= PAGE_BYTES.saturating_sub(path.iter().map(|part| part.len()).sum::<usize>());
-        let shown = prefix(text, if complete_raw { text.len() } else { TEXT_BYTES });
+        let shown = prefix(text, TEXT_BYTES);
         if !self.wants(place, path, false, shown.len()) {
             return;
         }
@@ -136,13 +208,34 @@ impl Sink for Page {
     }
 }
 
-/// Reads at most 4096 fields and 8 MiB of paths/text. Text previews are 16 KiB; Raw values that fit a page stay whole for JSON copying.
+/// Reads at most 4096 fields and 8 MiB of paths/text. Text previews are 16 KiB; whole Raw copying uses its own bounded stream.
 pub fn field_page(entity: &Entity, start: usize) -> FieldPage {
+    field_page_from(entity, start, &[])
+}
+
+/// Resumes at a structural address returned with a page, without visiting preceding subtrees.
+pub fn field_page_from(entity: &Entity, start: usize, resume: &[usize]) -> FieldPage {
+    page_ordered(entity, start, resume, None)
+}
+
+pub(super) fn page_ordered(
+    entity: &Entity,
+    start: usize,
+    resume: &[usize],
+    order: Option<&super::Traversal>,
+) -> FieldPage {
+    use sha2::Digest;
     let mut page = Page {
+        work: 1 << 20,
+        digest: sha2::Sha256::new(),
+        order,
+        resume: resume.to_vec(),
+        address: Vec::new(),
         start,
-        ordinal: 0,
+        ordinal: if resume.is_empty() { 0 } else { start },
         bytes: 0,
         result: FieldPage {
+            next_address: None,
             fields: Vec::new(),
             next: None,
         },
@@ -151,7 +244,9 @@ pub fn field_page(entity: &Entity, start: usize) -> FieldPage {
     page.result
 }
 
-struct Chunk {
+struct Chunk<'a> {
+    order: Option<&'a super::Traversal>,
+    resume: Vec<usize>,
     wanted: usize,
     path: bool,
     ordinal: usize,
@@ -159,7 +254,30 @@ struct Chunk {
     result: Option<Result<FieldChunk, String>>,
 }
 
-impl Sink for Chunk {
+impl Sink for Chunk<'_> {
+    fn colors(&mut self, address: &[usize], items: &[crate::Value]) -> Option<bool> {
+        // A resume below an element's children proves this list was not a collapsed colour list.
+        if self.resume.starts_with(address) && self.resume.len() > address.len() + 1 {
+            return Some(false);
+        }
+        if let Some(order) = self.order {
+            order.colors(address, items, &mut (1 << 20))
+        } else {
+            Some(
+                !items.is_empty()
+                    && items
+                        .iter()
+                        .all(|item| crate::ColorEntry::read_exact(item).is_some()),
+            )
+        }
+    }
+
+    fn ranked(&self) -> Option<&[u32]> {
+        self.order.map(super::Traversal::order)
+    }
+    fn resume(&self) -> &[usize] {
+        &self.resume
+    }
     fn full(&mut self) -> bool {
         self.result.is_some()
     }
@@ -208,10 +326,34 @@ pub fn field_chunk(
     offset: usize,
     path: bool,
 ) -> Result<FieldChunk, String> {
+    field_chunk_from(entity, ordinal, offset, path, &[])
+}
+
+/// Reads a field directly at its bounded structural address.
+pub fn field_chunk_from(
+    entity: &Entity,
+    ordinal: usize,
+    offset: usize,
+    path: bool,
+    resume: &[usize],
+) -> Result<FieldChunk, String> {
+    chunk_ordered(entity, ordinal, offset, path, resume, None)
+}
+
+pub(super) fn chunk_ordered(
+    entity: &Entity,
+    ordinal: usize,
+    offset: usize,
+    path: bool,
+    resume: &[usize],
+    order: Option<&super::Traversal>,
+) -> Result<FieldChunk, String> {
     let mut chunk = Chunk {
+        order,
+        resume: resume.to_vec(),
         wanted: ordinal,
         path,
-        ordinal: 0,
+        ordinal: if resume.is_empty() { 0 } else { ordinal },
         offset,
         result: None,
     };
@@ -309,7 +451,11 @@ mod tests {
         assert_eq!(bytes, 8 * 1024 * 1024);
         assert_eq!(page.fields.len(), 6);
         assert_eq!(page.next, Some(6));
-        let last = field_page(&entity, 6);
+        let last = field_page_from(
+            &entity,
+            6,
+            page.next_address.as_deref().expect("next address"),
+        );
         assert_eq!(last.fields[0].field.path, ["z"]);
         assert_eq!(
             last.fields.last().expect("raw frame").field.path,
@@ -323,22 +469,13 @@ mod tests {
         );
         let first = field_page(&many, 0);
         assert_eq!(first.fields.len(), 4096);
-        let next = field_page(&many, first.next.expect("next"));
+        let next = field_page_from(
+            &many,
+            first.next.expect("next"),
+            first.next_address.as_deref().expect("next address"),
+        );
         assert_eq!(next.fields[next.fields.len() - 2].field.path, ["field4999"]);
         assert_eq!(next.next, None);
-        let mut raw = object(Vec::new());
-        raw.end_reason = Some("x".repeat(20_000).into());
-        let page = field_page(&raw, 0);
-        let reason = page
-            .fields
-            .iter()
-            .find(|entry| entry.field.path == ["end_reason"])
-            .expect("Raw reason");
-        assert_eq!(
-            reason.cut, None,
-            "Raw JSON copying keeps a value that fits its page"
-        );
-        assert_eq!(reason.field.value, Leaf::Text("x".repeat(20_000)));
     }
 
     #[test]
@@ -371,6 +508,20 @@ mod tests {
         let chunk = field_chunk(&entity, ordinal, bytes - 1, true).expect("last path byte");
         assert_eq!(chunk.text, "p");
         assert_eq!(chunk.next, None);
+    }
+
+    #[test]
+    fn a_chunk_includes_ascii_byte_65536_and_stops_before_65537() {
+        let entity = object(vec![(
+            Name::Owned("text".into()),
+            Value::Str(format!("{}z", "a".repeat(65536)).into()),
+        )]);
+        let first = field_chunk(&entity, 4, 0, false).expect("first chunk");
+        assert_eq!(first.text, "a".repeat(65536));
+        assert_eq!(first.next, Some(65536));
+        let last = field_chunk(&entity, 4, 65536, false).expect("last chunk");
+        assert_eq!(last.text, "z");
+        assert_eq!(last.next, None);
     }
 
     #[test]

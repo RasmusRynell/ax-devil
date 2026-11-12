@@ -8,6 +8,10 @@ use ts_rs::TS;
 /// One leaf of an object's data.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 pub struct FieldWire {
+    /// Stable digest of the full segmented path, only when its display path is abbreviated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub identity: Option<String>,
     /// The section the field is listed in.
     pub group: FieldGroup,
     /// Who produced the field; only in the Debug group.
@@ -73,6 +77,11 @@ pub enum InspectionWire {
         /// Whether fields were left out.
         truncated: bool,
     },
+    /// Inspection exceeds a bounded preparation limit; the reason is safe for an authorized viewer.
+    Refused {
+        /// Reason shown by the Inspector.
+        reason: String,
+    },
     /// The sample has no object with this id.
     Absent,
     /// The viewer does not hold this sample under this revision, or its authority no longer reaches it.
@@ -108,6 +117,10 @@ pub struct InspectionRead {
     pub token: String,
     /// Field ordinal for text retrieval; absent for a page.
     pub field: Option<u32>,
+    /// Retrieve the complete Raw section as JSON, independently of the current page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub raw: Option<bool>,
     /// Retrieve the dotted path instead of the value.
     #[serde(default)]
     pub path: bool,

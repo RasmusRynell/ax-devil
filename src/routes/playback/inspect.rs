@@ -18,10 +18,12 @@ use api_types::{
 use overlays::ViewerOverlays;
 use scene::{
     Scene,
-    inspection::{Budget, InspectionField, field_chunk, field_page, query_leaves},
+    inspection::{Budget, InspectionField, query_leaves},
 };
 use scene_store::{TrackRead, TrackSnapshot};
-use std::sync::Arc;
+mod position;
+use position::{Position, PositionRef, remember};
+use std::sync::{Arc, Mutex};
 use tokio::task::JoinHandle;
 
 /// The longest object id an `Inspect` may name, in bytes.
@@ -41,8 +43,8 @@ const SEARCH_BUDGET: Budget = Budget {
 #[derive(Clone)]
 enum Ask {
     /// All the fields of the object with this id.
-    Object(String, String),
-    Continue(String, InspectionRead),
+    Object(String, String, PositionRef),
+    Continue(String, InspectionRead, PositionRef),
     /// The leaves of every object at these query paths, as the client spelled them.
     Paths(Vec<String>),
 }
@@ -51,7 +53,9 @@ impl Ask {
     /// Whether the request is of a size to answer.
     fn within_bounds(&self) -> bool {
         match self {
-            Self::Object(entity, _) | Self::Continue(entity, _) => entity.len() <= MAX_ENTITY_BYTES,
+            Self::Object(entity, _, _) | Self::Continue(entity, _, _) => {
+                entity.len() <= MAX_ENTITY_BYTES
+            }
             Self::Paths(paths) => {
                 paths.len() <= MAX_PATHS && paths.iter().all(|path| path.len() <= MAX_PATH_BYTES)
             }
@@ -121,12 +125,29 @@ impl Queue {
 /// A viewer's inspections: an object's fields and a search's leaves are asked and answered apart.
 #[derive(Default)]
 pub(super) struct Inspections {
+    permission: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     objects: Queue,
     searches: Queue,
-    cursor: Option<(String, u16, u32, u32, String)>,
+    cursor: Option<(String, u16, u32, u32, String, PositionRef)>,
 }
 
 impl Inspections {
+    /// Inspection work under this lease's current object-detail permission.
+    pub(super) fn new(permission: Arc<dyn Fn() -> bool + Send + Sync>) -> Self {
+        Self {
+            permission: Some(permission),
+            objects: Queue::default(),
+            searches: Queue::default(),
+            cursor: None,
+        }
+    }
+
+    fn allowed(&self) -> bool {
+        self.permission
+            .as_ref()
+            .is_none_or(|permission| permission())
+    }
+
     /// Takes a request for an object's fields, replacing one that has not started. Whether the viewer holds the sample
     /// is judged now.
     pub(super) fn ask(
@@ -150,9 +171,23 @@ impl Inspections {
         entity: String,
         target: Option<Target>,
     ) {
+        if !self.allowed() {
+            return;
+        }
+        if let Some(old) = self.cursor.take() {
+            position::invalidate(&old.5);
+        }
         let token = sessions::Secret::generate().to_string();
-        self.cursor = Some((token.clone(), source, data_revision, sample, entity.clone()));
-        let ask = Ask::Object(entity, token);
+        let position = Arc::new(Mutex::new(Position::default()));
+        self.cursor = Some((
+            token.clone(),
+            source,
+            data_revision,
+            sample,
+            entity.clone(),
+            position.clone(),
+        ));
+        let ask = Ask::Object(entity, token, position);
         let request = Request {
             source,
             data_revision,
@@ -164,12 +199,15 @@ impl Inspections {
 
     /// Identifies the target only for this socket's current capability. The caller rechecks its held sample.
     pub(super) fn continuation_target(&self, token: &str) -> Option<(u16, u32, u32)> {
-        let (held, source, revision, sample, _) = self.cursor.as_ref()?;
+        let (held, source, revision, sample, _, _) = self.cursor.as_ref()?;
         (token == held).then_some((*source, *revision, *sample))
     }
 
     /// Queues a continuation under freshly checked sample authority.
     pub(super) fn continue_target(&mut self, read: InspectionRead, target: Option<Target>) {
+        if !self.allowed() {
+            return;
+        }
         let valid = self.continuation_target(&read.token);
         let (source, data_revision, sample) = valid.unwrap_or_default();
         let entity = self
@@ -180,8 +218,20 @@ impl Inspections {
             source,
             data_revision,
             sample,
-            ask: Ask::Continue(entity, read),
+            ask: Ask::Continue(
+                entity,
+                read,
+                self.cursor
+                    .as_ref()
+                    .map(|cursor| cursor.5.clone())
+                    .unwrap_or_default(),
+            ),
         };
+        if target.is_none()
+            && let Some(cursor) = self.cursor.take()
+        {
+            position::invalidate(&cursor.5);
+        }
         self.objects
             .ask(request, target.filter(|_| valid.is_some()));
     }
@@ -208,6 +258,9 @@ impl Inspections {
         paths: Vec<String>,
         target: Option<Target>,
     ) {
+        if !self.allowed() {
+            return;
+        }
         let request = Request {
             source,
             data_revision,
@@ -226,6 +279,14 @@ impl Inspections {
     }
 }
 
+impl Drop for Inspections {
+    fn drop(&mut self) {
+        if let Some(cursor) = &self.cursor {
+            position::invalidate(&cursor.5);
+        }
+    }
+}
+
 /// The answer to `job`, reading the sample's scene.
 fn answer(Job { request, target }: Job) -> Outgoing {
     let Some((track, snapshot, frame)) = target else {
@@ -236,6 +297,7 @@ fn answer(Job { request, target }: Job) -> Outgoing {
             message: text(&reply(&request, Some(&scene))),
             frames: Some(frame..=frame),
             data: None,
+            inspection: true,
         },
         Err(error) => {
             tracing::debug!("Sample {} cannot be inspected: {error:?}", request.sample);
@@ -250,6 +312,7 @@ fn unavailable(request: &Request) -> Outgoing {
         message: text(&reply(request, None)),
         frames: None,
         data: None,
+        inspection: true,
     }
 }
 
@@ -263,18 +326,18 @@ fn reply(request: &Request, scene: Option<&Scene>) -> ServerMessage {
     } = request;
     let (source, data_revision, sample) = (*source, *data_revision, *sample);
     match ask {
-        Ask::Object(entity, token) => ServerMessage::Inspected {
+        Ask::Object(entity, token, position) => ServerMessage::Inspected {
             source,
             data_revision,
             sample,
             entity: entity.clone(),
             inspection: scene.map_or(InspectionWire::Unavailable, |scene| {
-                inspection(scene, entity, token)
+                inspection_at(scene, entity, token, position)
             }),
         },
-        Ask::Continue(entity, read) => ServerMessage::InspectContinued {
+        Ask::Continue(entity, read, position) => ServerMessage::InspectContinued {
             request: read.request,
-            result: continued(scene, entity, read),
+            result: continued_at(scene, entity, read, position),
         },
         Ask::Paths(paths) => ServerMessage::InspectedFields {
             source,
@@ -286,10 +349,48 @@ fn reply(request: &Request, scene: Option<&Scene>) -> ServerMessage {
     }
 }
 
+#[cfg(test)]
 fn inspection(scene: &Scene, entity: &str, token: &str) -> InspectionWire {
+    inspection_at(scene, entity, token, &Arc::default())
+}
+
+fn inspection_at(
+    scene: &Scene,
+    entity: &str,
+    token: &str,
+    position: &PositionRef,
+) -> InspectionWire {
     match scene.entity(entity) {
         Some(entity) => {
-            let page = field_page(entity, 0);
+            if !position
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .active
+            {
+                return InspectionWire::Unavailable;
+            }
+            let traversal = match scene::inspection::Traversal::new(entity) {
+                Ok(traversal) => Arc::new(traversal),
+                Err(reason) => return InspectionWire::Refused { reason },
+            };
+            if !position
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .active
+            {
+                return InspectionWire::Unavailable;
+            }
+            let page = traversal.page(entity, 0, &[]);
+            {
+                let mut position = position
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if !position.active {
+                    return InspectionWire::Unavailable;
+                }
+                position.traversal = Some(traversal);
+            }
+            remember(position, 0, &page);
             let next = page.next.map(|next| next as u32);
             InspectionWire::Found {
                 fields: page.fields.into_iter().map(page_field).collect(),
@@ -306,6 +407,7 @@ fn inspection(scene: &Scene, entity: &str, token: &str) -> InspectionWire {
 
 fn page_field(item: scene::inspection::PageField) -> FieldWire {
     let mut wire = field(item.field);
+    wire.identity = item.identity;
     wire.cut = item
         .cut
         .map(|(ordinal, bytes)| [ordinal as u64, bytes as u64]);
@@ -315,14 +417,80 @@ fn page_field(item: scene::inspection::PageField) -> FieldWire {
     wire
 }
 
+#[cfg(test)]
 fn continued(scene: Option<&Scene>, entity: &str, read: &InspectionRead) -> InspectionReadResult {
+    let position = Arc::default();
+    if let Some(entity) = scene.and_then(|scene| scene.entity(entity)) {
+        let traversal =
+            Arc::new(scene::inspection::Traversal::new(entity).expect("bounded test entity"));
+        remember(&position, 0, &traversal.page(entity, 0, &[]));
+        position.lock().unwrap().traversal = Some(traversal);
+    }
+    continued_at(scene, entity, read, &position)
+}
+
+fn continued_at(
+    scene: Option<&Scene>,
+    entity: &str,
+    read: &InspectionRead,
+    position: &PositionRef,
+) -> InspectionReadResult {
     let Some(entity) = scene.and_then(|scene| scene.entity(entity)) else {
         return InspectionReadResult::Refused {
             reason: "Inspection expired; select the object again".into(),
         };
     };
+    let Some(traversal) = position
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .traversal
+        .clone()
+    else {
+        return InspectionReadResult::Refused {
+            reason: "Inspection expired; select the object again".into(),
+        };
+    };
+    if read.raw == Some(true) {
+        let mut position = position
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if read.offset == 0 {
+            position.raw = Some(scene::inspection::RawCopy::default());
+        }
+        let Some(cursor) = position.raw.as_mut() else {
+            return InspectionReadResult::Refused {
+                reason: "Inspection expired; select the object again".into(),
+            };
+        };
+        return match scene::inspection::raw_chunk(entity, cursor, read.offset as usize) {
+            Ok(chunk) => InspectionReadResult::Chunk {
+                text: chunk.text,
+                total: chunk.total as u32,
+                next: chunk.next.map(|n| n as u32),
+            },
+            Err(reason) => InspectionReadResult::Refused { reason },
+        };
+    }
     if let Some(ordinal) = read.field {
-        match field_chunk(entity, ordinal as usize, read.offset as usize, read.path) {
+        let address = position
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .fields
+            .get(&(ordinal as usize))
+            .cloned();
+        let Some(address) = address else {
+            return InspectionReadResult::Refused {
+                reason: "Inspection expired; select the object again".into(),
+            };
+        };
+        let chunk = traversal.chunk(
+            entity,
+            ordinal as usize,
+            read.offset as usize,
+            read.path,
+            &address,
+        );
+        match chunk {
             Ok(chunk) => InspectionReadResult::Chunk {
                 text: chunk.text,
                 total: chunk.total as u32,
@@ -331,7 +499,23 @@ fn continued(scene: Option<&Scene>, entity: &str, read: &InspectionRead) -> Insp
             Err(reason) => InspectionReadResult::Refused { reason },
         }
     } else {
-        let page = field_page(entity, read.offset as usize);
+        let next = position
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .next
+            .clone();
+        let page = if let Some((ordinal, address)) =
+            next.filter(|(ordinal, _)| *ordinal == read.offset as usize)
+        {
+            traversal.page(entity, ordinal, &address)
+        } else if read.offset == 0 {
+            traversal.page(entity, 0, &[])
+        } else {
+            return InspectionReadResult::Refused {
+                reason: "Inspection expired; select the object again".into(),
+            };
+        };
+        remember(position, read.offset as usize, &page);
         InspectionReadResult::Page {
             fields: page.fields.into_iter().map(page_field).collect(),
             next: page.next.map(|next| next as u32),
@@ -362,6 +546,7 @@ fn leaves(scene: &Scene, paths: &[String]) -> Option<Vec<ObjectItemsWire>> {
 
 fn field(field: InspectionField) -> FieldWire {
     FieldWire {
+        identity: None,
         cut: None,
         path_cut: None,
         group: field.group,

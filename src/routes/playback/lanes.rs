@@ -186,11 +186,13 @@ impl Lanes {
                 Some(self.status(lane, status))
             }
             LaneEvent::Overlay(OverlayEvent::Sample(sample)) => Some(Outgoing {
+                inspection: false,
                 message: Message::Binary(envelope::sample(&sample)),
                 frames: Some(sample.frame..=sample.frame),
                 data: Some(OverlayEvent::Sample(sample)),
             }),
             LaneEvent::Overlay(OverlayEvent::Map(run)) => Some(Outgoing {
+                inspection: false,
                 message: Message::Binary(envelope::frame_map(&run)),
                 frames: Some(run.frames()),
                 data: Some(OverlayEvent::Map(run)),

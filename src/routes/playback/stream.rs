@@ -176,10 +176,10 @@ pub(super) async fn stream(
     // The overlays stop with `Playing`, which goes when the session ends, a revoked one included.
     let mut playing = Playing {
         session,
-        gate,
+        gate: gate.clone(),
         lanes,
         catalogs,
-        inspections: Inspections::default(),
+        inspections: Inspections::new(gate.inspection_permission()),
         exports: Exports::new(setup.entry, setup.audience, setup.exports, setup.videos),
         file_scopes: FileScopes::new(setup.audience),
         cached: CachedFeed::new(),

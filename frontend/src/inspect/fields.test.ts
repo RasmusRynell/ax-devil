@@ -154,3 +154,27 @@ describe("the list", () => {
     ]);
   });
 });
+
+it("pins an abbreviated path by its full-path digest across sample order changes and reload", () => {
+  const first: FieldWire = {
+    group: "debug",
+    path: ["preview"],
+    identity: "full-path-sha256",
+    path_cut: [0, 9000000],
+    value: int("1"),
+  };
+  const line = inspectorLines([first], [], NONE, "7").lines.find(
+    (line) => line.kind === "field" && line.id !== null,
+  );
+  if (line?.kind !== "field" || !line.id) throw Error("pinnable field");
+  const pins = JSON.parse(JSON.stringify(togglePin([], line.id))) as FieldId[];
+  const reordered = {
+    ...first,
+    path: ["another preview"],
+    path_cut: [4096, 9000000] as [number, number],
+    value: int("2"),
+  };
+  const next = inspectorLines([field(CLASS, text("car")), reordered], pins, NONE, "8");
+  expect(shown(next.pinned)).toEqual([int("2")]);
+  expect(togglePin(pins, line.id)).toEqual([]);
+});

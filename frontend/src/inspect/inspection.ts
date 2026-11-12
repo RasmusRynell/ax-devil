@@ -1,14 +1,8 @@
 /**
- * What the inspector shows of the selected object. The selection is the viewer's own state and survives seeking and
- * playing by object id. The summary comes at once from the Sample Item the lane shows; every other field comes from
- * `Inspect` for (source, data revision, sample, object), followed by bounded pages and value chunks. Asking for a
- * newer sample supersedes an outstanding request; only the current field window and one explicit copy are kept. A request whose reply never
- * comes (the backend may drop one) is asked again when its sample is wanted again, or after RESEND_AFTER draws.
- * Nothing is asked while no inspector page shows; the selection is kept and asked about when one does. A view only ever holds
- * the shown sample's data: while its reply is out the summary is the shown sample's and there are no fields. While a
- * video plays the view follows the draws at most every PLAYING_INTERVAL_MS; the newest draw replaces those skipped, and
- * `catchUp`, a selection or showing the inspector brings the view up to it at once. A reply completes only the sample
- * the view is of, and never advances it to a draw skipped.
+ * Inspection state and ordering for a viewer. A selection follows the shown sample; newer requests supersede
+ * older ones. One field window and one explicit copy are retained. While playing, the display follows at 10 Hz;
+ * copy ownership follows every sample change immediately. Hidden inspectors ask for nothing, and reconnect waits
+ * for a frame of the new connection before asking again. An unanswered initial request is retried after 120 draws.
  */
 
 import { MAX_COPY_BYTES } from "../generated/api";
@@ -46,6 +40,7 @@ export class Inspections {
   #error: string | null = null;
   #copied = false;
   #writing = false;
+  #writingCopy: { value: string } | null = null;
   readonly #send: (message: ClientMessage) => void;
   #selection: Selection = null;
   #frames: readonly (LaneFrame | undefined)[] = [];
@@ -125,6 +120,18 @@ export class Inspections {
     this.#cancel = undefined;
   }
 
+  /** Ends connection ownership: pending chunks and clipboard retries become stale; submitted native writes cannot be revoked. */
+  disconnect(): void {
+    this.suspend();
+    this.reconnect();
+    this.#frames = [];
+    this.#newest = [];
+    this.#last = null;
+    this.#wanted = null;
+    this.#view = { state: "none" };
+    this.#at = null;
+  }
+
   /** Makes the view follow the newest draw. Reports whether the view changed. */
   #sync(): boolean {
     this.#frames = this.#newest;
@@ -139,6 +146,10 @@ export class Inspections {
 
   /** Selects an object, or clears the selection with `null`. Reports whether the view changed. */
   select(selection: Selection): boolean {
+    if (this.#error) {
+      this.#cancelRead();
+      this.#cache.clear();
+    }
     if (
       selection?.lane !== this.#selection?.lane ||
       selection?.source !== this.#selection?.source ||
@@ -236,6 +247,7 @@ export class Inspections {
 
   #cancelRead(): void {
     this.#serial++;
+    if (this.#writingCopy) this.#writingCopy.value = "";
     this.#pending = null;
     this.#copy = null;
     this.#error = null;
@@ -266,7 +278,7 @@ export class Inspections {
       this.#notify();
       return;
     }
-    if (field !== null) {
+    if (field !== null && field !== -1) {
       const cut = reply.fields
         .map((entry) => (path ? entry.path_cut : entry.cut))
         .find((cut) => cut?.[0] === field);
@@ -278,6 +290,7 @@ export class Inspections {
       }
       this.#copy = { value: "", received: 0, total: cut[1] };
     }
+    if (field === -1) this.#copy = { value: "", received: 0, total: MAX_COPY_BYTES };
     this.#pending = {
       request: ++this.#serial,
       key,
@@ -298,7 +311,8 @@ export class Inspections {
         type: "InspectContinue",
         request: pending.request,
         token: pending.token,
-        field: pending.field,
+        field: pending.field === -1 ? null : pending.field,
+        raw: pending.field === -1 ? true : undefined,
         path: pending.path,
         offset: pending.offset,
       });
@@ -330,6 +344,7 @@ export class Inspections {
       this.#pending = null;
     } else if (result.state === "Chunk" && this.#copy) {
       const copy = this.#copy;
+      copy.total = result.total;
       copy.value = `${copy.value}${result.text}`;
       copy.received = result.next ?? result.total;
       if (result.next !== null) {
@@ -351,8 +366,13 @@ export class Inspections {
     const serial = this.#serial;
     this.#copy = null;
     this.#writing = true;
-    void writeClipboard(copy.value, () => serial === this.#serial).then((written) => {
+    this.#writingCopy = copy;
+    void writeClipboard(
+      () => copy.value,
+      () => serial === this.#serial,
+    ).then((written) => {
       this.#writing = false;
+      this.#writingCopy = null;
       if (serial !== this.#serial) return;
       this.#copied = written;
       // A fresh click can grant clipboard permission after a long transfer, including an HTTP watcher.
@@ -442,6 +462,7 @@ export class Inspections {
             : next.state !== "absent" &&
               sameSummary(before.summary, next.summary) &&
               before.fields === next.fields &&
+              before.error === next.error &&
               before.truncated === next.truncated &&
               before.access?.revision === next.access?.revision)));
     if (same) return false;
@@ -473,6 +494,7 @@ export class Inspections {
       state: reply ? "ready" : this.#refused?.key === key ? "unavailable" : "loading",
       selection,
       summary,
+      error: reply?.state === "Refused" ? reply.reason : undefined,
       fields: found?.fields ?? NO_FIELDS,
       truncated: found?.truncated ?? false,
       access: found?.continuation
@@ -483,6 +505,7 @@ export class Inspections {
                 ? null
                 : () => this.#read(null, found.continuation?.next ?? 0),
             first: this.#pageOffset === 0 || this.#pending ? null : () => this.#read(null, 0),
+            raw: () => this.#read(-1, 0),
             copy: (ordinal, path) => this.#read(ordinal, 0, path),
             cancel: () => {
               this.#cancelRead();
