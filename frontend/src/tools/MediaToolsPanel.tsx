@@ -14,7 +14,7 @@ import { Tabs } from "../kit/Tabs";
 import type { EventLog } from "../live/eventLog";
 import type { InspectorMemory } from "../inspect/fields";
 import { Inspector, reachOf } from "../playback/Inspector";
-import { SECTION_HELP } from "../playback/sectionHelp";
+import { SECTION_HELP } from "../lanes/sectionHelp";
 import type { PlaybackView } from "../playback/view";
 import { EventPageBody } from "./EventPageBody";
 import { EventsList } from "./EventsList";
