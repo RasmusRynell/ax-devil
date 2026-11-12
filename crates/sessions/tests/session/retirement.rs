@@ -8,21 +8,21 @@ use sessions::{
         ViewerId, Work, restrict, transition,
     },
 };
-use workspace_store::{DocCommand, HiddenRef, WorkspaceState};
+use workspace::store::{DocCommand, HiddenRef, WorkspaceState};
 
 #[test]
 fn a_viewer_keeps_its_entry_or_closes_when_it_disappears() {
     let dir = tempfile::tempdir().unwrap();
     let playlist = playlist_in(dir.path(), &["A", "B"]);
     let item = playlist.id;
-    let (pending, jobs) = workspace_store::apply(
+    let (pending, jobs) = workspace::store::apply(
         &WorkspaceState::default(),
         DocCommand::AddItems {
             items: vec![playlist],
             open: false,
         },
     );
-    let (pending, _) = workspace_store::apply(&pending, DocCommand::OpenViewer(item));
+    let (pending, _) = workspace::store::apply(&pending, DocCommand::OpenViewer(item));
     let content = resolve(&jobs[0]).unwrap();
     let (a, b) = (
         content.entries()[0].id.clone(),
@@ -52,12 +52,12 @@ fn a_viewer_keeps_its_entry_or_closes_when_it_disappears() {
         Some(b.clone())
     );
     assert_eq!(shown(&pending, None).viewers[&ViewerId(1)].entry, None);
-    let resolved = workspace_store::complete(&pending, item, jobs[0].attempt, Ok(content));
+    let resolved = workspace::store::complete(&pending, item, jobs[0].attempt, Ok(content));
     assert_eq!(
         shown(&resolved, None).viewers[&ViewerId(1)].entry,
         Some(a.clone())
     );
-    let (reloading, jobs) = workspace_store::apply(&resolved, DocCommand::Resolve(item));
+    let (reloading, jobs) = workspace::store::apply(&resolved, DocCommand::Resolve(item));
     assert_eq!(
         shown(&reloading, Some(b.clone())).viewers[&ViewerId(1)].entry,
         Some(b.clone())
@@ -65,7 +65,7 @@ fn a_viewer_keeps_its_entry_or_closes_when_it_disappears() {
 
     std::fs::remove_file(dir.path().join("videos/B.mp4")).unwrap();
     let replacement = resolve(&jobs[0]).unwrap();
-    let edited = workspace_store::complete(&reloading, item, jobs[0].attempt, Ok(replacement));
+    let edited = workspace::store::complete(&reloading, item, jobs[0].attempt, Ok(replacement));
     let closed = shown(&edited, Some(b.clone()));
     assert!(closed.viewers.is_empty());
     assert!(closed.layout.is_none());
@@ -75,7 +75,7 @@ fn a_viewer_keeps_its_entry_or_closes_when_it_disappears() {
         Some(a.clone())
     );
 
-    let (hidden, _) = workspace_store::apply(
+    let (hidden, _) = workspace::store::apply(
         &resolved,
         DocCommand::SetHidden {
             target: HiddenRef::Entry(a.clone()),
@@ -90,7 +90,7 @@ fn a_viewer_keeps_its_entry_or_closes_when_it_disappears() {
         shown(&hidden, Some(a.clone())).viewers[&ViewerId(1)].entry,
         Some(a.clone())
     );
-    let (all, _) = workspace_store::apply(
+    let (all, _) = workspace::store::apply(
         &hidden,
         DocCommand::SetHidden {
             target: HiddenRef::Entry(b),

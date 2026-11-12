@@ -88,7 +88,7 @@ export function Playback({
   const [info, setInfo] = useState(false);
   useChromeVisibility(pane);
   const shown = useMemo(() => shownLanes(view.lanes, hidden, entry), [view.lanes, hidden, entry]);
-  const fullscreen = useLaneFullscreen(pane, shown, session);
+  const fullscreen = useLaneFullscreen(pane, shown, stream);
   const shownViewport = useRef(viewport);
   shownViewport.current = viewport;
   // A viewer that opens in the active pane takes the keyboard, so its shortcuts work at once; one that opens behind it

@@ -392,15 +392,15 @@ mod tests {
         )
         .unwrap();
         let (open, closed) = (video.id, ItemId::generate());
-        let (workspace, _) = workspace_store::apply(
+        let (workspace, _) = workspace::store::apply(
             &WorkspaceState::default(),
-            workspace_store::DocCommand::AddItems {
+            workspace::store::DocCommand::AddItems {
                 items: vec![video],
                 open: false,
             },
         );
         let (workspace, _) =
-            workspace_store::apply(&workspace, workspace_store::DocCommand::OpenViewer(open));
+            workspace::store::apply(&workspace, workspace::store::DocCommand::OpenViewer(open));
         let split = |axis, share, first, second| Layout::Split {
             axis,
             share,

@@ -246,8 +246,15 @@ describe("stream status", () => {
   it("is the session's failure or reconnecting, not the Connecting its feeds fall back to", () => {
     const feeds = { video: { status: "Connecting" }, overlay: null, paused: false } as const;
     expect(
-      statusOf({ ...feeds, status: "failed", failure: { reason: "The backend ended the stream" } }),
+      statusOf({
+        ...feeds,
+        status: "failed",
+        failure: { code: "Internal", params: {}, reason: "The backend ended the stream" },
+      }),
     ).toMatchObject({ state: "failed", text: "The backend ended the stream" });
+    expect(
+      statusOf({ ...feeds, status: "failed", failure: { code: "VideoClosed", params: {} } }),
+    ).toMatchObject({ state: "failed", text: "The video was closed." });
     expect(statusOf({ ...feeds, status: "reconnecting", failure: undefined })).toMatchObject({
       state: "reconnecting",
       text: "Reconnecting",

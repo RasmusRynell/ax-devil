@@ -1,3 +1,4 @@
+import { reasonOf } from "../client/errors";
 import { useState } from "react";
 import { IconButton } from "../kit/IconButton";
 import { LoadingIndicator } from "../kit/LoadingIndicator";
@@ -18,7 +19,7 @@ export function Status({
   if (view.status === "failed" && view.failure)
     return (
       <div role="alert" className="m-auto flex max-w-full flex-col gap-s p-xl text-center">
-        <p className="m-0 font-semibold break-words">{view.failure.reason}</p>
+        <p className="m-0 font-semibold break-words">{reasonOf(view.failure)}</p>
         {view.failure.location && (
           <p className="m-0 text-small break-all text-on-canvas-muted">{view.failure.location}</p>
         )}

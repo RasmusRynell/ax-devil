@@ -34,7 +34,7 @@ describe("opening", () => {
     server.drop();
     expect(stream.getSnapshot()).toMatchObject({
       status: "failed",
-      failure: { reason: "not a video", location: "/clips/a.mp4" },
+      failure: { code: "NotAVideo", params: {}, reason: "not a video", location: "/clips/a.mp4" },
     });
     expect(retries).toEqual([]);
     expect(refreshes).toEqual([]);
