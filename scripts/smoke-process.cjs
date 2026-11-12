@@ -1,5 +1,6 @@
 const { spawnOwned: spawn, observe } = require("./child.cjs");
 const fs = require("node:fs");
+const { passed } = require("./smoke-verdict.cjs");
 const KILL_AFTER_MS = 10_000;
 const EXIT_GRACE_MS = 5000;
 
@@ -101,7 +102,8 @@ function supervise(
         // The app never judged.
       }
       // A launch that was told to stop (deadline or cancel) never passes, whatever it wrote or exited with.
-      const ok = !spawnError && !owned.stopped && code === 0 && verdict === "PASS";
+      const ok =
+        !spawnError && code === 0 && passed({ expired: false, stopped: owned.stopped, verdict });
       const reason = ok
         ? ""
         : spawnError?.message ||

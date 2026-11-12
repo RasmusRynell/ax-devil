@@ -1,4 +1,4 @@
-const { test } = require("node:test");
+const { posixTest: test } = require("./test-platform.cjs").platformTests();
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
 const events = require("node:events");
@@ -97,7 +97,7 @@ void test(
 
 void test(
   "terminal SIGHUP and SIGTERM stop the fake owned service and preserve the reused frontend",
-  { timeout: 10000, skip: process.platform === "win32" },
+  { timeout: 10000 },
   async () => {
     const fs = require("node:fs");
     const os = require("node:os");

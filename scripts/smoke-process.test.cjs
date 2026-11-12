@@ -5,7 +5,8 @@ const os = require("node:os");
 const path = require("node:path");
 const events = require("node:events");
 const { PassThrough } = require("node:stream");
-const { test } = require("node:test");
+const { test, posixTest } = require("./test-platform.cjs").platformTests();
+const { passed } = require("./smoke-verdict.cjs");
 const { supervise } = require("./smoke-process.cjs");
 const { observe, spawnOwned } = require("./child.cjs");
 
@@ -95,7 +96,7 @@ function assertSafe(signals) {
     );
   }
 }
-void test(
+void posixTest(
   "normal completion audits the launcher too and rejects a post-exit group-signal mutant",
   { timeout: 10000 },
   async () => {
@@ -104,7 +105,12 @@ void test(
       const signals = audit(folder);
       let launcher;
       try {
-        for (const file of ["smoke-process.cjs", "child.cjs", "group-leader.cjs"]) {
+        for (const file of [
+          "smoke-process.cjs",
+          "child.cjs",
+          "group-leader.cjs",
+          "smoke-verdict.cjs",
+        ]) {
           let source = fs.readFileSync(path.join(__dirname, file), "utf8");
           if (broken && file === "smoke-process.cjs") {
             const guard = '    child.on("exit", () => {\n      if (finished) return;';
@@ -158,7 +164,7 @@ void test(
 );
 
 for (const escaped of [false, true])
-  void test(
+  void posixTest(
     `wrapper exit with ${escaped ? "own-session" : "same-group"} survivor`,
     { timeout: 5000 },
     async () => {
@@ -221,7 +227,7 @@ for (const escaped of [false, true])
     },
   );
 
-void test(
+void posixTest(
   "command signals are preserved and stubborn commands escalate through a live leader",
   { timeout: 10000 },
   async () => {
@@ -259,7 +265,7 @@ void test(
   },
 );
 
-void test(
+void posixTest(
   "launcher death disconnects IPC and removes the leader and its command",
   { timeout: 5000 },
   async () => {
@@ -302,7 +308,7 @@ void test(
   },
 );
 
-void test(
+void posixTest(
   "unexpected leader death fails and closes retained output without signalling its retired group",
   { timeout: 5000 },
   async () => {
@@ -426,14 +432,29 @@ void test(
   },
 );
 void test("missing executable fails without waiting for pipes", { timeout: 3000 }, async () => {
-  const result = await supervise("/nonexistent/ax-devil-test", [], "/nonexistent/result", {
-    limitMs: 1000,
-  });
-  assert.equal(result.ok, false);
-  assert.match(result.reason, /ENOENT/);
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "missing-smoke-"));
+  try {
+    const result = await supervise(
+      path.join(folder, "missing-command"),
+      [],
+      path.join(folder, "result"),
+      { limitMs: 1000 },
+    );
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /ENOENT/);
+  } finally {
+    fs.rmSync(folder, { recursive: true, force: true });
+  }
 });
 
-void test(
+void test("verdict requires PASS and neither expired nor stopped on every platform", {}, () => {
+  assert.equal(passed({ expired: false, stopped: false, verdict: "PASS" }), true);
+  assert.equal(passed({ expired: true, stopped: false, verdict: "PASS" }), false);
+  assert.equal(passed({ expired: false, stopped: true, verdict: "PASS" }), false);
+  assert.equal(passed({ expired: false, stopped: false, verdict: "" }), false);
+});
+
+void posixTest(
   "Bash run_group rejects PASS followed by forced stopping",
   { timeout: 5000 },
   async () => {
@@ -461,7 +482,7 @@ void test(
           "probe",
           folder,
         ],
-        { timeout: 3000, encoding: "utf8" },
+        { timeout: 3000, encoding: "utf8", cwd: path.join(__dirname, "..") },
       );
       assert.equal(probe.status, 1, `${probe.stdout}${probe.stderr}`);
       assert.match(probe.stdout, /required forced stopping/);

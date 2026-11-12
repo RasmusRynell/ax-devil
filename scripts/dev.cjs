@@ -118,7 +118,7 @@ async function main() {
 if (require.main === module) {
   process.on("SIGINT", () => stop());
   process.on("SIGTERM", () => stop());
-  process.on("SIGHUP", () => stop());
+  if (process.platform !== "win32") process.on("SIGHUP", () => stop());
   void main().catch((error) => {
     console.error(error.message);
     stop(1);

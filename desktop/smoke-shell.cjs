@@ -3,7 +3,6 @@
 const { dialog, nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
-const os = require("node:os");
 const path = require("node:path");
 const fit = require("./fit.cjs");
 const {
@@ -40,13 +39,14 @@ module.exports.run = async ({ window }) => {
   // A recent workspace in a deep folder, as a long state folder gives: the start panel still has to fit.
   const state = isolatedState();
   const deep = path.join(
-    os.tmpdir(),
+    state,
     "ax-devil-smoke-recents",
     "a-folder-whose-name-is-far-too-long-for-the-narrow-sidebar",
     "and-another-one-below-it",
     "Quarterly review.ax-devil.workspace",
   );
   const recents = path.join(state, "ax-devil", "recent-workspaces.json");
+  await fs.mkdir(path.dirname(deep), { recursive: true });
   await fs.mkdir(path.dirname(recents), { recursive: true });
   await fs.writeFile(recents, JSON.stringify([{ path: deep, used_ms: Date.now() }]));
   const recentRow = `[...document.querySelectorAll('[data-cursor-id^="row:recent:"]')].find(row => row.dataset.cursorId === ${JSON.stringify(`row:recent:${deep}`)})`;
