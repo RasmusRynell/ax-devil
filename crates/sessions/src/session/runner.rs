@@ -5,7 +5,7 @@ use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
 use handlers::HandlerSet;
 use std::sync::{Arc, Mutex};
 use tokio::runtime;
-use workspace::{Environment, ItemId, VideoRef, Watch};
+use workspace::{Content, ContentId, Environment, ItemId, VideoRef, Watch};
 
 /// Runs the jobs a session asks for. The session does not care how: a runner starts the work and reports its
 /// [`Completion`] through the [`Completer`], now or later, on any thread.
@@ -34,28 +34,42 @@ impl Watcher {
         *crate::common::locked(&self.0) = Some((item, watch));
     }
 
-    fn take(&self) -> Read {
+    pub(super) fn take(&self) -> Read {
         crate::common::locked(&self.0).take()
     }
 }
 
-/// Reports a job's result to its session, once.
+/// Offers a job's result to its session, retaining completion ownership when another round is needed.
 pub struct Completer {
-    pub(super) complete: Box<dyn FnOnce(Completion, Read) + Send>,
+    pub(super) complete: Box<dyn FnOnce(Completion, Watcher) -> Result<(), Retry> + Send>,
     pub(super) watcher: Watcher,
 }
 
+// Retry transfers the single resolved Content by value between rounds, without an extra heap owner.
+#[allow(clippy::result_large_err)]
 impl Completer {
     /// Hands `completion`, with what the job noted it read, to the session's lock. Dropped when the session or the job
-    /// is gone or stale.
-    pub fn complete(self, completion: Completion) {
-        (self.complete)(completion, self.watcher.take());
+    /// is gone or stale; otherwise returns the entries still to validate when coverage is incomplete.
+    pub fn complete(self, completion: Completion) -> Result<(), Retry> {
+        (self.complete)(completion, self.watcher)
     }
 
     /// Where to note what the job read, which may be done from any thread before the job is completed.
     pub fn watcher(&self) -> Watcher {
         self.watcher.clone()
     }
+}
+
+/// A resolved reload that needs more media validated before it can commit.
+pub struct Retry {
+    /// Completes the same registered job, retaining its watch record.
+    pub done: Completer,
+    /// The single resolved Content retained across validation rounds.
+    pub content: Content,
+    /// Entries already covered by successful checks or absent from the replacement.
+    pub validated: Vec<ContentId>,
+    /// Newly shown entries still to check.
+    pub missing: Vec<ContentId>,
 }
 
 type OpenMedia = dyn Fn(&VideoRef, &CancelToken) -> Result<(), Interrupt<UserError>> + Send + Sync;
@@ -89,37 +103,70 @@ impl Runner for OnRuntime {
                 return;
             }
             let Work::Resolve { job, shown } = spawn.work;
-            let validated = shown.clone();
             let item = job.item;
             let cancel = spawn.cancel;
-            // Resolving reads the file system, which must not block the runtime's workers.
-            let resolve = move || {
-                let (result, watch) = Watch::read(&job.recipe, &handlers, &cancel, || {
-                    workspace::store::resolve(&job, &handlers, &env, &cancel)
+            let checking = cancel.clone();
+            let opening = Arc::clone(&opens);
+            // Resolving and checking media read the file system off the runtime's workers.
+            let mut work = tokio::task::spawn_blocking(move || {
+                let (result, watch) = Watch::read(&job.recipe, &handlers, &checking, || {
+                    workspace::store::resolve(&job, &handlers, &env, &checking)
                 });
                 if let Some(watch) = watch {
                     watcher.record(job.item, watch);
                 }
-                let content = result?;
-                for id in shown {
-                    if let Some(entry) = content.entry(&id) {
-                        opens(&entry.video, &cancel)?;
+                validate(result?, Vec::new(), shown, &*opening, &checking)
+            });
+            let mut done = done;
+            loop {
+                let (result, validated) = match work.await {
+                    Ok(Ok((content, validated))) => (Ok(content), validated),
+                    Ok(Err(Interrupt::Failed(error))) => (Err(error), Vec::new()),
+                    Ok(Err(Interrupt::Cancelled)) => return,
+                    Err(error) => (
+                        Err(UserError::new(
+                            ErrorCode::Internal,
+                            format!("Resolving stopped unexpectedly: {error}"),
+                        )
+                        .at(item)),
+                        Vec::new(),
+                    ),
+                };
+                match done.complete(Completion::Resolved { result, validated }) {
+                    Ok(()) => return,
+                    Err(retry) => {
+                        done = retry.done;
+                        let checking = cancel.clone();
+                        let opening = Arc::clone(&opens);
+                        work = tokio::task::spawn_blocking(move || {
+                            validate(
+                                retry.content,
+                                retry.validated,
+                                retry.missing,
+                                &*opening,
+                                &checking,
+                            )
+                        });
                     }
                 }
-                Ok(content)
-            };
-            let result = match tokio::task::spawn_blocking(resolve).await {
-                Ok(Ok(content)) => Ok(content),
-                Ok(Err(Interrupt::Failed(error))) => Err(error),
-                // Cancelled because no one wants the result any more.
-                Ok(Err(Interrupt::Cancelled)) => return,
-                Err(error) => Err(UserError::new(
-                    ErrorCode::Internal,
-                    format!("Resolving stopped unexpectedly: {error}"),
-                )
-                .at(item)),
-            };
-            done.complete(Completion::Resolved { result, validated });
+            }
         });
     }
+}
+
+fn validate(
+    content: Content,
+    mut validated: Vec<ContentId>,
+    missing: Vec<ContentId>,
+    opens: &OpenMedia,
+    cancel: &CancelToken,
+) -> Result<(Content, Vec<ContentId>), Interrupt<UserError>> {
+    for id in missing {
+        cancel.check()?;
+        if let Some(entry) = content.entry(&id) {
+            opens(&entry.video, cancel)?;
+        }
+        validated.push(id);
+    }
+    Ok((content, validated))
 }

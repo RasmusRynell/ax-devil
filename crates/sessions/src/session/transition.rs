@@ -20,7 +20,7 @@ use std::{
 };
 use tokio::time::Instant;
 use workspace::store::{DocCommand, Reload, complete};
-use workspace::{Content, Entry, ItemId};
+use workspace::{Content, ContentId, Entry, ItemId};
 
 /// The server's furthest-back time a presenter's clock intent may claim, in microseconds before it is received.
 const INTENT_MAX_AGE_US: i64 = 2_000_000;
@@ -436,28 +436,39 @@ fn keep_overlays(mut view: View, stored: &View) -> View {
     view
 }
 
+/// Entries shown now that a registered successful reload has not validated yet.
+pub(super) fn uncovered(
+    state: &SessionState,
+    job: JobId,
+    completion: &Completion,
+) -> Vec<ContentId> {
+    let Some(entry) = state.jobs.get(&job) else {
+        return Vec::new();
+    };
+    let super::JobOwner::Doc { item, attempt } = entry.owner;
+    let Completion::Resolved {
+        result: Ok(_),
+        validated,
+    } = completion
+    else {
+        return Vec::new();
+    };
+    if !matches!(state.doc.workspace.reloads.get(&item), Some(Reload::Running { attempt: running, .. }) if *running == attempt)
+    {
+        return Vec::new();
+    }
+    shown_entries(state, item)
+        .into_iter()
+        .filter(|id| !validated.contains(id))
+        .collect()
+}
+
 fn complete_job(next: &mut SessionState, job: JobId, completion: Completion) {
     match (jobs::finish(next, job), completion) {
-        (
-            Some(super::JobOwner::Doc { item, attempt }),
-            Completion::Resolved { result, validated },
-        ) => {
-            let workspace = &next.doc.workspace;
-            if matches!(workspace.reloads.get(&item), Some(Reload::Running { attempt: running, .. }) if *running == attempt)
-                && shown_entries(next, item)
-                    .iter()
-                    .any(|id| !validated.contains(id))
-            {
-                // Navigation left this attempt's coverage. Keep the generation and source-change offer.
-                let mut workspace = workspace.clone();
-                workspace.reloads.remove(&item);
-                set_workspace(next, workspace);
-                return;
-            }
+        (Some(super::JobOwner::Doc { item, attempt }), Completion::Resolved { result, .. }) => {
             let workspace = complete(&next.doc.workspace, item, attempt, result);
             set_workspace(next, workspace);
         }
-        // The job is no longer registered: its result is dropped.
         (None, Completion::Resolved { .. }) => {}
     }
 }

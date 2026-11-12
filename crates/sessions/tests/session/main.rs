@@ -50,10 +50,13 @@ impl Jobs {
     pub(crate) fn finish_all(&self) {
         for (spawn, done) in self.take() {
             let Work::Resolve { job, shown } = &spawn.work;
-            done.complete(Completion::Resolved {
-                result: resolve(job),
-                validated: shown.clone(),
-            });
+            assert!(
+                done.complete(Completion::Resolved {
+                    result: resolve(job),
+                    validated: shown.clone(),
+                })
+                .is_ok()
+            );
         }
     }
 }

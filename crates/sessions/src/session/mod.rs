@@ -28,7 +28,7 @@ pub use jobs::{Completion, JobOwner, Spawn, Work};
 pub use layout::{Axis, Layout, MAX_PANES, ViewerId};
 pub use listing::Listing;
 pub use roster::RosterEntry;
-pub use runner::{Completer, OnRuntime, Runner, Watcher};
+pub use runner::{Completer, OnRuntime, Retry, Runner, Watcher};
 pub use service::{HeldItem, Service};
 pub use sources::poll as poll_sources;
 pub use state::{Doc, Seat, SeatKind, SessionState, Sharing};

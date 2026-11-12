@@ -28,7 +28,7 @@ pub enum Completion {
     Resolved {
         /// The resolution and media-check outcome.
         result: Result<Content, UserError>,
-        /// Shown entries covered by this attempt, including failed checks and removed entries.
+        /// Entries covered by successful checks or absent from the replacement Content.
         validated: Vec<ContentId>,
     },
 }
@@ -61,7 +61,7 @@ pub struct Spawn {
 /// A registered job.
 #[derive(Clone, Debug)]
 pub(super) struct JobEntry {
-    owner: JobOwner,
+    pub(super) owner: JobOwner,
     cancel: CancelToken,
 }
 

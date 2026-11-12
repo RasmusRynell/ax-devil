@@ -3,12 +3,12 @@
 //! Each change is a [`transition`] under the lock; the result is published once and the [`Effects`] run after the
 //! lock is released. A seat's lease doubles as the generation of its grace timer, as in the generic registry.
 
+mod jobs;
+
 use super::{
-    Completer, Completion, GrantId, Handle, JobId, Lease, Overlays, Refusal, Runner, SeatId,
-    SessionState, Spawn, Ticket, View, Watcher,
+    GrantId, Handle, Lease, Overlays, Refusal, Runner, SeatId, SessionState, Spawn, Ticket, View,
     handle::{Entry, StreamLease},
     roster::{Identity, Presence, RosterEntry, build},
-    runner::Read,
     sources::Sources,
     transition::{Effects, Input, Outcome, transition},
 };
@@ -274,46 +274,6 @@ impl<C: Clone + Send + 'static> Service<C> {
         drop(sessions);
         self.run(deferred);
         result
-    }
-
-    fn run(&self, deferred: Deferred) {
-        for (session, spawn) in deferred.spawn {
-            let job = spawn.job;
-            let service = self.clone();
-            let done = Completer {
-                complete: Box::new(move |completion, read| {
-                    service.finish(session, job, completion, read);
-                }),
-                watcher: Watcher::default(),
-            };
-            self.inner.runner.run(spawn, done);
-        }
-    }
-
-    /// Commits the result of a job. Dropped when the session is gone, the job is no longer registered, or its owner
-    /// has moved on.
-    pub fn complete(&self, session: SessionId, job: JobId, completion: Completion) {
-        self.finish(session, job, completion, None);
-    }
-
-    /// Commits the result of a job, and with it what the job read: recorded only when the job was still registered,
-    /// so a superseded job never replaces the sources of the one that is current.
-    fn finish(&self, session: SessionId, job: JobId, completion: Completion, read: Read) {
-        self.locked(|sessions, deferred| {
-            let wanted = sessions
-                .get(&session)
-                .is_some_and(|live| live.state.jobs.contains_key(&job));
-            // A refusal means the session ended: the result is dropped.
-            let applied = apply(
-                sessions,
-                session,
-                Input::Complete { job, completion },
-                deferred,
-            );
-            if let (true, Ok(_), Some((item, watch))) = (wanted, applied, read) {
-                self.inner.sources.record(session, item, watch);
-            }
-        });
     }
 
     /// The item `id` of whichever session holds it. Item ids are unique across sessions.
