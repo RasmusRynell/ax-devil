@@ -1,3 +1,4 @@
+import { splitPath } from "../../../shared/file-name.mjs";
 import { useCommand, useDoc } from "../session/session";
 import { exportFile, usePickPath } from "../client/pickPath";
 
@@ -8,9 +9,12 @@ import { exportFile, usePickPath } from "../client/pickPath";
 export function useExportBookmarks(onFail: (error: unknown) => void): () => void {
   const command = useCommand();
   const pick = usePickPath();
-  const name = `${useDoc()?.workspace.name ?? "Untitled"} bookmarks.csv`;
+  const workspace = useDoc()?.workspace;
+  const name = `${workspace?.name ?? "Untitled"} bookmarks.csv`;
+  const current = workspace?.file;
+  const folder = current ? splitPath(current).folder : undefined;
   return () =>
-    void pick?.(exportFile(name, "csv")).then(
+    void pick?.(exportFile(name, "csv", folder)).then(
       (path) =>
         path
           ? command({ type: "workspace", command: { type: "exportBookmarks", path } }).catch(onFail)

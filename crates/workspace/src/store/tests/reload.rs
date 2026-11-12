@@ -51,33 +51,48 @@ fn a_failed_reload_keeps_the_old_content_and_says_why_until_the_next_one() {
 fn the_count_of_source_changes_only_grows_across_reloads_so_a_new_change_is_never_taken_for_a_dismissed_one()
  {
     let (_folder, file, id, state) = shown();
-    let (offered, _) = apply(&state, DocCommand::SourceChanged(id));
-    assert_eq!(offered.changed[&id], 1);
+    let entry = crate::ContentId::of_item(&id);
+    let (offered, _) = apply(
+        &state,
+        DocCommand::SourceChanged(id, vec![entry.clone()], true),
+    );
+    assert_eq!(offered.changed[&id].entries[&entry], 1);
+    assert_eq!(offered.changed[&id].revision, 1);
 
     // Reload fails: the count stays, so the viewer's dismissal of the offer at 1 still means one change.
     std::fs::remove_file(&file).unwrap();
     let (reloading, jobs) = apply(&offered, DocCommand::Resolve(id));
     let failed = finish(&reloading, &jobs[0]);
-    assert_eq!(failed.changed[&id], 1);
+    assert_eq!(failed.changed[&id].revision, 1);
     assert!(matches!(
         failed.reloads.get(&id),
         Some(Reload::Failed { .. })
     ));
     // A change after it is a second one, and the offer takes the place of the failure's news.
-    let (again, _) = apply(&failed, DocCommand::SourceChanged(id));
-    assert_eq!(again.changed[&id], 2);
+    let (again, _) = apply(
+        &failed,
+        DocCommand::SourceChanged(id, vec![entry.clone()], true),
+    );
+    assert_eq!(again.changed[&id].revision, 2);
     assert!(again.reloads.is_empty());
 
     // A change during a reload counts beyond what the reload read: it fails without news, or succeeds and keeps it.
     let (reloading, jobs) = apply(&again, DocCommand::Resolve(id));
-    let (during, _) = apply(&reloading, DocCommand::SourceChanged(id));
-    assert_eq!(during.changed[&id], 3);
+    let (during, _) = apply(
+        &reloading,
+        DocCommand::SourceChanged(id, vec![entry.clone()], true),
+    );
+    assert_eq!(during.changed[&id].revision, 3);
     let failed = finish(&during, &jobs[0]);
-    assert!(failed.reloads.is_empty() && failed.changed[&id] == 3);
+    assert!(failed.reloads.is_empty() && failed.changed[&id].revision == 3);
     std::fs::write(&file, "x").unwrap();
     let (reloading, jobs) = apply(&failed, DocCommand::Resolve(id));
-    let (during, _) = apply(&reloading, DocCommand::SourceChanged(id));
+    let (during, _) = apply(
+        &reloading,
+        DocCommand::SourceChanged(id, vec![entry.clone()], true),
+    );
     let reloaded = finish(&during, &jobs[0]);
-    assert_eq!(reloaded.changed[&id], 1);
+    assert_eq!(reloaded.changed[&id].revision, 1);
+    assert_eq!(reloaded.changed[&id].entries[&entry], 1);
     assert!(generation(&reloaded, id) > generation(&state, id));
 }

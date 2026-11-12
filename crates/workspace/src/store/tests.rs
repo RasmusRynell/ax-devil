@@ -447,14 +447,23 @@ fn a_change_to_the_files_of_an_open_item_is_counted_and_any_other_resolves_again
     let stream = generation(&state, shown_id);
 
     // The viewer keeps its Content: resolving again would end its stream. It is told, once per change.
-    let (counted, jobs) = apply(&state, DocCommand::SourceChanged(shown_id));
-    let (counted, again) = apply(&counted, DocCommand::SourceChanged(shown_id));
+    let (counted, jobs) = apply(
+        &state,
+        DocCommand::SourceChanged(shown_id, Vec::new(), true),
+    );
+    let (counted, again) = apply(
+        &counted,
+        DocCommand::SourceChanged(shown_id, Vec::new(), true),
+    );
     assert!(jobs.is_empty() && again.is_empty());
-    assert_eq!(counted.changed[&shown_id], 2);
+    assert_eq!(counted.changed[&shown_id].revision, 2);
     assert_eq!(generation(&counted, shown_id), stream);
 
     // An item nobody shows resolves again, and so does the open one when asked to: the count starts over.
-    let (resolving, jobs) = apply(&counted, DocCommand::SourceChanged(listed_id));
+    let (resolving, jobs) = apply(
+        &counted,
+        DocCommand::SourceChanged(listed_id, Vec::new(), true),
+    );
     assert_eq!(jobs.len(), 1);
     let (reloading, jobs) = apply(&counted, DocCommand::Resolve(shown_id));
     assert_eq!(jobs.len(), 1);
@@ -463,7 +472,10 @@ fn a_change_to_the_files_of_an_open_item_is_counted_and_any_other_resolves_again
     assert!(generation(&reloaded, shown_id) > stream && reloaded.changed.is_empty());
 
     // A change while an item resolves restarts it: that attempt may have read the old files.
-    let (restarted, jobs) = apply(&resolving, DocCommand::SourceChanged(listed_id));
+    let (restarted, jobs) = apply(
+        &resolving,
+        DocCommand::SourceChanged(listed_id, Vec::new(), true),
+    );
     assert_eq!(jobs.len(), 1);
     assert_eq!(
         finish(&restarted, &jobs_of(&resolving, listed_id)),

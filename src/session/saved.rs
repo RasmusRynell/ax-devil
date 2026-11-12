@@ -53,7 +53,7 @@ impl<'a> Saved<'a> {
             .iter()
             .find(|candidate| candidate.id == item)
         {
-            Some(found) => self.labelled(found.clone(), Some(label)).label,
+            Some(found) => self.labelled(found.clone(), Some(label.trim())).label,
             None => label.trim().to_owned(),
         }
     }

@@ -44,7 +44,13 @@ fn a_change_is_reported_once_it_looked_the_same_on_two_looks() {
     let (watch, overlay) = read_from(folder.path());
     sources.record(key.0, key.1, watch);
     let live = HashSet::from([key]);
-    let look = || sources.look(&live, sources.version());
+    let look = || {
+        sources
+            .look(&live, sources.version())
+            .into_iter()
+            .map(|(key, _)| key)
+            .collect::<Vec<_>>()
+    };
     assert!(look().is_empty());
 
     rewrite(&overlay, "second!", 5_000);
@@ -74,7 +80,11 @@ fn one_item_in_two_sessions_is_watched_in_each_and_a_record_made_after_the_items
 
     rewrite(&overlay, "changed!", 9_000);
     sources.look(&live, known);
-    let changed: HashSet<_> = sources.look(&live, known).into_iter().collect();
+    let changed: HashSet<_> = sources
+        .look(&live, known)
+        .into_iter()
+        .map(|(key, _)| key)
+        .collect();
     assert_eq!(changed, live);
 
     // An item added and resolved while the looks run is not in the list they took, and is not forgotten for it.
@@ -86,7 +96,14 @@ fn one_item_in_two_sessions_is_watched_in_each_and_a_record_made_after_the_items
     sources.look(&nobody, known);
     rewrite(&overlay, "again", 10_000);
     sources.look(&nobody, known);
-    assert_eq!(sources.look(&nobody, known), [added]);
+    assert_eq!(
+        sources
+            .look(&nobody, known)
+            .into_iter()
+            .map(|(key, _)| key)
+            .collect::<Vec<_>>(),
+        [added]
+    );
     // Once it was known and its item is gone, it is forgotten.
     rewrite(&overlay, "and again", 11_000);
     sources.look(&nobody, sources.version());

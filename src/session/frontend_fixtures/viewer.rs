@@ -134,6 +134,33 @@ fn playlist() -> Recording {
     ] {
         recording.state(name, hiding(entries).session());
     }
+    let mut changes = hiding(&[]);
+    let item = changes.session().doc.workspace.workspace.items[0].id;
+    for (name, entry) in [
+        ("changed-b", "B"),
+        ("changed-a", "A"),
+        ("changed-b-later", "B"),
+        ("changed-a-again", "A"),
+    ] {
+        let workspace::store::Resolution::Resolved { content, .. } =
+            &changes.session().doc.workspace.resolutions[&item]
+        else {
+            unreachable!()
+        };
+        let id = content
+            .entries()
+            .iter()
+            .find(|e| e.label == entry)
+            .unwrap()
+            .id
+            .clone();
+        changes.apply(workspace::store::DocCommand::SourceChanged(
+            item,
+            vec![id],
+            false,
+        ));
+        recording.state(name, changes.session());
+    }
     let mut scene = hiding(&["B"]);
     scene.hide("list/C", Some("C"));
     recording.state("b-hidden-lane-c-hidden", scene.session());

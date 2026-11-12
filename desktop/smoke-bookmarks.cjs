@@ -66,7 +66,10 @@ module.exports.run = async ({ window }) => {
   } finally {
     dialog.showSaveDialog = original;
   }
-  assert.equal(asked[0].defaultPath, "Untitled bookmarks.csv");
+  assert.equal(
+    asked[0].defaultPath,
+    path.join(require("electron").app.getPath("home"), "Untitled bookmarks.csv"),
+  );
   assert.deepEqual(asked[0].filters, [{ name: "CSV", extensions: ["csv"] }]);
   const lines = (await fs.readFile(target, "utf8")).trim().split("\r\n");
   assert.equal(lines[0], "target,entry,frame,time,kind,note");

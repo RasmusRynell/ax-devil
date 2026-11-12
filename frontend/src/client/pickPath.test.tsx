@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { WindowBridge } from "./windowBridge";
+import { PathPicker } from "../kit/PathPicker";
 import { AccessContext } from "./access";
-import { PathPickerProvider, usePickPath, VIDEO } from "./pickPath";
+import { PathPickerProvider, usePickPath, VIDEO, exportFile } from "./pickPath";
 
 function Opener({ onPicked }: { onPicked: (path: string | null) => void }) {
   const pick = usePickPath();
@@ -56,4 +58,44 @@ describe("picking a path", () => {
     show(false);
     expect(screen.queryByRole("button", { name: "Browse" })).toBeNull();
   });
+});
+
+it("keeps an export folder separate from a display name and builds one safe file in that folder", async () => {
+  for (const [name, file] of [
+    ["Review/Camera A bookmarks.csv", "Review-Camera A bookmarks.csv"],
+    ["Review\\Camera A bookmarks.csv", "Review-Camera A bookmarks.csv"],
+    [".. bookmarks.csv", "- bookmarks.csv"],
+  ]) {
+    const request = exportFile(name, "csv", "/workspaces");
+    const native = vi.fn(() => Promise.resolve(null));
+    await request.native({ pickExportFile: native } as unknown as WindowBridge);
+    expect(native).toHaveBeenCalledWith(name, "csv", "/workspaces");
+    const chosen = vi.fn();
+    render(
+      <PathPicker
+        {...request.picker}
+        list={(folder) =>
+          Promise.resolve({
+            path: folder,
+            entries: [],
+            places: [{ name: "Home", path: "/isolated-home" }],
+          })
+        }
+        exists={() => Promise.resolve(false)}
+        onChoose={chosen}
+        onCancel={() => {}}
+      />,
+    );
+    await vi.waitFor(() =>
+      expect((screen.getByRole("textbox", { name: "Path" }) as HTMLInputElement).value).toBe(
+        "/workspaces",
+      ),
+    );
+    expect((screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe(file);
+    const save = screen.getByRole<HTMLButtonElement>("button", { name: "Save" });
+    await vi.waitFor(() => expect(save.disabled).toBe(false));
+    fireEvent.click(save);
+    await vi.waitFor(() => expect(chosen).toHaveBeenCalledWith(`/workspaces/${file}`));
+    cleanup();
+  }
 });

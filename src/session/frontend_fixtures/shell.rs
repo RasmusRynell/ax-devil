@@ -88,6 +88,11 @@ fn bookmarks() -> Recording {
     scene.bookmark("mot/Z", 4, BookmarkKind::Note, "");
     scene.reread_playlist("mot", &[("MOT", &[("A", &["GT"])])]);
     let mut recording = Recording::initial(&scene);
+    let mut saved = scene.session().clone();
+    std::sync::Arc::make_mut(&mut saved.doc).workspace.file = Some(foundation::HostPath::new(
+        "/workspaces/review.ax-devil.workspace",
+    ));
+    recording.state("saved", &saved);
     let initial = scene.session().clone();
     let ids: Vec<BookmarkId> = {
         let marks = &initial.doc.workspace.workspace.bookmarks;

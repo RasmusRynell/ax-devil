@@ -116,6 +116,8 @@ fn a_workspace_round_trips_with_paths_inside_its_folder_relative() {
     let (dir, outside) = (temp.path().join("one"), outside.path().join("b.mp4"));
     fs::create_dir(&dir).unwrap();
     let mut original = sample(&dir, &outside);
+    original.items[0].label = "  Gate  ".into();
+    original.items[1].label = "   ".into();
     original.items.push(item(
         "",
         Source::Unreadable(Unreadable {

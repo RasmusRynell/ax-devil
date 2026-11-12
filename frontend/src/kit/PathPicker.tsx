@@ -1,3 +1,4 @@
+import { safeFileName, splitPath } from "../../../shared/file-name.mjs";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type { FolderListing, FolderPlace } from "../generated/api";
 import { Button } from "./Button";
@@ -34,23 +35,17 @@ interface Props {
   /** Asked before `save` returns a path, which the user then agreed to replace when something is there. */
   exists: CheckExists;
   title: string;
-  /** Where it opens: a folder, or for `save` the path of the file it offers to write. */
+  /** Where it opens: a folder, or a typed file path whose folder the picker opens. */
   start?: string;
   /** `file` lists only files with these extensions (lowercase, with their dots; none lists every file); `save` ends the name in the first. */
   extensions?: readonly string[];
-  /** The file name `save` offers when `start` gives none. */
+  /** The suggested filename, kept separate from the folder and sanitized before use. */
   name?: string;
   onChoose: (path: string) => void;
   onCancel: () => void;
 }
 
 const listKeys = ownKeys(new Set(["ArrowUp", "ArrowDown", "Home", "End", "Enter"]));
-
-/** The folder and the last name of `path`, splitting at the last separator. */
-function split(path: string): [string, string] {
-  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  return [path.slice(0, cut + 1), path.slice(cut + 1)];
-}
 
 /** `name` inside `folder`, with the separator the folder's own path uses. */
 function join(folder: string, name: string): string {
@@ -73,15 +68,21 @@ export function PathPicker({
   onChoose,
   onCancel,
 }: Props) {
-  const [first, base] =
-    start === undefined ? ["", name] : mode === "save" ? split(start) : [start, ""];
+  const first = start ?? "";
   const [folder, setFolder] = useState<string | undefined>(first || undefined);
   const [listing, setListing] = useState<FolderListing | null>(null);
   const [places, setPlaces] = useState<readonly FolderPlace[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState(first);
   const [active, setActive] = useState(0);
-  const [fileName, setFileName] = useState(base || name);
+  const [fileName, setFileName] = useState(() => {
+    if (!name) return "";
+    const extension = extensions[0] ?? "";
+    const hasExtension = extension !== "" && name.toLowerCase().endsWith(extension.toLowerCase());
+    const suffix = hasExtension ? name.slice(-extension.length) : extension;
+    const safe = safeFileName(hasExtension ? name.slice(0, -extension.length) : name, suffix);
+    return hasExtension || !suffix ? safe : safe.slice(0, -suffix.length);
+  });
   // The name a typed file path ended in, which the folder it opens in then selects.
   const wanted = useRef<string | null>(null);
   // The existing file the user was asked about; asking again returns it.
@@ -122,7 +123,7 @@ export function PathPicker({
         if (request.signal.aborted) return;
         // A path that is a file, not a folder, or in save mode one not there yet: choose it by
         // opening its folder with its name ready.
-        const [dir, file] = split(folder ?? "");
+        const { folder: dir, name: file } = splitPath(folder ?? "");
         const notAFolder = failure instanceof FolderProblem && failure.notAFolder;
         if ((notAFolder ? mode !== "folder" : mode === "save") && dir && file) {
           wanted.current = file;

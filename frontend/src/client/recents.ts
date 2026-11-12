@@ -38,17 +38,6 @@ export function usedOn(usedMs: number, now = Date.now()): string {
   });
 }
 
-/** The folder a workspace file is in; a filesystem root (`/`, `C:\`) keeps its separator. */
-export function folderOf(path: string): string {
-  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  const folder = path.slice(0, cut);
-  return cut < 0
-    ? ""
-    : folder === "" || /^[A-Za-z]:$/.test(folder)
-      ? path.slice(0, cut + 1)
-      : folder;
-}
-
 /**
  * The recent workspaces, newest first, asked of the backend each time `enabled` turns on and after each change it
  * announces. Empty for a seat that may not read the host's files.

@@ -126,7 +126,7 @@ fn content_scope(command: &DocCommand) -> Scope {
         DocCommand::OpenViewer(_)
         | DocCommand::CloseViewer(_)
         | DocCommand::Resolve(_)
-        | DocCommand::SourceChanged(_)
+        | DocCommand::SourceChanged(..)
         | DocCommand::Remove(_)
         | DocCommand::RenameItem { .. }
         | DocCommand::SetHidden { .. }

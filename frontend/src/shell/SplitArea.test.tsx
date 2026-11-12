@@ -202,6 +202,22 @@ describe("split area", () => {
     );
   });
 
+  it("offers only changes to the shown playlist entry and keeps its dismissal across other changes", async () => {
+    const { show } = await setup();
+    const playlist = scenario("playlist");
+    const offer = () => screen.queryByText("Source changed, reload current viewer?");
+    show("initial", playlist);
+    show("changed-b", playlist);
+    expect(offer()).toBeNull();
+    show("changed-a", playlist);
+    expect(offer()).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    show("changed-b-later", playlist);
+    expect(offer()).toBeNull();
+    show("changed-a-again", playlist);
+    expect(offer()).not.toBeNull();
+  });
+
   it("says why a reload failed above the viewer it left in place, until dismissed, and again for the next failure", async () => {
     const { show } = await setup();
     show("initial");

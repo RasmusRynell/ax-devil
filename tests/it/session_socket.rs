@@ -125,7 +125,7 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
         "the owner sees where it failed: {owners_doc}"
     );
     let items = doc["doc"]["workspace"]["items"].as_array().unwrap();
-    assert_eq!(items[0]["label"], "Clip", "the name the user gave");
+    assert_eq!(items[0]["label"], " Clip ", "the name the user gave");
     let content = items
         .iter()
         .find_map(|item| item["resolution"]["content"].as_object())

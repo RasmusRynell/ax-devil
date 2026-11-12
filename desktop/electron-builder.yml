@@ -17,6 +17,8 @@ files:
   - package.json
 # The backend sits beside the app, where a process can be started from (see backendExecutable).
 extraResources:
+  - from: ../shared/file-name.mjs
+    to: shared/file-name.mjs
   - from: staging/bin
     to: bin
 protocols:

@@ -5,8 +5,8 @@ import { useCan, useCommand } from "../session/session";
 import { Banner } from "../kit/Banner";
 
 /**
- * Offers to read an open item's files again after they changed on disk. `changed` counts the changes since the viewer
- * opened and `dismissed` the count the user dismissed, which the host keeps so switching tabs does not bring the offer
+ * Offers to read an item again when files of the entry on screen changed. `changed` is its pending revision and
+ * `dismissed` the revision the user dismissed, which the host keeps so switching tabs does not bring the offer
  * back: it returns only with a later change. A seat that may not change the workspace is not offered.
  */
 export function ReloadOffer({

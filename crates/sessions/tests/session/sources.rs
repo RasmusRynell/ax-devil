@@ -36,7 +36,13 @@ fn with_overlay(dir: &Path) -> (WorkspaceItem, std::path::PathBuf) {
 }
 
 fn changed(owner: &Handle<u8>, item: ItemId) -> Option<u32> {
-    owner.state().doc.workspace.changed.get(&item).copied()
+    owner
+        .state()
+        .doc
+        .workspace
+        .changed
+        .get(&item)
+        .map(|changes| changes.revision)
 }
 
 #[tokio::test(start_paused = true)]
@@ -66,6 +72,10 @@ async fn an_open_viewer_keeps_its_stream_when_its_files_change_until_the_item_re
     );
     rig.service.check_sources();
     assert_eq!(changed(&owner, id), Some(1));
+    assert!(
+        owner.state().doc.workspace.changed[&id].entries.is_empty(),
+        "single-file changes stay item-level"
+    );
     assert!(
         rig.jobs.take().is_empty(),
         "nothing resolves again by itself"
@@ -293,4 +303,77 @@ async fn a_reference_is_read_for_a_local_owner_and_kept_literal_for_a_remote_one
     };
     assert_eq!(host_of(true).await, std::env::var("PATH").unwrap());
     assert_eq!(host_of(false).await, "$PATH");
+}
+
+#[tokio::test(start_paused = true)]
+async fn playlist_changes_name_only_the_entries_whose_considered_overlays_changed() {
+    let rig = Rig::new();
+    let owner = rig
+        .service
+        .create(true, CursorOptions::default(), Default::default())
+        .unwrap();
+    let item = crate::playlist_in(rig.dir.path(), &["a", "b"]);
+    let handlers = Handlers::built_in();
+    let (resolved, watch) = Watch::read(&item.recipe, &handlers, &CancelToken::new(), || {
+        item.resolve(
+            &handlers,
+            &workspace::Environment::literal(),
+            &CancelToken::new(),
+        )
+    });
+    let content = resolved.unwrap();
+    let a = content.entries()[0].id.clone();
+    let b = content.entries()[1].id.clone();
+    let id = item.id;
+    rig.open(&owner, item);
+    rig.service
+        .record_sources(owner.session(), id, watch.unwrap());
+    let change = |file: &str, data: &str| {
+        fs::write(rig.dir.path().join(file), data).unwrap();
+        rig.service.check_sources();
+        rig.service.check_sources();
+    };
+    change("overlays/a.txt", "first");
+    let pending = owner.state().doc.workspace.changed[&id].clone();
+    assert_eq!(
+        pending.entries,
+        std::collections::HashMap::from([(a.clone(), 1)])
+    );
+    assert_eq!(pending.item, None);
+    change("overlays/b.txt", "second");
+    let pending = owner.state().doc.workspace.changed[&id].clone();
+    assert_eq!(
+        pending.entries[&a], 1,
+        "another entry does not resurrect a dismissed offer"
+    );
+    assert_eq!(pending.entries[&b], 2);
+    change("overlays/a.txt", "third change");
+    assert_eq!(owner.state().doc.workspace.changed[&id].entries[&a], 3);
+    owner
+        .command(Command::Content(DocCommand::SetHidden {
+            target: workspace::store::HiddenRef::Lane(
+                b.clone(),
+                content.entries()[1].overlays[0].label.clone(),
+            ),
+            hidden: true,
+        }))
+        .unwrap();
+    change("overlays/b.txt", "hidden lane changed");
+    assert_eq!(
+        owner.state().doc.workspace.changed[&id].entries[&b],
+        2,
+        "a hidden lane does not advance the entry offer"
+    );
+    // A resolver folder change changes the item, without saying the shown overlay changed.
+    fs::create_dir(rig.dir.path().join("videos/new-folder")).unwrap();
+    rig.service.check_sources();
+    rig.service.check_sources();
+    let pending = owner.state().doc.workspace.changed[&id].clone();
+    assert_eq!(pending.item, Some(5));
+    assert_eq!(pending.entries[&a], 3);
+    owner
+        .command(Command::Content(DocCommand::Resolve(id)))
+        .unwrap();
+    rig.jobs.finish_all();
+    assert!(!owner.state().doc.workspace.changed.contains_key(&id));
 }
