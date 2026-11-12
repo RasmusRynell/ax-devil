@@ -1,14 +1,14 @@
 //! A change to the files of an item: an open viewer keeps its stream and is told, and every session that holds the item
 //! finds out.
 
-use crate::{GRACE, Rig, authority, resolve, stream};
+use crate::{GRACE, Rig, authority, stream};
 use foundation::CancelToken;
 use handler_api::Settings;
 use handlers::{HandlerSet, Handlers};
 use playback::Authority;
 use sessions::{
     CursorOptions,
-    session::{Command, Completion, Handle, OnRuntime, Service, Work},
+    session::{Command, Handle, OnRuntime, Service, Work},
 };
 use std::{fs, path::Path, sync::Arc, time::Duration};
 use workspace::store::{DocCommand, Resolution};
@@ -117,7 +117,7 @@ async fn what_a_superseded_job_read_is_never_recorded_for_the_item() {
     );
     done.watcher().record(id, watch.unwrap());
     let Work::Resolve(job) = &spawn.work;
-    done.complete(Completion::Resolved(resolve(job)));
+    assert!(done.complete(crate::completion(job)).is_ok());
 
     fs::write(&overlay, "1,1,1,1,1,1\n").unwrap();
     rig.service.check_sources();
@@ -136,6 +136,7 @@ async fn resolving_records_the_files_and_each_window_with_the_item_is_told() {
             runtime: tokio::runtime::Handle::current(),
             handlers: HandlerSet::new(Handlers::built_in()),
             environment: Arc::new(workspace::Environment::of_process),
+            opens: Arc::new(|_, _| panic!("first resolution must not open media")),
         }),
     );
     // The same saved workspace open in two windows: one item id in two sessions.
@@ -154,12 +155,19 @@ async fn resolving_records_the_files_and_each_window_with_the_item_is_told() {
         })
         .collect();
     for owner in &owners {
-        while !matches!(
-            owner.state().doc.workspace.resolutions.get(&id),
-            Some(Resolution::Resolved { .. })
-        ) {
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
+        let mut states = service.subscribe(owner.session()).unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            states.wait_for(|state| {
+                matches!(
+                    state.doc.workspace.resolutions.get(&id),
+                    Some(Resolution::Resolved { .. })
+                )
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap();
     }
 
     service.check_sources();
@@ -200,7 +208,7 @@ async fn a_read_replaces_the_files_an_item_was_recorded_from_even_with_none() {
         for (spawn, done) in rig.jobs.take() {
             let Work::Resolve(job) = &spawn.work;
             done.watcher().record(id, watch.clone());
-            done.complete(Completion::Resolved(resolve(job)));
+            assert!(done.complete(crate::completion(job)).is_ok());
         }
     };
     let by_edit = |watch: Watch| rig.service.record_sources(owner.session(), id, watch);
@@ -236,6 +244,7 @@ async fn a_reference_is_read_for_a_local_owner_and_kept_literal_for_a_remote_one
             runtime: tokio::runtime::Handle::current(),
             handlers: HandlerSet::new(Handlers::built_in()),
             environment: Arc::new(workspace::Environment::of_process),
+            opens: Arc::new(|_, _| Ok(())),
         }),
     );
     let host_of = |expands: bool| {

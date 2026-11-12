@@ -55,7 +55,10 @@ fn a_second_owner_seat_drives_the_presenter_view_the_first_shows() {
     state = next;
     let spawn = &effects.spawn[0];
     let Work::Resolve(job) = &spawn.work;
-    let done = Completion::Resolved(crate::resolve(job));
+    let done = Completion::Resolved {
+        result: crate::resolve(job),
+        validated: Vec::new(),
+    };
     step(
         &mut state,
         Input::Complete {

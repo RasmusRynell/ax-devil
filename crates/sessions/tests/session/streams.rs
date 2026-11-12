@@ -5,8 +5,8 @@ use playback::{Authority, ClockIntent, Priority};
 use sessions::{
     CursorOptions, SeatRole,
     session::{
-        Access, Axis, Command, Completion, ContentRef, Control, Layout, Refusal, Reply, Sidebar,
-        SidebarView, View, ViewLane, ViewerId, ViewerView,
+        Access, Axis, Command, ContentRef, Control, Layout, Refusal, Reply, Sidebar, SidebarView,
+        View, ViewLane, ViewerId, ViewerView,
     },
 };
 use std::time::Duration;
@@ -285,16 +285,16 @@ async fn a_result_that_arrives_late_or_for_a_session_that_is_gone_is_dropped() {
 
     let resolve = |spawn: &sessions::session::Spawn| {
         let sessions::session::Work::Resolve(job) = &spawn.work;
-        Completion::Resolved(crate::resolve(job))
+        crate::completion(job)
     };
-    first_done.complete(resolve(&first));
+    assert!(first_done.complete(resolve(&first)).is_ok());
     let workspace = &owner.state().doc.workspace;
     assert!(matches!(
         workspace.resolutions[&id],
         Resolution::Pending { .. }
     ));
 
-    second_done.complete(resolve(&second));
+    assert!(second_done.complete(resolve(&second)).is_ok());
     assert!(matches!(
         owner.state().doc.workspace.resolutions[&id],
         Resolution::Resolved { .. }
@@ -307,7 +307,7 @@ async fn a_result_that_arrives_late_or_for_a_session_that_is_gone_is_dropped() {
         late.cancel.is_cancelled(),
         "the session ending cancels its jobs"
     );
-    late_done.complete(resolve(&late));
+    assert!(late_done.complete(resolve(&late)).is_ok());
 }
 
 #[test]

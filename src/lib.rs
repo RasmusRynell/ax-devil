@@ -124,12 +124,14 @@ impl AppState {
         };
         let cameras = Arc::clone(&settings);
         let environment = Arc::new(workspace::Environment::of_process);
+        let checks = Arc::clone(&videos);
         let sessions = Sessions::new(
             GRACE,
             Arc::new(OnRuntime {
                 runtime,
                 handlers: plugins.set(),
                 environment,
+                opens: Arc::new(move |video, cancel| checks.check(video, cancel)),
             }),
         );
         tokio::spawn(poll_sources(sessions.clone(), stopping.clone()));

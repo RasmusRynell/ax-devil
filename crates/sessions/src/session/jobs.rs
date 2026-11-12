@@ -7,7 +7,7 @@
 use super::{JobId, SessionState, state::Doc, transition::Effects};
 use foundation::{CancelToken, UserError};
 use workspace::store::ResolveJob;
-use workspace::{Content, ItemId};
+use workspace::{Content, ContentId, ItemId};
 
 /// Who a job works for. Its result is dropped when the owner no longer wants it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,7 +25,12 @@ pub enum JobOwner {
 #[derive(Debug)]
 pub enum Completion {
     /// An item's Content, or why it has none.
-    Resolved(Result<Content, UserError>),
+    Resolved {
+        /// The resolution and media-check outcome.
+        result: Result<Content, UserError>,
+        /// Entries covered by successful media checks.
+        validated: Vec<ContentId>,
+    },
 }
 
 /// The work of a job.
@@ -51,7 +56,7 @@ pub struct Spawn {
 /// A registered job.
 #[derive(Clone, Debug)]
 pub(super) struct JobEntry {
-    owner: JobOwner,
+    pub(super) owner: JobOwner,
     cancel: CancelToken,
 }
 

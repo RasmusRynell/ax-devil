@@ -29,9 +29,11 @@ type Key = (SessionId, ItemId);
 
 /// What one item was read from, and the differences the last look found.
 struct Watched {
-    watch: Watch,
-    /// The paths that differed at the last look, and how they looked.
-    seen: Option<(BTreeSet<PathBuf>, Snapshot)>,
+    active: Option<Watch>,
+    /// Only the latest failed attempt is retained alongside the active read set.
+    attempt: Option<Watch>,
+    /// Differing paths and the snapshots of the active and attempted reads, in that order.
+    seen: Option<(BTreeSet<PathBuf>, Vec<Snapshot>)>,
     /// Told apart from an entry recorded since a look began.
     version: u64,
 }
@@ -48,15 +50,31 @@ struct Records {
 pub(super) struct Sources(Mutex<Records>);
 
 impl Sources {
-    /// Records that `item` of `session` was read from what `watch` says, replacing what was recorded before.
+    /// Replaces the current read set and retires any failed attempt.
     pub(super) fn record(&self, session: SessionId, item: ItemId, watch: Watch) {
+        self.install(session, item, Some(watch), false);
+    }
+
+    /// Retains the active read set with only the latest failed attempt: at most two sets, never a failure history.
+    pub(super) fn record_failed(&self, session: SessionId, item: ItemId, watch: Option<Watch>) {
+        self.install(session, item, watch, true);
+    }
+
+    fn install(&self, session: SessionId, item: ItemId, watch: Option<Watch>, failed: bool) {
         let mut records = locked(&self.0);
         records.version += 1;
         let version = records.version;
+        let previous = records.entries.remove(&(session, item));
+        let (active, attempt) = if failed {
+            (previous.and_then(|watched| watched.active), watch)
+        } else {
+            (watch, None)
+        };
         records.entries.insert(
             (session, item),
             Watched {
-                watch,
+                active,
+                attempt,
                 seen: None,
                 version,
             },
@@ -73,7 +91,7 @@ impl Sources {
     /// Returns the items with a path that differs from what was read and looked the same twice; what was seen then
     /// becomes what was read. Blocks on the disk.
     pub(super) fn look(&self, live: &HashSet<Key>, known: u64) -> Vec<Key> {
-        let due: Vec<(Key, u64, Watch)> = {
+        let due: Vec<(Key, u64, Vec<Watch>)> = {
             let mut records = locked(&self.0);
             records
                 .entries
@@ -81,13 +99,28 @@ impl Sources {
             records
                 .entries
                 .iter()
-                .map(|(key, watched)| (*key, watched.version, watched.watch.clone()))
+                .map(|(key, watched)| {
+                    (
+                        *key,
+                        watched.version,
+                        watched
+                            .active
+                            .iter()
+                            .chain(&watched.attempt)
+                            .cloned()
+                            .collect(),
+                    )
+                })
                 .collect()
         };
         let never = CancelToken::new();
         let mut changed = Vec::new();
-        for (key, version, watch) in due {
-            let Ok(now) = watch.look(&never) else {
+        for (key, version, watches) in due {
+            let Ok(now) = watches
+                .iter()
+                .map(|watch| watch.look(&never))
+                .collect::<Result<Vec<_>, _>>()
+            else {
                 continue;
             };
             let mut records = locked(&self.0);
@@ -98,16 +131,33 @@ impl Sources {
             else {
                 continue;
             };
-            let differing = watched.watch.changes(&now);
+            let differing: BTreeSet<_> = watches
+                .iter()
+                .zip(&now)
+                .flat_map(|(watch, snapshot)| watch.changes(snapshot))
+                .collect();
             let steady = match watched.seen.take() {
-                Some((before, seen)) => differing == before && now.agrees_at(&seen, &differing),
+                Some((before, seen)) => {
+                    differing == before
+                        && now
+                            .iter()
+                            .zip(&seen)
+                            .all(|(now, before)| now.agrees_at(before, &differing))
+                }
                 None => false,
             };
             if differing.is_empty() {
                 continue;
             }
             if steady {
-                watched.watch.accept(now);
+                for (watch, snapshot) in watched
+                    .active
+                    .iter_mut()
+                    .chain(&mut watched.attempt)
+                    .zip(now)
+                {
+                    watch.accept(snapshot);
+                }
                 changed.push(key);
             } else {
                 watched.seen = Some((differing, now));

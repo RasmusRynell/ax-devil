@@ -189,6 +189,25 @@ impl VideoSources {
         }
     }
 
+    /// Checks the current media without joining or registering a source. Blocks on indexing and opening;
+    /// cancellation interrupts both. The index cache is warmed for the replacement viewer.
+    pub fn check(
+        &self,
+        video: &VideoRef,
+        cancel: &CancelToken,
+    ) -> Result<(), Interrupt<UserError>> {
+        source_key(video).map_err(Interrupt::Failed)?;
+        let input = input_of(video);
+        let index = Arc::new(FrameIndex::load_or_build(
+            &input,
+            Some(&self.cache_dir),
+            cancel,
+            &mut |_| {},
+        )?);
+        Decoder::open(&input, index, 1, cancel.clone())?;
+        Ok(())
+    }
+
     /// A viewer of `video`: one on the source that is already open, or else a new source once the frame index is
     /// read, which for a file is built (reporting `progress`, 0 to 1) when it is not cached; an image sequence has
     /// nothing to build. What the viewer is told about the video comes from the source it joined. Blocks: call it
@@ -337,5 +356,73 @@ mod tests {
         let cache = tempfile::tempdir().expect("a cache folder");
         let opened = open(&sources(cache.path()), &fixture_sequence(64, 48));
         assert!(opened.warnings.is_empty(), "{:?}", opened.warnings);
+    }
+    #[test]
+    fn checking_missing_or_invalid_media_leaves_the_registry_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let sources = sources(dir.path());
+        let missing = VideoRef::File(dir.path().join("missing.mp4"));
+        assert!(sources.check(&missing, &CancelToken::new()).is_err());
+        let path = dir.path().join("video.mp4");
+        std::fs::write(&path, b"not a video").unwrap();
+        let video = VideoRef::File(path.clone());
+        assert!(sources.check(&video, &CancelToken::new()).is_err());
+        assert!(
+            sources
+                .registry
+                .attach(&source_key(&video).unwrap())
+                .is_none()
+        );
+        assert_eq!(sources.registry.running_workers(), 0);
+    }
+
+    #[test]
+    fn checking_replaced_bytes_does_not_join_the_old_open_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let sources = sources(dir.path());
+        let path = dir.path().join("video.mp4");
+        std::fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/video/cfr_h264_gop10_bf2.mp4"),
+            &path,
+        )
+        .unwrap();
+        let video = VideoRef::File(path.clone());
+        sources.check(&video, &CancelToken::new()).unwrap();
+        assert!(
+            sources
+                .registry
+                .attach(&source_key(&video).unwrap())
+                .is_none(),
+            "a successful check registers nothing"
+        );
+        let old = open(&sources, &video);
+        let workers = sources.registry.running_workers();
+        // Replace by rename so the old decoder keeps its valid file handle.
+        let replacement = dir.path().join("replacement.mp4");
+        std::fs::write(&replacement, b"readable non-video bytes").unwrap();
+        std::fs::rename(&replacement, &path).unwrap();
+        assert!(
+            sources.check(&video, &CancelToken::new()).is_err(),
+            "check must open the current bytes even while an old source is open"
+        );
+        assert_eq!(sources.registry.running_workers(), workers);
+        let attached = sources
+            .registry
+            .attach(&source_key(&video).unwrap())
+            .expect("old source stays open");
+        assert_eq!(attached.spec().timeline, old.session.spec().timeline);
+        drop(attached);
+        drop(old);
+        assert!(
+            sources
+                .registry
+                .wait_retired(std::time::Duration::from_secs(5))
+        );
+        assert!(
+            sources
+                .registry
+                .attach(&source_key(&video).unwrap())
+                .is_none()
+        );
     }
 }

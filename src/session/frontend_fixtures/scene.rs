@@ -47,7 +47,10 @@ pub(super) fn run(session: &mut SessionState, outcomes: &Outcomes, command: Comm
         };
         let input = Input::Complete {
             job: spawn.job,
-            completion: Completion::Resolved(outcome),
+            completion: Completion::Resolved {
+                result: outcome,
+                validated: Vec::new(),
+            },
         };
         let (next, _) = transition(session, input)
             .unwrap_or_else(|refusal| panic!("a resolution was refused: {refusal:?}"));

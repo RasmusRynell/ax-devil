@@ -118,7 +118,10 @@ fn command(state: &mut SessionState, seat: SeatId, command: DocCommand) {
             state,
             Input::Complete {
                 job: spawn.job,
-                completion: Completion::Resolved(resolve(job)),
+                completion: Completion::Resolved {
+                    result: resolve(job),
+                    validated: Vec::new(),
+                },
             },
         )
         .unwrap()
