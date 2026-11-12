@@ -412,10 +412,8 @@ async function fullscreen(window) {
       "[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((item) => item.textContent)",
     );
     const expected = [
-      process.platform === "darwin" ? "Export video⌘E" : "Export videoCtrl+E",
-      process.platform === "darwin"
-        ? "Toggle Media Tools Panel⌘B"
-        : "Toggle Media Tools PanelCtrl+B",
+      "Export videoCtrl+E",
+      "Toggle Media Tools PanelCtrl+B",
       "Toggle Lane FullscreenF",
       "Add BookmarkM",
       "Reset Zoom0",
