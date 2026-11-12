@@ -138,7 +138,9 @@ pub(super) fn read_beta(record: &Object, notes: &mut Notes) -> Result<Vec<Scene>
             let operation = object(operation, "an operation")?;
             match operation.get("type").and_then(Json::as_str) {
                 Some("DeleteOperation") => {
-                    if let Ok(entity) = entity_id(operation.get("id"), "Delete id") {
+                    if let Ok(entity) =
+                        entity_id(operation.get("id").filter(|id| truthy(id)), "Delete id")
+                    {
                         events.push(Event::new(at, Operation::Delete { entity }));
                     }
                 }

@@ -28,6 +28,8 @@ export interface ScanView {
   missing: readonly string[];
   /** The values that will load: found ones and saved ones alike. */
   selected: ReadonlySet<string>;
+  /** Original explicit order, independent of scan display and checkbox interaction order. */
+  original: readonly string[];
   /** Whether the next scan checks every value it finds: no list is saved. */
   everything: boolean;
   /** Whether loading every found value omits the key: restored settings that named no list. A new form lists its names. */
@@ -43,6 +45,7 @@ export function idleScan(saved: unknown, restored = false): ScanView {
     choices: [],
     missing: [],
     selected: new Set(names ?? []),
+    original: names ?? [],
     everything: names === null,
     leaveOut: restored && names === null,
     failure: null,
@@ -62,6 +65,7 @@ export function scanInvalidated(view: ScanView): ScanView {
     choices: [],
     missing: [],
     selected: new Set(),
+    original: [],
     everything: true,
     leaveOut: false,
     failure: null,
@@ -141,5 +145,7 @@ export function checkedCount(view: ScanView): number {
 export function chosen(view: ScanView): string[] | undefined {
   const all = listed(view);
   if (view.leaveOut && all.every((value) => view.selected.has(value))) return undefined;
-  return all.filter((value) => view.selected.has(value));
+  const kept = view.original.filter((value) => view.selected.has(value));
+  const original = new Set(view.original);
+  return [...kept, ...all.filter((value) => view.selected.has(value) && !original.has(value))];
 }

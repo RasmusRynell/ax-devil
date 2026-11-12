@@ -56,7 +56,7 @@ impl OnvifXmlDecoder {
                 bases: vec![MatchBasis::Frame, MatchBasis::Time],
                 default_basis: MatchBasis::Frame,
                 options: Form::default(),
-                version: 4,
+                version: 6,
             },
         }
     }

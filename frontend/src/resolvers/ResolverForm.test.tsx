@@ -285,13 +285,18 @@ describe("resolver form", () => {
 
   it("restores saved settings: scans, keeps unknown keys, and marks saved names that are gone", async () => {
     const scans = stubScans();
-    render(<Harness initial={{ root: "/data", sequences: ["B", "gone"], extra: 1 }} />);
+    render(<Harness initial={{ root: "/data", sequences: ["B", "gone", "A"], extra: 1 }} />);
     await waitFor(() => expect(scans).toHaveLength(1));
-    await respond(scans, 0, "A", "B");
+    await respond(scans, 0, "A", "B", "C");
     const gone = screen.getByRole("checkbox", { name: /gone/ });
     expect((gone as HTMLInputElement).checked).toBe(true);
     expect(gone.closest("label")?.textContent).toContain("Not found");
-    expect(settings()).toEqual({ root: "/data", sequences: ["B", "gone"], extra: 1 });
+    expect(settings()).toEqual({ root: "/data", sequences: ["B", "gone", "A"], extra: 1 });
+    fireEvent.click(screen.getByRole("checkbox", { name: /^B/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /^C/ }));
+    expect(settings()).toEqual({ root: "/data", sequences: ["gone", "A", "C"], extra: 1 });
+    fireEvent.click(screen.getByRole("checkbox", { name: /^B/ }));
+    expect(settings()).toEqual({ root: "/data", sequences: ["B", "gone", "A", "C"], extra: 1 });
   });
 
   it("starts a required field at its default, shows it while blank, and refuses an integer that is no whole number", () => {
