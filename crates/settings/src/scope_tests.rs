@@ -161,6 +161,19 @@ fn logins_are_saved_whole_by_id_and_no_password_is_read_back() {
         json!([{"id": root, "user": "admin", "password": "changed"}])
     );
 
+    // Logins of one user are separate records: more can be added beside a saved one, each with its own password.
+    replace(vec![
+        with_id(&root, "admin"),
+        new("admin", "second"),
+        new("admin", "third"),
+    ])
+    .unwrap();
+    let stored = logins(&path);
+    assert_eq!(stored[0]["password"], "changed");
+    assert_eq!(stored[1]["password"], "second");
+    assert_eq!(stored[2]["password"], "third");
+    replace(vec![with_id(&root, "admin")]).unwrap();
+
     // An unknown or repeated id, and a new record without a password, are refused and nothing is saved.
     for refused in [
         vec![with_id(&json!("nobody"), "x")],

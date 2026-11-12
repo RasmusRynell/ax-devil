@@ -13,12 +13,14 @@ afterEach(() => {
 });
 
 describe("logins editor", () => {
-  it("keeps the password typed while the save of the username is still in flight", async () => {
+  it("keeps a password edit through the username save and repeated settings refreshes", async () => {
     let acknowledge = () => {};
+    let refresh = () => {};
     function Host() {
       const [logins, setLogins] = useState<readonly Login[]>([]);
       const onSave = (next: Login[]) =>
         new Promise<string | null>((resolve) => {
+          refresh = () => setLogins([...next]);
           acknowledge = () => {
             setLogins(next);
             resolve(null);
@@ -35,6 +37,8 @@ describe("logins editor", () => {
 
     await act(async () => acknowledge());
 
+    expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("secret");
+    await act(async () => refresh());
     expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("secret");
   });
 
