@@ -1,4 +1,5 @@
 // Inspection continuation through a real CVAT file, including the bounded copy controls.
+const { pressShortcut } = require("./shortcut-input.cjs");
 const { BrowserWindow, nativeTheme, clipboard } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -49,18 +50,15 @@ async function openObject(window) {
   } finally {
     focusTarget.destroy();
   }
-  for (const type of ["keyDown", "keyUp"])
-    window.webContents.sendInputEvent({ type, keyCode: "B", modifiers: ["control"] });
+  pressShortcut(window, "Ctrl+B");
   await wait("document.querySelector('aside[aria-label=\"Media tools\"] [role=option]')");
   await js("document.querySelector('aside[aria-label=\"Media tools\"] [role=listbox]').focus()");
   await wait("document.hasFocus() && document.activeElement?.getAttribute('role') === 'listbox'");
-  for (const type of ["keyDown", "keyUp"])
-    window.webContents.sendInputEvent({ type, keyCode: "ArrowDown" });
+  pressShortcut(window, "Down");
   await wait(
     "document.hasFocus() && document.activeElement?.getAttribute('role') === 'listbox' && document.activeElement.getAttribute('aria-activedescendant')",
   );
-  for (const type of ["keyDown", "keyUp"])
-    window.webContents.sendInputEvent({ type, keyCode: "Return" });
+  pressShortcut(window, "Return");
   await wait(`document.querySelector('${INSPECTOR}')`);
   const panel = await settled(
     window,
