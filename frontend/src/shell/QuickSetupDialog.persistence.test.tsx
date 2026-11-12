@@ -16,9 +16,9 @@ afterEach(() => {
 // Fresh modules model a page reload: Device values must come from storage, not the surviving preview store.
 async function mount() {
   vi.resetModules();
-  const { SettingsProvider, useSettings } = await import("../settings");
-  const { ChangesProvider } = await import("../resource");
-  const { AccessContext } = await import("../access");
+  const { SettingsProvider, useSettings } = await import("../client/settings");
+  const { ChangesProvider } = await import("../client/resource");
+  const { AccessContext } = await import("../client/access");
   const { QuickSetupDialog } = await import("./QuickSetupDialog");
   const { ChoiceDialog } = await import("../kit/ChoiceDialog");
   const { SettingsDialog } = await import("./SettingsDialog");
