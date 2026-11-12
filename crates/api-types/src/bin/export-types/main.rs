@@ -192,6 +192,7 @@ fn constants() -> Vec<Constant> {
     [
         ("api_types::playback", api_types::playback::CONSTANTS),
         ("api_types::render", api_types::render::CONSTANTS),
+        ("api_types::inspect", api_types::inspect::CONSTANTS),
     ]
     .into_iter()
     .flat_map(|(module, table)| {

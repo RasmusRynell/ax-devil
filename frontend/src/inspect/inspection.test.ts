@@ -1,78 +1,9 @@
 // @vitest-environment node
-import { describe, expect, it } from "vite-plus/test";
-import { compileFilter } from "../present";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { fullSample } from "../present/fixtures";
-import type { LaneFrame } from "../lanes/contract";
+import { compileFilter } from "../present";
+import { SELECTION, withCar, withoutCar, frame, CLASS, found, setup } from "./inspectionTestRig";
 import { Inspections } from "./inspection";
-import type { ClientMessage, FieldWire, InspectionWire, ServerMessage } from "../stream/protocol";
-
-const SELECTION = { lane: 0, source: 0, entity: "7" };
-const withCar = fullSample([
-  {
-    id: "7",
-    class: "car",
-    score: 0.82,
-    confidence: 0.9,
-    motion: "moving",
-    mask: [0b01],
-    box: [0.1, 0.1, 0.3, 0.3],
-  },
-  { id: "9", class: "human", box: [0.5, 0.5, 0.6, 0.7] },
-]);
-const withoutCar = fullSample([{ id: "9", class: "human", box: [0.5, 0.5, 0.6, 0.7] }]);
-
-/** What a lane draws: only the parts the inspector reads are real. */
-const frame = (
-  sample: number,
-  columns = withCar,
-  dataRevision = 1,
-  source = 0,
-  style: Partial<LaneFrame> = {},
-): LaneFrame =>
-  ({
-    source,
-    dataRevision,
-    sample,
-    columns,
-    styleRevision: 0,
-    classMask: { enabled: new Uint32Array(1), options: 0 },
-    filter: null,
-    ...style,
-  }) as LaneFrame;
-
-const CLASS: FieldWire = {
-  group: "classification",
-  path: ["class"],
-  value: { kind: "text", value: "car" },
-};
-const found = (...fields: FieldWire[]): InspectionWire => ({
-  state: "Found",
-  fields,
-  truncated: false,
-});
-const reply = (
-  sample: number,
-  inspection: InspectionWire,
-  dataRevision = 1,
-): Extract<ServerMessage, { type: "Inspected" }> => ({
-  type: "Inspected",
-  source: 0,
-  data_revision: dataRevision,
-  sample,
-  entity: "7",
-  inspection,
-});
-
-function setup() {
-  const sent: ClientMessage[] = [];
-  const time = { now: 0 };
-  const inspections = new Inspections(
-    (message) => sent.push(message),
-    () => time.now,
-  );
-  const samples = () => sent.map((m) => (m.type === "Inspect" ? m.sample : -1));
-  return { inspections, sent, samples, time };
-}
 
 describe("inspections", () => {
   it("follows a playing video's draws at most ten times a second, and catches up when asked or on an action", () => {
@@ -85,7 +16,6 @@ describe("inspections", () => {
     inspections.follow([frame(3)], true);
     expect(samples()).toEqual([1, 2]);
 
-    // The newest draw replaces those skipped.
     inspections.catchUp();
     expect(samples()).toEqual([1, 2, 3]);
 
@@ -96,7 +26,6 @@ describe("inspections", () => {
     inspections.follow([frame(5)], true);
     expect(samples()).toEqual([1, 2, 3, 5]);
 
-    // Showing the inspector, like selecting, reads the newest draw.
     inspections.setVisible(false);
     time.now = 1160;
     inspections.follow([frame(6)], true);
@@ -105,14 +34,13 @@ describe("inspections", () => {
   });
 
   it("does not let a reply advance the view to a draw skipped while playing", () => {
-    const { inspections, samples, time } = setup();
+    const { inspections, samples, time, reply } = setup();
     inspections.follow([frame(1)]);
     inspections.select(SELECTION);
     time.now = 1000;
     inspections.follow([frame(2)], true);
     time.now = 1033;
     inspections.follow([frame(3)], true);
-    // The reply for the displayed sample completes it at once; the skipped draw is not asked for.
     inspections.receive(reply(2, found(CLASS)));
     expect(inspections.view).toMatchObject({ state: "ready" });
     time.now = 1066;
@@ -152,11 +80,18 @@ describe("inspections", () => {
   });
 
   it("shows the summary of the shown sample at once and the fields when the reply comes", () => {
-    const { inspections, sent } = setup();
+    const { inspections, sent, reply } = setup();
     inspections.follow([frame(3)]);
     expect(inspections.select(SELECTION)).toBe(true);
     expect(sent).toEqual([
-      { type: "Inspect", source: 0, data_revision: 1, sample: 3, entity: "7" },
+      {
+        type: "Inspect",
+        request: expect.any(Number),
+        source: 0,
+        data_revision: 1,
+        sample: 3,
+        entity: "7",
+      },
     ]);
     expect(inspections.view).toMatchObject({
       state: "loading",
@@ -170,7 +105,6 @@ describe("inspections", () => {
       },
       fields: [],
     });
-    // Drawing the same sample again, as every refresh does, changes nothing.
     const loading = inspections.view;
     expect(inspections.follow([frame(3)])).toBe(false);
     expect(inspections.view).toBe(loading);
@@ -181,13 +115,12 @@ describe("inspections", () => {
   });
 
   it("asks for each newly shown sample at once, so a reply that never comes holds nothing up", () => {
-    const { inspections, samples } = setup();
+    const { inspections, samples, reply } = setup();
     inspections.follow([frame(1)]);
     inspections.select(SELECTION);
     inspections.follow([frame(2)]);
     inspections.follow([frame(3)]);
     expect(samples()).toEqual([1, 2, 3]);
-    // A late reply for a sample no longer shown is kept but not shown.
     expect(inspections.receive(reply(1, found(CLASS)))).toBe(false);
     expect(inspections.view.state).toBe("loading");
     inspections.receive(reply(3, found({ ...CLASS, value: { kind: "text", value: "bus" } })));
@@ -196,12 +129,12 @@ describe("inspections", () => {
       fields: [{ value: { kind: "text", value: "bus" } }],
     });
     inspections.follow([frame(1)]);
-    expect(inspections.view.state).toBe("ready");
-    expect(samples()).toEqual([1, 2, 3]);
+    expect(inspections.view.state).toBe("loading");
+    expect(samples()).toEqual([1, 2, 3, 1]);
   });
 
   it("never shows another sample's summary or fields while the shown sample's reply is out", () => {
-    const { inspections } = setup();
+    const { inspections, reply } = setup();
     const faster = fullSample([{ id: "7", class: "car", score: 0.5 }]);
     inspections.follow([frame(1)]);
     inspections.select(SELECTION);
@@ -212,7 +145,6 @@ describe("inspections", () => {
       summary: { score: 0.5 },
       fields: [],
     });
-    // A late reply for the preceding sample changes nothing.
     expect(
       inspections.receive(reply(1, found({ ...CLASS, value: { kind: "text", value: "bus" } }))),
     ).toBe(false);
@@ -222,7 +154,6 @@ describe("inspections", () => {
       summary: { score: 0.5 },
       fields: [{ value: { kind: "text", value: "truck" } }],
     });
-    // A frame without the object shows its own state, and nothing held comes back after it.
     inspections.follow([frame(3, withoutCar)]);
     expect(inspections.view.state).toBe("absent");
     inspections.follow([frame(4)]);
@@ -237,8 +168,8 @@ describe("inspections", () => {
     expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
   });
 
-  it("answers from the last 16 replies without asking", () => {
-    const { inspections, samples } = setup();
+  it("keeps the current field window and asks again after leaving it", () => {
+    const { inspections, samples, reply } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
     for (let sample = 0; sample < 17; sample++) {
@@ -249,27 +180,28 @@ describe("inspections", () => {
     inspections.follow([frame(16)]);
     expect(inspections.view.state).toBe("ready");
     expect(samples()).toHaveLength(17);
-    // The first reply was dropped to make room for the seventeenth.
     inspections.follow([frame(0)]);
     expect(samples()).toHaveLength(18);
     expect(inspections.view.state).toBe("loading");
   });
 
   it("ignores a reply of a data revision the source has left", () => {
-    const { inspections, sent } = setup();
-    const revisions = () => sent.map((m) => (m.type === "Inspect" ? m.data_revision : -1));
+    const { inspections, sent, reply } = setup();
+    const revisions = () => sent.flatMap((m) => (m.type === "Inspect" ? [m.data_revision] : []));
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
-    inspections.follow([frame(0, withCar, 2)]);
-    expect(revisions()).toEqual([1, 2]);
+    inspections.follow([frame(0, withCar, 2)], true);
     expect(inspections.receive(reply(0, found(CLASS), 1))).toBe(false);
+    expect(revisions()).toEqual([1]);
+    inspections.catchUp();
+    expect(revisions()).toEqual([1, 2]);
     expect(inspections.view.state).toBe("loading");
     inspections.receive(reply(0, found(CLASS), 2));
     expect(inspections.view.state).toBe("ready");
   });
 
   it("keeps the selection when a frame has no such object, and finds the object again", () => {
-    const { inspections, samples } = setup();
+    const { inspections, samples, sent, reply } = setup();
     inspections.follow([frame(0, withoutCar)]);
     inspections.select(SELECTION);
     expect(inspections.view).toEqual({
@@ -282,18 +214,43 @@ describe("inspections", () => {
     inspections.follow([frame(1)]);
     expect(inspections.view).toMatchObject({ state: "loading", selection: SELECTION });
     inspections.receive(reply(1, { state: "Absent" }));
+    expect(sent.at(-1)).toEqual({
+      type: "InspectRelease",
+      request: sent.filter((message) => message.type === "Inspect").at(-1)?.request,
+    });
     expect(inspections.view).toMatchObject({ state: "absent", reason: "gone" });
-    inspections.follow([frame(2, withoutCar)]);
+    inspections.follow([frame(2)]);
+    inspections.receive(reply(2, found(CLASS)));
+    const count = sent.length;
+    inspections.follow([frame(2)], false);
+    expect(sent).toHaveLength(count);
+    inspections.follow([undefined]);
+    expect(sent.at(-1)).toEqual({
+      type: "InspectRelease",
+      request: sent.filter((message) => message.type === "Inspect").at(-1)?.request,
+    });
+    inspections.follow([frame(3)]);
+    expect(inspections.view.state).toBe("loading");
+    inspections.receive(reply(3, found(CLASS)));
+    inspections.follow([frame(4, withoutCar)]);
+    expect(sent.at(-1)).toEqual({
+      type: "InspectRelease",
+      request: sent.filter((message) => message.type === "Inspect").at(-1)?.request,
+    });
     expect(inspections.view).toMatchObject({ state: "absent", last: { className: "car" } });
   });
 
   it("says filtered, and keeps the selection and the class, while the lane's toggles or filter hide the object", () => {
-    const { inspections, samples } = setup();
+    const { inspections, samples, sent, reply } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
-    // The class toggled off, then on again; the sample and its columns are the same throughout.
+    inspections.receive(reply(0, found(CLASS)));
     const off = { classMask: { enabled: new Uint32Array([0b10]), options: 2 }, styleRevision: 1 };
     expect(inspections.follow([frame(0, withCar, 1, 0, off)])).toBe(true);
+    expect(sent.at(-1)).toEqual({
+      type: "InspectRelease",
+      request: sent.filter((message) => message.type === "Inspect").at(-1)?.request,
+    });
     expect(inspections.view).toMatchObject({
       state: "absent",
       selection: SELECTION,
@@ -307,12 +264,11 @@ describe("inspections", () => {
     if (!compiled.ok) throw new Error("the filter compiles");
     inspections.follow([frame(0, withCar, 1, 0, { filter: compiled.filter, styleRevision: 3 })]);
     expect(inspections.view).toMatchObject({ state: "absent", reason: "filtered" });
-    // Asked again only when the object was shown again.
     expect(samples()).toEqual([0, 0]);
   });
 
   it("says unavailable for a sample the backend will not answer for, and asks again only when it is shown anew", () => {
-    const { inspections, samples } = setup();
+    const { inspections, samples, reply } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
     inspections.receive(reply(0, { state: "Unavailable" }));
@@ -322,30 +278,14 @@ describe("inspections", () => {
     inspections.follow([frame(1)]);
     inspections.follow([frame(0)]);
     expect(samples()).toEqual([0, 1, 0]);
-    // The sample held anew, as after the viewer's set of samples changed, is asked for again.
     inspections.receive(reply(0, { state: "Unavailable" }));
     expect(inspections.follow([frame(0, fullSample([{ id: "7", class: "car" }]))])).toBe(true);
     expect(samples()).toEqual([0, 1, 0, 0]);
-  });
-
-  it("asks again for a sample whose reply was dropped, when it is shown again or has waited too long", () => {
-    const { inspections, samples } = setup();
-    inspections.follow([frame(0)]);
-    inspections.select(SELECTION);
-    // Another frame shows no such object, so nothing else is asked; the reply for sample 0 never comes.
-    inspections.follow([frame(1, withoutCar)]);
-    inspections.follow([frame(0)]);
-    expect(samples()).toEqual([0, 0]);
-    // Drawn again and again with no reply: asked once more, not at every draw.
-    for (let draw = 0; draw < 130; draw++) inspections.follow([frame(0)]);
-    expect(samples()).toEqual([0, 0, 0]);
-    inspections.receive(reply(0, found(CLASS)));
-    for (let draw = 0; draw < 130; draw++) inspections.follow([frame(0)]);
-    expect(samples()).toEqual([0, 0, 0]);
+    expect(inspections.view.state).toBe("loading");
   });
 
   it("keeps nothing of another source's object that has the same id", () => {
-    const { inspections, sent } = setup();
+    const { inspections, sent, reply } = setup();
     inspections.follow([frame(0), frame(0, withCar, 1, 1)]);
     inspections.select(SELECTION);
     inspections.receive(reply(0, found(CLASS)));
@@ -356,8 +296,12 @@ describe("inspections", () => {
       fields: [],
     });
     const asked = sent.at(-1);
-    expect(asked).toMatchObject({ type: "Inspect", source: 1, entity: "7" });
-    // The first source's reply is a different request.
+    expect(asked).toMatchObject({
+      type: "Inspect",
+      request: expect.any(Number),
+      source: 1,
+      entity: "7",
+    });
     inspections.receive(reply(0, found({ ...CLASS, value: { kind: "text", value: "bus" } })));
     expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
     inspections.receive({ ...reply(0, { state: "Unavailable" }), source: 1 });
@@ -372,7 +316,7 @@ describe("inspections", () => {
   });
 
   it("asks again on a new connection, once its data has a frame drawn", () => {
-    const { inspections, samples } = setup();
+    const { inspections, samples, reply } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
     inspections.reconnect();
@@ -400,16 +344,135 @@ describe("inspections", () => {
   });
 
   it("clears the selection", () => {
-    const { inspections } = setup();
+    const { inspections, reply } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
     inspections.receive(reply(0, found(CLASS)));
     expect(inspections.select(null)).toBe(true);
     expect(inspections.view).toEqual({ state: "none" });
     expect(inspections.select(null)).toBe(false);
-    // The pair shown before the selection was cleared is not held for the object selected again.
     inspections.follow([frame(1)]);
     inspections.select(SELECTION);
     expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
   });
+});
+
+it("replaces field pages and copies complete Unicode text while a superseded reply waits for release", async () => {
+  const { inspections, sent, reply } = setup();
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  try {
+    const access = () => {
+      const view = inspections.view;
+      if (view.state === "none" || view.state === "absent" || !view.access)
+        throw Error("ready inspection");
+      return view.access;
+    };
+    const request = () => {
+      const message = sent.at(-1);
+      if (message?.type !== "InspectContinue") throw Error("continuation");
+      return message.request;
+    };
+    inspections.follow([frame(0)]);
+    inspections.select(SELECTION);
+    inspections.receive(
+      reply(0, {
+        state: "Found",
+        fields: [CLASS],
+        truncated: true,
+        continuation: { token: "socket-capability", next: 4096 },
+      }),
+    );
+    access().next?.();
+    const text = `${"a".repeat(65535)}😀é`;
+    inspections.receiveContinuation({
+      type: "InspectContinued",
+      request: request(),
+      result: {
+        state: "Page",
+        fields: [
+          {
+            group: "debug",
+            path: ["last"],
+            value: { kind: "text", value: "preview" },
+            cut: [4096, 65541],
+          },
+        ],
+        next: null,
+      },
+    });
+    expect(inspections.view).toMatchObject({ fields: [{ path: ["last"] }] });
+    access().copy(4096);
+    inspections.receiveContinuation({
+      type: "InspectContinued",
+      request: request(),
+      result: { state: "Chunk", text: "a".repeat(65535), total: 65541, next: 65535 },
+    });
+    expect(writeText).not.toHaveBeenCalled();
+    expect(access().progress).toEqual({ received: 65535, total: 65541 });
+    inspections.receiveContinuation({
+      type: "InspectContinued",
+      request: request(),
+      result: { state: "Chunk", text: "😀é", total: 65541, next: null },
+    });
+    await Promise.resolve();
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(text);
+    writeText.mockClear();
+    access().copy(4096);
+    const earlier = request();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const late = held.then(() =>
+      inspections.receiveContinuation({
+        type: "InspectContinued",
+        request: earlier,
+        result: { state: "Chunk", text: "late", total: 4, next: null },
+      }),
+    );
+    inspections.follow([frame(1)]);
+    release();
+    expect(await late).toBe(false);
+    expect(writeText).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it("cancels a copy on hide, lane change, explicit cancellation and reconnect", () => {
+  for (const cancel of [
+    (owner: Inspections) => owner.setVisible(false),
+    (owner: Inspections) => owner.select({ ...SELECTION, lane: 1 }),
+    (owner: Inspections) => owner.reconnect(),
+    (owner: Inspections) => {
+      const view = owner.view;
+      if (view.state === "ready") view.access?.cancel();
+    },
+  ]) {
+    const { inspections, sent, reply } = setup();
+    inspections.follow([frame(0), frame(0)]);
+    inspections.select(SELECTION);
+    inspections.receive(
+      reply(0, {
+        state: "Found",
+        fields: [{ ...CLASS, cut: [0, 20000] }],
+        truncated: false,
+        continuation: { token: "socket", next: null },
+      }),
+    );
+    const view = inspections.view;
+    if (view.state !== "ready") throw Error("ready");
+    view.access?.copy(0);
+    const message = sent.at(-1);
+    if (message?.type !== "InspectContinue") throw Error("copy request");
+    cancel(inspections);
+    expect(
+      inspections.receiveContinuation({
+        type: "InspectContinued",
+        request: message.request,
+        result: { state: "Chunk", text: "cancelled", total: 20000, next: null },
+      }),
+    ).toBe(false);
+  }
 });

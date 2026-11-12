@@ -161,6 +161,8 @@ pub(super) async fn open_video<T: Send + 'static>(
                     | ClientMessage::Prepare { .. }
                     | ClientMessage::Catalog { .. }
                     | ClientMessage::Inspect { .. }
+                    | ClientMessage::InspectRelease(_)
+                    | ClientMessage::InspectContinue(_)
                     | ClientMessage::InspectFields { .. }
                     | ClientMessage::Export { .. }
                     | ClientMessage::CancelExport { .. }

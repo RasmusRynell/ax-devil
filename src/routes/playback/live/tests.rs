@@ -122,6 +122,7 @@ async fn a_follower_is_told_the_stream_then_each_frame_with_its_overlay_and_its_
                 if kind(&message) == format!("envelope {KIND_SAMPLE}") && !asked {
                     asked = true;
                     to_server.send(client(&ClientMessage::Inspect {
+                        request: 0,
                         source: 0,
                         data_revision: 0,
                         sample: 0,

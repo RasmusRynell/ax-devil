@@ -1,3 +1,5 @@
+import { utf8Prefix } from "./utf8";
+import { MAX_INSPECTION_PINS, MAX_PIN_PATH_BYTES } from "../generated/api";
 import type { FieldGroupWire, FieldWire, LeafWire } from "../stream/protocol";
 
 /** The groups in display order, with their headings. */
@@ -11,7 +13,14 @@ const GROUPS: readonly (readonly [FieldGroupWire, string])[] = [
 ];
 
 /** A field by where it is, not whose it is: its group and its path inside the group. */
-export type FieldId = { readonly group: FieldGroupWire; readonly path: readonly string[] };
+export type FieldId = {
+  readonly identity?: string;
+  readonly group: FieldGroupWire;
+  readonly path: readonly string[];
+};
+
+/** One current pin: a value, confirmed absence, pending, or an unavailable scan. */
+export type PinField = FieldWire | null | undefined | "unavailable";
 
 /** What the inspector keeps across the objects a viewer shows: the pinned fields in pin order, and the folded groups. */
 export interface InspectorMemory {
@@ -47,6 +56,8 @@ export type Line =
       id: FieldId | null;
       label: string;
       value: FieldWire["value"];
+      cut?: FieldWire["cut"];
+      pathCut?: FieldWire["path_cut"];
       /** The colour a colour field's value is the score of. */
       rgb?: FieldWire["rgb"];
       /** What the row shows in place of the value. */
@@ -58,7 +69,14 @@ export type Line =
       /** What reported the field, which tells apart fields of one path, such as a pinned one and its namesake. */
       origin?: FieldWire["origin"];
     }
-  | { kind: "unavailable"; key: string; id: FieldId; label: string };
+  | {
+      kind: "unavailable";
+      key: string;
+      id: FieldId;
+      label: string;
+      pending?: boolean;
+      failed?: boolean;
+    };
 
 /** The object's id, the row that leads the list. */
 const idLine = (entity: string): Line => ({
@@ -71,17 +89,27 @@ const idLine = (entity: string): Line => ({
 });
 
 /** The identity of a field: a path may contain dots, so its parts are not joined by one. */
-export const fieldKey = ({ group, path }: FieldId): string => [group, ...path].join("\u0000");
+export const fieldKey = ({ group, path, identity }: FieldId): string =>
+  identity ? `${group}\u0000sha256:${identity}` : [group, ...path].join("\u0000");
 
 /** `group.path`, as the Objects query names the field. */
 export const fieldLabel = ({ group, path }: FieldId): string => [group, ...path].join(".");
 
+/** Saved path-only pins and new digest pins identify the same field; two digests always compare in full. */
+export const samePin = (left: FieldId, right: FieldId): boolean =>
+  left.group === right.group &&
+  (left.identity && right.identity
+    ? left.identity === right.identity
+    : left.path.length === right.path.length &&
+      left.path.every((part, i) => part === right.path[i]));
+
 /** Pins `id` after the others, or unpins it. */
 export function togglePin(pins: readonly FieldId[], id: FieldId): readonly FieldId[] {
-  const key = fieldKey(id);
-  return pins.some((pin) => fieldKey(pin) === key)
-    ? pins.filter((pin) => fieldKey(pin) !== key)
-    : [...pins, id];
+  return pins.some((pin) => samePin(pin, id))
+    ? pins.filter((pin) => !samePin(pin, id))
+    : pins.length < MAX_INSPECTION_PINS
+      ? [...pins, id]
+      : pins;
 }
 
 const SOURCE_CAPTION = "Source";
@@ -123,13 +151,24 @@ function debugLines(own: readonly FieldWire[]): Line[] {
 
 /** A colour field is named by its colour, the last part of its path. */
 function fieldLine(field: FieldWire): Line {
-  const id = { group: field.group, path: field.path };
+  // New saved pins retain only a display preview; their digest resolves the full path on every sample.
+  let left = MAX_PIN_PATH_BYTES;
+  const path = field.identity
+    ? field.path.map((part) => {
+        const shown = utf8Prefix(part, left);
+        left -= shown.bytes;
+        return shown.text;
+      })
+    : field.path;
+  const id = { group: field.group, path, identity: field.identity };
   return {
     kind: "field",
     key: fieldKey(id),
     id,
     label: (field.rgb ? field.path.slice(-1) : field.path).join(".") || "value",
     value: field.value,
+    cut: field.cut,
+    pathCut: field.path_cut,
     rgb: field.rgb,
     text: field.text,
     fraction: field.fraction,
@@ -147,29 +186,39 @@ export function inspectorLines(
   pins: readonly FieldId[],
   folded: ReadonlySet<FieldGroupWire>,
   entity: string,
+  pinFields?: readonly PinField[],
 ): { pinned: Line[]; lines: Line[] } {
   const first = new Map<string, FieldWire>();
   for (const field of fields) {
     const key = fieldKey(field);
     if (!first.has(key)) first.set(key, field);
   }
-  const pinned = pins.map((id): Line => {
+  const pinned = pins.map((id, index): Line => {
     const key = fieldKey(id);
     const label = fieldLabel(id);
-    const found = first.get(key);
-    return found
+    const found = pinFields ? pinFields[index] : first.get(key);
+    return found && typeof found !== "string"
       ? {
           kind: "field",
           key,
           id,
           label,
           value: found.value,
+          cut: found.cut,
+          pathCut: found.path_cut,
           rgb: found.rgb,
           text: found.text,
           fraction: found.fraction,
           origin: found.origin,
         }
-      : { kind: "unavailable", key, id, label };
+      : {
+          kind: "unavailable",
+          key,
+          id,
+          label,
+          pending: pinFields !== undefined && found === undefined,
+          failed: found === "unavailable",
+        };
   });
   const groups = GROUPS.flatMap(([group, heading]): Line[] => {
     const own = fields.filter((field) => field.group === group);

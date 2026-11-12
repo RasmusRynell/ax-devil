@@ -176,10 +176,10 @@ pub(super) async fn stream(
     // The overlays stop with `Playing`, which goes when the session ends, a revoked one included.
     let mut playing = Playing {
         session,
-        gate,
+        gate: gate.clone(),
         lanes,
         catalogs,
-        inspections: Inspections::default(),
+        inspections: Inspections::new(gate.inspection_permission()),
         exports: Exports::new(setup.entry, setup.audience, setup.exports, setup.videos),
         file_scopes: FileScopes::new(setup.audience),
         cached: CachedFeed::new(),
@@ -251,16 +251,37 @@ impl<I: Incoming> Playing<'_, I> {
                 Ok(())
             }
             Some(Ok(ClientMessage::Inspect {
+                request,
                 source,
                 data_revision,
                 sample,
                 entity,
             })) => {
+                self.inspections.ask(
+                    self.lanes.overlays(),
+                    request,
+                    source,
+                    data_revision,
+                    sample,
+                    entity,
+                );
+                Ok(())
+            }
+            Some(Ok(ClientMessage::InspectRelease(identity))) => {
+                self.inspections.release_read(&identity);
+                Ok(())
+            }
+            Some(Ok(ClientMessage::InspectContinue(read))) => {
                 self.inspections
-                    .ask(self.lanes.overlays(), source, data_revision, sample, entity);
+                    .continue_read(read, |source, revision, sample| {
+                        self.lanes
+                            .overlays()
+                            .inspect_target(source, revision, u64::from(sample))
+                    });
                 Ok(())
             }
             Some(Ok(ClientMessage::InspectFields {
+                request,
                 source,
                 data_revision,
                 sample,
@@ -268,6 +289,7 @@ impl<I: Incoming> Playing<'_, I> {
             })) => {
                 self.inspections.ask_fields(
                     self.lanes.overlays(),
+                    request,
                     source,
                     data_revision,
                     sample,

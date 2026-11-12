@@ -14,7 +14,7 @@ import { ContextMenu } from "../kit/ContextMenu";
 import { Icon } from "../kit/Icon";
 import { NoticeList } from "../kit/NoticeList";
 import { Popover } from "../kit/Popover";
-import { useAllowed, useOverlays } from "../session/session";
+import { useAllowed, useOverlays, useOwnerSeat } from "../session/session";
 import { useSettings } from "../client/settings";
 import { MediaToolsPanel } from "../tools/MediaToolsPanel";
 import { useMediaTools } from "../tools/useMediaTools";
@@ -74,6 +74,7 @@ export function Playback({
   const view = useSyncExternalStore(stream.subscribe, stream.getSnapshot);
   const { shortcuts } = useSettings();
   const { objectDetails, laneNames } = useOverlays();
+  const inspectable = useOwnerSeat() || objectDetails;
   const allowed = useAllowed();
   const pane = useRef<HTMLDivElement>(null);
   const objects = useRef<ObjectLayerHandle>(null);
@@ -116,7 +117,10 @@ export function Playback({
     ),
   );
   // The selected object's page is the one the media tools show, so its fields are asked for only while they are open.
-  useEffect(() => stream.showInspector(tools), [stream, tools]);
+  useEffect(
+    () => stream.showInspector(tools && objectDetails, inspector.pins),
+    [stream, tools, objectDetails, inspector.pins],
+  );
   const zoom = useCallback(
     (factor: number) => {
       const next = geometry.current?.zoomAt(shownViewport.current, factor);
@@ -291,6 +295,7 @@ export function Playback({
               view={view}
               canSeek={canChange}
               selectable={objectDetails}
+              inspectable={inspectable}
               memory={inspector}
               onMemory={onInspector}
               onClose={() => setTools(false)}

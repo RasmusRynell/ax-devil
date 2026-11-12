@@ -1,3 +1,4 @@
+import { MAX_INSPECTION_PINS } from "../generated/api";
 import {
   memo,
   useCallback,
@@ -19,11 +20,13 @@ import {
   copyValue,
   displayValue,
   fieldKey,
+  samePin,
   hexOf,
   inspectorLines,
   rawJson,
   togglePin,
   type InspectorMemory,
+  type PinField,
   type Line,
 } from "./fields";
 import type { FieldGroupWire, FieldWire } from "../stream/protocol";
@@ -47,6 +50,8 @@ interface FieldProps {
   pinned: boolean;
   copied: boolean;
   missing: boolean;
+  pending?: boolean;
+  failed?: boolean;
   /** The colour a colour field's value is the score of. */
   rgb?: readonly [number, number, number];
   /** How much of a bar the value fills, 0 to 1; no bar when absent. */
@@ -55,6 +60,7 @@ interface FieldProps {
   elide?: "middle";
   /** Whether the field can be pinned; the object's id cannot. */
   pinnable: boolean;
+  pinLimit?: boolean;
 }
 
 /** The most characters of a long value, such as an id, that the label column leaves room for where it can. */
@@ -107,10 +113,13 @@ const FieldLine = memo(function FieldLine({
   pinned,
   copied,
   missing,
+  pending,
+  failed,
   rgb,
   fraction,
   elide,
   pinnable,
+  pinLimit,
 }: FieldProps) {
   return (
     <div
@@ -123,7 +132,12 @@ const FieldLine = memo(function FieldLine({
       {pinnable ? (
         <IconButton
           icon="pin"
-          label={`${pinned ? "Unpin" : "Pin"} ${label}`}
+          label={
+            pinLimit && !pinned
+              ? `Pin limit (${MAX_INSPECTION_PINS})`
+              : `${pinned ? "Unpin" : "Pin"} ${label}`
+          }
+          disabled={pinLimit && !pinned}
           data-act="pin"
           className={pinned ? "" : ON_ROW}
         />
@@ -142,7 +156,9 @@ const FieldLine = memo(function FieldLine({
         <span className="truncate">{label}</span>
       </span>
       {missing ? (
-        <span className="col-span-2 truncate text-muted italic">unavailable</span>
+        <span className="col-span-2 truncate text-muted italic">
+          {pending ? "Loading…" : failed ? "Unavailable" : "Not present"}
+        </span>
       ) : (
         <>
           <span className="@container/value flex min-w-0 items-center gap-m">
@@ -259,6 +275,7 @@ function rows(
   fields: readonly FieldWire[],
   lines: readonly Line[],
   first: number,
+  pinCount: number,
   pins: ReadonlySet<string>,
   copied: Copied,
   ids: readonly string[],
@@ -292,7 +309,7 @@ function rows(
       );
     }
     const found = line.kind === "field";
-    const full = found ? copyValue(line) : "";
+    const full = found ? (line.cut ? `${line.cut[1]} bytes` : copyValue(line)) : "";
     return (
       <FieldLine
         key={keyOf(line, i)}
@@ -305,9 +322,12 @@ function rows(
         fraction={found ? line.fraction : undefined}
         elide={found ? line.elide : undefined}
         pinnable={line.id !== null}
+        pinLimit={pinCount >= MAX_INSPECTION_PINS}
         pinned={pins.has(line.key)}
         copied={found && copied.is(ids[first + i] ?? "")}
         missing={!found}
+        pending={line.kind === "unavailable" && line.pending}
+        failed={line.kind === "unavailable" && line.failed}
       />
     );
   });
@@ -320,12 +340,20 @@ function rows(
  */
 export function InspectorLines({
   fields,
+  pinFields,
   entity,
   scope,
   memory,
   onMemory,
+  onCopyLarge,
+  onCopyRaw,
+  onCopyStart,
 }: {
   fields: readonly FieldWire[];
+  pinFields?: readonly PinField[];
+  onCopyRaw?: () => void;
+  onCopyLarge?: (ordinal: number, path?: boolean) => void;
+  onCopyStart?: () => void;
   /** The object's id, which leads the list. */
   entity: string;
   /** What the object is, lane and all; a copy mark does not outlast it. */
@@ -335,10 +363,15 @@ export function InspectorLines({
 }) {
   const { pins, folded } = memory;
   const { pinned, lines } = useMemo(
-    () => inspectorLines(fields, pins, folded, entity),
-    [fields, pins, folded, entity],
+    () => inspectorLines(fields, pins, folded, entity, pinFields),
+    [fields, pins, folded, entity, pinFields],
   );
-  const pinnedKeys = useMemo(() => new Set(pins.map(fieldKey)), [pins]);
+  const pinnedKeys = useMemo(() => {
+    const keys = new Set(pins.map(fieldKey));
+    for (const field of fields)
+      if (pins.some((pin) => samePin(pin, field))) keys.add(fieldKey(field));
+    return keys;
+  }, [pins, fields]);
   const byKey = useMemo(() => {
     const found = new Map<string, Extract<Line, { kind: "field" | "unavailable" }>>();
     for (const line of [...pinned, ...lines])
@@ -371,12 +404,23 @@ export function InspectorLines({
     if (!next.delete(group)) next.add(group);
     report({ ...now, folded: next });
   }, []);
+  const copyRaw = () => {
+    if (!lines.some((line) => line.kind === "caption" && line.fold === "raw" && line.copyable))
+      return false;
+    onCopyStart?.();
+    if (onCopyRaw) onCopyRaw();
+    else copied.copy(RAW_COPIED, rawJson(fields));
+    return true;
+  };
   /** Copies what the row's copy button would; false for a row with nothing to copy. */
   const copyRow = (row: HTMLElement): boolean => {
     const { index, group } = row.dataset;
     const line = index === undefined ? undefined : all[Number(index)];
-    if (line?.kind === "field") copied.copy(ids[Number(index)] ?? "", copyValue(line));
-    else if (group === "raw") copied.copy(RAW_COPIED, rawJson(fields));
+    if (line?.kind === "field") {
+      onCopyStart?.();
+      if (line.cut) onCopyLarge?.(line.cut[0]);
+      else copied.copy(ids[Number(index)] ?? "", copyValue(line));
+    } else if (group === "raw") return copyRaw();
     else return false;
     return true;
   };
@@ -396,25 +440,51 @@ export function InspectorLines({
     if (row && copyRow(row)) event.preventDefault();
   };
   const onContextMenu = (event: MouseEvent<HTMLDivElement>) => {
-    const key = (event.target as Element).closest<HTMLElement>("[data-field]")?.dataset.field;
-    // Off a field the browser's own menu stays.
+    const row = (event.target as Element).closest<HTMLElement>("[data-field],[data-group]");
+    const key = row?.dataset.field ?? (row?.dataset.group === "raw" ? RAW_COPIED : undefined);
     if (key === undefined) event.stopPropagation();
     else setMenuKey(key);
   };
+  const pathCut = menuKey === null ? undefined : byKey.get(menuKey);
+  const longPath = pathCut?.kind === "field" ? pathCut.pathCut : undefined;
   const entries: MenuEntry[] =
     menuKey === null
       ? []
-      : [
-          {
-            kind: "action",
-            id: "pin",
-            label: pinnedKeys.has(menuKey) ? "Unpin field" : "Pin field",
-          },
-        ];
+      : menuKey === RAW_COPIED
+        ? [{ kind: "action", id: "copy-raw", label: "Copy Raw" }]
+        : [
+            ...(pathCut?.id
+              ? [
+                  {
+                    kind: "action" as const,
+                    id: "pin",
+                    label: pinnedKeys.has(menuKey) ? "Unpin field" : "Pin field",
+                    disabled: !pinnedKeys.has(menuKey) && pins.length >= MAX_INSPECTION_PINS,
+                    reason: `Pin limit (${MAX_INSPECTION_PINS})`,
+                  },
+                ]
+              : []),
+            ...(longPath
+              ? [
+                  {
+                    kind: "action" as const,
+                    id: "copy-path",
+                    label: `Copy path (${longPath[1]} bytes)`,
+                  },
+                ]
+              : []),
+          ];
 
   return (
     <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)]">
-      <ContextMenu entries={entries} onSelect={() => menuKey !== null && pin(menuKey)}>
+      <ContextMenu
+        entries={entries}
+        onSelect={(id) => {
+          if (id.id === "copy-raw") copyRaw();
+          else if (id.id === "copy-path" && longPath) onCopyLarge?.(longPath[0], true);
+          else if (menuKey !== null) pin(menuKey);
+        }}
+      >
         <div
           className="flex h-full min-h-0 flex-col"
           style={{ "--label": label } as CSSProperties}
@@ -430,7 +500,7 @@ export function InspectorLines({
                   role="list"
                   className="max-h-[calc(var(--spacing-row)*6)] overflow-y-auto [scrollbar-gutter:stable]"
                 >
-                  {rows(fields, pinned, 0, pinnedKeys, copied, ids, onFold, (line) =>
+                  {rows(fields, pinned, 0, pins.length, pinnedKeys, copied, ids, onFold, (line) =>
                     line.kind === "field" || line.kind === "unavailable" ? line.key : "",
                   )}
                 </div>
@@ -454,6 +524,7 @@ export function InspectorLines({
                 fields,
                 lines.slice(start, end),
                 pinned.length + start,
+                pins.length,
                 pinnedKeys,
                 copied,
                 ids,

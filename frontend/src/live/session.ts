@@ -56,6 +56,7 @@ export class LiveSession implements LaneDisplay {
     this.#lanes,
     (message) => this.#connection?.send(message),
     (callback, ms) => this.#deps.after(callback, ms),
+    () => this.#publish(),
   );
   /** The Events list, which records from the moment the stream opens whether or not anything shows it. */
   readonly events = new EventLog();
@@ -218,8 +219,9 @@ export class LiveSession implements LaneDisplay {
   }
 
   /** Whether an object page shows; its fields are asked for only then. */
-  showInspector(shown: boolean): void {
-    if (this.#data.inspections.setVisible(shown)) this.#publish();
+  showInspector(shown: boolean, pins?: readonly import("../inspect/fields").FieldId[]): void {
+    const changed = this.#data.inspections.setVisible(shown);
+    if ((pins ? this.#data.inspections.setPins(pins) : false) || changed) this.#publish();
   }
 
   /** Selects an object (`null`: none) for the inspector. Selection is this viewer's own. */

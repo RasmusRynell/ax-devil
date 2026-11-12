@@ -183,5 +183,25 @@ export type InspectionView =
       selection: NonNullable<Selection>;
       summary: Summary;
       fields: readonly FieldWire[];
+      /** Pin-order current values; undefined is loading, null is absent. */
+      pins?: readonly import("../inspect/fields").PinField[];
       truncated: boolean;
+      access?: InspectionAccess;
+      /** A safe refusal before field preparation. */
+      error?: string;
     };
+
+/** Bounded field navigation and one explicit whole-value copy, owned by Inspections. */
+export interface InspectionAccess {
+  /** Copies the complete Raw section through the same bounded transfer. */
+  raw: () => void;
+  revision: number;
+  next: (() => void) | null;
+  first: (() => void) | null;
+  copy: (ordinal: number, path?: boolean) => void;
+  cancel: () => void;
+  commit: (() => void) | null;
+  progress: { received: number; total: number } | null;
+  error: string | null;
+  copied: boolean;
+}

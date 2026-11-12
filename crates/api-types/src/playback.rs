@@ -47,7 +47,9 @@
 use crate::{
     ErrorWire,
     catalogs::CatalogInfoWire,
-    inspect::{InspectionWire, ObjectItemsWire},
+    inspect::{
+        InspectionRead, InspectionReadResult, InspectionRelease, InspectionWire, ObjectItemsWire,
+    },
     live::{LiveAction, LiveEventsWire, LiveGapWire, LiveOpenedWire, LiveStatusWire},
 };
 use scene_store::{Search, Sort};
@@ -117,6 +119,8 @@ pub enum ClientMessage {
     /// Asks for every field of one object of a Sample Item the viewer holds; the answer is `Inspected`. A newer
     /// request replaces one not started yet.
     Inspect {
+        /// Client request generation, echoed unchanged in the reply.
+        request: u32,
         /// The viewer's source id, `LaneInfo::source`.
         source: u16,
         /// The source revision the sample belongs to.
@@ -128,7 +132,13 @@ pub enum ClientMessage {
     },
     /// Asks for the leaves every object of a Sample Item the viewer holds has at the query paths named, for a search
     /// of the objects' fields; the answer is `InspectedFields`. A newer request replaces one not started yet.
+    InspectContinue(InspectionRead),
+    /// Releases only the inspection named by its token or initial request generation; stale releases do nothing.
+    InspectRelease(InspectionRelease),
+    /// Queries selected paths across objects.
     InspectFields {
+        /// Client request generation, echoed unchanged in the reply.
+        request: u32,
         /// The viewer's source id, `LaneInfo::source`.
         source: u16,
         /// The source revision the sample belongs to.
@@ -292,6 +302,8 @@ pub enum ServerMessage {
     },
     /// The answer to an `Inspect` request.
     Inspected {
+        /// Client request generation, echoed unchanged in the reply.
+        request: u32,
         /// The requested source.
         source: u16,
         /// The requested revision.
@@ -304,7 +316,16 @@ pub enum ServerMessage {
         inspection: InspectionWire,
     },
     /// The answer to an `InspectFields` request.
+    InspectContinued {
+        /// Request correlation number.
+        request: u32,
+        /// Bounded result, under the same frame authority as inspection.
+        result: InspectionReadResult,
+    },
+    /// The selected fields across objects.
     InspectedFields {
+        /// Client request generation, echoed unchanged in the reply.
+        request: u32,
         /// The requested source.
         source: u16,
         /// The requested revision.

@@ -32,6 +32,7 @@ import {
   useCommand,
   useFollowing,
   useOverlays,
+  useOwnerSeat,
   useStream,
 } from "../session/session";
 import { useSettings } from "../client/settings";
@@ -59,6 +60,7 @@ function Live({
   useReportStatus(viewer, item, view);
   const { shortcuts } = useSettings();
   const { objectDetails, laneNames } = useOverlays();
+  const inspectable = useOwnerSeat() || objectDetails;
   const allowed = useAllowed();
   const following = useFollowing();
   const pane = useRef<HTMLDivElement>(null);
@@ -85,7 +87,10 @@ function Live({
     if (opensInFront.current) pane.current?.focus({ preventScroll: true });
   }, []);
   // The selected object's page is what the media tools show, so its fields are asked for only while they are open.
-  useEffect(() => session.showInspector(tools), [session, tools]);
+  useEffect(
+    () => session.showInspector(tools && objectDetails, inspector.pins),
+    [session, tools, objectDetails, inspector.pins],
+  );
   const zoom = useCallback(
     (factor: number) => {
       const next = geometry.current?.zoomAt(shownViewport.current, factor);
@@ -187,6 +192,7 @@ function Live({
               view={view}
               canSeek={false}
               selectable={objectDetails}
+              inspectable={inspectable}
               log={session.events}
               memory={inspector}
               onMemory={setInspector}

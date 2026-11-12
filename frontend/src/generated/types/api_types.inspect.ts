@@ -8,6 +8,10 @@ import type { LeafWire } from "./scene.inspection.leaf";
  */
 export type FieldWire = { 
 /**
+ * Stable digest of the full segmented path, independent of its display preview.
+ */
+identity?: string, 
+/**
  * The section the field is listed in.
  */
 group: FieldGroupWire, 
@@ -24,6 +28,14 @@ path: Array<string>,
  */
 value: LeafWire, 
 /**
+ * Ordinal and full UTF-8 size when only a text preview is included.
+ */
+cut?: [number, number], 
+/**
+ * Ordinal and full dotted path size when the path exceeds a page.
+ */
+path_cut?: [number, number], 
+/**
  * The colour the value is the score of, as red, green and blue; for an entry of a colour attribute.
  */
 rgb?: [number, number, number], 
@@ -37,17 +49,138 @@ text?: string,
 fraction?: number, };
 
 /**
+ * A capability valid only in the socket that issued it, for one held entity/sample revision.
+ */
+export type InspectionContinuation = { 
+/**
+ * Opaque capability; never grants authority beyond the requesting socket.
+ */
+token: string, 
+/**
+ * Next field ordinal, absent on the final page.
+ */
+next: number | null, };
+
+/**
+ * A pinned field's stable identity; legacy pins name the segmented path instead of its digest.
+ */
+export type InspectionPin = { 
+/**
+ * Section containing the field.
+ */
+group: FieldGroupWire, 
+/**
+ * Full segmented-path SHA-256 when available.
+ */
+identity?: string, 
+/**
+ * Legacy segmented path; digest-based requests send no path text.
+ */
+path: Array<string>, };
+
+/**
+ * One page or text chunk requested through the playback socket.
+ */
+export type InspectionRead = { 
+/**
+ * Correlation number owned by the client's inspection ordering.
+ */
+request: number, 
+/**
+ * Capability from the initial inspection.
+ */
+token: string, 
+/**
+ * Field ordinal for text retrieval; absent for a page.
+ */
+field: number | null, 
+/**
+ * Retrieve the complete Raw section as JSON, independently of the current page.
+ */
+raw?: boolean, 
+/**
+ * Resolve these pinned identities independently of the visible page (at most 64).
+ */
+pins?: Array<InspectionPin>, 
+/**
+ * Retrieve the dotted path instead of the value.
+ */
+path: boolean, 
+/**
+ * A page start this capability issued (0 or any returned `next`), or a UTF-8 byte offset for a text chunk.
+ */
+offset: number, };
+
+/**
+ * The result of one bounded continuation request.
+ */
+export type InspectionReadResult = { "state": "Page", 
+/**
+ * Bounded fields in stable order.
+ */
+fields: Array<FieldWire>, 
+/**
+ * Next page ordinal, absent at the end.
+ */
+next: number | null, } | { "state": "Pins", 
+/**
+ * Requested pin index and its preview; paths cap at 64 KiB and texts at 16 KiB.
+ */
+fields: Array<[number, FieldWire]>, 
+/**
+ * Next scan ordinal, absent when every pin has been resolved or the object ends.
+ */
+next: number | null, } | { "state": "Chunk", 
+/**
+ * At most 64 KiB of UTF-8 text.
+ */
+text: string, 
+/**
+ * Full UTF-8 byte count.
+ */
+total: number, 
+/**
+ * Next byte offset, absent at the end.
+ */
+next: number | null, } | { "state": "Refused", 
+/**
+ * Safe reason shown in the inspector.
+ */
+reason: string, };
+
+/**
+ * The inspection to release: its capability, or its initial request before the capability arrived.
+ */
+export type InspectionRelease = { 
+/**
+ * Capability returned by the first inspection reply.
+ */
+token: string, } | { 
+/**
+ * Generation of the initial `Inspect`, not a continuation's correlation number.
+ */
+request: number, };
+
+/**
  * What the backend knows of one object of one sample.
  */
 export type InspectionWire = { "state": "Found", 
 /**
- * At most 4096, and 8 MiB of paths and texts, with every text whole.
+ * At most 4096 fields and 8 MiB of paths/text; large texts carry a preview and retrieval metadata.
  */
 fields: Array<FieldWire>, 
 /**
+ * Socket-local continuation capability and the next page's ordinal.
+ */
+continuation?: InspectionContinuation, 
+/**
  * Whether fields were left out.
  */
-truncated: boolean, } | { "state": "Absent" } | { "state": "Unavailable" };
+truncated: boolean, } | { "state": "Refused", 
+/**
+ * Reason shown by the Inspector.
+ */
+reason: string, } | { "state": "Absent" } | { "state": "Unavailable" };
 
 /**
  * One leaf of an object a search compares, at the key a search names it by.
@@ -74,3 +207,43 @@ entity: string,
  * Its leaves at the paths asked for; repeated keys keep every value.
  */
 items: Array<ItemWire>, };
+
+/**
+ *Maximum UTF-8 bytes of a playback socket request, including JSON framing.
+ */
+export const MAX_INSPECTION_REQUEST_BYTES = 65536;
+
+/**
+ *Maximum UTF-8 bytes in one inspected text chunk.
+ */
+export const MAX_INSPECTION_CHUNK_BYTES = 65536;
+
+/**
+ *Maximum UTF-8 bytes of saved pin path segments, excluding display separators.
+ */
+export const MAX_PIN_PATH_BYTES = 65536;
+
+/**
+ *Maximum field paths in one Frame-scope inspection search.
+ */
+export const MAX_INSPECTION_QUERY_PATHS = 64;
+
+/**
+ *Maximum UTF-8 bytes of one Frame-scope inspection query path.
+ */
+export const MAX_INSPECTION_QUERY_PATH_BYTES = 1024;
+
+/**
+ *Maximum UTF-8 bytes of one inspected entity id.
+ */
+export const MAX_INSPECTION_ENTITY_BYTES = 1024;
+
+/**
+ *The maximum pinned inspection fields.
+ */
+export const MAX_INSPECTION_PINS = 64;
+
+/**
+ *The maximum UTF-8 bytes assembled for one explicit inspection copy.
+ */
+export const MAX_COPY_BYTES = 268435456;

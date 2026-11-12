@@ -198,10 +198,18 @@ describe("lanes", () => {
       inspection: { state: "loading", summary: { entity } },
     });
     expect(sent.filter((message) => message.type === "Inspect")).toEqual([
-      { type: "Inspect", source: 0, data_revision: 1, sample: 0, entity },
+      {
+        type: "Inspect",
+        request: expect.any(Number),
+        source: 0,
+        data_revision: 1,
+        sample: 0,
+        entity,
+      },
     ]);
     server.say({
       type: "Inspected",
+      request: sent.filter((message) => message.type === "Inspect").at(-1)?.request ?? -1,
       source: 0,
       data_revision: 1,
       sample: 0,
@@ -222,6 +230,7 @@ describe("lanes", () => {
     const inspected = (state: "Found" | "Unavailable") =>
       server.say({
         type: "Inspected",
+        request: sent.filter((message) => message.type === "Inspect").at(-1)?.request ?? -1,
         source: 0,
         data_revision: 1,
         sample: 0,

@@ -105,6 +105,7 @@ export function Inspector({
   const unknown = inspection.state === "loading";
   const motion = absent ? null : inspection.summary.motion;
   const truncated = !absent && inspection.truncated;
+  const access = absent ? undefined : inspection.access;
   const { frame, seek } = reach;
   const jumps = appearance ? jumpsFrom(appearance.spans, frame, appearance.truncated) : null;
   const when = absent ? whenOf(appearance, jumps, reach) : "";
@@ -128,7 +129,7 @@ export function Inspector({
             )}
           </div>
           {pill && <Chip>{pill}</Chip>}
-          {truncated && (
+          {truncated && !access && (
             <Chip tone="caution" title="Some fields are not listed">
               Truncated
             </Chip>
@@ -181,7 +182,11 @@ export function Inspector({
         )}
         {!unknown && (
           <InspectorLines
+            onCopyRaw={access?.raw}
+            onCopyLarge={access?.copy}
+            onCopyStart={access?.cancel}
             fields={fields}
+            pinFields={absent ? undefined : inspection.pins}
             entity={inspection.selection.entity}
             scope={`${inspection.selection.lane}:${inspection.selection.source}:${inspection.selection.entity}`}
             memory={memory}
@@ -189,6 +194,68 @@ export function Inspector({
           />
         )}
       </div>
+      {!absent && inspection.error && (
+        <p role="alert" className="p-s text-small text-danger">
+          {inspection.error}
+        </p>
+      )}
+      {access &&
+        (access.next ||
+          access.first ||
+          access.progress ||
+          access.commit ||
+          access.error ||
+          access.copied) && (
+          <div className="flex shrink-0 flex-wrap items-center gap-s border-t border-line p-s">
+            {access.first && (
+              <Button size="small" data-cursor-id="inspection:first" onClick={access.first}>
+                First fields
+              </Button>
+            )}
+            {access.next && (
+              <Button size="small" data-cursor-id="inspection:next" onClick={access.next}>
+                Next fields
+              </Button>
+            )}
+            {access.progress && (
+              <>
+                <span
+                  role="progressbar"
+                  aria-label="Copying value"
+                  aria-valuemin={0}
+                  aria-valuemax={access.progress.total}
+                  aria-valuenow={access.progress.received}
+                  className="text-small text-muted"
+                >
+                  Copying {Math.floor((100 * access.progress.received) / access.progress.total)}%
+                </span>
+                <Button size="small" data-cursor-id="inspection:cancel" onClick={access.cancel}>
+                  Cancel
+                </Button>
+              </>
+            )}
+            {access.commit && (
+              <>
+                <Button size="small" data-cursor-id="inspection:copy" onClick={access.commit}>
+                  Copy value
+                </Button>
+                <Button size="small" data-cursor-id="inspection:cancel" onClick={access.cancel}>
+                  Cancel
+                </Button>
+              </>
+            )}
+            {access.error && (
+              <span role="alert" className="text-small text-danger">
+                {access.error}
+              </span>
+            )}
+            {access.copied && (
+              <span role="status" className="text-small text-muted">
+                Copied
+              </span>
+            )}
+          </div>
+        )}
       {appearance && (
         <ObjectEvents
           events={appearance.events}

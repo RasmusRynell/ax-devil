@@ -49,6 +49,7 @@ struct Rejected {
 #[derive(Clone)]
 pub(super) struct Gate {
     authority: watch::Receiver<Authority>,
+    inspection: Arc<dyn Fn() -> bool + Send + Sync>,
     now_us: Arc<dyn Fn() -> i64 + Send + Sync>,
     timeline: Arc<OnceLock<Timeline>>,
     rejected: Arc<Rejected>,
@@ -66,12 +67,33 @@ impl Gate {
     ) -> Self {
         Self {
             authority,
+            inspection: Arc::new(|| true),
             now_us: Arc::new(now_us),
             timeline: Arc::default(),
             rejected: Arc::default(),
             asked: None,
             applied: None,
         }
+    }
+
+    /// Attaches the lease's current object-detail permission.
+    pub(super) fn with_inspection(
+        mut self,
+        permission: Arc<dyn Fn() -> bool + Send + Sync>,
+    ) -> Self {
+        self.inspection = permission;
+        self
+    }
+
+    /// A live permission reader for the inspection worker.
+    pub(super) fn inspection_permission(&self) -> Arc<dyn Fn() -> bool + Send + Sync> {
+        let gate = self.clone();
+        Arc::new(move || gate.can_inspect())
+    }
+
+    /// Whether inspection is currently permitted for this stream.
+    pub(super) fn can_inspect(&self) -> bool {
+        !self.is_revoked() && (self.inspection)()
     }
 
     /// Tells the gate which video it judges. Wants and frames are judged against its timeline.

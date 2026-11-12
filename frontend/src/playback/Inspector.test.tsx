@@ -370,7 +370,7 @@ describe("inspector", () => {
 
     view.next(ready([{ group: "motion", path: ["speed"], value: { kind: "int", value: "2" } }]));
     const missing = within(screen.getByRole("region", { name: "Pinned" }));
-    expect(missing.getByText("unavailable")).toBeTruthy();
+    expect(missing.getByText("Not present")).toBeTruthy();
     expect(missing.queryByRole("button", { name: /^Copy/ })).toBeNull();
     expect(screen.getByText("speed")).toBeTruthy();
 

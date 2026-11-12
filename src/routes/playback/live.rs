@@ -157,9 +157,9 @@ pub(super) async fn stream(
     ));
     let mut live = Live {
         viewer,
-        gate,
+        gate: gate.clone(),
         catalogs,
-        inspections: Inspections::default(),
+        inspections: Inspections::new(gate.inspection_permission()),
         incoming,
         outbox,
         closing,
@@ -220,6 +220,7 @@ impl<I: Incoming> Live<'_, I> {
                 Ok(())
             }
             Some(Ok(ClientMessage::Inspect {
+                request,
                 source,
                 data_revision,
                 sample,
@@ -227,18 +228,36 @@ impl<I: Incoming> Live<'_, I> {
             })) => {
                 let target = self.viewer.inspect_target(source, data_revision, sample);
                 self.inspections
-                    .ask_target(source, data_revision, sample, entity, target);
+                    .ask_target(request, source, data_revision, sample, entity, target);
+                Ok(())
+            }
+            Some(Ok(ClientMessage::InspectRelease(identity))) => {
+                self.inspections.release_read(&identity);
+                Ok(())
+            }
+            Some(Ok(ClientMessage::InspectContinue(read))) => {
+                self.inspections
+                    .continue_read(read, |source, revision, sample| {
+                        self.viewer.inspect_target(source, revision, sample)
+                    });
                 Ok(())
             }
             Some(Ok(ClientMessage::InspectFields {
+                request,
                 source,
                 data_revision,
                 sample,
                 paths,
             })) => {
                 let target = self.viewer.inspect_target(source, data_revision, sample);
-                self.inspections
-                    .ask_fields_target(source, data_revision, sample, paths, target);
+                self.inspections.ask_fields_target(
+                    request,
+                    source,
+                    data_revision,
+                    sample,
+                    paths,
+                    target,
+                );
                 Ok(())
             }
             Some(Ok(

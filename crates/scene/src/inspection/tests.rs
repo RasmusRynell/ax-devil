@@ -125,9 +125,11 @@ fn fields_are_grouped_in_display_order_and_debug_fields_say_who_produced_them() 
         data: Bytes::from_static(&[1, 2, 3]),
     });
 
-    let (fields, cut) = entity_fields(&entity, MAX_FIELDS);
-
-    assert!(!cut);
+    let page = Traversal::new(&entity, foundation::CancelToken::new())
+        .unwrap()
+        .page(&entity, 0, &[]);
+    assert!(page.next.is_none());
+    let fields: Vec<_> = page.fields.into_iter().map(|entry| entry.field).collect();
     assert_eq!(
         show(&fields),
         [
@@ -164,8 +166,8 @@ fn fields_are_grouped_in_display_order_and_debug_fields_say_who_produced_them() 
             "Debug/Decoder list = \"[]\"",
             "Debug/Decoder text = \"\"",
             "Raw end_reason = \"lost\"",
-            "Raw frame_number = Int(4)",
             "Raw timestamp = \"1970-01-01T00:00:00.001500+00:00\"",
+            "Raw frame_number = Int(4)",
             "Images 0.timestamp = \"1970-01-01T00:00:00.000900+00:00\"",
             "Images 0.bounding_box.x = Float(0.5)",
             "Images 0.bounding_box.y = Float(0.0)",
@@ -274,7 +276,14 @@ fn a_polygon_lists_its_bounds_and_point_count_and_a_timestamp_is_a_datetime() {
     let mut observation = observation(SceneTime::Timestamp(MediaTime(1500)));
     observation.geometry = Geometry::Polygon(Polygon::new(points).expect("a polygon"));
 
-    let (fields, _) = entity_fields(&entity(observation), MAX_FIELDS);
+    let entity = entity(observation);
+    let fields: Vec<_> = Traversal::new(&entity, foundation::CancelToken::new())
+        .unwrap()
+        .page(&entity, 0, &[])
+        .fields
+        .into_iter()
+        .map(|entry| entry.field)
+        .collect();
 
     let shown = show(&fields);
     assert!(
@@ -318,30 +327,7 @@ fn a_search_collects_only_what_it_names_and_refuses_to_spend_more_than_its_budge
 }
 
 #[test]
-fn an_inspection_lists_no_more_bytes_of_paths_than_its_budget_however_long_a_key_over_many_leaves()
-{
-    let parent = "p".repeat(3 * 1024 * 1024);
-    let children = (0..4_096).map(Value::Int).collect();
-    let debug = vec![(Name::Owned(parent), Value::List(children))];
-    let observation = observation(SceneTime::Frame(0))
-        .with_details(Vec::new(), debug)
-        .expect("ok");
-
-    let (fields, cut) = entity_fields(&entity(observation), MAX_FIELDS);
-
-    let listed = fields
-        .iter()
-        .filter(|f| f.group == FieldGroup::Debug)
-        .count();
-    assert_eq!(
-        (listed, cut),
-        (2, true),
-        "two copies of the key fit, the rest are left out"
-    );
-}
-
-#[test]
-fn a_scalar_text_beyond_the_budget_is_left_out_and_a_search_for_it_is_refused() {
+fn a_search_for_a_scalar_text_beyond_its_budget_is_refused() {
     let long = "x".repeat(MAX_INSPECTION_BYTES + 1);
     let debug = vec![
         pair("long", Value::Str(long.into())),
@@ -351,13 +337,6 @@ fn a_scalar_text_beyond_the_budget_is_left_out_and_a_search_for_it_is_refused() 
         .with_details(Vec::new(), debug)
         .expect("ok");
     let entity = entity(observation);
-
-    let (fields, cut) = entity_fields(&entity, MAX_FIELDS);
-    let debug: Vec<_> = fields
-        .iter()
-        .filter(|f| f.group == FieldGroup::Debug)
-        .collect();
-    assert!(cut && debug.len() == 1 && debug[0].path == ["short"]);
 
     let search = |path: &str| {
         let budget = &mut Budget {
@@ -438,7 +417,13 @@ fn an_integer_reaches_the_wire_exactly_and_is_not_a_float() {
             .expect("ok"),
     );
 
-    let (fields, _) = entity_fields(&entity, MAX_FIELDS);
+    let fields: Vec<_> = Traversal::new(&entity, foundation::CancelToken::new())
+        .unwrap()
+        .page(&entity, 0, &[])
+        .fields
+        .into_iter()
+        .map(|entry| entry.field)
+        .collect();
 
     let wire: Vec<_> = fields
         .iter()
@@ -452,46 +437,5 @@ fn an_integer_reaches_the_wire_exactly_and_is_not_a_float() {
             r#"{"kind":"int","value":"3"}"#,
             r#"{"kind":"float","value":3.0}"#,
         ]
-    );
-}
-
-#[test]
-fn a_text_is_kept_whole_and_only_the_field_limit_says_it_cut() {
-    let long = "é".repeat(10_000);
-    let source: Fields = vec![
-        pair("a", Value::Float(f64::NAN)),
-        (Name::Owned("b".repeat(10_000)), Value::Int(1)),
-        pair("long", Value::Str(long.clone().into())),
-    ];
-    let entity = entity(
-        observation(SceneTime::Frame(0))
-            .with_details(source, Vec::new())
-            .expect("ok"),
-    );
-
-    let (all, cut) = entity_fields(&entity, MAX_FIELDS);
-    let debug: Vec<_> = all
-        .iter()
-        .filter(|f| f.group == FieldGroup::Debug)
-        .collect();
-
-    assert!(!cut, "nothing was left out");
-    assert_eq!(
-        debug[0].value,
-        Leaf::Text("NaN".into()),
-        "a number the wire cannot carry"
-    );
-    assert_eq!(debug[1].path[0].chars().count(), 10_000);
-    assert_eq!(debug[2].value, Leaf::Text(long));
-
-    let (few, cut) = entity_fields(&entity, 2);
-    assert!(cut && few.len() == 2 && few[0].group == FieldGroup::Geometry);
-    let (exact, _) = entity_fields(&entity, all.len());
-    assert_eq!(exact, all);
-    let plain = self::entity(observation(SceneTime::Frame(0)));
-    let (fields, cut) = entity_fields(&plain, 5);
-    assert!(
-        !cut && fields.len() == 5,
-        "exactly the limit is not a cut: {fields:?}"
     );
 }

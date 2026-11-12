@@ -73,7 +73,7 @@ use tokio::{
 };
 
 /// Client messages are small; anything larger is not this protocol.
-const MAX_CLIENT_MESSAGE: usize = 64 * 1024;
+const MAX_CLIENT_MESSAGE: usize = api_types::inspect::MAX_INSPECTION_REQUEST_BYTES;
 /// How long an ending viewer gets to take its last messages, the error that ends it included, before its socket is
 /// dropped: a viewer that stopped reading must not keep its socket and tasks for good.
 const FLUSH_GRACE: Duration = Duration::from_secs(1);
@@ -131,6 +131,7 @@ struct Outgoing {
     message: Message,
     frames: Option<RangeInclusive<u64>>,
     data: Option<OverlayEvent>,
+    inspection: Option<foundation::CancelToken>,
 }
 
 impl Outgoing {
@@ -140,6 +141,7 @@ impl Outgoing {
             message,
             frames: Some(frame..=frame),
             data: None,
+            inspection: None,
         }
     }
 }
@@ -150,6 +152,7 @@ impl From<Message> for Outgoing {
             message,
             frames: None,
             data: None,
+            inspection: None,
         }
     }
 }
@@ -169,7 +172,8 @@ async fn serve(state: AppState, socket: WebSocket, mut slot: Slot) {
         Err(ended) => return refuse(&mut sink, ended).await,
     };
     let clock = state.sessions.clone();
-    let gate = Gate::new(lease.authority(), move || clock.now_us());
+    let gate = Gate::new(lease.authority(), move || clock.now_us())
+        .with_inspection(lease.inspection_permission());
     let audience = Audience {
         host_details: lease.host_details(),
     };
@@ -283,10 +287,21 @@ where
             message,
             frames,
             data,
+            inspection,
         }) = queue.recv().await
         {
+            // Wait for socket readiness before the final validity/authority checks, then submit without awaiting.
+            if std::future::poll_fn(|cx| sink.poll_ready_unpin(cx))
+                .await
+                .is_err()
+            {
+                return;
+            }
             if gate.is_revoked() {
                 break;
+            }
+            if inspection.is_some_and(|validity| validity.is_cancelled() || !gate.can_inspect()) {
+                continue;
             }
             if frames.is_some_and(|frames| !gate.admits(&frames)) {
                 if let Some(data) = data {
@@ -294,7 +309,7 @@ where
                 }
                 continue;
             }
-            if sink.send(message).await.is_err() {
+            if sink.start_send_unpin(message).is_err() || sink.flush().await.is_err() {
                 return;
             }
         }

@@ -62,6 +62,7 @@ async fn inspect(
 ) -> InspectionWire {
     viewer
         .send(&ClientMessage::Inspect {
+            request: 0,
             source,
             data_revision,
             sample,
@@ -70,6 +71,7 @@ async fn inspect(
         .await;
     loop {
         if let Event::Message(ServerMessage::Inspected {
+            request: 0,
             source: s,
             data_revision: r,
             sample: n,
@@ -91,8 +93,9 @@ async fn an_object_of_a_held_sample_is_found_with_its_fields_and_a_missing_one_i
     let backend = Backend::start().await;
     let (mut viewer, revision) = viewer_holding_three_samples(&backend).await;
 
-    let InspectionWire::Found { fields, truncated } =
-        inspect(&mut viewer, 0, revision, 1, "2").await
+    let InspectionWire::Found {
+        fields, truncated, ..
+    } = inspect(&mut viewer, 0, revision, 1, "2").await
     else {
         panic!("object 2 is in sample 1");
     };

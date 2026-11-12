@@ -154,3 +154,52 @@ describe("the list", () => {
     ]);
   });
 });
+
+it("pins an abbreviated path by its full-path digest across sample order changes and reload", () => {
+  const first: FieldWire = {
+    group: "debug",
+    path: ["preview"],
+    identity: "full-path-sha256",
+    path_cut: [0, 9000000],
+    value: int("1"),
+  };
+  const line = inspectorLines([first], [], NONE, "7").lines.find(
+    (line) => line.kind === "field" && line.id !== null,
+  );
+  if (line?.kind !== "field" || !line.id) throw Error("pinnable field");
+  const pins = JSON.parse(JSON.stringify(togglePin([], line.id))) as FieldId[];
+  const reordered = {
+    ...first,
+    path: ["another preview"],
+    path_cut: [4096, 9000000] as [number, number],
+    value: int("2"),
+  };
+  const next = inspectorLines([field(CLASS, text("car")), reordered], pins, NONE, "8");
+  expect(shown(next.pinned)).toEqual([int("2")]);
+  expect(togglePin(pins, line.id)).toEqual([]);
+  const legacy = { group: "debug" as const, path: ["legacy"] };
+  expect(togglePin([legacy], { ...legacy, identity: "digest" })).toEqual([]);
+  let bounded: readonly FieldId[] = [];
+  for (let index = 0; index < 64; index++)
+    bounded = togglePin(bounded, { group: "debug", path: [String(index)] });
+  expect(bounded).toHaveLength(64);
+  expect(togglePin(bounded, { group: "debug", path: ["65th"] })).toBe(bounded);
+});
+
+it("saves a pin label within 65,536 UTF-8 bytes without cutting a code point", () => {
+  const prefix = "界".repeat(21845);
+  const value: FieldWire = {
+    group: "debug",
+    identity: "full-path-digest",
+    path: [`${prefix}ab😀`],
+    value: int("1"),
+  };
+  const row = inspectorLines([value], [], NONE, "7").lines.find(
+    (line) => line.kind === "field" && line.id,
+  );
+  if (row?.kind !== "field" || !row.id) throw Error("pinnable field");
+  const saved = JSON.parse(JSON.stringify(togglePin([], row.id))) as FieldId[];
+  expect(saved[0].path).toEqual([`${prefix}a`]);
+  expect(new TextEncoder().encode(saved[0].path.join("")).length).toBe(65536);
+  expect(saved[0].identity).toBe("full-path-digest");
+}, 5000);

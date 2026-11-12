@@ -40,6 +40,7 @@ module.exports = {
     "livestreams",
     "twice",
     "fields",
+    "inspection",
     "events",
   ],
 };

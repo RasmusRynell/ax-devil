@@ -165,6 +165,7 @@ dependencies = [
  "serde_json",
  "sessions",
  "settings",
+ "sha2 0.11.1",
  "tempfile",
  "tokio",
  "tokio-tungstenite",
@@ -2169,6 +2170,7 @@ dependencies = [
  "postcard",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "ts-rs",
 ]
 

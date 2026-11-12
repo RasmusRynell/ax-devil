@@ -9,20 +9,32 @@ const after = (run: () => void, ms: number) => {
   return () => clearTimeout(timer);
 };
 
-const frame = (sample: number, columns: unknown = {}) =>
-  ({ source: 0, dataRevision: 1, sample, columns }) as unknown as LaneFrame;
+const columns = {};
+const frame = (sample: number, sampleColumns: unknown = columns) =>
+  ({ source: 0, dataRevision: 1, sample, columns: sampleColumns }) as unknown as LaneFrame;
 
 const answer = (
+  sent: readonly ClientMessage[],
   sample: number,
   objects: Extract<ServerMessage, { type: "InspectedFields" }>["objects"],
-): Extract<ServerMessage, { type: "InspectedFields" }> => ({
-  type: "InspectedFields",
-  source: 0,
-  data_revision: 1,
-  sample,
-  paths: ["id"],
-  objects,
-});
+): Extract<ServerMessage, { type: "InspectedFields" }> => {
+  const asked = sent
+    .filter(
+      (message): message is Extract<ClientMessage, { type: "InspectFields" }> =>
+        message.type === "InspectFields" && message.sample === sample,
+    )
+    .at(-1);
+  if (!asked) throw Error("search request");
+  return {
+    type: "InspectedFields",
+    request: asked.request,
+    source: 0,
+    data_revision: 1,
+    sample,
+    paths: asked.paths,
+    objects,
+  };
+};
 
 describe("the leaves of a frame's objects", () => {
   it("are asked once per sample and read for exactly that sample, with integers exact", () => {
@@ -36,7 +48,7 @@ describe("the leaves of a frame's objects", () => {
     expect(fields.view(frame(1), paths).state).toBe("pending");
 
     fields.receive(
-      answer(1, [
+      answer(sent, 1, [
         {
           entity: "7",
           items: [
@@ -57,25 +69,34 @@ describe("the leaves of a frame's objects", () => {
     fields.ask(frame(2), paths);
     expect(sent).toHaveLength(2);
     expect(fields.view(frame(2), paths).state).toBe("pending");
-    fields.receive(answer(1, []));
+    fields.receive(answer(sent, 1, []));
     expect(fields.view(frame(2), paths).state).toBe("pending");
   });
 
-  it("are not asked again for a sample the backend does not answer for until the viewer holds it anew", () => {
+  it("settle a refusal without loading, and recover when permission returns or the sample is held anew", () => {
     const sent: ClientMessage[] = [];
     const fields = new FrameFields((message) => sent.push(message), after);
     const held = {};
 
     fields.ask(frame(1, held), ["id"]);
-    fields.receive(answer(1, null));
+    fields.receive(answer(sent, 1, null));
     expect(fields.view(frame(1, held), ["id"]).state).toBe("unavailable");
     fields.ask(frame(1, held), ["id"]);
     expect(sent).toHaveLength(1);
     fields.ask(frame(1, {}), ["id"]);
     expect(sent).toHaveLength(2);
+    fields.receive(answer(sent, 1, []));
+    expect(fields.view(frame(1), ["id"]).state).toBe("ready");
+    fields.ask(frame(1), ["id"], false);
+    expect(fields.view(frame(1), ["id"], false).state).toBe("unavailable");
+    expect(sent).toHaveLength(2);
+    fields.ask(frame(1), ["id"], true);
+    expect(sent).toHaveLength(3);
+    fields.receive(answer(sent, 1, []));
+    expect(fields.view(frame(1), ["id"], true).state).toBe("ready");
   });
 
-  it("are asked again when a list opens after an answer was dropped", () => {
+  it("are asked afresh when a list reopens, ignoring a held refusal from its previous request", async () => {
     const sent: ClientMessage[] = [];
     const fields = new FrameFields((message) => sent.push(message), after);
     const held = frame(1);
@@ -84,13 +105,39 @@ describe("the leaves of a frame's objects", () => {
     fields.ask(held, ["id"]);
     fields.ask(held, ["id"]);
     expect(sent).toHaveLength(1);
+    let release!: () => void;
+    const heldReply = answer(sent, 1, null);
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const late = waiting.then(() => fields.receive(heldReply));
     close();
 
     // The list opens again on the same sample, and nothing else asks.
     fields.subscribe(() => {});
     fields.ask(held, ["id"]);
     expect(sent).toHaveLength(2);
-  });
+    release();
+    await late;
+    expect(fields.view(held, ["id"]).state).toBe("pending");
+    fields.receive(answer(sent, 1, []));
+    expect(fields.view(held, ["id"]).state).toBe("ready");
+    for (const absent of [false, true]) {
+      fields.reconnect();
+      fields.ask(held, ["debug.foo"]);
+      const old = answer(sent, 1, null);
+      fields.receive(old);
+      expect(fields.view(held, ["debug.foo"]).state).toBe("unavailable");
+      fields.ask(absent ? undefined : held, absent ? ["debug.foo"] : []);
+      fields.ask(held, ["debug.foo"]);
+      expect(fields.view(held, ["debug.foo"]).state).toBe("pending");
+      fields.receive({ ...old, objects: [] });
+      expect(fields.view(held, ["debug.foo"]).state).toBe("pending");
+      fields.receive(answer(sent, 1, []));
+      expect(fields.view(held, ["debug.foo"]).state).toBe("ready");
+    }
+    fields.disconnect();
+  }, 5000);
 
   it("are sent again while a list listens and the answer is dropped, a few times, and not once answered", () => {
     vi.useFakeTimers();
@@ -103,11 +150,17 @@ describe("the leaves of a frame's objects", () => {
     fields.ask(held, ["id"]);
     vi.advanceTimersByTime(2000);
     expect(sent).toHaveLength(2);
+    expect(sent[1]).toEqual(sent[0]);
     vi.advanceTimersByTime(60_000);
     expect(sent).toHaveLength(4);
+    expect(fields.view(held, ["id"]).state).toBe("unavailable");
+    fields.ask(held, ["id"]);
+    fields.receive(answer(sent, 1, []));
+    expect(sent).toHaveLength(4);
+    expect(fields.view(held, ["id"]).state).toBe("unavailable");
 
     fields.ask(frame(2), ["id"]);
-    fields.receive(answer(2, []));
+    fields.receive(answer(sent, 2, []));
     vi.advanceTimersByTime(60_000);
     expect(sent).toHaveLength(5);
 
@@ -122,6 +175,29 @@ describe("the leaves of a frame's objects", () => {
     close();
     vi.advanceTimersByTime(60_000);
     expect(sent).toHaveLength(7);
+    const count = sent.length;
+    fields.disconnect();
+    expect(fields.view(frame(4), ["id"]).state).toBe("unavailable");
+    vi.advanceTimersByTime(60_000);
+    expect(sent).toHaveLength(count);
+    fields.reconnect();
+    fields.ask(held, ["id"]);
+    expect(sent).toHaveLength(count + 1);
+    for (const paths of [
+      ["界".repeat(1024)],
+      Array(65).fill("id") as string[],
+      Array(64).fill("x".repeat(1024)) as string[],
+    ]) {
+      const before = sent.length;
+      fields.ask(held, paths);
+      expect(fields.view(held, paths).state).toBe("unavailable");
+      expect(sent).toHaveLength(before);
+    }
+    fields.ask(held, ["id"]);
+    expect(sent).toHaveLength(count + 2);
+    fields.receive(answer(sent, 1, []));
+    expect(fields.view(held, ["id"]).state).toBe("ready");
+    fields.disconnect();
     vi.useRealTimers();
   });
 });

@@ -1,7 +1,4 @@
-/**
- * A viewer's playback. Playback never waits for lane data; seeking waits briefly. Time, display refresh and socket
- * are injected; the UI reads `getSnapshot`.
- */
+/** A viewer's playback: injected time, refresh and socket. Playback never waits for lane data; seeking waits briefly. */
 
 import type { ErrorWire } from "../generated/api";
 import { reasonOf } from "../client/errors";
@@ -221,9 +218,10 @@ export class PlaybackStream implements LaneControl {
     if (this.#data.inspections.select(selection)) this.#publish();
   }
 
-  /** Whether an inspector page shows; its fields are asked for only then. */
-  showInspector(shown: boolean): void {
-    if (this.#data.inspections.setVisible(shown)) this.#publish();
+  /** Updates visibility and the pins resolved by the inspection owner. */
+  showInspector(shown: boolean, pins?: readonly import("../inspect/fields").FieldId[]): void {
+    const changed = this.#data.inspections.setVisible(shown);
+    if ((pins ? this.#data.inspections.setPins(pins) : false) || changed) this.#publish();
   }
 
   play(): void {
@@ -288,10 +286,7 @@ export class PlaybackStream implements LaneControl {
     this.setSpeed(steppedSpeed(this.#speed, direction));
   }
 
-  /**
-   * Follows a presenter: puts the clock where the presenter's is now (`serverNowUs` reads the backend's time) and
-   * at its speed. Call it again when the intent changes; a reconnection puts it back in step.
-   */
+  /** Follows a presenter: puts the clock where the presenter's is by now (`serverNowUs` reads the backend's time) and at its speed. */
   follow(intent: ClockIntent, serverNowUs: () => number, own = false): void {
     this.#autoplay = false;
     this.#followed = { intent, serverNowUs };

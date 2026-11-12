@@ -73,7 +73,7 @@ export class ViewerData {
     this.files = new FileScope(lanes, send, after);
     this.catalogs = new Catalogs((id) => send({ type: "Catalog", id }));
     this.#laneCatalogs = new LaneCatalogs(this.catalogs, () => this.#fallback);
-    this.inspections = new Inspections(send);
+    this.inspections = new Inspections(send, undefined, changed, after);
     this.fields = new FrameFields(send, after);
     this.next = new NextEntry(send);
   }
@@ -193,7 +193,8 @@ export class ViewerData {
     this.#presentation = [];
     this.#matched = [];
     this.samples.clear();
-    this.inspections.suspend();
+    this.inspections.disconnect();
+    this.fields.disconnect();
     this.files.suspend();
     this.next.close();
   }
@@ -243,6 +244,7 @@ export class ViewerData {
   /** Takes a message that only changes the data held (an inspector answer, the data window, evictions, a lane's problem, file lists); false for any other. */
   receive(message: ServerMessage): boolean {
     if (message.type === "Inspected") this.inspections.receive(message);
+    else if (message.type === "InspectContinued") this.inspections.receiveContinuation(message);
     else if (message.type === "InspectedFields") this.fields.receive(message);
     else if (message.type === "DataWindow") this.window(message.first, message.last);
     else if (message.type === "Evict") this.evict(message);

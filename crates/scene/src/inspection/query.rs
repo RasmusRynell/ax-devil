@@ -50,16 +50,16 @@ impl Search<'_> {
     /// The pieces of the key of the leaf at `path` in `place`, with `rgb` and a channel after it for a colour's.
     fn pieces<'p>(
         place: Place,
-        path: &'p [String],
+        path: &'p [&str],
         channel: Option<&'p str>,
     ) -> impl DoubleEndedIterator<Item = &'p str> + Clone {
         std::iter::once(place.group.name())
-            .chain(path.iter().map(String::as_str))
+            .chain(path.iter().copied())
             .chain(channel.into_iter().flat_map(|channel| ["rgb", channel]))
     }
 
     /// Whether a wanted path names the leaf's key. A key a path cannot be matched against refuses the search.
-    fn names(&mut self, place: Place, path: &[String], channel: Option<&str>) -> bool {
+    fn names(&mut self, place: Place, path: &[&str], channel: Option<&str>) -> bool {
         for wanted in self.paths {
             match path_names(wanted, Self::pieces(place, path, channel)) {
                 Ok(true) => return true,
@@ -74,7 +74,7 @@ impl Search<'_> {
     }
 
     /// Keeps a leaf if the budget has room for it.
-    fn keep(&mut self, place: Place, path: &[String], channel: Option<&str>, value: Leaf) {
+    fn keep(&mut self, place: Place, path: &[&str], channel: Option<&str>, value: Leaf) {
         // The key is measured before it is built, so that one that does not fit is never allocated.
         let pieces = || Self::pieces(place, path, channel);
         let key_bytes = pieces().map(str::len).sum::<usize>() + pieces().count() - 1;
@@ -99,7 +99,7 @@ impl Sink for Search<'_> {
         self.over
     }
 
-    fn wants(&mut self, place: Place, path: &[String], color: bool, bytes: usize) -> bool {
+    fn wants(&mut self, place: Place, path: &[&str], color: bool, bytes: usize) -> bool {
         match self.budget.leaves.checked_sub(1) {
             Some(left) => self.budget.leaves = left,
             None => self.over = true,
@@ -116,7 +116,7 @@ impl Sink for Search<'_> {
         named && !self.over
     }
 
-    fn push(&mut self, place: Place, path: &[String], value: Leaf, marks: Marks) {
+    fn push(&mut self, place: Place, path: &[&str], value: Leaf, marks: Marks) {
         if self.names(place, path, None) {
             self.keep(place, path, None, value);
         }

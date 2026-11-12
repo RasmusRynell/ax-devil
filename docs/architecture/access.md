@@ -46,6 +46,9 @@ No handler checks an address, a listener or a list of grants itself.
 
 - A Session has one Presenter View. Every Owner seat drives it and shows it; an Owner has no private view.
 - A Guest seat follows the Presenter View, or explores its own view when the Sharing options allow it.
+- A Guest's playback lease permits inspection only while its current view shows object details: the Presenter View
+  while following, its own while exploring. Inspection admission and delivery both read that current permission;
+  Owner inspection is independent of the toggle.
 - Sharing options are what the Owner allows every Guest of a Session (Watch or Explore). They are Session state,
   never settings.
 - An Owner who opens a server attaches to one of its Sessions as an Owner seat, or starts a new one; the one
