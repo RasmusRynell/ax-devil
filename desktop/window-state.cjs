@@ -96,4 +96,4 @@ function writeWindow(file, state) {
   }
 }
 
-module.exports = { readWindow, windowBounds, writeWindow };
+module.exports = { clampInto, readWindow, windowBounds, writeWindow };

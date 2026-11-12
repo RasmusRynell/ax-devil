@@ -1,6 +1,7 @@
 // Electron has no startSystemMove API. On Linux, restore a maximized title drag ourselves, as the
 // reference does when native movement is unavailable; normal-window dragging remains native.
 const { screen } = require("electron");
+const { clampInto } = require("./window-state.cjs");
 const gestures = new WeakMap();
 
 /** Only X11 permits the absolute positioning this fallback needs. Unknown backends keep native movement. */
@@ -56,11 +57,17 @@ function restoreDrag(window, phase, titleHeight) {
   held.last = pointer;
   const place = () => {
     if (gestures.get(window) !== held || window.isDestroyed()) return;
-    window.setBounds({
-      ...held.normal,
-      x: Math.round(held.last.x - held.normal.width * held.fraction),
-      y: Math.max(0, Math.round(held.last.y - held.titleHeight / 2)),
-    });
+    const area = screen.getDisplayNearestPoint(held.last).workArea;
+    window.setBounds(
+      clampInto(
+        {
+          ...held.normal,
+          x: Math.round(held.last.x - held.normal.width * held.fraction),
+          y: Math.round(held.last.y - held.titleHeight / 2),
+        },
+        area,
+      ),
+    );
   };
   if (held.ready) place();
   else if (

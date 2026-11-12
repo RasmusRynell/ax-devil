@@ -130,7 +130,7 @@ module.exports.run = async ({ window }) => {
         bounds.x ===
           Math.round(
             maximized.x - 100 - (800 * (maximized.x - maximizedBounds.x)) / maximizedBounds.width,
-          ) && bounds.y === Math.max(0, Math.round(maximized.y + 160 - titleHeight / 2))
+          ) && bounds.y === Math.round(maximized.y + 160 - titleHeight / 2)
       );
     }, "continuing the same restore gesture to its pointer-relative position");
   } catch (error) {
@@ -153,7 +153,7 @@ module.exports.run = async ({ window }) => {
   );
   assert.equal(
     restored.y,
-    Math.max(0, Math.round(maximized.y + 160 - titleHeight / 2)),
+    Math.round(maximized.y + 160 - titleHeight / 2),
     "restore puts the pointer halfway down the measured title bar",
   );
   const again = await point(window, TITLE);
