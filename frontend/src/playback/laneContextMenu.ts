@@ -1,4 +1,4 @@
-import { command, scopeOf, type Scope, type Shortcuts } from "../commands";
+import { command, scopeOf, type Scope, type Shortcuts } from "../client/commands";
 import type { CommandId } from "../generated/settings";
 import type { MenuEntry } from "../kit/Menu";
 

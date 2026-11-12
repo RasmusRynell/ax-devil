@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import { SETTINGS, type SettingKey } from "../generated/settings";
 import { SegmentedControl, TileChoice } from "../kit/Chips";
 import { Dialog } from "../kit/Dialog";
 import { SectionCaption } from "../kit/SectionCaption";
-import { applyAppearance, settingsPatch, useAppearance, useSettings } from "../settings";
+import { applyAppearance, settingsPatch, useAppearance, useSettings } from "../client/settings";
 import { textOf, type Row } from "./SettingField";
 import { useSaveDialog } from "./useSaveDialog";
 

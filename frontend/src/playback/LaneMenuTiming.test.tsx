@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
-import { DEFAULT_SETTINGS } from "../fakeSettings";
+import { DEFAULT_SETTINGS } from "../client/fakeSettings";
 import type { BasisWire } from "../generated/api";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { box, READY, setup, tab } from "./laneMenuRig";

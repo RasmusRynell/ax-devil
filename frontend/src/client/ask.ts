@@ -1,5 +1,5 @@
 import { apiFetch } from "./api";
-import type { ErrorWire } from "./generated/api";
+import type { ErrorWire } from "../generated/api";
 
 /** What a request came back with: its value (`undefined` for a 204), or the failure the backend sent. */
 export type Answer<T> = { ok: true; value: T } | { ok: false; error: ErrorWire };

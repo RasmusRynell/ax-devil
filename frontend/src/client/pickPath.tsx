@@ -2,8 +2,8 @@ import { createContext, useContext, useRef, useState, type ReactNode } from "rea
 import { useAccess } from "./access";
 import { ask } from "./ask";
 import { reasonOf } from "./errors";
-import type { FolderListing, PathExists } from "./generated/api";
-import { FolderProblem, PathPicker, type CheckExists } from "./kit/PathPicker";
+import type { FolderListing, PathExists } from "../generated/api";
+import { FolderProblem, PathPicker, type CheckExists } from "../kit/PathPicker";
 import { SUFFIX } from "./recents";
 import { type WindowBridge } from "./windowBridge";
 

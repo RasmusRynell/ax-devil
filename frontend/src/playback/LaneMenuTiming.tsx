@@ -2,7 +2,7 @@ import { Checkbox, Select } from "../kit/Fields";
 import type { AlignmentWire, BasisWire } from "../generated/api";
 import { Switch } from "../kit/Switch";
 import type { CadenceWire } from "./protocol";
-import { useSettings } from "../settings";
+import { useSettings } from "../client/settings";
 import {
   DEFAULT_STICKY,
   DEFAULT_SYNC,

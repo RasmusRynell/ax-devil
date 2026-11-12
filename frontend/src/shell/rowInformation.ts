@@ -1,4 +1,4 @@
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import type { ContentInfo, EntryInfo, ItemRecipe, ItemState, RowInfo } from "../generated/api";
 import { camerasOf } from "../live/cameras";
 import { informationOf as streamInformation, SOURCES, type Information } from "../live/information";

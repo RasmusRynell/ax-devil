@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ask } from "../ask";
+import { ask } from "../client/ask";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
 

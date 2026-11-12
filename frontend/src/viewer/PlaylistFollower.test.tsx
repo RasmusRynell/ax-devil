@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { FakeSettings } from "../fakeSettings";
+import { FakeSettings } from "../client/fakeSettings";
 import { opened } from "../playback/fakeOpened";
 import type { Incoming } from "../playback/wire";
 import { scenario } from "../session/fakeScenario";

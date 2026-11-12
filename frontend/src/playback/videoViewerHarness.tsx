@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { useMemo } from "react";
 import { afterEach, beforeEach, vi } from "vite-plus/test";
-import { FakeSettings } from "../fakeSettings";
+import { FakeSettings } from "../client/fakeSettings";
 import type { SettingsState } from "../generated/api";
 import { FakeSocket } from "../session/fakeSession";
 import { useDoc, useView } from "../session/session";

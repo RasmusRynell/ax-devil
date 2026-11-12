@@ -5,7 +5,7 @@
  * session is framework-free; the socket, the display refresh and time are injected, and the UI reads `getSnapshot`.
  */
 
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import type { LiveOpenedWire } from "../generated/api";
 import type { FileScope } from "../playback/fileScope";
 import type { FrameFields } from "../playback/frameFields";

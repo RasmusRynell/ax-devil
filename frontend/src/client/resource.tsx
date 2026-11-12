@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { ask } from "./ask";
-import type { ErrorWire, Topic } from "./generated/api";
+import type { ErrorWire, Topic } from "../generated/api";
 
 /** How long a failed read waits before it is tried again, one entry per retry. */
 const RETRY_MS = [1000, 2000, 4000];

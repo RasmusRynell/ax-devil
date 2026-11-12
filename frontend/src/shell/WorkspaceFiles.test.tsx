@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { AccessContext } from "../access";
-import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
+import { AccessContext } from "../client/access";
+import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import { scenario } from "../session/fakeScenario";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
-import { folderOf, usedOn } from "../recents";
+import { folderOf, usedOn } from "../client/recents";
 import { Shell } from "./Shell";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));

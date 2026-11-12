@@ -7,7 +7,7 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import type { ItemState } from "../generated/api";
 import { useCan, useSetView, useView } from "../session/session";
 import { PaneBudget } from "../playback/budget";

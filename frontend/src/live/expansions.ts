@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { ask } from "../ask";
+import { ask } from "../client/ask";
 import type { ExpansionsRequest, LiveExpansions } from "../generated/api";
 
 /** How long the hosts stay as typed before they are asked about. */

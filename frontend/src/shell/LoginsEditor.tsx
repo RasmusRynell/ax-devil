@@ -3,7 +3,7 @@ import type { SecretState } from "../generated/api";
 import { Button } from "../kit/Button";
 import { FIELD } from "../kit/look";
 import { SET_PASSWORD } from "../live/expansions";
-import { type Login, secretStateOf } from "../secret";
+import { type Login, secretStateOf } from "../client/secret";
 import { textOf } from "./SettingField";
 import { Refusal } from "../kit/Refusal";
 

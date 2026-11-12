@@ -6,7 +6,7 @@ import { Dialog, DialogFrame } from "../kit/Dialog";
 import { Checkbox, Select, TextField } from "../kit/Fields";
 import { MiddleElided } from "../kit/MiddleElided";
 import type { PlaybackView } from "../playback/view";
-import { exportFile, usePickPath } from "../pickPath";
+import { exportFile, usePickPath } from "../client/pickPath";
 import { choicesOf } from "./lanes";
 import type { ExportJobs, ExportStatus } from "./jobs";
 

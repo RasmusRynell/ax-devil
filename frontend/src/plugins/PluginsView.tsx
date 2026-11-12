@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useAccess } from "../access";
-import { chooseFolder, usePickPath } from "../pickPath";
-import { ask } from "../ask";
-import { reasonOf } from "../errors";
-import { useResource } from "../resource";
+import { useAccess } from "../client/access";
+import { chooseFolder, usePickPath } from "../client/pickPath";
+import { ask } from "../client/ask";
+import { reasonOf } from "../client/errors";
+import { useResource } from "../client/resource";
 import type {
   ErrorWire,
   HandlerKind,

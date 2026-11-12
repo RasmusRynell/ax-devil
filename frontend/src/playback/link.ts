@@ -1,4 +1,4 @@
-import { CommandRefused } from "../errors";
+import { CommandRefused } from "../client/errors";
 import type { ClientMessage } from "./protocol";
 import { RETRY_MS, type SessionDeps } from "./sessionDeps";
 import type { Connection, Incoming } from "./wire";

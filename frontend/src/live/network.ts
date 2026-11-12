@@ -1,11 +1,11 @@
 /** The cameras the network scan finds: the stream of snapshots, how they are ordered and worded. */
 
 import { useEffect, useState } from "react";
-import { apiFetch } from "../api";
+import { apiFetch } from "../client/api";
 import type { NetworkRow, NetworkSignIn, NetworkSnapshot, ScanStarted } from "../generated/api";
 import type { Tone } from "../kit/look";
-import { ask } from "../ask";
-import { reasonOf } from "../errors";
+import { ask } from "../client/ask";
+import { reasonOf } from "../client/errors";
 
 const RETRY_MS = 2000;
 

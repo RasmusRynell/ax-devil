@@ -1,9 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { vi } from "vite-plus/test";
-import { AccessContext } from "../access";
-import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
+import { AccessContext } from "../client/access";
+import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import type { CatalogInfoWire, LaneStatusWire } from "../generated/api";
-import type { SettingsApi } from "../settings";
+import type { SettingsApi } from "../client/settings";
 import type { CadenceWire } from "./protocol";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { LaneMenu } from "./LaneMenu";

@@ -6,8 +6,8 @@ import { SegmentedControl } from "../kit/Chips";
 import { Checkbox, LABELLED, Select, TextField } from "../kit/Fields";
 import { Icon } from "../kit/Icon";
 import { SET_PASSWORD } from "../live/expansions";
-import { chooseFolder, usePickPath } from "../pickPath";
-import { isSecretState, secretStateOf, type Login } from "../secret";
+import { chooseFolder, usePickPath } from "../client/pickPath";
+import { isSecretState, secretStateOf, type Login } from "../client/secret";
 import { LoginsEditor } from "./LoginsEditor";
 
 /** A setting's value as the backend tells it, or as edited: logins carry the passwords typed since. */

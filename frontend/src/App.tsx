@@ -1,10 +1,10 @@
-import { AccessContext } from "./access";
+import { AccessContext } from "./client/access";
 import type { AppInfo } from "./generated/api";
-import { PathPickerProvider } from "./pickPath";
-import { reasonOf } from "./errors";
-import { ChangesProvider, refusalOf, useResource } from "./resource";
+import { PathPickerProvider } from "./client/pickPath";
+import { reasonOf } from "./client/errors";
+import { ChangesProvider, refusalOf, useResource } from "./client/resource";
 import { SessionProvider } from "./session/session";
-import { SettingsProvider } from "./settings";
+import { SettingsProvider } from "./client/settings";
 import { SeekProvider } from "./bookmarks/viewerLink";
 import { Shell } from "./shell/Shell";
 

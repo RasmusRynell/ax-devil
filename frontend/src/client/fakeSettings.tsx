@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import type { SettingsState } from "./generated/api";
-import { COMMANDS } from "./generated/settings";
+import type { SettingsState } from "../generated/api";
+import { COMMANDS } from "../generated/settings";
 import { DEFAULT_VALUES, SettingsContext, through, type SettingsApi } from "./settings";
 
 /** The state of a backend with no changes: every default, every command on its default key. */

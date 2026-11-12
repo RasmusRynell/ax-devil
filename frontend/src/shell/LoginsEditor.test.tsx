@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { AccessContext } from "../access";
-import { DEFAULT_SETTINGS } from "../fakeSettings";
-import { SettingsProvider, useSettings } from "../settings";
-import type { Login } from "../secret";
+import { AccessContext } from "../client/access";
+import { DEFAULT_SETTINGS } from "../client/fakeSettings";
+import { SettingsProvider, useSettings } from "../client/settings";
+import type { Login } from "../client/secret";
 import { LoginsEditor } from "./LoginsEditor";
 
 afterEach(() => {

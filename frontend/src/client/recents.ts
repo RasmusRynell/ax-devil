@@ -1,6 +1,6 @@
-import type { RecentWorkspace } from "./generated/api";
+import type { RecentWorkspace } from "../generated/api";
 import { useResource } from "./resource";
-import { useCan } from "./session/session";
+import { useCan } from "../session/session";
 
 /** The id of a menu entry or start-panel row that opens the recent workspace at the path after it. */
 export const RECENT_ID = "recent:";

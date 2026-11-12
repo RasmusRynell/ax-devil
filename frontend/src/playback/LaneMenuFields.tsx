@@ -1,11 +1,11 @@
 import { useId, useState, type ReactNode } from "react";
-import { useAccess } from "../access";
-import { reasonOf } from "../errors";
+import { useAccess } from "../client/access";
+import { reasonOf } from "../client/errors";
 import type { SettingsState } from "../generated/api";
 import type { SettingKey } from "../generated/settings";
 import { Button } from "../kit/Button";
 import { FIELD } from "../kit/look";
-import { useSettings } from "../settings";
+import { useSettings } from "../client/settings";
 
 /** A number the user edits as text; the change applies when they press Enter or leave the field. */
 export function NumberField({

@@ -1,4 +1,4 @@
-import { chooseFile, chooseFolder, type PathRequest, type PickPath } from "../pickPath";
+import { chooseFile, chooseFolder, type PathRequest, type PickPath } from "../client/pickPath";
 import type { ReactNode } from "react";
 import type { DecoderInfo, FieldInfo, FieldKindWire, ScanCountInfo } from "../generated/api";
 import { Button } from "../kit/Button";

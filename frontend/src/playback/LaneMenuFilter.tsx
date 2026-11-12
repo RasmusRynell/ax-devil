@@ -12,7 +12,7 @@ import type { FilterOptionInfo } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Checkbox } from "../kit/Fields";
 import { FIELD } from "../kit/look";
-import { useSettings } from "../settings";
+import { useSettings } from "../client/settings";
 import {
   DEFAULT_OBJECT_FILTER,
   sameFilter,

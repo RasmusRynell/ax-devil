@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { COMMANDS, SETTINGS } from "./generated/settings";
+import { COMMANDS, SETTINGS } from "../generated/settings";
 import { menusFor, type Scope } from "./commands";
 import { RECENT_ID } from "./recents";
 

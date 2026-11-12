@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import type { Topic } from "./generated/api";
+import type { Topic } from "../generated/api";
 import { ChangesProvider, useNoticeSink, useResource } from "./resource";
 
 afterEach(() => {

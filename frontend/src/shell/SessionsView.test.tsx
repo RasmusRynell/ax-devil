@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { AccessContext } from "../access";
-import { ChangesProvider } from "../resource";
+import { AccessContext } from "../client/access";
+import { ChangesProvider } from "../client/resource";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { EMPTY_VIEW } from "../session/views";

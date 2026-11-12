@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { adoptFragment } from "./access";
+import { adoptFragment } from "./client/access";
 import { App } from "./App";
 import { ignoreFileDrops } from "./shell/ignoreFileDrops";
 import { UncaughtErrors } from "./shell/UncaughtErrors";

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { DecoderInfo, ResolverInfo } from "../generated/api";
-import type { WindowBridge } from "../windowBridge";
+import type { WindowBridge } from "../client/windowBridge";
 import { ResolverForm, useResolverForm } from "./ResolverForm";
 import type { Settings } from "./scan";
 

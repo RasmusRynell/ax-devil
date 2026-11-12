@@ -1,4 +1,4 @@
-import type { SecretState } from "./generated/api";
+import type { SecretState } from "../generated/api";
 
 /** Whether the whole value is a `$NAME` reference to an environment variable. */
 export const isReference = (value: string) => /^\$[A-Za-z_][A-Za-z0-9_]*$/.test(value);

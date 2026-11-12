@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { SETTINGS, type SettingKey } from "./generated/settings";
+import { SETTINGS, type SettingKey } from "../generated/settings";
 import type { WindowBridge } from "./windowBridge";
 
 /** A value a Device setting holds. */

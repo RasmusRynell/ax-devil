@@ -184,7 +184,7 @@ void test("a frontend file may not import a higher layer, in any import form", (
     text: `// top\n${text}`,
   }));
   sources.push(
-    { file: "frontend/src/kit/g.ts", text: 'import type { B } from "../windowBridge.js";' },
+    { file: "frontend/src/kit/g.ts", text: 'import type { B } from "../client/windowBridge.js";' },
     {
       file: "frontend/src/kit/h.css",
       text: '/* @import "../shell/x.css"; */\n@import url(../shell/x.css);',
@@ -336,7 +336,7 @@ void test("a frontend file may not import a higher layer, in any import form", (
   });
   assert.ok(
     problems[forms.length].startsWith(
-      "frontend/src/kit/g.ts:1 imports frontend/src/windowBridge, but kit is below client;",
+      "frontend/src/kit/g.ts:1 imports frontend/src/client/windowBridge, but kit is below client;",
     ),
   );
   assert.ok(

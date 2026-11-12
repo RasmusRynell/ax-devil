@@ -2,7 +2,7 @@ import type { CatalogInfoWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Checkbox, Select } from "../kit/Fields";
 import { FEATURES } from "../present";
-import { useSettings } from "../settings";
+import { useSettings } from "../client/settings";
 import { effectiveDefault, judgedRevision, type LaneSettings, type LaneState } from "./lanes";
 import { DEFAULT_CATALOG, LaneCatalogActions, USER_PREFIX } from "./LaneCatalogActions";
 import { Group } from "./LaneMenuFields";

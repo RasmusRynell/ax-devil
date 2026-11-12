@@ -1,6 +1,6 @@
-import { COMMANDS, type CommandId } from "./generated/settings";
-import type { RecentWorkspace } from "./generated/api";
-import type { MenuEntry } from "./kit/Menu";
+import { COMMANDS, type CommandId } from "../generated/settings";
+import type { RecentWorkspace } from "../generated/api";
+import type { MenuEntry } from "../kit/Menu";
 import { RECENT_ID, recentLabel } from "./recents";
 
 /**

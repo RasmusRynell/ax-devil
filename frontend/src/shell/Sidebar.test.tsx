@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { scenario } from "../session/fakeScenario";
 import { FakeSocket, type Room } from "../session/fakeSession";
-import { FakeSettings } from "../fakeSettings";
+import { FakeSettings } from "../client/fakeSettings";
 import { SessionProvider } from "../session/session";
 import { KeptStateProvider } from "../kit/keptState";
 import { Sidebar } from "./Sidebar";

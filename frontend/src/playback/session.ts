@@ -4,7 +4,7 @@
  * time, the display refresh and the socket are injected, and the UI reads `getSnapshot`.
  */
 
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import { ExportJobs } from "../export/jobs";
 import {
   PlaybackClock,

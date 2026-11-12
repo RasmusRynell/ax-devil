@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ask } from "../ask";
+import { ask } from "../client/ask";
 import type { FileCheck } from "../generated/api";
 
 /** How long the paths stay as typed before the backend is asked about them. */

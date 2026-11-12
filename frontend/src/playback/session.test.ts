@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
-import { CommandRefused } from "../errors";
+import { CommandRefused } from "../client/errors";
 import { flush, opened, setup, type OpenedMessage } from "./fakePlayback";
 import { PLAYBACK_PROTOCOL } from "./protocol";
 

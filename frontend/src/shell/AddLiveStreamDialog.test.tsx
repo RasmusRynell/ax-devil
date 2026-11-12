@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
+import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import { FakeSocket } from "../session/fakeSession";
 import { scenario } from "../session/fakeScenario";
 import { SessionProvider } from "../session/session";

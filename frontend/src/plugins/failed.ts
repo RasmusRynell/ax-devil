@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { PluginsInfo } from "../generated/api";
-import { ask } from "../ask";
+import { ask } from "../client/ask";
 
 let failed = 0;
 let asked = false;

@@ -6,7 +6,7 @@ import type {
   ExportLaneWire,
   ServerMessage,
 } from "../generated/api";
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 
 /** What an export asks of the backend; the job number is the session's to give. */
 type ExportRequest = {

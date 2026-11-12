@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
-import { DEFAULT_SETTINGS } from "../fakeSettings";
+import { DEFAULT_SETTINGS } from "../client/fakeSettings";
 import { OPEN_RANGES } from "../present";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { READY, box, setup, tab } from "./laneMenuRig";

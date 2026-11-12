@@ -15,7 +15,7 @@ import { Icon } from "../kit/Icon";
 import { NoticeList } from "../kit/NoticeList";
 import { Popover } from "../kit/Popover";
 import { useAllowed, useOverlays } from "../session/session";
-import { useSettings } from "../settings";
+import { useSettings } from "../client/settings";
 import { MediaToolsPanel } from "../tools/MediaToolsPanel";
 import { jump } from "../tools/pageStack";
 import { useMediaTools } from "../tools/useMediaTools";

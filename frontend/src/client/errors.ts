@@ -1,4 +1,4 @@
-import type { ErrorCode, ErrorWire, RefusalCode } from "./generated/api";
+import type { ErrorCode, ErrorWire, RefusalCode } from "../generated/api";
 
 /**
  * What each public failure code says to someone who is not told the backend's own wording: the Session socket and

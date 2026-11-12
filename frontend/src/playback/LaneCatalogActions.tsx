@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useAccess } from "../access";
-import { reasonOf } from "../errors";
+import { useAccess } from "../client/access";
+import { reasonOf } from "../client/errors";
 import type {
   CatalogInfoWire,
   CopiedCatalog,
@@ -11,8 +11,8 @@ import type {
 import { Button } from "../kit/Button";
 import { ChoiceDialog } from "../kit/ChoiceDialog";
 import { TextField } from "../kit/Fields";
-import { ask } from "../ask";
-import { useSettings } from "../settings";
+import { ask } from "../client/ask";
+import { useSettings } from "../client/settings";
 import { Refusal } from "../kit/Refusal";
 import type { LaneSettings } from "./lanes";
 

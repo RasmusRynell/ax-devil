@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ErrorWire, SettingsPatch } from "../generated/api";
-import { isEmpty, useSettings } from "../settings";
+import { isEmpty, useSettings } from "../client/settings";
 
 /** How a `submit` ended: stored, refused (kept in `refusal` to show where it applies), or the dialog was closed first. */
 export type SaveOutcome =

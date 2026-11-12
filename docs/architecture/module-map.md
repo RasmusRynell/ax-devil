@@ -47,7 +47,7 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `frontend/src/resolvers/` | The resolver settings form, generated from the schema the backend sends, and the cancellable scan |
 | `frontend/src/session/` | The session client: the socket and its store (the Doc, each seat's view, commands), cursors and presence |
 | `frontend/src/shell/` | The window: title and activity bars, sidebar, the split area of viewer panes, and the sharing UI (`SessionsView`, `ShareControl`, `ConnectDialog`) |
-| `frontend/src/access.ts`, `api.ts` | The credential this page holds and its role; `fetch` for its own backend |
+| `frontend/src/client/` | The client layer: the credential this page holds and its role (`access.ts`), `fetch` for its own backend (`api.ts`), settings, commands, recents and the window bridge |
 | `desktop/start.cjs`, `main.cjs` | The Electron entry (the shell, or the hidden renderer with `--render-host`) and the shell's lifecycle: which windows exist and how they move between local and remote |
 | `desktop/args.cjs`, `backend.cjs`, `window.cjs`, `links.cjs`, `remote.cjs` | The command line (what opens a server, what the backend gets), the local backend process, windows with their trusted origin and IPC, launch links and the single instance, another server's address and its checks |
 | `desktop/smoke*.cjs` | The smoke test and screenshot harness: `smoke-groups.cjs` lists the scenarios by group, `smoke.cjs` runs them, `smoke-kit.cjs` holds the page helpers, and one file per scenario |

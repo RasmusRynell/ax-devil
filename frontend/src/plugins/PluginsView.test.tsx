@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { AccessContext } from "../access";
+import { AccessContext } from "../client/access";
 import type { PluginInfo, PluginsInfo } from "../generated/api";
 import { PluginsView } from "./PluginsView";
 

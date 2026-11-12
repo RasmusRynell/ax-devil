@@ -1,4 +1,4 @@
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import type { FileScopeUnavailable, SearchWire } from "../generated/api";
 import type { ReactNode } from "react";
 import { SCOPES, type Scope } from "./listState";

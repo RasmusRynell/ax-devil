@@ -1,9 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { useState } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { AccessContext } from "../access";
-import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
-import { SettingsContext, type SettingsApi } from "../settings";
+import { AccessContext } from "../client/access";
+import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
+import { SettingsContext, type SettingsApi } from "../client/settings";
 import { SettingsDialog } from "./SettingsDialog";
 
 const row = vi.hoisted(() => (key: string, kind: object, over: object) => ({

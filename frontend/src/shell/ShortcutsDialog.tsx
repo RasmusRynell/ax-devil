@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import type { Shortcuts } from "../commands";
-import { reasonOf } from "../errors";
+import type { Shortcuts } from "../client/commands";
+import { reasonOf } from "../client/errors";
 import { COMMANDS, RESERVED, type CommandId } from "../generated/settings";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
@@ -10,7 +10,7 @@ import { KeyChips } from "../kit/KeyChips";
 import { QUIET } from "../kit/look";
 import { SectionCaption } from "../kit/SectionCaption";
 import { shortcutOf } from "../kit/shortcut";
-import { shortcutsPatch, useSettings } from "../settings";
+import { shortcutsPatch, useSettings } from "../client/settings";
 import { useSaveDialog } from "./useSaveDialog";
 
 /** Why a row's key was not taken, and, when another command holds it, the way to take it from that command. */

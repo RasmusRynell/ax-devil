@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { FakeSettings } from "../fakeSettings";
+import { FakeSettings } from "../client/fakeSettings";
 import type { LaneStatusWire } from "../generated/api";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { LaneChip } from "./LaneChip";

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { useAccess } from "../access";
+import { useAccess } from "../client/access";
 import type { NewLiveWire } from "../generated/api";
 import { camerasOf, type AddSeed } from "../live/cameras";
 import { useLoginChecks } from "../live/checks";
@@ -15,7 +15,7 @@ import {
   type RowAction,
 } from "../live/rows";
 import { useStreamStatuses } from "../live/streamState";
-import { useSettings } from "../settings";
+import { useSettings } from "../client/settings";
 import { useCan, useCommand, useDoc } from "../session/session";
 import { useShow, useShownItems } from "../viewer/useViewers";
 import { useItemDialogs } from "./ItemDialogs";

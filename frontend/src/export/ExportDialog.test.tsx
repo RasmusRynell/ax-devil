@@ -8,7 +8,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { AccessContext } from "../access";
+import { AccessContext } from "../client/access";
 import type { ClientMessage, ServerMessage } from "../generated/api";
 import type { LaneState } from "../playback/contract";
 import { LANE_SETTINGS } from "../playback/fakeOpened";

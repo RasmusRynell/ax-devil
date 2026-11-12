@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
-import { useAccess } from "../access";
-import { reasonOf } from "../errors";
+import { useAccess } from "../client/access";
+import { reasonOf } from "../client/errors";
 import { SETTINGS } from "../generated/settings";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
@@ -9,7 +9,7 @@ import { Icon } from "../kit/Icon";
 import { SectionCaption } from "../kit/SectionCaption";
 import { Tabs } from "../kit/Tabs";
 import { useHandlers } from "../resolvers/useHandlers";
-import { settingsPatch, useSettings } from "../settings";
+import { settingsPatch, useSettings } from "../client/settings";
 import { literalSecret, PlainTextNote, SettingField, type Row } from "./SettingField";
 import { Refusal } from "../kit/Refusal";
 import { ShortcutsDialog } from "./ShortcutsDialog";

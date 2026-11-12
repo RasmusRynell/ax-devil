@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import type { HandlersInfo, ResolverInfo } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Dialog, DialogBody } from "../kit/Dialog";

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ButtonHTMLAttributes } from "react";
-import { useAccess } from "../access";
+import { useAccess } from "../client/access";
 import type { ControlCommand, SessionSummary } from "../generated/api";
-import { useResource } from "../resource";
+import { useResource } from "../client/resource";
 import { Button } from "../kit/Button";
 import { Chip } from "../kit/Chips";
 import type { IconName } from "../kit/icons";

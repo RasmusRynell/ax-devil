@@ -1,5 +1,5 @@
 import { useCommand, useDoc } from "../session/session";
-import { exportFile, usePickPath } from "../pickPath";
+import { exportFile, usePickPath } from "../client/pickPath";
 
 /**
  * Exporting every bookmark to a CSV file on the machine that runs the backend: the function that starts it, which asks

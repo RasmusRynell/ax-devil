@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { ask } from "./ask";
-import type { ErrorWire } from "./generated/api";
+import type { ErrorWire } from "../generated/api";
 
 afterEach(() => vi.unstubAllGlobals());
 

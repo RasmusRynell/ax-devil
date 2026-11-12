@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { cleanup, render, screen } from "@testing-library/react";
-import { FakeSettings } from "../fakeSettings";
+import { FakeSettings } from "../client/fakeSettings";
 import type { PluginsInfo } from "../generated/api";
 import { reportFailedPlugins } from "../plugins/failed";
 import { FakeSocket } from "../session/fakeSession";

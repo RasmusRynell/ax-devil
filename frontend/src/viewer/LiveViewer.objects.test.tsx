@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
+import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import type { Picked } from "../playback/contract";
 import { LANE_DEFAULTS } from "../playback/fakeOpened";
 import { PLAYBACK_PROTOCOL } from "../playback/protocol";

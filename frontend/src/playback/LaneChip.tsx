@@ -1,5 +1,5 @@
 import type { CadenceWire } from "./protocol";
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import { Icon } from "../kit/Icon";
 import { NoticeList, noticeOf, type Notice } from "../kit/NoticeList";
 import { Popover } from "../kit/Popover";

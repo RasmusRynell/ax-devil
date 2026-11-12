@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { scopeOf } from "../commands";
+import { scopeOf } from "../client/commands";
 import { RowList } from "../kit/RowList";
 import { useHandlers } from "../resolvers/useHandlers";
 import { useAllowed } from "../session/session";

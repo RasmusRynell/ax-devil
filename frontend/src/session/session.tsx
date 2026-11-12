@@ -8,8 +8,8 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import type { Scope } from "../commands";
-import { credential } from "../access";
+import type { Scope } from "../client/commands";
+import { credential } from "../client/access";
 import type {
   Access,
   CursorOptions,
@@ -23,8 +23,8 @@ import type {
   View,
 } from "../generated/api";
 import { Banner, EndedScreen } from "./Notice";
-import { useNoticeSink } from "../resource";
-import { useSettings } from "../settings";
+import { useNoticeSink } from "../client/resource";
+import { useSettings } from "../client/settings";
 import type { SessionState } from "./sessionState";
 import { SessionStore } from "./store";
 import { canDo } from "./views";

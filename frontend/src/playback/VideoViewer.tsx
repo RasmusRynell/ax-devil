@@ -10,7 +10,7 @@ import {
   useStream,
   useView,
 } from "../session/session";
-import { useSettings } from "../settings";
+import { useSettings } from "../client/settings";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { usePaneBudget } from "./budget";
 import { connectWorker } from "./connect";

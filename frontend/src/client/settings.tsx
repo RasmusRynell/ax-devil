@@ -3,9 +3,9 @@ import { useAccess } from "./access";
 import { ask } from "./ask";
 import { deviceStore, useDeviceValues, type DeviceValue } from "./deviceSettings";
 import { reasonOf } from "./errors";
-import type { ErrorWire, LoginEdit, SettingsPatch, SettingsState } from "./generated/api";
+import type { ErrorWire, LoginEdit, SettingsPatch, SettingsState } from "../generated/api";
 import { refusalOf, useResource } from "./resource";
-import { COMMANDS, SETTINGS, type CommandId, type SettingKey } from "./generated/settings";
+import { COMMANDS, SETTINGS, type CommandId, type SettingKey } from "../generated/settings";
 import { type Login, secretStateOf } from "./secret";
 
 /**

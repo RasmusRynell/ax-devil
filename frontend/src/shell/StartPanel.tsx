@@ -1,12 +1,12 @@
-import { command, scopeOf } from "../commands";
+import { command, scopeOf } from "../client/commands";
 import type { CommandId } from "../generated/settings";
 import { Icon } from "../kit/Icon";
 import type { IconName } from "../kit/icons";
 import { KIND, QUIET, type Kind } from "../kit/look";
 import { RowList } from "../kit/RowList";
 import { useAllowed } from "../session/session";
-import { useSettings } from "../settings";
-import { folderOf, RECENT_ID, recentLabel, usedOn, useRecents } from "../recents";
+import { useSettings } from "../client/settings";
+import { folderOf, RECENT_ID, recentLabel, usedOn, useRecents } from "../client/recents";
 
 const OPEN: readonly [id: CommandId, icon: IconName, kind?: Kind][] = [
   ["open-workspace", "folder"],
