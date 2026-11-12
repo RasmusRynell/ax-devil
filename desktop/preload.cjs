@@ -75,7 +75,7 @@ contextBridge.exposeInMainWorld("axDevilWindow", {
   // the page paints. The owner returns its last persisted values and sequence atomically from memory.
   deviceValues: () => ipcRenderer.sendSync("device:values"),
   // Stores a batch asynchronously; resolves only after persistence or returns its refusal.
-  setDeviceValues: (changes) => ipcRenderer.invoke("device:set", changes),
+  setDeviceValues: (changes, batch) => ipcRenderer.invoke("device:set", changes, batch),
   // Announces every persisted snapshot, this window included; returns the way to stop listening.
   onDeviceValuesChange: (listener) => {
     const changed = (_event, values) => listener(values);

@@ -17,10 +17,10 @@ function installDeviceIpc({ ipcMain, device, sender, windows }) {
       event.returnValue = { values: {}, sequence: 0 };
     }
   });
-  ipcMain.handle("device:set", async (event, changes) => {
+  ipcMain.handle("device:set", async (event, changes, batch) => {
     try {
       sender(event);
-      const sequence = await device.write(changes);
+      const sequence = await device.write(changes, batch);
       return { sequence, reason: null };
     } catch (error) {
       return {

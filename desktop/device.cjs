@@ -38,7 +38,7 @@ function createDeviceValues(file) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    write(changes) {
+    write(changes, batch) {
       if (closing) return Promise.reject(new Error("Device settings are closing"));
       if (
         !changes ||
@@ -60,7 +60,7 @@ function createDeviceValues(file) {
         abort.signal.throwIfAborted();
         values = next;
         sequence = mine;
-        for (const listener of listeners) listener(snapshot());
+        for (const listener of listeners) listener({ ...snapshot(), ...(batch && { batch }) });
         return mine;
       });
       pending = save.catch(() => {});

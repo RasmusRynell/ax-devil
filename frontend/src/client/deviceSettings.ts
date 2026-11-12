@@ -1,30 +1,35 @@
 import { useSyncExternalStore } from "react";
 import { SETTINGS, type SettingKey } from "../generated/settings";
 import type { DeviceSnapshot, WindowBridge } from "./windowBridge";
+import {
+  admit,
+  changedKeys,
+  preview,
+  receive,
+  settle,
+  stamp,
+  type DeviceState,
+  type DeviceUpdate,
+  type DeviceValue,
+} from "./deviceState";
+export type { DeviceValue } from "./deviceState";
 
-/** A value a Device setting holds. */
-export type DeviceValue = string | boolean;
 /** The Device settings that differ from their default. */
 export type DeviceValues = Partial<Record<SettingKey, DeviceValue>>;
-
-/** Where Device values are kept: the desktop shell's file for this device, or this browser's storage. */
-interface DeviceRead {
-  problem?: string;
-  read(): Record<string, unknown>;
-  subscribe(listener: (values: Record<string, unknown>) => void): () => void;
+/** A Device persistence failure, naming only the keys that still need saving. */
+export interface DeviceFailure {
+  keys: SettingKey[];
+  reason: string;
 }
 type Changes = Partial<Record<SettingKey, DeviceValue | null>>;
-type Backing = DeviceRead &
-  (
-    | { announced: true; write(changes: Changes): Promise<Record<string, unknown>> }
-    | { announced?: false; write(changes: Changes): Record<string, unknown> }
-  );
+interface Backing {
+  problem?: string;
+  read(): Record<string, unknown>;
+  subscribe(listener: (update: DeviceUpdate) => void): () => void;
+  write(changes: Changes): Promise<DeviceFailure | null>;
+}
 
 const DEVICE_ROWS = SETTINGS.filter((row) => row.scope === "device");
-const DEVICE_DEFAULTS = new Map<SettingKey, unknown>(
-  DEVICE_ROWS.map((row) => [row.key, "default" in row.kind ? row.kind.default : undefined]),
-);
-
 /** Whether *value* is something *row* can hold. */
 function holds(row: (typeof DEVICE_ROWS)[number], value: unknown) {
   const { kind } = row;
@@ -45,21 +50,22 @@ function valid(stored: Record<string, unknown>): DeviceValues {
 
 const KEY = "ax-devil.device";
 
-/** Browser persistence: independent keys avoid lost updates; failed writes retain their current ephemeral values. */
+/** Independent browser keys; failed writes remain local unsaved choices in the store. */
 export function browserBacking(
   context: Pick<Window, "localStorage" | "addEventListener" | "removeEventListener"> = window,
 ): Backing {
   let current: Record<string, unknown> = {};
-  const ephemeral = new Map<string, { value: DeviceValue | null; observed: string | undefined }>();
-  const read = (): Record<string, unknown> => {
+  const listeners = new Set<(update: DeviceUpdate) => void>();
+  const emit = (foreign: readonly SettingKey[]) => {
+    for (const listener of listeners) listener({ values: current, foreign });
+  };
+  const refresh = () => {
     try {
-      // The old shared entry is read-only fallback. A per-key null tombstone makes resets authoritative over it.
       const legacyText = context.localStorage.getItem(KEY);
       let legacy: unknown;
       try {
         legacy = JSON.parse(legacyText ?? "{}");
       } catch {
-        // Invalid legacy JSON must not hide independent per-key saves.
         legacy = {};
       }
       const kept =
@@ -74,229 +80,113 @@ export function browserBacking(
           if (value === null) delete kept[key];
           else kept[key] = value;
         } catch {
-          /* A malformed entry is retained as a recoverable preference. */ kept[key] = text;
+          kept[key] = text;
         }
       }
+      const foreign = changedKeys(current, kept);
       current = kept;
+      if (foreign.length) emit(foreign);
     } catch {
-      /* Storage is blocked: keep the last current map. */
+      /* Storage access is blocked: retain the last observed saved document. */
     }
-    const shown = { ...current };
-    for (const [key, { value }] of ephemeral) {
-      if (value === null) delete shown[key];
-      else shown[key] = value;
-    }
-    return shown;
   };
+  refresh();
   return {
-    read,
-    write(changes) {
-      read();
+    read: () => current,
+    async write(changes) {
+      refresh();
+      const failed: SettingKey[] = [];
+      let reason = "";
+      const next = { ...current };
       for (const [key, value] of Object.entries(changes)) {
         try {
           context.localStorage.setItem(`${KEY}.${key}`, JSON.stringify(value));
-          ephemeral.delete(key);
-        } catch {
-          ephemeral.set(key, { value, observed: JSON.stringify(current[key]) });
+          if (value === null) delete next[key];
+          else next[key] = value;
+        } catch (error) {
+          failed.push(key as SettingKey);
+          reason = error instanceof Error ? error.message : String(error);
         }
       }
-      return read();
+      current = next;
+      emit([]);
+      // Observe interleaved writes to other independent keys, without reinstalling a saved snapshot.
+      refresh();
+      return failed.length ? { keys: failed, reason } : null;
     },
     subscribe(listener) {
+      listeners.add(listener);
       const changed = (event: StorageEvent) => {
-        if (event.key === KEY || event.key?.startsWith(`${KEY}.`) || event.key === null) {
-          read();
-          // All event kinds observe current storage, never the delivery order of queued events.
-          for (const [key, choice] of ephemeral)
-            if (JSON.stringify(current[key]) !== choice.observed) ephemeral.delete(key);
-          listener(read());
-        }
+        if (event.key === KEY || event.key?.startsWith(`${KEY}.`) || event.key === null) refresh();
       };
       context.addEventListener("storage", changed);
-      return () => context.removeEventListener("storage", changed);
-    },
-  };
-}
-
-/** A Device persistence failure, naming only the keys that still need to be saved. */
-export interface DeviceFailure {
-  keys: SettingKey[];
-  reason: string;
-}
-
-/** The Device values of one backing: the only place they are held. */
-export function createDeviceStore(backing: Backing) {
-  let raw = backing.read();
-  let stored = valid(raw);
-  let values = stored;
-  const recoveredKeys = () =>
-    DEVICE_ROWS.filter((row) => row.key in raw && !holds(row, raw[row.key])).map((row) => row.key);
-  let recovered: SettingKey[] = recoveredKeys();
-  // Retain #390's per-key submission/version model: preparation never writes, previews and confirmed changes supersede it.
-  const versions = new Map<SettingKey, number>();
-  const submitted = new Map<SettingKey, number>();
-  const committed = new Map<SettingKey, number>();
-  const listeners = new Set<() => void>();
-  const publish = (key: SettingKey, value: DeviceValue | null, supersedes = true) => {
-    if (supersedes) versions.set(key, (versions.get(key) ?? 0) + 1);
-    values = { ...values };
-    if (value === null) delete values[key];
-    else values[key] = value;
-    listeners.forEach((listener) => listener());
-  };
-  const receive = (
-    incoming: Record<string, unknown>,
-    choices: readonly (readonly [SettingKey, DeviceValue | null])[] = [],
-    supersedes = true,
-  ) => {
-    const previous = raw;
-    raw = incoming;
-    stored = valid(raw);
-    recovered = recoveredKeys();
-    const own = new Map(choices);
-    for (const { key } of DEVICE_ROWS) {
-      const chosen = own.get(key);
-      const applied =
-        own.has(key) &&
-        (chosen === null
-          ? !(key in raw)
-          : !recovered.includes(key) && chosen === (stored[key] ?? DEVICE_DEFAULTS.get(key)));
-      if (applied) publish(key, stored[key] ?? null, supersedes);
-      else if (own.has(key) || JSON.stringify(previous[key]) !== JSON.stringify(raw[key]))
-        publish(key, stored[key] ?? null);
-    }
-  };
-  const write = (
-    changes: readonly (readonly [SettingKey, DeviceValue | null])[],
-    supersedes = true,
-    current = backing.read(),
-    accepts?: (key: SettingKey) => boolean,
-  ): DeviceFailure | null | Promise<DeviceFailure | null> => {
-    const atDispatch = new Map(changes.map(([key]) => [key, versions.get(key) ?? 0]));
-    const accepted =
-      accepts ?? ((key: SettingKey) => (versions.get(key) ?? 0) === atDispatch.get(key));
-    const patch: Partial<Record<SettingKey, DeviceValue | null>> = {};
-    for (const [key, value] of changes) {
-      const unchanged =
-        value === null
-          ? !(key in current)
-          : DEVICE_ROWS.some((row) => row.key === key && holds(row, current[key]))
-            ? value === current[key]
-            : !(key in current) && value === DEVICE_DEFAULTS.get(key);
-      // Only the shell owner can compare an explicit choice with persisted state:
-      // an earlier admitted batch may still be in flight beyond this cached snapshot.
-      if (backing.announced || !unchanged) patch[key] = value;
-    }
-    const finish = (next: Record<string, unknown>) => {
-      const choices = changes.filter(([key]) => accepted(key));
-      if (!choices.length) return null;
-      const kept = { ...next };
-      for (const [key] of changes) {
-        if (accepted(key)) continue;
-        if (key in raw) kept[key] = raw[key];
-        else delete kept[key];
-      }
-      receive(kept, choices, supersedes);
-      return null;
-    };
-    const failed = (error: unknown): DeviceFailure | null => {
-      const keys = (Object.keys(patch) as SettingKey[]).filter(
-        (key) => backing.announced || accepted(key),
-      );
-      return keys.length
-        ? { keys, reason: error instanceof Error ? error.message : String(error) }
-        : null;
-    };
-    try {
-      if (!Object.keys(patch).length) return finish(current);
-      if (backing.announced)
-        return backing
-          .write(patch)
-          .then(() => null)
-          .catch(failed);
-      return finish(backing.write(patch));
-    } catch (error) {
-      return failed(error);
-    }
-  };
-  backing.subscribe((incoming) => receive(incoming));
-  return {
-    /** The effective Device values, including unsaved Quick Setup previews. */
-    read: () => values,
-    /** An incompatible startup snapshot prevents the settings UI from opening. */
-    problem: () => backing.problem,
-    /** Last confirmed values, excluding previews; backing writes remain best effort. */
-    readSaved: () => stored,
-    /** Raw invalid keys whose effective defaults can be explicitly repaired. */
-    readRecovered: () => recovered,
-    /** Previews one choice without writing it. Later choices for this key supersede it. */
-    preview: (key: SettingKey, value: DeviceValue) => publish(key, value),
-    /** Stores one value. */
-    set: (key: SettingKey, value: DeviceValue) => {
-      return write([[key, value]]);
-    },
-    /** Puts one value back to its default. */
-    reset: (key: SettingKey) => {
-      return write([[key, null]]);
-    },
-    /** Captures a pending write; committing it leaves any subsequently changed keys alone. */
-    prepare: (set: [SettingKey, DeviceValue][], reset: SettingKey[]) => {
-      const changes: [SettingKey, DeviceValue | null][] = [
-        ...set,
-        ...reset.map((key): [SettingKey, null] => [key, null]),
-      ];
-      // Per-key observations catch cross-tab confirmations before their storage event arrives. The confirmed
-      // ordinal still permits this store's earlier submissions to complete without cancelling later ones.
-      const observed = backing.read();
-      const pending = changes.map(([key, value]) => {
-        const ordinal = (submitted.get(key) ?? 0) + 1;
-        submitted.set(key, ordinal);
-        return {
-          key,
-          value,
-          ordinal,
-          version: versions.get(key) ?? 0,
-          observed: JSON.stringify(observed[key]),
-          confirmed: committed.get(key) ?? 0,
-        };
-      });
       return () => {
-        const current = backing.read();
-        const surviving = pending.filter(
-          ({ key, ordinal, version, observed: value, confirmed }) =>
-            (versions.get(key) ?? 0) === version &&
-            ordinal > (committed.get(key) ?? 0) &&
-            (JSON.stringify(current[key]) === value ||
-              ((committed.get(key) ?? 0) > confirmed &&
-                JSON.stringify(current[key]) === JSON.stringify(raw[key]))),
-        );
-        const accepts = (key: SettingKey) =>
-          surviving.some(
-            (choice) =>
-              choice.key === key &&
-              (versions.get(key) ?? 0) === choice.version &&
-              choice.ordinal > (committed.get(key) ?? 0),
-          );
-        const failure = write(
-          surviving.map(({ key, value }) => [key, value] as const),
-          false,
-          current,
-          accepts,
-        );
-        if (backing.announced) {
-          // A local draft is superseded at dispatch; only the owner announces persistence.
-          for (const { key, ordinal } of surviving) committed.set(key, ordinal);
-          return failure;
-        }
-        const confirmed = (error: DeviceFailure | null) => {
-          if (!error)
-            for (const { key, ordinal } of surviving) if (accepts(key)) committed.set(key, ordinal);
-          return error;
-        };
-        return failure instanceof Promise ? failure.then(confirmed) : confirmed(failure);
+        listeners.delete(listener);
+        context.removeEventListener("storage", changed);
       };
     },
-    /** Calls `listener` after every change, from here or from another window; returns the way to stop. */
+  };
+}
+
+/** Device saved values and local intents, with snapshots derived once per state transition. */
+export function createDeviceStore(backing: Backing) {
+  let state: DeviceState = { raw: backing.read(), local: new Map(), clock: 0, applied: new Map() };
+  const listeners = new Set<() => void>();
+  const derive = () => {
+    const saved = valid(state.raw);
+    const values = { ...saved };
+    for (const [key, entry] of state.local) {
+      if (entry.value === null) delete values[key];
+      else values[key] = entry.value;
+    }
+    const recovered = DEVICE_ROWS.filter(
+      (row) => row.key in state.raw && !holds(row, state.raw[row.key]),
+    ).map((row) => row.key);
+    return { saved, values, recovered };
+  };
+  let cached = derive();
+  const update = (next: DeviceState) => {
+    state = next;
+    cached = derive();
+    listeners.forEach((listener) => listener());
+  };
+  backing.subscribe((incoming) => update(receive(state, incoming)));
+  const prepare = (set: [SettingKey, DeviceValue][], reset: SettingKey[]) => {
+    const changes: [SettingKey, DeviceValue | null][] = [
+      ...set,
+      ...reset.map((key): [SettingKey, null] => [key, null]),
+    ];
+    const [next, stamps] = stamp(state, changes.length);
+    update(next);
+    const choices = changes.map(([key, value], i) => ({ key, value, stamp: stamps[i]! }));
+    return async () => {
+      const [next, surviving] = admit(state, choices);
+      if (!surviving.length) return null;
+      update(next);
+      const patch = Object.fromEntries(surviving.map(({ key, value }) => [key, value]));
+      const failure = await backing.write(patch);
+      update(settle(state, surviving, failure?.keys ?? []));
+      return failure;
+    };
+  };
+  return {
+    /** Effective choices, including previews and unsaved admitted choices. */
+    read: () => cached.values,
+    /** An incompatible startup snapshot prevents settings from opening. */
+    problem: () => backing.problem,
+    /** Last persisted values, never local intents. */
+    readSaved: () => cached.saved,
+    /** Invalid raw preference keys. */
+    readRecovered: () => cached.recovered,
+    /** Display a new unsaved preview. */
+    preview: (key: SettingKey, value: DeviceValue) => update(preview(state, key, value)),
+    /** Admit one explicit choice. */
+    set: (key: SettingKey, value: DeviceValue) => prepare([[key, value]], [])(),
+    /** Admit one reset. */
+    reset: (key: SettingKey) => prepare([], [key])(),
+    /** Reserve own-intent ordering without writing or displaying a choice. */
+    prepare,
+    /** Subscribe to derived snapshots. */
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => void listeners.delete(listener);
@@ -304,7 +194,7 @@ export function createDeviceStore(backing: Backing) {
   };
 }
 
-/** The shell's file, through its three bridge functions; the shell and its frontend are versioned together. */
+/** Shell snapshots ordered by the owner; batch identities distinguish own updates. */
 export function shellBacking(
   bridge: Pick<WindowBridge, "deviceValues" | "setDeviceValues" | "onDeviceValuesChange">,
 ): Backing {
@@ -330,42 +220,62 @@ export function shellBacking(
   } catch (error) {
     problem = error instanceof Error ? error.message : String(error);
   }
+  const mine = new Map<
+    string,
+    { keys: SettingKey[]; resolve: (failure: DeviceFailure | null) => void }
+  >();
   return {
-    announced: true,
     problem,
     read: () => snapshot.values,
-    write: async (changes) => {
-      if (problem) throw new Error(problem);
-      if (!bridge.setDeviceValues) throw new Error("This shell does not offer Device persistence");
-      const reply = await bridge.setDeviceValues(changes);
-      if (reply.reason) throw new Error(reply.reason);
-      return snapshot.values;
-    },
+    write: (changes) =>
+      new Promise((resolve) => {
+        const keys = Object.keys(changes) as SettingKey[];
+        const batch = crypto.randomUUID();
+        const finish = (failure: DeviceFailure | null) => {
+          mine.delete(batch);
+          resolve(failure);
+        };
+        if (problem || !bridge.setDeviceValues)
+          return finish({
+            keys,
+            reason: problem ?? "This shell does not offer Device persistence",
+          });
+        mine.set(batch, { keys, resolve: finish });
+        void bridge
+          .setDeviceValues(changes, batch)
+          .then((reply) => {
+            if (reply.reason) finish({ keys, reason: reply.reason });
+            else if (reply.sequence !== null && reply.sequence <= snapshot.sequence) finish(null);
+          })
+          .catch((error: unknown) =>
+            finish({ keys, reason: error instanceof Error ? error.message : String(error) }),
+          );
+      }),
     subscribe: (listener) =>
       bridge.onDeviceValuesChange?.((incoming) => {
         const next = validSnapshot(incoming);
         if (next.sequence <= snapshot.sequence) return;
+        const own = next.batch ? mine.get(next.batch) : undefined;
+        const foreign = own ? [] : changedKeys(snapshot.values, next.values);
         snapshot = next;
-        listener(snapshot.values);
+        listener({ values: snapshot.values, foreign });
+        own?.resolve(null);
       }) ?? (() => {}),
   };
 }
 
 const bridge = window.axDevilWindow;
-/** This device's settings: the desktop shell's file in the desktop app, browser storage in a browser. */
+/** This device's settings: shell storage in the app, independent browser keys otherwise. */
 export const deviceStore = createDeviceStore(bridge ? shellBacking(bridge) : browserBacking());
-
-/** The Device values, and a re-render when they change. */
+/** Effective Device choices and updates. */
 export function useDeviceValues(): DeviceValues {
   return useSyncExternalStore(deviceStore.subscribe, deviceStore.read);
 }
-
-/** Device values confirmed by a save or broadcast, without unsaved previews. */
+/** Persisted Device choices and updates. */
 export function useSavedDeviceValues(): DeviceValues {
   return useSyncExternalStore(deviceStore.subscribe, deviceStore.readSaved);
 }
-
-/** Device keys recovered from raw invalid preferences, independent of previews. */
+/** Invalid raw Device keys, independent of local choices. */
 export function useRecoveredDeviceKeys(): readonly SettingKey[] {
   return useSyncExternalStore(deviceStore.subscribe, deviceStore.readRecovered);
 }

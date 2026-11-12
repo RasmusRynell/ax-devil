@@ -1,5 +1,6 @@
 /** The last persisted Device batch, read atomically from the shell cache before paint. */
 export interface DeviceSnapshot {
+  batch?: string;
   values: Record<string, unknown>;
   sequence: number;
 }
@@ -64,7 +65,10 @@ export interface WindowBridge {
   /** The last persisted values and sequence in one cache-only snapshot, read before the page paints. */
   deviceValues?(): DeviceSnapshot;
   /** Stores one Device batch; the reply reports its sequence and failure, but never publishes values. */
-  setDeviceValues?(changes: Record<string, string | boolean | null>): Promise<DeviceReply>;
+  setDeviceValues?(
+    changes: Record<string, string | boolean | null>,
+    batch: string,
+  ): Promise<DeviceReply>;
   /** Announces every persisted snapshot to this document, including its own writes; returns the way to stop listening. */
   onDeviceValuesChange?(listener: (snapshot: DeviceSnapshot) => void): () => void;
   /** The page zoom factor (1 is 100%), read when asked. */

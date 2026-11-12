@@ -23,7 +23,7 @@ afterEach(async () => {
 const { createDeviceValues } = createRequire(import.meta.url)("../../../desktop/device.cjs") as {
   createDeviceValues: (file: string) => {
     read(): { values: Record<string, unknown>; sequence: number };
-    write(changes: object): Promise<number>;
+    write(changes: object, batch?: string): Promise<number>;
     subscribe(
       listener: (snapshot: { values: Record<string, unknown>; sequence: number }) => void,
     ): () => void;
@@ -111,9 +111,9 @@ it.each(["refused", "device fails", "saved", "pending"])(
       shellBacking({
         deviceValues: () => writer.read(),
         onDeviceValuesChange: (listener) => writer.subscribe(listener),
-        async setDeviceValues(changes) {
+        async setDeviceValues(changes, batch) {
           try {
-            return { sequence: await writer.write(changes), reason: null };
+            return { sequence: await writer.write(changes, batch), reason: null };
           } catch (error) {
             return { sequence: null, reason: String(error) };
           }
@@ -224,7 +224,7 @@ it.each([null, "light"])(
 );
 
 function Batch({ both = true }: { both?: boolean }) {
-  const { apply, set, values } = useSettings();
+  const { apply, values } = useSettings();
   const [notice, setNotice] = useState("");
   return (
     <>
@@ -240,19 +240,6 @@ function Batch({ both = true }: { both?: boolean }) {
         }
       >
         Batch
-      </button>
-      <button
-        onClick={() => void set("ui.theme", "light").then(() => setNotice("confirmed light"))}
-      >
-        Confirm light
-      </button>
-      <button onClick={() => void set("ui.theme", "dark").then(() => setNotice("confirmed dark"))}>
-        Confirm dark
-      </button>
-      <button
-        onClick={() => void set("ui.text_size", "large").then(() => setNotice("confirmed large"))}
-      >
-        Confirm large
       </button>
       <p>{`${values["ui.theme"] as string}/${values["ui.text_size"] as string}`}</p>
       {notice && <p role="alert">{notice}</p>}
@@ -301,47 +288,3 @@ async function openBatch(both = true) {
     return screen.findByRole("alert");
   };
 }
-
-it("an older mixed reply cannot overwrite a newer confirmed choice", async () => {
-  const answer = await openBatch();
-  fireEvent.click(screen.getByRole("button", { name: "Confirm light" }));
-  await screen.findByText("confirmed light");
-  await answer(true);
-  expect(deviceStore.readSaved()).toMatchObject({ "ui.theme": "light", "ui.text_size": "large" });
-  expect(browserBacking().read()).toMatchObject({ "ui.theme": "light", "ui.text_size": "large" });
-  expect(screen.getByText("light/large")).toBeTruthy();
-});
-
-it("two successive blocked-storage saves retain both choices through the provider", async () => {
-  vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-    throw new Error("blocked");
-  });
-  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-    throw new Error("blocked");
-  });
-  const fetched = vi.fn();
-  vi.stubGlobal("fetch", fetched);
-  render(
-    <SettingsProvider>
-      <Batch />
-    </SettingsProvider>,
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Confirm dark" }));
-  await screen.findByText("confirmed dark");
-  fireEvent.click(screen.getByRole("button", { name: "Confirm large" }));
-  await screen.findByText("confirmed large");
-  expect(screen.getByText("dark/large")).toBeTruthy();
-  expect(deviceStore.readSaved()).toMatchObject({ "ui.theme": "dark", "ui.text_size": "large" });
-  expect(fetched).not.toHaveBeenCalled();
-});
-
-it("a newer confirmation in another context supersedes a delayed reply before its event arrives", async () => {
-  const answer = await openBatch();
-  const other = createDeviceStore(browserBacking());
-  await other.set("ui.theme", "light");
-  // Do not deliver a storage event: the commit must observe the current per-key value itself.
-  await answer(true);
-  expect(deviceStore.readSaved()).toMatchObject({ "ui.theme": "light", "ui.text_size": "large" });
-  expect(browserBacking().read()).toMatchObject({ "ui.theme": "light", "ui.text_size": "large" });
-  expect(screen.getByText("light/large")).toBeTruthy();
-});

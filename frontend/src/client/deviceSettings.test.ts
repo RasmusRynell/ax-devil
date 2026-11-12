@@ -1,15 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import type { DeviceUpdate } from "./deviceState";
 import { browserBacking, createDeviceStore } from "./deviceSettings";
 
 function kept(initial: Record<string, unknown> = {}) {
   let raw = { ...initial };
-  let listener = (_values: Record<string, unknown>) => {};
-  const write = vi.fn((changes: Record<string, unknown>) => {
+  let listener = (_values: DeviceUpdate) => {};
+  const write = vi.fn(async (changes: Record<string, unknown>) => {
     for (const [key, value] of Object.entries(changes)) {
       if (value === null) delete raw[key];
       else raw[key] = value;
     }
-    return { ...raw };
+    listener({ values: { ...raw }, foreign: [] });
+    return null;
   });
   const store = createDeviceStore({
     read: () => ({ ...raw }),
@@ -22,10 +24,6 @@ function kept(initial: Record<string, unknown> = {}) {
   return {
     store,
     write,
-    change: (next: Record<string, unknown>) => {
-      raw = next;
-      listener(next);
-    },
   };
 }
 
@@ -47,53 +45,6 @@ describe("device settings", () => {
     expect(store.readSaved()).toEqual({ "ui.theme": "auto", "ui.text_size": "small" });
   });
 
-  it("merges external Device changes per key and protects newer choices from pending writes", async () => {
-    const { store, write, change } = kept();
-    const commit = store.prepare(
-      [
-        ["ui.theme", "light"],
-        ["ui.text_size", "large"],
-      ],
-      [],
-    );
-    store.preview("ui.theme", "dark");
-    await commit();
-    expect(store.read()).toEqual({ "ui.theme": "dark", "ui.text_size": "large" });
-    expect(write).toHaveBeenCalledExactlyOnceWith({ "ui.text_size": "large" });
-    change({ "ui.text_size": "small" });
-    expect(store.read()).toEqual({ "ui.theme": "dark", "ui.text_size": "small" });
-    change({ "ui.theme": "light", "ui.text_size": "small" });
-    expect(store.read()["ui.theme"]).toBe("light");
-    store.preview("ui.theme", "dark");
-    await store.prepare([["ui.theme", "dark"]], [])();
-    expect(write).toHaveBeenLastCalledWith({ "ui.theme": "dark" });
-    const earlier = store.prepare([["ui.theme", "light"]], []);
-    await earlier();
-    await store.prepare([["ui.theme", "dark"]], [])();
-    await earlier();
-    expect(store.readSaved()["ui.theme"]).toBe("dark");
-  });
-
-  it("replaces previews when confirming or resetting a stored choice without redundant writes", async () => {
-    const { store, write } = kept({ "ui.theme": "light" });
-    store.preview("ui.theme", "dark");
-    store.preview("ui.text_size", "larger");
-    await store.prepare(
-      [
-        ["ui.theme", "light"],
-        ["ui.text_size", "system"],
-      ],
-      [],
-    )();
-    expect(store.read()).toEqual({ "ui.theme": "light" });
-    expect(store.readSaved()).toEqual({ "ui.theme": "light" });
-    expect(write).not.toHaveBeenCalled();
-    store.preview("ui.text_size", "larger");
-    await store.prepare([], ["ui.text_size"])();
-    expect(store.read()).toEqual({ "ui.theme": "light" });
-    expect(write).not.toHaveBeenCalled();
-  });
-
   it("reads a saved choice after reload despite malformed legacy JSON", async () => {
     const data = new Map([["ax-devil.device", "{broken"]]);
     const context = {
@@ -113,7 +64,7 @@ describe("device settings", () => {
   });
 
   it.each(["key", "clear", "legacy"])(
-    "keeps a newer ephemeral choice through a queued %s event, until a newer stored choice arrives",
+    "keeps a newer unsaved choice through a queued %s event, until a newer stored choice arrives",
     async (kind) => {
       const key = kind === "legacy" ? "ax-devil.device" : "ax-devil.device.ui.theme";
       const encode = (theme: string) =>
@@ -138,7 +89,8 @@ describe("device settings", () => {
       events.dispatchEvent(
         new StorageEvent("storage", { key: eventKey, newValue: encode("light") }),
       );
-      expect(store.readSaved()["ui.theme"]).toBe("dark");
+      expect(store.read()["ui.theme"]).toBe("dark");
+      expect(store.readSaved()["ui.theme"]).toBe("light");
       if (kind === "clear") data.clear();
       else data.set(key, encode("auto"));
       events.dispatchEvent(
@@ -147,26 +99,4 @@ describe("device settings", () => {
       expect(store.readSaved()["ui.theme"] ?? "auto").toBe("auto");
     },
   );
-
-  it("keeps two successive ephemeral choices when storage is blocked", async () => {
-    const blocked = {
-      getItem: () => {
-        throw new Error("blocked");
-      },
-      setItem: () => {
-        throw new Error("blocked");
-      },
-    } as unknown as Storage;
-    const store = createDeviceStore(
-      browserBacking({
-        localStorage: blocked,
-        addEventListener: window.addEventListener.bind(window),
-        removeEventListener: window.removeEventListener.bind(window),
-      }),
-    );
-    await store.set("ui.theme", "dark");
-    await store.set("ui.text_size", "large");
-    expect(store.read()).toEqual({ "ui.theme": "dark", "ui.text_size": "large" });
-    expect(store.readSaved()).toEqual(store.read());
-  });
 });

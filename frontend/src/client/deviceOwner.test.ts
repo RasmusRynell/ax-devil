@@ -8,7 +8,7 @@ import type { DeviceReply, DeviceSnapshot } from "./windowBridge";
 
 interface Owner {
   read(): DeviceSnapshot;
-  write(changes: Record<string, unknown>): Promise<number>;
+  write(changes: Record<string, unknown>, batch?: string): Promise<number>;
   subscribe(listener: (snapshot: DeviceSnapshot) => void): () => void;
 }
 interface PageWindow {
@@ -30,7 +30,11 @@ const { installDeviceIpc } = require("../../../desktop/device-ipc.cjs") as {
         on(channel: string, handler: (event: Event) => void): void;
         handle(
           channel: string,
-          handler: (event: Event, changes: Record<string, unknown>) => Promise<DeviceReply>,
+          handler: (
+            event: Event,
+            changes: Record<string, unknown>,
+            batch: string,
+          ) => Promise<DeviceReply>,
         ): void;
       };
       device: Owner;
@@ -44,7 +48,11 @@ afterEach(() => vi.restoreAllMocks());
 function shell(owner: Owner) {
   const windows: PageWindow[] = [];
   let read!: (event: Event) => void;
-  let write!: (event: Event, changes: Record<string, unknown>) => Promise<DeviceReply>;
+  let write!: (
+    event: Event,
+    changes: Record<string, unknown>,
+    batch: string,
+  ) => Promise<DeviceReply>;
   installDeviceIpc({
     device: owner,
     ipcMain: {
@@ -76,7 +84,8 @@ function shell(owner: Owner) {
         read(event);
         return event.returnValue!;
       },
-      setDeviceValues: (changes: Record<string, unknown>) => write({ window }, changes),
+      setDeviceValues: (changes: Record<string, unknown>, batch: string) =>
+        write({ window }, changes, batch),
       onDeviceValuesChange: (listener: (snapshot: DeviceSnapshot) => void) => {
         listeners.add(listener);
         return () => {
@@ -102,7 +111,14 @@ for (const scenario of ["two windows", "replacement document"] as const) {
     fs.writeFileSync(file, JSON.stringify({ "ui.theme": "auto" }), { mode: 0o600 });
     const owner = createDeviceValues(file);
     const announcements: DeviceSnapshot[] = [];
-    owner.subscribe((snapshot) => announcements.push(snapshot));
+    let completed!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      completed = resolve;
+    });
+    owner.subscribe((snapshot) => {
+      announcements.push(snapshot);
+      completed();
+    });
     const openWindow = shell(owner);
     const a = openWindow();
     const first = createDeviceStore(shellBacking(a.bridge));
@@ -134,17 +150,32 @@ for (const scenario of ["two windows", "replacement document"] as const) {
         // chooses the persisted System value, which must still reach the ordering owner.
         second.preview("ui.theme", "light");
         expect(second.read()["ui.theme"]).toBe("light");
-        const later = second.prepare([["ui.theme", "auto"]], [])();
+        const earlier = second.prepare([["ui.theme", "light"]], []);
+        const laterIntent = second.prepare([["ui.theme", "auto"]], []);
+        // A's announcement must not cancel the later local prepared save (round 5 A).
+        const middle = earlier();
         release();
         expect(await saved).toBeNull();
-        expect(await later).toBeNull();
+        expect(await middle).toBeNull();
+        expect(await laterIntent()).toBeNull();
+        // An own equal-value announcement also replaces a conflicting retained preview (B).
+        second.preview("ui.theme", "dark");
+        expect(await second.set("ui.theme", "auto")).toBeNull();
+        expect(second.read()["ui.theme"]).toBe("auto");
         expect(first.readSaved()["ui.theme"]).toBe("auto");
         expect(second.readSaved()["ui.theme"]).toBe("auto");
         expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ "ui.theme": "auto" });
-        expect(owner.read()).toEqual({ values: { "ui.theme": "auto" }, sequence: 2 });
-        expect(announcements).toEqual([
+        expect(owner.read()).toEqual({ values: { "ui.theme": "auto" }, sequence: 4 });
+        expect(
+          announcements.map(({ batch, ...snapshot }) => {
+            expect(batch).toEqual(expect.any(String));
+            return snapshot;
+          }),
+        ).toEqual([
           { values: { "ui.theme": "dark" }, sequence: 1 },
-          { values: { "ui.theme": "auto" }, sequence: 2 },
+          { values: { "ui.theme": "light" }, sequence: 2 },
+          { values: { "ui.theme": "auto" }, sequence: 3 },
+          { values: { "ui.theme": "auto" }, sequence: 4 },
         ]);
         // Delivery of older or duplicate owner snapshots cannot regress the current value.
         b.window.webContents.send("device:changed", {
@@ -160,13 +191,13 @@ for (const scenario of ["two windows", "replacement document"] as const) {
         const replacement = a.reload();
         expect(replacement.readSaved()["ui.theme"]).toBe("auto");
         release();
-        expect(await saved).toBeNull();
+        await completion;
         expect(replacement.readSaved()["ui.theme"]).toBe("dark");
         expect(a.bridge.deviceValues()).toEqual({ values: { "ui.theme": "dark" }, sequence: 1 });
       }
     } finally {
       release();
-      await saved;
+      if (scenario === "two windows") await saved;
       fs.rmSync(folder, { recursive: true, force: true });
     }
   });

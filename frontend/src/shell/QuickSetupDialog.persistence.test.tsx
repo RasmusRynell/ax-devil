@@ -327,7 +327,7 @@ it.each([
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   await screen.findByText(`${chosen}/system/${completed}`);
   expect(browserBacking().read()).toEqual(
-    where === "Reset choices" && saved === "light" ? {} : JSON.parse(kept ?? "{}"),
+    where === "Reset choices" ? {} : { "ui.theme": saved, "ui.text_size": "system" },
   );
   expect(patches).toHaveLength(where === "Settings" ? 1 : 2);
   cleanup();

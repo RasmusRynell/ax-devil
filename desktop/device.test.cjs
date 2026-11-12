@@ -103,8 +103,10 @@ void test(
       }
       return rename(source, target);
     });
-    const first = device.write({ "ui.theme": "dark" });
-    const second = device.write({ "ui.text_size": "large" });
+    const announcements = [];
+    device.subscribe((snapshot) => announcements.push(snapshot));
+    const first = device.write({ "ui.theme": "dark" }, "first-batch");
+    const second = device.write({ "ui.text_size": "large" }, "second-batch");
     assert.deepEqual(device.read().values, { "ui.theme": "auto" });
     await started;
     assert.equal(writes.length, 1);
@@ -112,6 +114,10 @@ void test(
     await assert.rejects(device.write({ "ui.theme": "light" }), /closing/);
     release();
     await Promise.all([first, second, drained]);
+    assert.deepEqual(
+      announcements.map(({ batch }) => batch),
+      ["first-batch", "second-batch"],
+    );
     assert.deepEqual(writes, [
       { "ui.theme": "dark" },
       { "ui.theme": "dark", "ui.text_size": "large" },
