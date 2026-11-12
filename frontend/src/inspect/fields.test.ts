@@ -177,4 +177,11 @@ it("pins an abbreviated path by its full-path digest across sample order changes
   const next = inspectorLines([field(CLASS, text("car")), reordered], pins, NONE, "8");
   expect(shown(next.pinned)).toEqual([int("2")]);
   expect(togglePin(pins, line.id)).toEqual([]);
+  const legacy = { group: "debug" as const, path: ["legacy"] };
+  expect(togglePin([legacy], { ...legacy, identity: "digest" })).toEqual([]);
+  let bounded: readonly FieldId[] = [];
+  for (let index = 0; index < 64; index++)
+    bounded = togglePin(bounded, { group: "debug", path: [String(index)] });
+  expect(bounded).toHaveLength(64);
+  expect(togglePin(bounded, { group: "debug", path: ["65th"] })).toBe(bounded);
 });

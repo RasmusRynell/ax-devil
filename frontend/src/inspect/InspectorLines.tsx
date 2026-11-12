@@ -1,3 +1,4 @@
+import { MAX_INSPECTION_PINS } from "../generated/api";
 import {
   memo,
   useCallback,
@@ -19,6 +20,7 @@ import {
   copyValue,
   displayValue,
   fieldKey,
+  samePin,
   hexOf,
   inspectorLines,
   rawJson,
@@ -47,6 +49,7 @@ interface FieldProps {
   pinned: boolean;
   copied: boolean;
   missing: boolean;
+  pending?: boolean;
   /** The colour a colour field's value is the score of. */
   rgb?: readonly [number, number, number];
   /** How much of a bar the value fills, 0 to 1; no bar when absent. */
@@ -55,6 +58,7 @@ interface FieldProps {
   elide?: "middle";
   /** Whether the field can be pinned; the object's id cannot. */
   pinnable: boolean;
+  pinLimit?: boolean;
 }
 
 /** The most characters of a long value, such as an id, that the label column leaves room for where it can. */
@@ -107,10 +111,12 @@ const FieldLine = memo(function FieldLine({
   pinned,
   copied,
   missing,
+  pending,
   rgb,
   fraction,
   elide,
   pinnable,
+  pinLimit,
 }: FieldProps) {
   return (
     <div
@@ -123,7 +129,12 @@ const FieldLine = memo(function FieldLine({
       {pinnable ? (
         <IconButton
           icon="pin"
-          label={`${pinned ? "Unpin" : "Pin"} ${label}`}
+          label={
+            pinLimit && !pinned
+              ? `Pin limit (${MAX_INSPECTION_PINS})`
+              : `${pinned ? "Unpin" : "Pin"} ${label}`
+          }
+          disabled={pinLimit && !pinned}
           data-act="pin"
           className={pinned ? "" : ON_ROW}
         />
@@ -142,7 +153,9 @@ const FieldLine = memo(function FieldLine({
         <span className="truncate">{label}</span>
       </span>
       {missing ? (
-        <span className="col-span-2 truncate text-muted italic">unavailable</span>
+        <span className="col-span-2 truncate text-muted italic">
+          {pending ? "Loading…" : "Not present"}
+        </span>
       ) : (
         <>
           <span className="@container/value flex min-w-0 items-center gap-m">
@@ -259,6 +272,7 @@ function rows(
   fields: readonly FieldWire[],
   lines: readonly Line[],
   first: number,
+  pinCount: number,
   pins: ReadonlySet<string>,
   copied: Copied,
   ids: readonly string[],
@@ -305,9 +319,11 @@ function rows(
         fraction={found ? line.fraction : undefined}
         elide={found ? line.elide : undefined}
         pinnable={line.id !== null}
+        pinLimit={pinCount >= MAX_INSPECTION_PINS}
         pinned={pins.has(line.key)}
         copied={found && copied.is(ids[first + i] ?? "")}
         missing={!found}
+        pending={line.kind === "unavailable" && line.pending}
       />
     );
   });
@@ -320,6 +336,7 @@ function rows(
  */
 export function InspectorLines({
   fields,
+  pinFields,
   entity,
   scope,
   memory,
@@ -329,6 +346,7 @@ export function InspectorLines({
   onCopyStart,
 }: {
   fields: readonly FieldWire[];
+  pinFields?: readonly (FieldWire | null | undefined)[];
   onCopyRaw?: () => void;
   onCopyLarge?: (ordinal: number, path?: boolean) => void;
   onCopyStart?: () => void;
@@ -341,10 +359,15 @@ export function InspectorLines({
 }) {
   const { pins, folded } = memory;
   const { pinned, lines } = useMemo(
-    () => inspectorLines(fields, pins, folded, entity),
-    [fields, pins, folded, entity],
+    () => inspectorLines(fields, pins, folded, entity, pinFields),
+    [fields, pins, folded, entity, pinFields],
   );
-  const pinnedKeys = useMemo(() => new Set(pins.map(fieldKey)), [pins]);
+  const pinnedKeys = useMemo(() => {
+    const keys = new Set(pins.map(fieldKey));
+    for (const field of fields)
+      if (pins.some((pin) => samePin(pin, field))) keys.add(fieldKey(field));
+    return keys;
+  }, [pins, fields]);
   const byKey = useMemo(() => {
     const found = new Map<string, Extract<Line, { kind: "field" | "unavailable" }>>();
     for (const line of [...pinned, ...lines])
@@ -432,6 +455,8 @@ export function InspectorLines({
                     kind: "action" as const,
                     id: "pin",
                     label: pinnedKeys.has(menuKey) ? "Unpin field" : "Pin field",
+                    disabled: !pinnedKeys.has(menuKey) && pins.length >= MAX_INSPECTION_PINS,
+                    reason: `Pin limit (${MAX_INSPECTION_PINS})`,
                   },
                 ]
               : []),
@@ -471,7 +496,7 @@ export function InspectorLines({
                   role="list"
                   className="max-h-[calc(var(--spacing-row)*6)] overflow-y-auto [scrollbar-gutter:stable]"
                 >
-                  {rows(fields, pinned, 0, pinnedKeys, copied, ids, onFold, (line) =>
+                  {rows(fields, pinned, 0, pins.length, pinnedKeys, copied, ids, onFold, (line) =>
                     line.kind === "field" || line.kind === "unavailable" ? line.key : "",
                   )}
                 </div>
@@ -495,6 +520,7 @@ export function InspectorLines({
                 fields,
                 lines.slice(start, end),
                 pinned.length + start,
+                pins.length,
                 pinnedKeys,
                 copied,
                 ids,

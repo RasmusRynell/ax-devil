@@ -186,6 +186,7 @@ export function Inspector({
             onCopyLarge={access?.copy}
             onCopyStart={access?.cancel}
             fields={fields}
+            pinFields={absent ? undefined : inspection.pins}
             entity={inspection.selection.entity}
             scope={`${inspection.selection.lane}:${inspection.selection.source}:${inspection.selection.entity}`}
             memory={memory}

@@ -116,7 +116,10 @@ export function Playback({
     ),
   );
   // The selected object's page is the one the media tools show, so its fields are asked for only while they are open.
-  useEffect(() => stream.showInspector(tools), [stream, tools]);
+  useEffect(
+    () => stream.showInspector(tools && objectDetails, inspector.pins),
+    [stream, tools, objectDetails, inspector.pins],
+  );
   const zoom = useCallback(
     (factor: number) => {
       const next = geometry.current?.zoomAt(shownViewport.current, factor);

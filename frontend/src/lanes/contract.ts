@@ -183,6 +183,8 @@ export type InspectionView =
       selection: NonNullable<Selection>;
       summary: Summary;
       fields: readonly FieldWire[];
+      /** Pin-order current values; undefined is loading, null is absent. */
+      pins?: readonly (FieldWire | null | undefined)[];
       truncated: boolean;
       access?: InspectionAccess;
       /** A safe refusal before field preparation. */

@@ -11,7 +11,7 @@ pub(super) const CHUNK_BYTES: usize = 64 << 10;
 
 /// A field and the position and full byte count of a text abbreviated for display.
 pub struct PageField {
-    /// Digest of the full segmented path when its display is abbreviated; stable across samples and ordering.
+    /// Digest of the full segmented path; stable across samples and ordering.
     pub identity: Option<String>,
     /// Bounded structural address in the held entity, independent of its display path.
     pub address: Vec<usize>,
@@ -151,14 +151,25 @@ impl Sink for Page<'_> {
         } else {
             path_bytes
         };
-        let identity = path_cut.map(|_| {
-            use sha2::Digest;
-            self.digest
-                .clone()
-                .finalize()
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect()
+        let identity = Some({
+            use sha2::{Digest, Sha256};
+            let digest = if path_cut.is_some() {
+                self.digest.clone()
+            } else {
+                let mut digest = Sha256::new();
+                for part in path {
+                    digest.update((part.len() as u64).to_le_bytes());
+                    digest.update(part.as_bytes());
+                }
+                digest
+            };
+            let mut identity = String::with_capacity(64);
+            let digits = b"0123456789abcdef";
+            for byte in digest.finalize() {
+                identity.push(char::from(digits[usize::from(byte >> 4)]));
+                identity.push(char::from(digits[usize::from(byte & 15)]));
+            }
+            identity
         });
         let path = path
             .iter()

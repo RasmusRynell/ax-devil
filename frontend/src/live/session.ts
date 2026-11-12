@@ -218,8 +218,9 @@ export class LiveSession implements LaneDisplay {
   }
 
   /** Whether an object page shows; its fields are asked for only then. */
-  showInspector(shown: boolean): void {
-    if (this.#data.inspections.setVisible(shown)) this.#publish();
+  showInspector(shown: boolean, pins?: readonly import("../playback/fields").FieldId[]): void {
+    const changed = this.#data.inspections.setVisible(shown);
+    if ((pins ? this.#data.inspections.setPins(pins) : false) || changed) this.#publish();
   }
 
   /** Selects an object (`null`: none) for the inspector. Selection is this viewer's own. */

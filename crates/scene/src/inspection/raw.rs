@@ -56,9 +56,6 @@ fn segments(entity: &Entity) -> Vec<Segment<'_>> {
         ));
     }
     if let Some(observation) = entity.latest_observation() {
-        if let Some(frame) = observation.time.frame() {
-            entries.push(("frame_number", vec![Segment::Literal(frame.to_string())]));
-        }
         if let Some(time) = observation.time.timestamp() {
             let value = match datetime_leaf(time) {
                 Leaf::Int(value) => value.to_string(),
@@ -66,6 +63,9 @@ fn segments(entity: &Entity) -> Vec<Segment<'_>> {
                 _ => unreachable!("datetime_leaf returns an integer or an ISO timestamp"),
             };
             entries.push(("timestamp", vec![Segment::Literal(value)]));
+        }
+        if let Some(frame) = observation.time.frame() {
+            entries.push(("frame_number", vec![Segment::Literal(frame.to_string())]));
         }
     }
     if entries.is_empty() {
@@ -160,18 +160,22 @@ mod tests {
             SceneTime::Frame(17),
             Geometry::Box(BoundingBox::new(0., 0., 1., 1.).unwrap()),
         ));
-        let mut cursor = RawCopy::default();
-        let mut offset = 0;
-        let mut copied = String::new();
-        loop {
-            let chunk = raw_chunk(&entity, &mut cursor, offset).unwrap();
-            assert!(chunk.text.len() <= 65536);
-            copied.push_str(&chunk.text);
-            if let Some(next) = chunk.next {
-                offset = next;
-            } else {
-                break;
-            }
+        let copied = copy(&entity);
+        let fixtures: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../fixtures/inspection/python-copy.json"
+        ))
+        .unwrap();
+        for case in fixtures.as_array().unwrap() {
+            let scene = crate::serial::scene_from_json_slice(
+                serde_json::to_string(&case["scene"]).unwrap().as_bytes(),
+            )
+            .unwrap();
+            assert_eq!(
+                copy(scene.entity("7").unwrap()),
+                case["raw"].as_str().unwrap(),
+                "{}",
+                case["name"]
+            );
         }
         // Python: json.dumps({"end_reason": "x" * (9 << 20) + 'é😀\n"', "frame_number": 17}, indent=2).
         use sha2::{Digest, Sha256};
@@ -183,5 +187,21 @@ mod tests {
             digest,
             "85bb3771c16237eb34e21441eb5a0c7ba323a3de056d1bc4b6e122dff06bece3"
         );
+    }
+    fn copy(entity: &Entity) -> String {
+        let mut cursor = RawCopy::default();
+        let mut offset = 0;
+        let mut copied = String::new();
+        loop {
+            let chunk = raw_chunk(entity, &mut cursor, offset).unwrap();
+            assert!(chunk.text.len() <= 65536);
+            copied.push_str(&chunk.text);
+            if let Some(next) = chunk.next {
+                offset = next;
+            } else {
+                break;
+            }
+        }
+        copied
     }
 }

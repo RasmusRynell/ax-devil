@@ -8,7 +8,7 @@ import type { LeafWire } from "./scene.inspection.leaf";
  */
 export type FieldWire = { 
 /**
- * Stable digest of the full segmented path, only when its display path is abbreviated.
+ * Stable digest of the full segmented path, independent of its display preview.
  */
 identity?: string, 
 /**
@@ -62,6 +62,23 @@ token: string,
 next: number | null, };
 
 /**
+ * A pinned field's stable identity; legacy pins name the segmented path instead of its digest.
+ */
+export type InspectionPin = { 
+/**
+ * Section containing the field.
+ */
+group: FieldGroupWire, 
+/**
+ * Full segmented-path SHA-256 when available.
+ */
+identity?: string, 
+/**
+ * Legacy segmented path; digest-based requests send no path text.
+ */
+path: Array<string>, };
+
+/**
  * One page or text chunk requested through the playback socket.
  */
 export type InspectionRead = { 
@@ -82,6 +99,10 @@ field: number | null,
  */
 raw?: boolean, 
 /**
+ * Resolve these pinned identities independently of the visible page (at most 64).
+ */
+pins?: Array<InspectionPin>, 
+/**
  * Retrieve the dotted path instead of the value.
  */
 path: boolean, 
@@ -100,6 +121,14 @@ export type InspectionReadResult = { "state": "Page",
 fields: Array<FieldWire>, 
 /**
  * Next page ordinal, absent at the end.
+ */
+next: number | null, } | { "state": "Pins", 
+/**
+ * Requested pin index and its preview; paths cap at 64 KiB and texts at 16 KiB.
+ */
+fields: Array<[number, FieldWire]>, 
+/**
+ * Next scan ordinal, absent when every pin has been resolved or the object ends.
  */
 next: number | null, } | { "state": "Chunk", 
 /**
@@ -165,6 +194,11 @@ entity: string,
  * Its leaves at the paths asked for; repeated keys keep every value.
  */
 items: Array<ItemWire>, };
+
+/**
+ *The maximum pinned inspection fields.
+ */
+export const MAX_INSPECTION_PINS = 64;
 
 /**
  *The maximum UTF-8 bytes assembled for one explicit inspection copy.

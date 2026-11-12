@@ -1,6 +1,6 @@
 import { MOTION_STATES } from "../present/columns";
 import { maskKeeps } from "../present/filter/filter";
-import type { LaneFrame, Summary } from "./contract";
+import type { InspectionView, LaneFrame, Summary } from "./contract";
 
 const encoder = new TextEncoder();
 
@@ -48,3 +48,27 @@ export const sameSummary = (a: Summary, b: Summary): boolean =>
   a.score === b.score &&
   a.confidence === b.confidence &&
   a.motion === b.motion;
+
+/** Whether an inspection view already shows these fields, pins and transfer state. */
+export function sameInspection(before: InspectionView, next: InspectionView): boolean {
+  return (
+    before.state === next.state &&
+    (before.state === "none" ||
+      (next.state !== "none" &&
+        before.selection.lane === next.selection.lane &&
+        before.selection.source === next.selection.source &&
+        before.selection.entity === next.selection.entity &&
+        (before.state === "absent"
+          ? next.state === "absent" &&
+            before.reason === next.reason &&
+            (before.last === next.last ||
+              (before.last !== null && next.last !== null && sameSummary(before.last, next.last)))
+          : next.state !== "absent" &&
+            sameSummary(before.summary, next.summary) &&
+            before.fields === next.fields &&
+            before.pins === next.pins &&
+            before.error === next.error &&
+            before.truncated === next.truncated &&
+            before.access?.revision === next.access?.revision)))
+  );
+}

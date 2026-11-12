@@ -323,6 +323,7 @@ async fn a_cursor_cannot_cross_sockets_or_outlast_its_held_sample() {
         panic!("cursor");
     };
     let read = InspectionRead {
+        pins: None,
         raw: None,
         path: false,
         token: cursor.token,
@@ -352,11 +353,10 @@ async fn a_cursor_cannot_cross_sockets_or_outlast_its_held_sample() {
     ));
     assert!(frames.is_some());
     let position = inspections.cursor.as_ref().unwrap().5.clone();
-    let cached = Arc::downgrade(position.lock().unwrap().traversal.as_ref().unwrap());
     assert!(position.lock().unwrap().scene.is_some());
     inspections.release();
     assert!(
-        cached.upgrade().is_none(),
+        position.lock().unwrap().traversal.is_none(),
         "releasing the capability releases its prepared permutation"
     );
     assert!(
@@ -380,6 +380,7 @@ async fn a_cursor_cannot_cross_sockets_or_outlast_its_held_sample() {
         panic!("fresh capability");
     };
     let read = InspectionRead {
+        pins: None,
         token: cursor.token,
         ..read
     };
@@ -425,6 +426,7 @@ fn an_abbreviated_path_advertises_how_to_retrieve_its_last_byte() {
         .expect("full path access");
     assert_eq!(bytes, 9 * 1024 * 1024);
     let read = InspectionRead {
+        pins: None,
         raw: None,
         token: "held".into(),
         request: 1,

@@ -21,6 +21,7 @@ use scene::{
     inspection::{Budget, InspectionField, query_leaves},
 };
 use scene_store::{TrackRead, TrackSnapshot};
+mod pins;
 mod position;
 use position::{Position, PositionRef, remember};
 use std::sync::{Arc, Mutex};
@@ -400,7 +401,10 @@ fn inspection_at(
             }
             let traversal = match scene::inspection::Traversal::new(entity) {
                 Ok(traversal) => Arc::new(traversal),
-                Err(reason) => return InspectionWire::Refused { reason },
+                Err(reason) => {
+                    position::invalidate(position);
+                    return InspectionWire::Refused { reason };
+                }
             };
             if !position
                 .lock()
@@ -430,7 +434,10 @@ fn inspection_at(
                 }),
             }
         }
-        None => InspectionWire::Absent,
+        None => {
+            position::invalidate(position);
+            InspectionWire::Absent
+        }
     }
 }
 
@@ -479,34 +486,23 @@ fn continued_at(
             reason: "Inspection expired; select the object again".into(),
         };
     };
+    if let Some(wanted) = &read.pins {
+        return pins::resolve(position, entity, &traversal, wanted, read.offset as usize);
+    }
     if read.raw == Some(true) {
-        let mut position = position
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if read.offset == 0 {
-            position.raw = Some(scene::inspection::RawCopy::default());
-        }
-        let Some(cursor) = position.raw.as_mut() else {
-            return InspectionReadResult::Refused {
-                reason: "Inspection expired; select the object again".into(),
-            };
-        };
-        return match scene::inspection::raw_chunk(entity, cursor, read.offset as usize) {
-            Ok(chunk) => InspectionReadResult::Chunk {
-                text: chunk.text,
-                total: chunk.total as u32,
-                next: chunk.next.map(|n| n as u32),
-            },
-            Err(reason) => InspectionReadResult::Refused { reason },
-        };
+        return position::raw(position, entity, read.offset as usize);
     }
     if let Some(ordinal) = read.field {
-        let address = position
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .fields
-            .get(&(ordinal as usize))
-            .cloned();
+        let address = {
+            let state = position
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            state
+                .fields
+                .get(&(ordinal as usize))
+                .or_else(|| state.pins.fields.get(&(ordinal as usize)))
+                .cloned()
+        };
         let Some(address) = address else {
             return InspectionReadResult::Refused {
                 reason: "Inspection expired; select the object again".into(),

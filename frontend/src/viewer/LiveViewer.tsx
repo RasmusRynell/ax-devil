@@ -85,7 +85,10 @@ function Live({
     if (opensInFront.current) pane.current?.focus({ preventScroll: true });
   }, []);
   // The selected object's page is what the media tools show, so its fields are asked for only while they are open.
-  useEffect(() => session.showInspector(tools), [session, tools]);
+  useEffect(
+    () => session.showInspector(tools && objectDetails, inspector.pins),
+    [session, tools, objectDetails, inspector.pins],
+  );
   const zoom = useCallback(
     (factor: number) => {
       const next = geometry.current?.zoomAt(shownViewport.current, factor);

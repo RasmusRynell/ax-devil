@@ -1,5 +1,5 @@
 // Inspection continuation through a real CVAT file, including the bounded copy controls.
-const { nativeTheme, clipboard } = require("electron");
+const { BrowserWindow, nativeTheme, clipboard } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
@@ -15,12 +15,42 @@ async function openObject(window) {
   const { js, wait } = page(window);
   await wait(`${SHOWN} >= 0`);
   await goToFrame(window, 0);
+  // Transfer native focus through our own window: window.blur() does not release it on Windows.
+  const focusTarget = new BrowserWindow({ width: 200, height: 100, show: true });
+  try {
+    focusTarget.focus();
+    await wait("!document.hasFocus()");
+    window.focus();
+    window.webContents.focus();
+    await js("document.querySelector('main [tabindex]')?.focus()");
+    await wait(
+      "document.hasFocus() && document.querySelector('main [tabindex]')?.contains(document.activeElement)",
+    );
+  } finally {
+    focusTarget.destroy();
+  }
   for (const type of ["keyDown", "keyUp"])
     window.webContents.sendInputEvent({ type, keyCode: "B", modifiers: ["control"] });
   await wait("document.querySelector('aside[aria-label=\"Media tools\"] [role=option]')");
   await js("document.querySelector('aside[aria-label=\"Media tools\"] [role=listbox]').focus()");
-  for (const keyCode of ["ArrowDown", "Return"])
-    for (const type of ["keyDown", "keyUp"]) window.webContents.sendInputEvent({ type, keyCode });
+  await wait("document.hasFocus() && document.activeElement?.getAttribute('role') === 'listbox'");
+  for (const type of ["keyDown", "keyUp"])
+    window.webContents.sendInputEvent({ type, keyCode: "ArrowDown" });
+  await wait(
+    "document.hasFocus() && document.activeElement?.getAttribute('role') === 'listbox' && document.activeElement.getAttribute('aria-activedescendant')",
+  );
+  for (const type of ["keyDown", "keyUp"])
+    window.webContents.sendInputEvent({ type, keyCode: "Return" });
+  await wait(`document.querySelector('${INSPECTOR}')`);
+  const panel = await settled(
+    window,
+    `(() => { const r = document.querySelector('${INSPECTOR}').getBoundingClientRect(); return { x: r.right - 4, y: r.bottom - 4 }; })()`,
+  );
+  window.webContents.sendInputEvent({
+    type: "mouseMove",
+    x: Math.round(panel.x),
+    y: Math.round(panel.y),
+  });
 }
 
 async function shot(window, name) {
@@ -77,17 +107,50 @@ module.exports.run = async () => {
         await js(`document.querySelector('${INSPECTOR} .overflow-y-auto').scrollTo(0, 1e9)`);
         await wait(`document.querySelector('${INSPECTOR}').innerText.includes('field4999')`);
         await js(
+          `document.querySelector('${INSPECTOR} [aria-label="Pin cvat.shape.extra.field4999"]').click()`,
+        );
+        await wait(
+          `document.querySelector('${INSPECTOR} [aria-label=Pinned]')?.innerText.includes('4999') && !document.querySelector('${INSPECTOR} [aria-label=Pinned]').innerText.includes('Loading')`,
+        );
+        await js(
           `document.querySelector('${INSPECTOR} [data-cursor-id="inspection:first"]').click()`,
         );
         await wait(`document.querySelector('${INSPECTOR} [data-cursor-id="inspection:next"]')`);
+        await wait(
+          `document.querySelector('${INSPECTOR} [aria-label=Pinned]')?.innerText.includes('4999')`,
+        );
+        await setView(window, [1500, 720], 1);
+        await js(
+          `document.querySelector('${INSPECTOR} [aria-label="Copy debug.cvat.shape.extra.field4999"]').click()`,
+        );
+        await wait(
+          `document.querySelector('${INSPECTOR} [aria-label="Copied debug.cvat.shape.extra.field4999"]')`,
+        );
+        assert.equal(
+          await clipboard.readText(),
+          "4999",
+          "a page-two pin copies its value on page one",
+        );
+        for (const theme of ["light", "dark"]) {
+          nativeTheme.themeSource = theme;
+          await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+          await shot(window, `inspection-pins-${theme}.png`);
+        }
+        await js(
+          `document.querySelector('${INSPECTOR} [aria-label="Unpin debug.cvat.shape.extra.field4999"]').click()`,
+        );
+        await wait(`!document.querySelector('${INSPECTOR} [aria-label=Pinned]')`);
+        await setView(window, [640, 480], 2);
         await js(`document.querySelector('${INSPECTOR} .overflow-y-auto').scrollTo(0, 0)`);
         // Scroll just enough to reveal the first source value; the position comes from measured row height.
         await js(
           `(() => { const list = document.querySelector('${INSPECTOR} .overflow-y-auto'); const row = list.querySelector('[role=listitem]'); list.scrollTop = row.getBoundingClientRect().height * 10; })()`,
         );
-        await wait(`document.querySelector('${INSPECTOR} [data-field$="value"] [data-act=copy]')`);
+        await wait(
+          `document.querySelector('${INSPECTOR} [aria-label="Copy cvat.shape.extra.value"]')`,
+        );
         await js(
-          `document.querySelector('${INSPECTOR} [data-field$="value"] [data-act=copy]').click()`,
+          `document.querySelector('${INSPECTOR} [aria-label="Copy cvat.shape.extra.value"]').click()`,
         );
         await wait(`document.querySelector('${INSPECTOR} [data-cursor-id="inspection:cancel"]')`);
         assert.deepEqual(

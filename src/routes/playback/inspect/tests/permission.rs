@@ -50,6 +50,7 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
     let next_page = cursor.next.expect("more than one field page");
     inspections.continue_target(
         InspectionRead {
+            pins: None,
             request: 0,
             token: cursor.token.clone(),
             field: Some(ordinal),
@@ -70,6 +71,109 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
     else {
         panic!("first value chunk");
     };
+    let wanted = vec![
+        api_types::inspect::InspectionPin {
+            group: scene::inspection::FieldGroup::Debug,
+            identity: None,
+            path: ["cvat", "shape", "extra", "field4999"]
+                .map(String::from)
+                .into(),
+        },
+        api_types::inspect::InspectionPin {
+            group: scene::inspection::FieldGroup::Debug,
+            identity: None,
+            path: ["cvat", "shape", "extra", "value"].map(String::from).into(),
+        },
+    ];
+    let mut offset = 0;
+    let mut pinned = Vec::new();
+    loop {
+        inspections.continue_target(
+            InspectionRead {
+                pins: Some(wanted.clone()),
+                request: 2,
+                token: cursor.token.clone(),
+                field: None,
+                raw: None,
+                path: false,
+                offset,
+            },
+            viewer.inspect_target(0, revision, 10),
+        );
+        let ServerMessage::InspectContinued {
+            result: InspectionReadResult::Pins { fields, next },
+            ..
+        } = answer(&mut inspections).await.0
+        else {
+            panic!("pins");
+        };
+        pinned.extend(fields);
+        if let Some(next) = next {
+            offset = next;
+        } else {
+            break;
+        }
+    }
+    assert_eq!(
+        pinned
+            .iter()
+            .find(|(index, _)| *index == 0)
+            .unwrap()
+            .1
+            .value,
+        scene::inspection::Leaf::Text("4999".into())
+    );
+    assert_eq!(
+        pinned
+            .iter()
+            .find(|(index, _)| *index == 1)
+            .unwrap()
+            .1
+            .cut
+            .unwrap()[0],
+        u64::from(ordinal)
+    );
+    inspections.continue_target(
+        InspectionRead {
+            pins: None,
+            request: 3,
+            token: cursor.token.clone(),
+            field: None,
+            raw: None,
+            path: false,
+            offset: next_page,
+        },
+        viewer.inspect_target(0, revision, 10),
+    );
+    assert!(matches!(
+        answer(&mut inspections).await.0,
+        ServerMessage::InspectContinued {
+            result: InspectionReadResult::Page { .. },
+            ..
+        }
+    ));
+    inspections.continue_target(
+        InspectionRead {
+            pins: None,
+            request: 4,
+            token: cursor.token.clone(),
+            field: Some(ordinal),
+            raw: None,
+            path: false,
+            offset: next_chunk,
+        },
+        viewer.inspect_target(0, revision, 10),
+    );
+    assert!(
+        matches!(
+            answer(&mut inspections).await.0,
+            ServerMessage::InspectContinued {
+                result: InspectionReadResult::Chunk { .. },
+                ..
+            }
+        ),
+        "a pinned value remains copyable outside the visible page"
+    );
     allowed.store(false, Ordering::SeqCst);
     inspections.ask(&viewer, 0, revision, 10, "cvat_track_7".into());
     assert!(
@@ -81,13 +185,15 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
         inspections.searches.running.is_none(),
         "denied query starts no work"
     );
-    for (field, raw, offset) in [
-        (None, None, next_page),
-        (Some(ordinal), None, next_chunk),
-        (None, Some(true), 0),
+    for (field, raw, pins, offset) in [
+        (None, None, None, next_page),
+        (Some(ordinal), None, None, next_chunk),
+        (None, Some(true), None, 0),
+        (None, None, Some(wanted), 0),
     ] {
         inspections.continue_target(
             InspectionRead {
+                pins,
                 request: 1,
                 token: cursor.token.clone(),
                 field,

@@ -85,7 +85,6 @@ describe("inspections", () => {
     inspections.follow([frame(3)], true);
     expect(samples()).toEqual([1, 2]);
 
-    // The newest draw replaces those skipped.
     inspections.catchUp();
     expect(samples()).toEqual([1, 2, 3]);
 
@@ -96,7 +95,6 @@ describe("inspections", () => {
     inspections.follow([frame(5)], true);
     expect(samples()).toEqual([1, 2, 3, 5]);
 
-    // Showing the inspector, like selecting, reads the newest draw.
     inspections.setVisible(false);
     time.now = 1160;
     inspections.follow([frame(6)], true);
@@ -112,7 +110,6 @@ describe("inspections", () => {
     inspections.follow([frame(2)], true);
     time.now = 1033;
     inspections.follow([frame(3)], true);
-    // The reply for the displayed sample completes it at once; the skipped draw is not asked for.
     inspections.receive(reply(2, found(CLASS)));
     expect(inspections.view).toMatchObject({ state: "ready" });
     time.now = 1066;
@@ -170,7 +167,6 @@ describe("inspections", () => {
       },
       fields: [],
     });
-    // Drawing the same sample again, as every refresh does, changes nothing.
     const loading = inspections.view;
     expect(inspections.follow([frame(3)])).toBe(false);
     expect(inspections.view).toBe(loading);
@@ -187,7 +183,6 @@ describe("inspections", () => {
     inspections.follow([frame(2)]);
     inspections.follow([frame(3)]);
     expect(samples()).toEqual([1, 2, 3]);
-    // A late reply for a sample no longer shown is discarded.
     expect(inspections.receive(reply(1, found(CLASS)))).toBe(false);
     expect(inspections.view.state).toBe("loading");
     inspections.receive(reply(3, found({ ...CLASS, value: { kind: "text", value: "bus" } })));
@@ -212,7 +207,6 @@ describe("inspections", () => {
       summary: { score: 0.5 },
       fields: [],
     });
-    // A late reply for the preceding sample changes nothing.
     expect(
       inspections.receive(reply(1, found({ ...CLASS, value: { kind: "text", value: "bus" } }))),
     ).toBe(false);
@@ -222,7 +216,6 @@ describe("inspections", () => {
       summary: { score: 0.5 },
       fields: [{ value: { kind: "text", value: "truck" } }],
     });
-    // A frame without the object shows its own state, and nothing held comes back after it.
     inspections.follow([frame(3, withoutCar)]);
     expect(inspections.view.state).toBe("absent");
     inspections.follow([frame(4)]);
@@ -249,7 +242,6 @@ describe("inspections", () => {
     inspections.follow([frame(16)]);
     expect(inspections.view.state).toBe("ready");
     expect(samples()).toHaveLength(17);
-    // Leaving the sample releases its fields.
     inspections.follow([frame(0)]);
     expect(samples()).toHaveLength(18);
     expect(inspections.view.state).toBe("loading");
@@ -269,7 +261,7 @@ describe("inspections", () => {
   });
 
   it("keeps the selection when a frame has no such object, and finds the object again", () => {
-    const { inspections, samples } = setup();
+    const { inspections, samples, sent } = setup();
     inspections.follow([frame(0, withoutCar)]);
     inspections.select(SELECTION);
     expect(inspections.view).toEqual({
@@ -282,18 +274,31 @@ describe("inspections", () => {
     inspections.follow([frame(1)]);
     expect(inspections.view).toMatchObject({ state: "loading", selection: SELECTION });
     inspections.receive(reply(1, { state: "Absent" }));
+    expect(sent.at(-1)).toEqual({ type: "InspectRelease" });
     expect(inspections.view).toMatchObject({ state: "absent", reason: "gone" });
-    inspections.follow([frame(2, withoutCar)]);
+    inspections.follow([frame(2)]);
+    inspections.receive(reply(2, found(CLASS)));
+    const count = sent.length;
+    inspections.follow([frame(2)], false);
+    expect(sent).toHaveLength(count);
+    inspections.follow([undefined]);
+    expect(sent.at(-1)).toEqual({ type: "InspectRelease" });
+    inspections.follow([frame(3)]);
+    expect(inspections.view.state).toBe("loading");
+    inspections.receive(reply(3, found(CLASS)));
+    inspections.follow([frame(4, withoutCar)]);
+    expect(sent.at(-1)).toEqual({ type: "InspectRelease" });
     expect(inspections.view).toMatchObject({ state: "absent", last: { className: "car" } });
   });
 
   it("says filtered, and keeps the selection and the class, while the lane's toggles or filter hide the object", () => {
-    const { inspections, samples } = setup();
+    const { inspections, samples, sent } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
-    // The class toggled off, then on again; the sample and its columns are the same throughout.
+    inspections.receive(reply(0, found(CLASS)));
     const off = { classMask: { enabled: new Uint32Array([0b10]), options: 2 }, styleRevision: 1 };
     expect(inspections.follow([frame(0, withCar, 1, 0, off)])).toBe(true);
+    expect(sent.at(-1)).toEqual({ type: "InspectRelease" });
     expect(inspections.view).toMatchObject({
       state: "absent",
       selection: SELECTION,
@@ -307,7 +312,6 @@ describe("inspections", () => {
     if (!compiled.ok) throw new Error("the filter compiles");
     inspections.follow([frame(0, withCar, 1, 0, { filter: compiled.filter, styleRevision: 3 })]);
     expect(inspections.view).toMatchObject({ state: "absent", reason: "filtered" });
-    // Asked again only when the object was shown again.
     expect(samples()).toEqual([0, 0]);
   });
 
@@ -322,7 +326,6 @@ describe("inspections", () => {
     inspections.follow([frame(1)]);
     inspections.follow([frame(0)]);
     expect(samples()).toEqual([0, 1, 0]);
-    // The sample held anew, as after the viewer's set of samples changed, is asked for again.
     inspections.receive(reply(0, { state: "Unavailable" }));
     expect(inspections.follow([frame(0, fullSample([{ id: "7", class: "car" }]))])).toBe(true);
     expect(samples()).toEqual([0, 1, 0, 0]);
@@ -332,11 +335,9 @@ describe("inspections", () => {
     const { inspections, samples } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
-    // Another frame shows no such object, so nothing else is asked; the reply for sample 0 never comes.
     inspections.follow([frame(1, withoutCar)]);
     inspections.follow([frame(0)]);
     expect(samples()).toEqual([0, 0]);
-    // Drawn again and again with no reply: asked once more, not at every draw.
     for (let draw = 0; draw < 130; draw++) inspections.follow([frame(0)]);
     expect(samples()).toEqual([0, 0, 0]);
     inspections.receive(reply(0, found(CLASS)));
@@ -357,7 +358,6 @@ describe("inspections", () => {
     });
     const asked = sent.at(-1);
     expect(asked).toMatchObject({ type: "Inspect", source: 1, entity: "7" });
-    // The first source's reply is a different request.
     inspections.receive(reply(0, found({ ...CLASS, value: { kind: "text", value: "bus" } })));
     expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
     inspections.receive({ ...reply(0, { state: "Unavailable" }), source: 1 });
@@ -407,7 +407,6 @@ describe("inspections", () => {
     expect(inspections.select(null)).toBe(true);
     expect(inspections.view).toEqual({ state: "none" });
     expect(inspections.select(null)).toBe(false);
-    // The pair shown before the selection was cleared is not held for the object selected again.
     inspections.follow([frame(1)]);
     inspections.select(SELECTION);
     expect(inspections.view).toMatchObject({ state: "loading", fields: [] });

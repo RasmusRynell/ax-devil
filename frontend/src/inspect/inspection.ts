@@ -1,13 +1,10 @@
-/**
- * Inspection state and ordering for a viewer. A selection follows the shown sample; newer requests supersede
- * older ones. One field window and one explicit copy are retained. While playing, the display follows at 10 Hz;
- * copy ownership follows every sample change immediately. Hidden inspectors ask for nothing, and reconnect waits
- * for a frame of the new connection before asking again. An unanswered initial request is retried after 120 draws.
- */
+/** Inspection state and ordering for a viewer. */
 
-import { MAX_COPY_BYTES } from "../generated/api";
+import { MAX_COPY_BYTES, MAX_INSPECTION_PINS } from "../generated/api";
+import { InspectionPins } from "./inspectionPins";
+import type { FieldId } from "./fields";
 import { writeClipboard } from "../tools/table/clipboard";
-import { keyOf, summarize, sameSummary, type Shown } from "./inspectionSummary";
+import { keyOf, summarize, sameInspection, type Shown } from "./inspectionSummary";
 import type { InspectionView, LaneFrame, Selection, Summary } from "../lanes/contract";
 import type { ClientMessage, FieldWire, InspectionWire, ServerMessage } from "../stream/protocol";
 
@@ -25,6 +22,7 @@ type Reply = Extract<ServerMessage, { type: "Inspected" }>;
 export class Inspections {
   readonly #changed: () => void;
   #serial = 0;
+  readonly #pins = new InspectionPins();
   #accessRevision = 0;
   #pageOffset = 0;
   #pending: {
@@ -32,7 +30,7 @@ export class Inspections {
     key: string;
     lane: number;
     token: string;
-    field: number | "raw" | null;
+    field: number | "raw" | "pins" | null;
     path: boolean;
     offset: number;
   } | null = null;
@@ -49,15 +47,12 @@ export class Inspections {
   #newest: readonly (LaneFrame | undefined)[] = [];
   /** The newest data revision each source was drawn with: a reply of an older one is dropped. */
   readonly #revisions = new Map<number, number>();
-  /** The replies kept, oldest first. Unavailable is not kept: it says nothing about the sample. */
+  /** The replies kept, oldest first. */
   readonly #cache = new Map<string, InspectionWire>();
   /** The request out for the shown sample, and the draw it was sent at. */
   #wanted: string | null = null;
   #inflight: { key: string; at: number } | null = null;
-  /**
-   * The sample, as held by these columns, the backend said it would not answer for. It is forgotten when another
-   * sample is wanted, or the sample is held anew, so that Unavailable is never more than a pause in asking.
-   */
+  /** The sample, as held by these columns, the backend said it would not answer for. */
   #refused: { key: string; columns: unknown } | null = null;
   /** Draws so far, which time how long a request has been out. */
   #draws = 0;
@@ -92,10 +87,7 @@ export class Inspections {
     this.#now = now;
   }
 
-  /**
-   * After a draw: if the view skipped it, brings the view up to date with `changed` once PLAYING_INTERVAL_MS pass
-   * without another draw, as when the source stalls. Each draw restarts the wait.
-   */
+  /** After a draw: if the view skipped it, brings the view up to date with `changed` once PLAYING_INTERVAL_MS pass without another draw, as when the source stalls. */
   trail(after: (callback: () => void, ms: number) => () => void, changed: () => void): void {
     this.#cancel?.();
     this.#cancel =
@@ -106,7 +98,7 @@ export class Inspections {
         : undefined;
   }
 
-  /** Brings the view up to the newest draw after skipped ones. Reports whether the view changed. */
+  /** Brings the view up to the newest draw after skipped ones. */
   catchUp(): boolean {
     this.#cancel?.();
     this.#cancel = undefined;
@@ -133,7 +125,7 @@ export class Inspections {
     this.#at = null;
   }
 
-  /** Makes the view follow the newest draw. Reports whether the view changed. */
+  /** Makes the view follow the newest draw. */
   #sync(): boolean {
     this.#frames = this.#newest;
     this.#behind = false;
@@ -145,7 +137,7 @@ export class Inspections {
     return this.#view;
   }
 
-  /** Selects an object, or clears the selection with `null`. Reports whether the view changed. */
+  /** Selects an object, or clears the selection with `null`. */
   select(selection: Selection): boolean {
     if (this.#error) {
       this.#abandon();
@@ -167,21 +159,19 @@ export class Inspections {
     return this.#sync();
   }
 
-  /** Tells whether an inspector page shows. Showing one asks for the selection's fields at once. Reports whether the view changed. */
+  /** Tells whether an inspector page shows. */
   setVisible(visible: boolean): boolean {
     if (visible === this.#visible) return false;
     this.#visible = visible;
     if (!visible) {
       this.suspend();
       this.#abandon();
+      return this.#update();
     }
-    return visible && this.#sync();
+    return this.#sync();
   }
 
-  /**
-   * The lanes drew these frames: follows the selection to the shown samples. Reports whether the view changed. While
-   * `playing` the view follows only if it has not within PLAYING_INTERVAL_MS.
-   */
+  /** The lanes drew these frames: follows the selection to the shown samples. */
   follow(frames: readonly (LaneFrame | undefined)[], playing = false): boolean {
     const selected = this.#selection;
     const shown = selected && frames[selected.lane];
@@ -217,24 +207,26 @@ export class Inspections {
     return this.#update();
   }
 
-  /** The backend's answer to a request for fields. Reports whether the view changed. */
+  /** The backend's answer to a request for fields. */
   receive(message: Reply): boolean {
     const key = keyOf(message.source, message.data_revision, message.sample, message.entity);
     if (key !== this.#wanted || !this.#capActive || !this.#visible) return false;
     if (key === this.#inflight?.key) this.#inflight = null;
     if (message.data_revision === this.#revisions.get(message.source)) {
-      if (message.inspection.state === "Unavailable")
+      if (message.inspection.state === "Unavailable") {
+        this.#abandon();
         this.#refused = { key, columns: this.#sampleAt().columns };
-      else this.#remember(key, message.inspection);
+      } else {
+        if (message.inspection.state === "Refused") this.#abandon();
+        this.#remember(key, message.inspection);
+      }
     }
-    return this.#update();
+    const changed = this.#update();
+    this.#askPins();
+    return changed;
   }
 
-  /**
-   * A new connection: nothing of the old one holds. The selection is asked about again, but only once a frame of
-   * the new connection's data has been drawn, as the backend answers Unavailable for a sample it has not yet seen
-   * the viewer hold.
-   */
+  /** A new connection: nothing of the old one holds. */
   reconnect(): void {
     this.#abandon();
     this.#inflight = null;
@@ -245,11 +237,27 @@ export class Inspections {
     this.#update();
   }
 
+  /** Resolves pinned identities against the current sample independently of paging. */
+  setPins(ids: readonly FieldId[]): boolean {
+    if (!this.#pins.set(ids)) return false;
+    this.#cancelRead();
+    this.#askPins();
+    if (ids.length > MAX_INSPECTION_PINS)
+      this.#error = `Inspection supports at most ${MAX_INSPECTION_PINS} pins`;
+    return this.#update();
+  }
+
+  #askPins(): void {
+    if (this.#pins.next !== null && !this.#pending && !this.#copy && !this.#writing)
+      this.#read("pins", this.#pins.next);
+  }
+
   #abandon(): void {
     if (this.#capActive) this.#send({ type: "InspectRelease" });
     this.#capActive = false;
     this.#cancelRead();
     this.#cache.clear();
+    this.#pins.clear();
     this.#inflight = null;
     this.#refused = null;
   }
@@ -267,12 +275,13 @@ export class Inspections {
   }
 
   #notify(): void {
+    this.#askPins();
     this.#accessRevision++;
     this.#update();
     this.#changed();
   }
 
-  #read(field: number | "raw" | null, offset: number, path = false): void {
+  #read(field: number | "raw" | "pins" | null, offset: number, path = false): void {
     const key = this.#wanted;
     const reply = key === null ? undefined : this.#cache.get(key);
     if (
@@ -283,14 +292,17 @@ export class Inspections {
       !this.#visible
     )
       return;
-    this.#cancelRead();
+    if (field !== "pins") this.#cancelRead();
     if (field !== null && this.#writing) {
       this.#error = "Clipboard is busy";
       this.#notify();
       return;
     }
-    if (field !== null && field !== "raw") {
-      const cut = reply.fields
+    if (field !== null && field !== "raw" && field !== "pins") {
+      const cut = [
+        ...reply.fields,
+        ...this.#pins.fields.filter((field): field is FieldWire => field != null),
+      ]
         .map((entry) => (path ? entry.path_cut : entry.cut))
         .find((cut) => cut?.[0] === field);
       if (!cut) return;
@@ -317,12 +329,23 @@ export class Inspections {
 
   #sendRead(): void {
     const pending = this.#pending;
+    if (
+      pending?.field === "pins" &&
+      new TextEncoder().encode(JSON.stringify(this.#pins.wanted())).length > 60 * 1024
+    ) {
+      this.#pins.next = null;
+      this.#cancelRead();
+      this.#error = "Pinned fields exceed the inspection request budget";
+      this.#notify();
+      return;
+    }
     if (pending)
       this.#send({
         type: "InspectContinue",
         request: pending.request,
         token: pending.token,
-        field: pending.field === "raw" ? null : pending.field,
+        field: typeof pending.field === "number" ? pending.field : null,
+        pins: pending.field === "pins" ? this.#pins.wanted() : undefined,
         raw: pending.field === "raw" ? true : undefined,
         path: pending.path,
         offset: pending.offset,
@@ -344,6 +367,10 @@ export class Inspections {
     if (result.state === "Refused") {
       this.#cancelRead();
       this.#error = result.reason;
+    } else if (result.state === "Pins" && pending.field === "pins") {
+      this.#pins.accept(result.fields, result.next);
+      this.#pending = null;
+      this.#askPins();
     } else if (result.state === "Page" && pending.field === null) {
       this.#pageOffset = pending.offset;
       this.#remember(pending.key, {
@@ -428,11 +455,7 @@ export class Inspections {
     return summary === "filtered" ? summary : { frame, summary };
   }
 
-  /**
-   * Asks for the shown object's fields unless they are held, refused for this very sample, or recently asked for.
-   * A request for another sample is superseded, not awaited: the backend keeps only the newest, and a request it
-   * dropped is asked again if its sample is shown again.
-   */
+  /** Asks for the shown object's fields unless they are held, refused for this very sample, or recently asked for. */
   #ask(frame: LaneFrame, entity: string): void {
     const key = keyOf(frame.source, frame.dataRevision, frame.sample, entity);
     const refused = this.#refused;
@@ -459,25 +482,7 @@ export class Inspections {
     if (this.#refused && this.#refused.key !== this.#wanted) this.#refused = null;
     this.#at = { selection, ...this.#sampleAt() };
     const before = this.#view;
-    const same =
-      before.state === next.state &&
-      (before.state === "none" ||
-        (next.state !== "none" &&
-          before.selection.lane === next.selection.lane &&
-          before.selection.source === next.selection.source &&
-          before.selection.entity === next.selection.entity &&
-          (before.state === "absent"
-            ? next.state === "absent" &&
-              before.reason === next.reason &&
-              (before.last === next.last ||
-                (before.last !== null && next.last !== null && sameSummary(before.last, next.last)))
-            : next.state !== "absent" &&
-              sameSummary(before.summary, next.summary) &&
-              before.fields === next.fields &&
-              before.error === next.error &&
-              before.truncated === next.truncated &&
-              before.access?.revision === next.access?.revision)));
-    if (same) return false;
+    if (sameInspection(before, next)) return false;
     this.#view = next;
     return true;
   }
@@ -485,7 +490,7 @@ export class Inspections {
   #viewOf(selection: NonNullable<Selection>): InspectionView {
     const shown = this.#shown(selection);
     if (typeof shown === "string") {
-      this.#cancelRead();
+      this.#abandon();
       return { state: "absent", selection, reason: shown, last: this.#last };
     }
     const { frame, summary } = shown;
@@ -497,8 +502,10 @@ export class Inspections {
     }
     this.#wanted = key;
     const reply = this.#cache.get(key);
-    if (reply?.state === "Absent")
+    if (reply?.state === "Absent") {
+      this.#abandon();
       return { state: "absent", selection, reason: "gone", last: summary };
+    }
     this.#ask(frame, selection.entity);
     const found = reply?.state === "Found" ? reply : null;
     return {
@@ -507,6 +514,7 @@ export class Inspections {
       summary,
       error: reply?.state === "Refused" ? reply.reason : undefined,
       fields: found?.fields ?? NO_FIELDS,
+      pins: this.#pins.fields,
       truncated: found?.truncated ?? false,
       access: found?.continuation
         ? {

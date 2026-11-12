@@ -8,7 +8,7 @@ use ts_rs::TS;
 /// One leaf of an object's data.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 pub struct FieldWire {
-    /// Stable digest of the full segmented path, only when its display path is abbreviated.
+    /// Stable digest of the full segmented path, independent of its display preview.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub identity: Option<String>,
@@ -92,6 +92,7 @@ pub enum InspectionWire {
 pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<InspectionContinuation>();
     types.visit::<InspectionRead>();
+    types.visit::<InspectionPin>();
     types.visit::<InspectionReadResult>();
     types.visit::<FieldWire>();
     types.visit::<ItemWire>();
@@ -121,6 +122,10 @@ pub struct InspectionRead {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub raw: Option<bool>,
+    /// Resolve these pinned identities independently of the visible page (at most 64).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pins: Option<Vec<InspectionPin>>,
     /// Retrieve the dotted path instead of the value.
     #[serde(default)]
     pub path: bool,
@@ -137,6 +142,13 @@ pub enum InspectionReadResult {
         /// Bounded fields in stable order.
         fields: Vec<FieldWire>,
         /// Next page ordinal, absent at the end.
+        next: Option<u32>,
+    },
+    /// Pinned fields found in one bounded scan window; absence is final only when `next` is absent.
+    Pins {
+        /// Requested pin index and its preview; paths cap at 64 KiB and texts at 16 KiB.
+        fields: Vec<(u32, FieldWire)>,
+        /// Next scan ordinal, absent when every pin has been resolved or the object ends.
         next: Option<u32>,
     },
     /// A UTF-8-aligned piece of a value.
@@ -156,8 +168,31 @@ pub enum InspectionReadResult {
 }
 
 /// Inspection limits exported from the owning Scene module to the client.
-pub const CONSTANTS: &[(&str, u64, &str)] = &[(
-    "MAX_COPY_BYTES",
-    scene::inspection::MAX_COPY_BYTES as u64,
-    "The maximum UTF-8 bytes assembled for one explicit inspection copy.",
-)];
+pub const CONSTANTS: &[(&str, u64, &str)] = &[
+    (
+        "MAX_INSPECTION_PINS",
+        MAX_INSPECTION_PINS as u64,
+        "The maximum pinned inspection fields.",
+    ),
+    (
+        "MAX_COPY_BYTES",
+        scene::inspection::MAX_COPY_BYTES as u64,
+        "The maximum UTF-8 bytes assembled for one explicit inspection copy.",
+    ),
+];
+
+/// A pinned field's stable identity; legacy pins name the segmented path instead of its digest.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+pub struct InspectionPin {
+    /// Section containing the field.
+    pub group: FieldGroup,
+    /// Full segmented-path SHA-256 when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub identity: Option<String>,
+    /// Legacy segmented path; digest-based requests send no path text.
+    #[serde(default)]
+    pub path: Vec<String>,
+}
+/// The most pin previews retained by one Inspector.
+pub const MAX_INSPECTION_PINS: usize = 64;
