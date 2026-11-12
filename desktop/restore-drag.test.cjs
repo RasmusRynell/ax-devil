@@ -57,6 +57,14 @@ void test("ending or replacing a gesture retires its pending unmaximize callback
     restoreDrag(window, "move");
     return window.listeners("unmaximize")[0];
   };
+  const navigate = (isMainFrame, isSameDocument) =>
+    window.webContents.emit(
+      "did-start-navigation",
+      { isMainFrame, isSameDocument },
+      "about:blank",
+      isSameDocument,
+      isMainFrame,
+    );
   for (const exit of [
     "end",
     "replace",
@@ -71,9 +79,9 @@ void test("ending or replacing a gesture retires its pending unmaximize callback
     if (exit === "replace") restoreDrag(window, "start", 30);
     else if (exit === "end") restoreDrag(window, "end");
     else if (exit === "navigation") {
-      window.webContents.emit("did-start-navigation", {}, "about:blank", false, false);
+      navigate(false, false);
       assert.equal(window.listenerCount("unmaximize"), 1, "subframe keeps the current gesture");
-      window.webContents.emit("did-start-navigation", {}, "about:blank", false, true);
+      navigate(true, false);
     } else if (exit === "render-process-gone" || exit === "destroyed")
       window.webContents.emit(exit);
     else window.emit(exit);
@@ -90,6 +98,7 @@ void test("ending or replacing a gesture retires its pending unmaximize callback
     restoreDrag(window, "end");
   }
   pending();
+  navigate(true, true);
   window.emit("unmaximize");
   assert.deepEqual(writes, [{ x: 242, y: 2, width: 800, height: 600 }]);
   restoreDrag(window, "end");

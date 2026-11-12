@@ -39,8 +39,8 @@ function restoreDrag(window, phase, titleHeight) {
       ready: false,
       restored: () => {},
       cancel: () => cancel(window),
-      navigate: (_event, _url, _inPlace, mainFrame) => {
-        if (mainFrame) cancel(window);
+      navigate: ({ isMainFrame, isSameDocument }) => {
+        if (isMainFrame && !isSameDocument) cancel(window);
       },
     };
     gestures.set(window, held);
