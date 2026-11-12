@@ -8,9 +8,10 @@ import {
 } from "react";
 import { useWindowMaximized } from "../windowBridge";
 
-const isTitle = (target: EventTarget) =>
-  target instanceof Element &&
-  Boolean(target.closest('[data-cursor-id="title:drag"], [data-cursor-id="title:name"]'));
+const titleTarget = (target: EventTarget) =>
+  target instanceof Element
+    ? target.closest<HTMLElement>('[data-cursor-id="title:drag"], [data-cursor-id="title:name"]')
+    : null;
 
 /** Linux's maximized-title restore gesture; normal windows keep Electron's native drag region. */
 export function useTitleDrag() {
@@ -42,12 +43,14 @@ export function useTitleDrag() {
     manual: Boolean(bridge?.restoreDrag && (maximized || dragging)),
     onPointerDown: (event: PointerEvent<HTMLElement>) => {
       if (!maximized || !bridge?.restoreDrag || event.button !== 0) return;
-      if (!isTitle(event.target)) return;
+      const title = titleTarget(event.target);
+      if (!title) return;
       event.preventDefault();
       end();
-      pointer.current = { id: event.pointerId, element: event.currentTarget };
+      // Capture also retargets clicks; keep their target on the title, not its header.
+      pointer.current = { id: event.pointerId, element: title };
       setDragging(true);
-      event.currentTarget.setPointerCapture(event.pointerId);
+      title.setPointerCapture(event.pointerId);
       bridge.restoreDrag("start", event.currentTarget.getBoundingClientRect().height);
     },
     onPointerMove: (event: PointerEvent<HTMLElement>) => {
@@ -56,7 +59,7 @@ export function useTitleDrag() {
       else bridge?.restoreDrag?.("move");
     },
     onDoubleClick: (event: MouseEvent<HTMLElement>) => {
-      if (isTitle(event.target)) bridge?.toggleMaximize();
+      if (titleTarget(event.target)) bridge?.toggleMaximize();
     },
     onPointerUp: end,
     onPointerCancel: end,

@@ -41,24 +41,25 @@ it("every gesture exit clears main state and releases capture before later movem
   ]) {
     const view = render(<Title />);
     const header = view.container.querySelector("header")!;
+    const title = view.getByText("Title");
     let held = false;
-    header.setPointerCapture = () => {
+    title.setPointerCapture = () => {
       held = true;
     };
-    header.hasPointerCapture = () => held;
+    title.hasPointerCapture = () => held;
     const release = vi.fn(() => {
       held = false;
     });
-    header.releasePointerCapture = release;
+    title.releasePointerCapture = release;
     restoreDrag.mockClear();
-    fireEvent.pointerDown(view.getByText("Title"), { button: 0, buttons: 1 });
+    fireEvent.pointerDown(title, { button: 0, buttons: 1 });
     expect(held).toBe(true);
     if (exit === "Escape") fireEvent.keyDown(window, { key: "Escape" });
     else if (exit === "blur") fireEvent.blur(window);
     else if (exit === "unmount") view.unmount();
-    else if (exit === "pointerCancel") fireEvent.pointerCancel(header);
-    else if (exit === "pointerUp") fireEvent.pointerUp(header);
-    else fireEvent.lostPointerCapture(header);
+    else if (exit === "pointerCancel") fireEvent.pointerCancel(title);
+    else if (exit === "pointerUp") fireEvent.pointerUp(title);
+    else fireEvent.lostPointerCapture(title);
     expect(release).toHaveBeenCalledOnce();
     expect(restoreDrag.mock.calls.map(([phase]) => phase)).toEqual(["start", "end"]);
     fireEvent.pointerMove(header, { buttons: 1 });

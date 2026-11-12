@@ -74,6 +74,11 @@ try:
         sys.stdin.read()
     elif action == "move":
         xt.XTestFakeMotionEvent(display, -1, int(args[0]), int(args[1]), 0)
+    elif action in ("click", "double"):
+        # One input transaction keeps the double-click cadence independent of process startup/load.
+        for _ in range(2 if action == "double" else 1):
+            xt.XTestFakeButtonEvent(display, 1, True, 20)
+            xt.XTestFakeButtonEvent(display, 1, False, 20)
     elif action in ("down", "up"):
         xt.XTestFakeButtonEvent(display, 1, action == "down", 0)
     else:

@@ -4,7 +4,8 @@ const path = require("node:path");
 const fit = require("./fit.cjs");
 const assert = require("node:assert/strict");
 const { page, until, setView, frames, SCREENSHOTS } = require("./smoke-kit.cjs");
-const { input, point, drag } = require("./smoke-x11.cjs");
+const { openWindow } = require("./window.cjs");
+const { input, point, drag, focus } = require("./smoke-x11.cjs");
 const TITLE = "document.querySelector('[data-cursor-id=\"title:drag\"]')";
 
 module.exports.run = async ({ window }) => {
@@ -21,7 +22,92 @@ module.exports.run = async ({ window }) => {
   );
   assert.deepEqual(window.getSize(), [800, 600], "moving keeps the normal size");
 
-  // Prepare the state independently of mouse click counting; the gesture under test is restore-drag.
+  // Real clicks must retain their title/button target while the maximized fallback captures a pointer.
+  const click = async (target, selector, action = "click") => {
+    await focus(target);
+    await input("move", 1200, 950);
+    const at = await point(target, selector);
+    await input("move", at.x, at.y);
+    await frames(page(target));
+    await input(action);
+  };
+  window.maximize();
+  await until(() => window.isMaximized(), "maximized before native title clicks");
+  await driver.wait("document.querySelector('[aria-label=Restore]')");
+  const heldBounds = window.getBounds();
+  await click(window, TITLE);
+  await frames(driver);
+  assert.ok(window.isMaximized(), "a stationary title click does not restore");
+  assert.deepEqual(window.getBounds(), heldBounds, "a stationary title click does not move");
+  for (const label of ["File", "View", "Help"]) {
+    const menu = `[...document.querySelectorAll('[data-top]')].find(b => b.textContent === '${label}')`;
+    await click(window, menu);
+    await driver.wait("document.querySelector('[role=menu]')");
+    await click(window, menu);
+    await driver.wait("!document.querySelector('[role=menu]')");
+    assert.ok(window.isMaximized(), `${label} stays an ordinary button while maximized`);
+  }
+  await click(window, "document.querySelector('[data-cursor-id=share]')");
+  await driver.wait(`document.querySelector('aside input[aria-label="Join link"]')`);
+  await click(window, "document.querySelector('header [aria-label=Session]')");
+  await driver.wait("document.querySelector('[role=menu]')");
+  await click(
+    window,
+    "[...document.querySelectorAll('[role=menuitem]')].find(b => b.textContent === 'Stop sharing')",
+  );
+  await driver.wait("!document.querySelector('header [aria-label=Session]')");
+  await driver.js("document.querySelector('[aria-label=Workspace]').click()");
+  await click(window, "document.querySelector('[aria-label=Restore]')");
+  await until(() => !window.isMaximized(), "native Restore button while maximized");
+  await click(window, "document.querySelector('[aria-label=Maximize]')");
+  await until(() => window.isMaximized(), "native Maximize button");
+  await click(window, "document.querySelector('[aria-label=Minimize]')");
+  await until(() => window.isMinimized(), "native Minimize button while maximized");
+  window.restore();
+  await until(() => !window.isMinimized(), "return after minimizing");
+  const closing = await openWindow(new URL(window.webContents.getURL()).origin, {
+    bounds: { width: 800, height: 600 },
+    fatal: (error) => {
+      throw error;
+    },
+  });
+  try {
+    await page(closing).wait("document.querySelector('[aria-label=Close]')");
+    closing.maximize();
+    await until(() => closing.isMaximized(), "auxiliary window maximized before Close");
+    await click(closing, "document.querySelector('[aria-label=Close]')");
+    await until(() => closing.isDestroyed(), "native Close button while maximized");
+  } finally {
+    if (!closing.isDestroyed()) closing.destroy();
+  }
+
+  window.unmaximize();
+  await until(() => !window.isMaximized(), "normal state before double-click setup");
+  await setView(window, [800, 600], 1);
+  window.maximize();
+  await until(() => window.isMaximized(), "maximized before native double-click");
+  await driver.wait("document.querySelector('[aria-label=Restore]')");
+  await driver.js(`(() => {
+    window.titleClickTrace = [];
+    for (const type of ['pointerup', 'click', 'dblclick', 'gotpointercapture', 'lostpointercapture'])
+      document.addEventListener(type, e => window.titleClickTrace.push({type, target: e.target.dataset.cursorId ?? e.target.tagName}), true);
+  })()`);
+  await click(window, TITLE, "double");
+  try {
+    await until(() => !window.isMaximized(), "native double-click to restore maximized title");
+  } catch (cause) {
+    throw new Error(
+      `Maximized title events: ${JSON.stringify(await driver.js("window.titleClickTrace"))}`,
+      { cause },
+    );
+  }
+  await click(window, TITLE, "double");
+  await until(() => window.isMaximized(), "native double-click to maximize normal title");
+
+  // Each independent gesture starts with a known normal size, also after WM-controlled double-clicks.
+  window.unmaximize();
+  await until(() => !window.isMaximized(), "normal state before restore-drag setup");
+  await setView(window, [800, 600], 1);
   window.maximize();
   await until(() => window.isMaximized(), "maximized window before restore-drag");
   await driver.wait("document.querySelector('[aria-label=Restore]')");
@@ -47,6 +133,9 @@ module.exports.run = async ({ window }) => {
           ) && bounds.y === Math.max(0, Math.round(maximized.y + 160 - titleHeight / 2))
       );
     }, "continuing the same restore gesture to its pointer-relative position");
+  } catch (error) {
+    error.message += `; bounds=${JSON.stringify(window.getBounds())}; normal=${JSON.stringify(window.getNormalBounds())}; events=${JSON.stringify(await driver.js("window.titleClickTrace"))}`;
+    throw error;
   } finally {
     await input("up");
   }
