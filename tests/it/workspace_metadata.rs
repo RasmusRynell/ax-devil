@@ -32,7 +32,13 @@ async fn all_accepted_metadata_remains_readable() {
     );
     assert_eq!(metadata.len(), 33);
     assert!(metadata["description"].as_str().unwrap().len() > 200);
-    assert!(metadata["path"].as_str().unwrap().len() > 60);
+    let path = std::path::Path::new(metadata["path"].as_str().unwrap());
+    assert!(
+        path.is_absolute(),
+        "the plugin emits a native absolute path"
+    );
+    let filename = path.file_name().unwrap().to_str().unwrap();
+    assert!(filename.len() > 60 && !filename.chars().any(char::is_whitespace));
     let second = backend
         .state
         .sessions

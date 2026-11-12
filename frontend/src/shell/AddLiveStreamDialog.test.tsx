@@ -41,6 +41,8 @@ let sizes: typeof SIZES = SIZES;
 let sizeAsks = 0;
 /** While set, the stream sizes wait for it. */
 let sizeGate: Promise<void> | null = null;
+/** Holds handler discovery so the mode can be chosen before its configured decoder arrives. */
+let handlerGate: Promise<void> | null = null;
 
 beforeEach(() => {
   listings = [];
@@ -50,11 +52,13 @@ beforeEach(() => {
   sizes = SIZES;
   sizeAsks = 0;
   sizeGate = null;
+  handlerGate = null;
   vi.stubGlobal("WebSocket", FakeSocket);
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     if (url === "/api/live/sources") listings.push(JSON.parse(init?.body as string).overlay);
     if (url.startsWith("/api/live/")) asked.push(JSON.parse(init?.body as string).connection);
     if (url === "/api/live/sources") await gate;
+    if (url === "/api/handlers") await handlerGate;
     if (url === "/api/live/resolutions") {
       sizeAsks++;
       await sizeGate;
@@ -317,15 +321,28 @@ describe("add live stream dialog", () => {
     expect(screen.queryByRole("option", { name: "saved.topic" })).toBeNull();
   });
 
-  it("needs a handler type for an overlay mode, offering only decoders that can read a live stream", async () => {
-    await open();
+  it("needs an explicit live handler when the mode was chosen before handlers arrived", async () => {
+    let release = () => {};
+    handlerGate = new Promise<void>((resolve) => (release = resolve));
+    render(
+      <FakeSettings state={DEFAULT_SETTINGS}>
+        <SessionProvider>
+          <AddLiveStreamDialog onClose={() => {}} />
+        </SessionProvider>
+      </FakeSettings>,
+    );
+    await screen.findByLabelText("Overlay Mode");
+    type("Overlay Mode", "rtsp");
+    await act(async () => release());
+    expect((screen.getByLabelText("Handler Type") as HTMLSelectElement).value).toBe("");
     expect(screen.getByRole("option", { name: "ADF v1 Frame" })).toBeTruthy();
     expect(screen.queryByRole("option", { name: "Acme file" })).toBeNull();
-    type("Handler Type", "");
     expect(ok().disabled).toBe(true);
     expect(screen.getByRole("alert").textContent).toBe(
-      "Select a handler type for DataHub WebSocket overlays.",
+      "Select a handler type for RTSP Embedded overlays.",
     );
+    type("Handler Type", "ADF_V1_FRAME");
+    expect(ok().disabled).toBe(false);
     type("Overlay Mode", "none");
     expect((screen.getByLabelText("Handler Type") as HTMLSelectElement).disabled).toBe(true);
     expect(ok().disabled).toBe(false);
