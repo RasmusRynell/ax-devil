@@ -98,7 +98,22 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
     setAnnouncement(`${labelOf(id)} set to ${key}, taken from ${labelOf(owner)}`);
   };
   const record = (event: KeyboardEvent, id: CommandId) => {
-    if (recording !== id) return;
+    if (recording !== id) {
+      if (
+        event.key === "F2" &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        !event.metaKey
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        setNote(null);
+        setRecording(id);
+        setAnnouncement(`Press a key for ${labelOf(id)}`);
+      }
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     swallowKeyUp.current = true;

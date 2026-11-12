@@ -15,6 +15,7 @@ function press(shortcut: string): KeyboardEvent {
     key,
     ctrlKey: parts.includes("Ctrl"),
     altKey: parts.includes("Alt"),
+    metaKey: parts.includes("Meta"),
     shiftKey: shift,
   });
 }
@@ -28,10 +29,32 @@ describe("shortcutOf", () => {
     for (const shortcut of accepted) expect(shortcutOf(press(shortcut))).toBe(shortcut);
   });
 
+  it("uses Qt portable names for macOS Command and Control, and native chip order", () => {
+    expect(
+      shortcutOf(
+        new KeyboardEvent("keydown", {
+          key: "s",
+          ctrlKey: true,
+          metaKey: true,
+          altKey: true,
+          shiftKey: true,
+        }),
+        "MacIntel",
+      ),
+    ).toBe("Meta+Ctrl+Alt+Shift+S");
+    expect(shortcutOf(new KeyboardEvent("keydown", { key: "s", ctrlKey: true }), "MacIntel")).toBe(
+      "Meta+S",
+    );
+    expect(shortcutOf(new KeyboardEvent("keydown", { key: "s", metaKey: true }), "MacIntel")).toBe(
+      "Ctrl+S",
+    );
+    expect(keyParts("Meta+Ctrl+Alt+Shift+S", "MacIntel")).toEqual(["⌃", "⌥", "⇧", "⌘", "S"]);
+  });
+
   it("gives nothing until the press is a whole shortcut, and drops Shift from symbols", () => {
     const of = (init: KeyboardEventInit) => shortcutOf(new KeyboardEvent("keydown", init));
     expect(of({ key: "Control", ctrlKey: true })).toBeNull();
-    expect(of({ key: "s", metaKey: true })).toBeNull();
+    expect(of({ key: "Meta", metaKey: true })).toBeNull();
     expect(of({ key: "å" })).toBeNull();
     expect(of({ key: ">", shiftKey: true })).toBe(">");
     // Keypad Enter is Enter, not a key of its own that would record as nothing.

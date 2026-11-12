@@ -4,7 +4,7 @@ import { keyParts } from "./shortcut";
 export function KeyChips({ shortcut }: { shortcut: string }) {
   return (
     <span className="flex shrink-0 gap-xs">
-      {keyParts(shortcut).map((key) => (
+      {keyParts(shortcut, navigator.platform).map((key) => (
         <kbd
           key={key}
           className="rounded-control border border-line-strong px-s font-sans text-small text-muted"
