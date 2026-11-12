@@ -126,3 +126,22 @@ impl TestApp {
 pub fn json(bytes: &[u8]) -> serde_json::Value {
     serde_json::from_slice(bytes).unwrap()
 }
+
+/// A blocking operation held at a known point until the test releases it. Like the preparation test runner,
+/// channels establish ordering; the deadline only bounds failure. Dropping the sender also frees the worker.
+pub(crate) fn hold() -> (
+    impl FnOnce() + Send + 'static,
+    tokio::sync::oneshot::Receiver<()>,
+    std::sync::mpsc::Sender<()>,
+) {
+    let (begun, began) = tokio::sync::oneshot::channel();
+    let (release, released) = std::sync::mpsc::channel();
+    let wait = move || {
+        let _ = begun.send(());
+        match released.recv_timeout(std::time::Duration::from_secs(10)) {
+            Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => panic!("job was not released"),
+        }
+    };
+    (wait, began, release)
+}

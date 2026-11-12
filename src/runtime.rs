@@ -50,13 +50,17 @@ mod tests {
 
     #[test]
     fn a_blocking_task_that_never_ends_does_not_hold_the_runtime_past_the_grace() {
+        let (hold, began, release) = crate::test_support::hold();
         let (finished, result) = mpsc::channel();
-        let (_keep_blocked, blocked) = mpsc::channel::<()>();
-        std::thread::spawn(move || {
+        let (exited, exit) = mpsc::channel();
+        let runtime_thread = std::thread::spawn(move || {
             let output = run(
                 async move {
-                    // Never answered, like a read from a hung mount.
-                    tokio::task::spawn_blocking(move || blocked.recv());
+                    tokio::task::spawn_blocking(move || {
+                        hold();
+                        exited.send(()).unwrap();
+                    });
+                    began.await.unwrap();
                     7
                 },
                 Duration::from_millis(50),
@@ -64,6 +68,10 @@ mod tests {
             finished.send(output.unwrap()).unwrap();
         });
 
-        assert_eq!(result.recv_timeout(Duration::from_secs(10)), Ok(7));
+        // Shutdown returns while the job is still held, rather than merely before it was scheduled.
+        assert_eq!(result.recv_timeout(Duration::from_secs(5)), Ok(7));
+        runtime_thread.join().unwrap();
+        release.send(()).unwrap();
+        exit.recv_timeout(Duration::from_secs(5)).unwrap();
     }
 }

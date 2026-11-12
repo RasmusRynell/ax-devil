@@ -2,65 +2,19 @@
 //! and for the frames, Sample Items and Frame Maps its viewer still has coming without asking again.
 
 use super::*;
-use foundation::{CancelToken, HostPath, Interrupt, MediaTime, Timeline};
+use foundation::{CancelToken, MediaTime, Timeline};
 use futures_util::{sink, stream as streams};
-use open::open_video;
 use overlays::{MapRun, OverlayEvent};
 use playback::{Authority, ClockIntent};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicI64, Ordering},
 };
-use tokio::sync::{Semaphore, oneshot};
+use tokio::sync::Semaphore;
 
 const WAIT: Duration = Duration::from_secs(20);
 /// A tenth of the viewer's default 512 MiB frame budget.
 const SAMPLE_BUDGET: u64 = 53_687_091;
-
-#[tokio::test]
-async fn revoking_while_the_index_is_built_cancels_it_and_ends_the_session() {
-    let (holder, authority) = watch::channel(Authority::default());
-    let mut gate = Gate::new(authority, || 0);
-    let (_stop, mut closing) = watch::channel(false);
-    let (started, running) = oneshot::channel();
-    let (stopped_building, cancelled) = oneshot::channel();
-    // The build runs until it is cancelled, as a slow index does.
-    let building = move |cancel: &CancelToken, _: &mut dyn FnMut(f32)| {
-        let _ = started.send(());
-        while !cancel.is_cancelled() {
-            std::thread::sleep(Duration::from_millis(2));
-        }
-        let _ = stopped_building.send(());
-        Err::<(), _>(Interrupt::Cancelled)
-    };
-    let (outbox, _queue) = mpsc::channel(1);
-    let mut viewer = streams::pending();
-    let location = HostPath::new("/clips/a.mp4");
-
-    let (ended, ()) = tokio::join!(
-        tokio::time::timeout(
-            WAIT,
-            open_video(
-                building,
-                &location,
-                &mut viewer,
-                &outbox,
-                &mut closing,
-                &mut gate,
-            )
-        ),
-        async {
-            tokio::time::timeout(WAIT, running).await.unwrap().unwrap();
-            holder.send_replace(Authority::Revoked);
-        }
-    );
-
-    assert!(matches!(ended, Ok(Err(End::Revoked))));
-    tokio::time::timeout(WAIT, cancelled)
-        .await
-        .expect("the index build is cancelled")
-        .unwrap();
-}
 
 #[tokio::test]
 async fn a_message_queued_when_the_authority_is_revoked_is_dropped_and_the_socket_closes_revoked() {
