@@ -34,12 +34,17 @@ fn reference(times: &[ObservationTime]) -> Vec<usize> {
     order
 }
 
+// Each observation's arrival index is encoded in its box's left edge, as a fraction of 64 (coordinates stay in 0..1).
+const SLOTS: f64 = 64.0;
+
 fn production(times: &[ObservationTime]) -> Vec<usize> {
     let mut entity = Entity::new(EntityId::new("a").unwrap());
     for (i, &time) in times.iter().enumerate() {
         entity.push_observation(Observation::new(
             time,
-            Geometry::Box(BoundingBox::new(i as f64, 0.0, i as f64 + 1.0, 1.0).unwrap()),
+            Geometry::Box(
+                BoundingBox::new(i as f64 / SLOTS, 0.0, (i as f64 + 1.0) / SLOTS, 1.0).unwrap(),
+            ),
         ));
     }
     let scene = Scene::new(TimeSlice::at(SceneTime::Frame(0)))
@@ -48,7 +53,7 @@ fn production(times: &[ObservationTime]) -> Vec<usize> {
     scene.entities()[0]
         .observations()
         .iter()
-        .map(|o| o.geometry.bounds().left() as usize)
+        .map(|o| (o.geometry.bounds().left() * SLOTS).round() as usize)
         .collect()
 }
 
