@@ -1,6 +1,7 @@
 // The smoke test's panels over the viewer, at the smallest window and 200% text size, in both themes: the page of a
 // selected object in the media tools and a lane's settings menu in each of its tabs. Each must fit without anything clipped or sticking
 // out, and a screenshot of each lands in the screenshots folder.
+const { BrowserWindow } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -203,6 +204,23 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
     await moveTo(window, ...at);
     for (const type of ["mouseDown", "mouseUp"]) click(type, at);
   };
+  const pressAfterBlur = async (selector, text) => {
+    // Windows can retain native focus after blur() when no other window takes it. Transfer focus between
+    // our own windows, just as the multi-window smoke scenarios do, and keep both focus assertions.
+    const other = new BrowserWindow({ width: 200, height: 100, show: false });
+    try {
+      await other.loadURL("about:blank");
+      other.show();
+      await until(
+        () => other.isFocused() && !window.isFocused(),
+        `the ${text} probe to transfer native focus to another window`,
+      );
+      await wait("!document.hasFocus()");
+      await press(selector, text);
+    } finally {
+      other.destroy();
+    }
+  };
   const catalog = `document.querySelector(${JSON.stringify(`${menu} select`)}).value`;
   await js(
     `[...document.querySelectorAll(${JSON.stringify(`${menu} [role=tab]`)})].find((b) => b.textContent === 'Look').click()`,
@@ -289,10 +307,7 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
       return Promise.resolve(new Response(JSON.stringify({ code: 'CatalogInvalid', params: {}, reason: 'Reload refused' }), { status: 400 }));
     };
   })()`);
-  window.blur();
-  await until(() => !window.isFocused(), "the Apply probe to lose native focus");
-  await wait("!document.hasFocus()");
-  await press(menu, "Apply to all lanes");
+  await pressAfterBlur(menu, "Apply to all lanes");
   await wait(`!document.querySelector(${JSON.stringify(menu)})`);
   await wait(`document.querySelector('[aria-label="GT: warnings"]')`);
   await js(`document.querySelector('[aria-label="GT: warnings"]').click()`);
@@ -312,10 +327,7 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
     await frames({ js });
     await shoot(`catalog-apply-refused-${theme}.png`);
   }
-  window.blur();
-  await until(() => !window.isFocused(), "the Dismiss probe to lose native focus");
-  await wait("!document.hasFocus()");
-  await press(warnings, "Dismiss Apply error");
+  await pressAfterBlur(warnings, "Dismiss Apply error");
   await wait(`!document.querySelector('[aria-label="GT: warnings"]')`);
   await js("document.querySelector('[aria-label=Workspace]').click()");
 };
