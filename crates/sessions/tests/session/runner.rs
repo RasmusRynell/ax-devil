@@ -18,183 +18,7 @@ use std::{
 use workspace::store::{DocCommand, Reload, Resolution};
 use workspace::{Source, VideoRef};
 
-/// A resolver with the folder-pair form whose run panics, as a defective plugin's would.
-struct Panics(ResolverSpec);
-
-impl PlaylistResolver for Panics {
-    fn spec(&self) -> &ResolverSpec {
-        &self.0
-    }
-
-    fn resolve(
-        &self,
-        _settings: &Values,
-        _cancel: &CancelToken,
-    ) -> Result<ResolvedPlaylists, Interrupt<UserError>> {
-        panic!("the resolver has a defect")
-    }
-}
-
-#[tokio::test]
-async fn a_resolver_that_panics_fails_its_item_instead_of_leaving_it_resolving() {
-    let dir = tempfile::tempdir().unwrap();
-    let mut item = playlist_in(dir.path(), &["a"]);
-    let mut spec = Handlers::built_in()
-        .resolver("folder_pair")
-        .unwrap()
-        .spec()
-        .clone();
-    spec.id = "panics".into();
-    let Source::Playlist(recipe) = &mut item.recipe.source else {
-        unreachable!("playlist_in makes a playlist")
-    };
-    recipe.resolver = "panics".into();
-    let id = item.id;
-    let handlers = Handlers::built_in().with_resolvers([Arc::new(Panics(spec)) as Arc<_>]);
-    let service: Service<u8> = Service::new(
-        GRACE,
-        Arc::new(OnRuntime {
-            runtime: tokio::runtime::Handle::current(),
-            handlers: HandlerSet::new(handlers),
-            environment: Arc::new(workspace::Environment::of_process),
-            opens: Arc::new(|_, _| Ok(())),
-        }),
-    );
-    let owner = service
-        .create(true, CursorOptions::default(), Default::default())
-        .unwrap();
-    owner
-        .command(Command::Content(DocCommand::AddItems {
-            items: vec![item],
-            open: false,
-        }))
-        .unwrap();
-    let mut states = service.subscribe(owner.session()).unwrap();
-    let failed = tokio::time::timeout(
-        Duration::from_secs(10),
-        states.wait_for(|state| {
-            matches!(
-                state.doc.workspace.resolutions.get(&id),
-                Some(Resolution::Failed(_))
-            )
-        }),
-    )
-    .await
-    .expect("a resolver that panicked left its item resolving instead of failed")
-    .unwrap();
-    let Some(Resolution::Failed(failure)) = failed.doc.workspace.resolutions.get(&id) else {
-        unreachable!("wait_for observed a failed resolution")
-    };
-    assert!(
-        failure.reason.contains("Resolving stopped unexpectedly"),
-        "{}",
-        failure.reason
-    );
-}
-
-#[tokio::test]
-async fn a_reload_checks_the_shown_entry_and_keeps_its_generation_on_open_failure() {
-    let dir = tempfile::tempdir().unwrap();
-    let item = playlist_in(dir.path(), &["a", "b"]);
-    let id = item.id;
-    let checked = Arc::new(AtomicUsize::new(0));
-    let calls = Arc::clone(&checked);
-    let service: Service<u8> = Service::new(
-        GRACE,
-        Arc::new(OnRuntime {
-            runtime: tokio::runtime::Handle::current(),
-            handlers: HandlerSet::new(Handlers::built_in()),
-            environment: Arc::new(workspace::Environment::of_process),
-            opens: Arc::new(move |video, _| {
-                calls.fetch_add(1, Ordering::SeqCst);
-                if matches!(video, VideoRef::File(path) if path.file_stem().unwrap() == "b") {
-                    Err(Interrupt::Failed(UserError::new(
-                        ErrorCode::FileUnreadable,
-                        "B cannot open",
-                    )))
-                } else {
-                    Ok(())
-                }
-            }),
-        }),
-    );
-    let owner = service
-        .create(true, CursorOptions::default(), Default::default())
-        .unwrap();
-    let mut states = service.subscribe(owner.session()).unwrap();
-    owner
-        .command(Command::Content(DocCommand::AddItems {
-            items: vec![item],
-            open: true,
-        }))
-        .unwrap();
-    tokio::time::timeout(
-        Duration::from_secs(10),
-        states.wait_for(|state| {
-            matches!(
-                state.doc.workspace.resolutions.get(&id),
-                Some(Resolution::Resolved { .. })
-            )
-        }),
-    )
-    .await
-    .unwrap()
-    .unwrap();
-    assert_eq!(
-        checked.load(Ordering::SeqCst),
-        0,
-        "first resolution must not open media"
-    );
-    let a = entry_key(&owner.state(), id, 0);
-    let b = entry_key(&owner.state(), id, 1);
-    let mut view = showing(id);
-    view.viewers.get_mut(&b.viewer).unwrap().entry = Some(b.entry.clone());
-    owner.view(view.clone(), 1).unwrap();
-    let old = stream(&service, &owner, &b).unwrap();
-    owner
-        .command(Command::Content(DocCommand::Resolve(id)))
-        .unwrap();
-    tokio::time::timeout(
-        Duration::from_secs(10),
-        states.wait_for(|state| {
-            !state.doc.workspace.reloads.contains_key(&id)
-                || matches!(
-                    state.doc.workspace.reloads.get(&id),
-                    Some(Reload::Failed { .. })
-                )
-        }),
-    )
-    .await
-    .unwrap()
-    .unwrap();
-    assert_eq!(entry_key(&owner.state(), id, 1).generation, b.generation);
-    let state = owner.state();
-    let Some(Reload::Failed { error, .. }) = state.doc.workspace.reloads.get(&id) else {
-        panic!("replacement opening must report a reload failure");
-    };
-    assert_eq!(error.reason, "B cannot open");
-    assert!(matches!(authority(&old), playback::Authority::Own { .. }));
-    view.viewers.get_mut(&a.viewer).unwrap().entry = Some(a.entry.clone());
-    owner.view(view, 2).unwrap();
-    owner
-        .command(Command::Content(DocCommand::Resolve(id)))
-        .unwrap();
-    tokio::time::timeout(
-        Duration::from_secs(10),
-        states.wait_for(|state| {
-            !matches!(
-                state.doc.workspace.reloads.get(&id),
-                Some(Reload::Running { .. })
-            )
-        }),
-    )
-    .await
-    .unwrap()
-    .unwrap();
-    assert!(entry_key(&owner.state(), id, 0).generation > a.generation);
-    assert!(!owner.state().doc.workspace.reloads.contains_key(&id));
-    assert_eq!(checked.load(Ordering::SeqCst), 2);
-}
+mod failures;
 
 // Acknowledged blocking gate; dropping release also frees the worker.
 fn hold() -> (
@@ -218,8 +42,10 @@ fn hold() -> (
 struct MovingOverlays {
     spec: ResolverSpec,
     inner: Arc<dyn PlaylistResolver>,
-    replacement: Arc<AtomicBool>,
-    files: [std::path::PathBuf; 2],
+    replacement: Arc<AtomicUsize>,
+    resolver_fails: Arc<AtomicBool>,
+    manifest: std::path::PathBuf,
+    files: [std::path::PathBuf; 3],
 }
 
 impl PlaylistResolver for MovingOverlays {
@@ -227,13 +53,27 @@ impl PlaylistResolver for MovingOverlays {
         &self.spec
     }
 
+    fn watched(
+        &self,
+        _: &Values,
+        _: &CancelToken,
+    ) -> Result<Vec<std::path::PathBuf>, Interrupt<UserError>> {
+        Ok(vec![self.manifest.clone()])
+    }
+
     fn resolve(
         &self,
         settings: &Values,
         cancel: &CancelToken,
     ) -> Result<ResolvedPlaylists, Interrupt<UserError>> {
+        if self.resolver_fails.load(Ordering::SeqCst) {
+            return Err(Interrupt::Failed(UserError::new(
+                ErrorCode::PlaylistInvalid,
+                "Manifest cannot resolve",
+            )));
+        }
         let mut content = self.inner.resolve(settings, cancel)?;
-        let file = &self.files[usize::from(self.replacement.load(Ordering::SeqCst))];
+        let file = &self.files[self.replacement.load(Ordering::SeqCst)];
         for playlist in &mut content.playlists {
             for entry in &mut playlist.entries {
                 entry.overlays[0].path = file.clone();
@@ -253,15 +93,18 @@ async fn a_reload_validates_entries_shown_meanwhile_before_it_commits() {
                 let dir = tempfile::tempdir().unwrap();
                 let mut item = playlist_in(dir.path(), if removed { &["a", "b"] } else { &["a", "b", "c"] });
                 let id = item.id;
-                let files = [dir.path().join("old.txt"), dir.path().join("new.txt")];
+                let files = [dir.path().join("old.txt"), dir.path().join("new.txt"), dir.path().join("latest.txt")];
+                let manifest = dir.path().join("manifest.txt");
+                std::fs::write(&manifest, "").unwrap();
                 for file in &files { std::fs::write(file, "").unwrap(); }
-                let replacement = Arc::new(AtomicBool::new(false));
+                let replacement = Arc::new(AtomicUsize::new(0));
+                let resolver_fails = Arc::new(AtomicBool::new(false));
                 let base = Handlers::built_in();
                 let mut spec = base.resolver("folder_pair").unwrap().spec().clone();
                 spec.id = "moving-overlays".into();
                 let Source::Playlist(recipe) = &mut item.recipe.source else { unreachable!(); };
                 recipe.resolver = spec.id.clone();
-                let resolver = MovingOverlays { spec, inner: Arc::clone(base.resolver("folder_pair").unwrap()), replacement: Arc::clone(&replacement), files: files.clone() };
+                let resolver = MovingOverlays { spec, inner: Arc::clone(base.resolver("folder_pair").unwrap()), replacement: Arc::clone(&replacement), resolver_fails: Arc::clone(&resolver_fails), manifest: manifest.clone(), files: files.clone() };
                 let handlers = base.with_resolvers([Arc::new(resolver) as Arc<dyn PlaylistResolver>]);
                 let (wait_a, began_a, release_a) = hold();
                 let (wait_b, began_b, release_b) = hold();
@@ -271,6 +114,8 @@ async fn a_reload_validates_entries_shown_meanwhile_before_it_commits() {
                 ])));
                 let calls = Arc::new(Mutex::new(Vec::new()));
                 let opened = Arc::clone(&calls);
+                let media_fails = Arc::new(AtomicBool::new(broken));
+                let media = Arc::clone(&media_fails);
                 let service: Service<u8> = Service::new(GRACE, Arc::new(OnRuntime {
                     runtime: tokio::runtime::Handle::current(),
                     handlers: HandlerSet::new(handlers),
@@ -281,7 +126,7 @@ async fn a_reload_validates_entries_shown_meanwhile_before_it_commits() {
                         opened.lock().unwrap().push(name.to_owned());
                         let wait = gates.lock().unwrap().remove(name);
                         if let Some(wait) = wait { wait(); }
-                        if broken && name == if removed { "a" } else { "b" } {
+                        if media.load(Ordering::SeqCst) && name == if removed { "a" } else { "b" } {
                             return Err(Interrupt::Failed(UserError::new(ErrorCode::FileUnreadable, format!("{} cannot open", name.to_uppercase()))));
                         }
                         Ok(())
@@ -320,7 +165,7 @@ async fn a_reload_validates_entries_shown_meanwhile_before_it_commits() {
                     std::fs::remove_file(dir.path().join("overlays/b.txt")).unwrap();
                     Some(streams)
                 } else { None };
-                replacement.store(true, Ordering::SeqCst);
+                replacement.store(1, Ordering::SeqCst);
                 // Resolve without a source-change offer.
                 owner.command(Command::Content(DocCommand::Resolve(id))).unwrap();
                 tokio::select! {
@@ -405,11 +250,77 @@ async fn a_reload_validates_entries_shown_meanwhile_before_it_commits() {
                     service.check_sources(); service.check_sources();
                     assert_eq!(owner.state().doc.workspace.changed.get(&id), Some(&2), "commit must publish the retained watch");
                 }
+                {
                 let calls = calls.lock().unwrap();
                 for name in if broken { &["a", "b"][..] } else { &["a", "b", "c"][..] } {
                     assert_eq!(calls.iter().filter(|call| call == name).count(), 1, "each entry may be validated only once");
                 }
                 assert_eq!(calls.len(), if broken { 2 } else { 3 });
+                }
+                if broken {
+                    let mut stamp = 0;
+                    edit_offer(&service, &owner, id, &files[0], &mut stamp, true, "media failure: active overlay");
+                    edit_offer(&service, &owner, id, &files[1], &mut stamp, true, "failed attempt overlay must be watched");
+                    view.viewers.get_mut(&keys[1].viewer).unwrap().entry = Some(keys[1].entry.clone());
+                    navigating.view(view.clone(), 4).unwrap();
+                    replacement.store(2, Ordering::SeqCst);
+                    owner.command(Command::Content(DocCommand::Resolve(id))).unwrap();
+                    states.wait_for(|state| !matches!(state.doc.workspace.reloads.get(&id), Some(Reload::Running { .. }))).await.unwrap();
+                    assert!(matches!(owner.state().doc.workspace.reloads.get(&id), Some(Reload::Failed { .. })));
+                    edit_offer(&service, &owner, id, &files[0], &mut stamp, true, "media failure: active overlay after second attempt");
+                    edit_offer(&service, &owner, id, &files[1], &mut stamp, false, "obsolete failed attempt must stop being watched");
+                    edit_offer(&service, &owner, id, &files[2], &mut stamp, true, "latest failed attempt must be watched");
+                    resolver_fails.store(true, Ordering::SeqCst);
+                    owner.command(Command::Content(DocCommand::Resolve(id))).unwrap();
+                    states.wait_for(|state| !matches!(state.doc.workspace.reloads.get(&id), Some(Reload::Running { .. }))).await.unwrap();
+                    let state = owner.state();
+                    let Some(Reload::Failed { error, .. }) = state.doc.workspace.reloads.get(&id) else { panic!("resolver failure must retain old Content"); };
+                    assert_eq!(error.reason, "Playlist resolver 'moving-overlays' failed: Manifest cannot resolve");
+                    assert_eq!(entry_key(&state, id, 1).generation, keys[1].generation);
+                    edit_offer(&service, &owner, id, &files[0], &mut stamp, true, "resolver failure: active overlay");
+                    edit_offer(&service, &owner, id, &manifest, &mut stamp, true, "resolver failure dependency must remain watched");
+                    edit_offer(&service, &owner, id, &files[2], &mut stamp, false, "resolver failure must replace the previous failed read set");
+                    resolver_fails.store(false, Ordering::SeqCst);
+                    media_fails.store(false, Ordering::SeqCst);
+                    owner.command(Command::Content(DocCommand::Resolve(id))).unwrap();
+                    states.wait_for(|state| !matches!(state.doc.workspace.reloads.get(&id), Some(Reload::Running { .. }))).await.unwrap();
+                    assert!(entry_key(&owner.state(), id, 1).generation > keys[1].generation);
+                    edit_offer(&service, &owner, id, &files[0], &mut stamp, false, "successful commit must retire the old active watch");
+                    edit_offer(&service, &owner, id, &files[1], &mut stamp, false, "successful commit must not retain an obsolete attempt");
+                    edit_offer(&service, &owner, id, &files[2], &mut stamp, true, "successful commit must install its own watch");
+                }
         }
     }).await.expect("cumulative validation workflow did not finish");
+}
+
+fn edit_offer(
+    service: &Service<u8>,
+    owner: &sessions::session::Handle<u8>,
+    item: workspace::ItemId,
+    file: &std::path::Path,
+    stamp: &mut usize,
+    expected: bool,
+    reason: &str,
+) {
+    let before = owner
+        .state()
+        .doc
+        .workspace
+        .changed
+        .get(&item)
+        .copied()
+        .unwrap_or(0);
+    *stamp += 1;
+    std::fs::write(file, "x".repeat(*stamp)).unwrap();
+    service.check_sources();
+    service.check_sources();
+    let after = owner
+        .state()
+        .doc
+        .workspace
+        .changed
+        .get(&item)
+        .copied()
+        .unwrap_or(0);
+    assert_eq!(after, before + u32::from(expected), "{reason}");
 }

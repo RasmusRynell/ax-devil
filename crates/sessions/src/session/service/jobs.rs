@@ -1,7 +1,10 @@
 //! Job completion under the Session lock, with cumulative reload validation.
 
 use super::{Deferred, Input, Service, SessionId, apply};
-use crate::session::{Completer, Completion, JobId, Retry, Watcher, transition::uncovered};
+use crate::session::{
+    Completer, Completion, JobId, JobOwner, Retry, Watcher, transition::uncovered,
+};
+use workspace::store::Reload;
 
 // Retry transfers the single resolved Content by value between rounds, without an extra heap owner.
 #[allow(clippy::result_large_err)]
@@ -61,6 +64,13 @@ impl<C: Clone + Send + 'static> Service<C> {
                     missing,
                 });
             }
+            let failed_reload = sessions.get(&session).and_then(|live| {
+                if !matches!(&completion, Completion::Resolved { result: Err(_), .. }) {
+                    return None;
+                }
+                let JobOwner::Doc { item, attempt } = live.state.jobs.get(&job)?.owner;
+                matches!(live.state.doc.workspace.reloads.get(&item), Some(Reload::Running { attempt: running, .. }) if *running == attempt).then_some(item)
+            });
             let wanted = sessions
                 .get(&session)
                 .is_some_and(|live| live.state.jobs.contains_key(&job));
@@ -70,8 +80,13 @@ impl<C: Clone + Send + 'static> Service<C> {
                 Input::Complete { job, completion },
                 deferred,
             );
-            if let (true, Ok(_), Some((item, watch))) = (wanted, applied, watcher.take()) {
-                self.inner.sources.record(session, item, watch);
+            let read = watcher.take();
+            if wanted && applied.is_ok() {
+                if let Some(item) = failed_reload {
+                    self.inner.sources.record_failed(session, item, read.map(|(_, watch)| watch));
+                } else if let Some((item, watch)) = read {
+                    self.inner.sources.record(session, item, watch);
+                }
             }
             Ok(())
         })
