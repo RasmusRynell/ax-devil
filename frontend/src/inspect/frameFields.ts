@@ -74,20 +74,19 @@ export class FrameFields {
   /** The answers, oldest first. */
   readonly #answers = new Map<string, LeavesView>();
   readonly #after: (callback: () => void, ms: number) => () => void;
-  /** The request out, with the columns of the sample it was made for. */
-  #asked: {
+  /** One current attempt, including its terminal refusal; abandonment drops all of it. */
+  #request: {
     key: string;
     columns: unknown;
     message: Extract<ClientMessage, { type: "InspectFields" }>;
+    state: "pending" | "unavailable";
+    retries: number;
   } | null = null;
   /** Cancels the timer that sends the request out again. */
   #cancel: (() => void) | null = null;
-  #retries = 0;
   #serial = 0;
   #allowed = true;
   #connected = true;
-  /** A sample the backend does not answer for: asked again only when the viewer holds it anew. */
-  #refused: { key: string; columns: unknown } | null = null;
 
   /** `send` asks the backend; `after` times the asking again. */
   constructor(
@@ -120,8 +119,13 @@ export class FrameFields {
     if (!frame || paths.length === 0) return NONE;
     if (!allowed || !this.#connected || !withinPaths(paths)) return UNAVAILABLE;
     const key = keyOf(frame.source, frame.dataRevision, frame.sample, paths);
-    const refused = this.#refused;
-    if (refused?.key === key && refused.columns === frame.columns) return UNAVAILABLE;
+    const request = this.#request;
+    if (
+      request?.key === key &&
+      request.columns === frame.columns &&
+      request.state === "unavailable"
+    )
+      return UNAVAILABLE;
     return this.#answers.get(key) ?? PENDING;
   }
 
@@ -130,7 +134,6 @@ export class FrameFields {
     if (allowed !== this.#allowed) {
       this.#allowed = allowed;
       this.#answers.clear();
-      this.#refused = null;
       this.#forget();
     }
     if (!allowed || !this.#connected) {
@@ -142,18 +145,14 @@ export class FrameFields {
       return;
     }
     if (!withinPaths(paths)) {
-      this.#refused = null;
       this.#forget();
       return;
     }
     const { source, dataRevision, sample, columns } = frame;
     const key = keyOf(source, dataRevision, sample, paths);
-    if (this.#refused?.key !== key) this.#refused = null;
-    if (this.#refused?.key === key && this.#refused.columns === columns) return;
-    // Another sample is wanted: the request out for this one is no longer worth sending again.
-    if (this.#asked && this.#asked.key !== key) this.#forget();
-    if (this.#answers.has(key)) return;
-    if (this.#asked?.key === key) return;
+    if (this.#request && (this.#request.key !== key || this.#request.columns !== columns))
+      this.#forget();
+    if (this.#answers.has(key) || this.#request) return;
     const message = {
       type: "InspectFields" as const,
       request: ++this.#serial,
@@ -162,28 +161,28 @@ export class FrameFields {
       sample,
       paths: [...paths],
     };
+    this.#request = { key, columns, message, state: "pending", retries: 0 };
     if (
       utf8Bytes(JSON.stringify(message), MAX_INSPECTION_REQUEST_BYTES) >
       MAX_INSPECTION_REQUEST_BYTES
     ) {
-      this.#refuse(key, columns);
+      this.#refuse();
       return;
     }
-    this.#asked = { key, columns, message };
-    this.#retries = 0;
     this.#send(message);
     this.#watch();
   }
 
-  #refuse(key: string, columns: unknown): void {
-    this.#refused = { key, columns };
-    this.#forget();
+  #refuse(): void {
+    if (!this.#request) return;
+    this.#request.state = "unavailable";
+    this.#unwatch();
     this.#listeners.forEach((listener) => listener());
   }
 
-  /** Forgets the request out, and its timer. */
+  /** Abandons the complete attempt, including a refusal, retry count and timer. */
   #forget(): void {
-    this.#asked = null;
+    this.#request = null;
     this.#unwatch();
   }
 
@@ -195,16 +194,17 @@ export class FrameFields {
   /** While a list listens, sends the request out again if it stays unanswered: the authority gate may have dropped it. */
   #watch(): void {
     this.#unwatch();
-    if (!this.#asked || this.#listeners.size === 0) return;
+    const request = this.#request;
+    if (request?.state !== "pending" || this.#listeners.size === 0) return;
     this.#cancel = this.#after(() => {
       this.#cancel = null;
-      if (!this.#asked) return;
-      if (this.#retries >= INSPECTION_RETRIES) {
-        this.#refuse(this.#asked.key, this.#asked.columns);
+      if (this.#request !== request) return;
+      if (request.retries >= INSPECTION_RETRIES) {
+        this.#refuse();
         return;
       }
-      this.#retries++;
-      this.#send(this.#asked.message);
+      request.retries++;
+      this.#send(request.message);
       this.#watch();
     }, INSPECTION_RETRY_MS);
   }
@@ -212,14 +212,19 @@ export class FrameFields {
   /** The backend's answer. */
   receive(reply: Reply): void {
     const key = keyOf(reply.source, reply.data_revision, reply.sample, reply.paths);
-    const asked = this.#asked?.key === key ? this.#asked : null;
-    if (!asked || asked.message.request !== reply.request) return;
-    this.#forget();
+    const request = this.#request;
+    if (
+      request?.state !== "pending" ||
+      request.key !== key ||
+      request.message.request !== reply.request
+    )
+      return;
     const { objects } = reply;
     if (objects === null) {
-      this.#refuse(key, asked.columns);
+      this.#refuse();
       return;
     }
+    this.#forget();
     const leaves = new Map<string, ObjectLeaves>();
     for (const { entity, items } of objects) {
       const keyed: { [key: string]: (string | number | bigint)[] } = {};
@@ -237,7 +242,6 @@ export class FrameFields {
     this.#connected = false;
     this.#answers.clear();
     this.#forget();
-    this.#refused = null;
     this.#listeners.forEach((listener) => listener());
   }
 
@@ -246,7 +250,6 @@ export class FrameFields {
     this.#connected = true;
     this.#answers.clear();
     this.#forget();
-    this.#refused = null;
     this.#listeners.forEach((listener) => listener());
   }
 }

@@ -9,8 +9,9 @@ const after = (run: () => void, ms: number) => {
   return () => clearTimeout(timer);
 };
 
-const frame = (sample: number, columns: unknown = {}) =>
-  ({ source: 0, dataRevision: 1, sample, columns }) as unknown as LaneFrame;
+const columns = {};
+const frame = (sample: number, sampleColumns: unknown = columns) =>
+  ({ source: 0, dataRevision: 1, sample, columns: sampleColumns }) as unknown as LaneFrame;
 
 const answer = (
   sent: readonly ClientMessage[],
@@ -121,7 +122,22 @@ describe("the leaves of a frame's objects", () => {
     expect(fields.view(held, ["id"]).state).toBe("pending");
     fields.receive(answer(sent, 1, []));
     expect(fields.view(held, ["id"]).state).toBe("ready");
-  });
+    for (const absent of [false, true]) {
+      fields.reconnect();
+      fields.ask(held, ["debug.foo"]);
+      const old = answer(sent, 1, null);
+      fields.receive(old);
+      expect(fields.view(held, ["debug.foo"]).state).toBe("unavailable");
+      fields.ask(absent ? undefined : held, absent ? ["debug.foo"] : []);
+      fields.ask(held, ["debug.foo"]);
+      expect(fields.view(held, ["debug.foo"]).state).toBe("pending");
+      fields.receive({ ...old, objects: [] });
+      expect(fields.view(held, ["debug.foo"]).state).toBe("pending");
+      fields.receive(answer(sent, 1, []));
+      expect(fields.view(held, ["debug.foo"]).state).toBe("ready");
+    }
+    fields.disconnect();
+  }, 5000);
 
   it("are sent again while a list listens and the answer is dropped, a few times, and not once answered", () => {
     vi.useFakeTimers();

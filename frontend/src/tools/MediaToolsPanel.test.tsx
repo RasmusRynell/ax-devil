@@ -97,9 +97,17 @@ describe("Frame scope", () => {
     });
     expect(says("Loading…")).toBe(false);
     expect(says("Details are not available")).toBe(true);
-    search("class:car");
-    expect(ids()).toEqual(["7", "9"]);
-  });
+    for (const query of ["", "class:car"]) {
+      search(query);
+      expect(says("Loading…")).toBe(false);
+      search("score>0.5");
+      expect(says("Loading…")).toBe(true);
+      act(() => {
+        vi.advanceTimersByTime(8000);
+      });
+      expect(says("Details are not available")).toBe(true);
+    }
+  }, 5000);
 
   it("asks again for the leaves of the sample on screen when the panel is opened again", () => {
     const { hold } = mount();

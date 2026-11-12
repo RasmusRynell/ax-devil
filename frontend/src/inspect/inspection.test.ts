@@ -281,20 +281,7 @@ describe("inspections", () => {
     inspections.receive(reply(0, { state: "Unavailable" }));
     expect(inspections.follow([frame(0, fullSample([{ id: "7", class: "car" }]))])).toBe(true);
     expect(samples()).toEqual([0, 1, 0, 0]);
-  });
-
-  it("asks again for a sample whose reply was dropped, when it is shown again or has waited too long", () => {
-    const { inspections, samples, reply } = setup();
-    inspections.follow([frame(0)]);
-    inspections.select(SELECTION);
-    inspections.follow([frame(1, withoutCar)]);
-    inspections.follow([frame(0)]);
-    expect(samples()).toEqual([0, 0]);
-    for (let draw = 0; draw < 130; draw++) inspections.follow([frame(0)]);
-    expect(samples()).toEqual([0, 0, 0]);
-    inspections.receive(reply(0, found(CLASS)));
-    for (let draw = 0; draw < 130; draw++) inspections.follow([frame(0)]);
-    expect(samples()).toEqual([0, 0, 0]);
+    expect(inspections.view.state).toBe("loading");
   });
 
   it("keeps nothing of another source's object that has the same id", () => {

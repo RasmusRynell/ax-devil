@@ -27,9 +27,6 @@ const CACHE_SIZE = 1;
 /** The least time between two updates of what the inspector shows while a video plays: 10 Hz, in milliseconds. */
 export const PLAYING_INTERVAL_MS = 100;
 
-/** How many draws a request may stay unanswered while its sample is shown before it is asked again. */
-const RESEND_AFTER = 120;
-
 type Reply = Extract<ServerMessage, { type: "Inspected" }>;
 
 export class Inspections {
@@ -38,7 +35,6 @@ export class Inspections {
   readonly #after: typeof afterInspection;
   #cancelInitial: (() => void) | null = null;
   #cancelWait: (() => void) | null = null;
-  #initialRetries = 0;
   readonly #pins = new InspectionPins();
   #accessRevision = 0;
   #pageOffset = 0;
@@ -57,10 +53,13 @@ export class Inspections {
   readonly #revisions = new Map<number, number>();
   readonly #cache = new Map<string, InspectionWire>();
   #wanted: string | null = null;
-  #inflight: { key: string; at: number; request: number } | null = null;
-  /** Refused until these sample columns change. */
-  #refused: { key: string; columns: unknown } | null = null;
-  #draws = 0;
+  #initial: {
+    key: string;
+    columns: unknown;
+    request: number;
+    retries: number;
+    state: "pending" | "unavailable";
+  } | null = null;
   #visible = true;
   /** Waits for the new connection's first draw. */
   #awaiting = false;
@@ -188,7 +187,6 @@ export class Inspections {
     this.#newest = frames;
     const resumed = this.#awaiting;
     this.#awaiting = false;
-    this.#draws++;
     for (const frame of frames) if (frame) this.#revisions.set(frame.source, frame.dataRevision);
     const now = this.#now();
     if (playing && !resumed && now - this.#followedAt < PLAYING_INTERVAL_MS) {
@@ -205,8 +203,7 @@ export class Inspections {
       held.sample === at.sample &&
       held.columns === at.columns &&
       held.style === at.style &&
-      !resumed &&
-      !this.#overdue()
+      !resumed
     )
       return false;
     return this.#update();
@@ -216,22 +213,20 @@ export class Inspections {
   receive(message: Reply): boolean {
     const key = keyOf(message.source, message.data_revision, message.sample, message.entity);
     if (
-      message.request !== this.#inflight?.request ||
+      this.#initial?.state !== "pending" ||
+      message.request !== this.#initial.request ||
       message.data_revision !== this.#revisions.get(message.source) ||
       key !== this.#wanted ||
       !this.#cap ||
       !this.#visible
     )
       return false;
-    if (key === this.#inflight?.key) {
-      this.#inflight = null;
+    if (message.inspection.state === "Unavailable") {
+      this.#refuseInitial();
+    } else {
+      this.#initial = null;
       this.#cancelInitial?.();
       this.#cancelInitial = null;
-    }
-    if (message.inspection.state === "Unavailable") {
-      this.#abandon();
-      this.#refused = { key, columns: sampleAt(this.#selection, this.#frames).columns };
-    } else {
       if (message.inspection.state === "Found" && message.inspection.continuation)
         this.#cap = { type: "InspectRelease", token: message.inspection.continuation.token };
       if (message.inspection.state === "Refused") this.#abandon();
@@ -245,8 +240,6 @@ export class Inspections {
   /** A new connection: nothing of the old one holds. */
   reconnect(): void {
     this.#abandon();
-    this.#inflight = null;
-    this.#refused = null;
     this.#awaiting = true;
     this.#revisions.clear();
     this.#cache.clear();
@@ -268,17 +261,24 @@ export class Inspections {
       this.#read("pins", this.#pins.next);
   }
 
+  #refuseInitial(): void {
+    const request = this.#initial;
+    this.#abandon();
+    if (request) {
+      request.state = "unavailable";
+      this.#initial = request;
+    }
+  }
+
   #abandon(): void {
     this.#cancelInitial?.();
     this.#cancelInitial = null;
-    this.#initialRetries = 0;
     if (this.#cap) this.#send(this.#cap);
     this.#cap = null;
     this.#cancelRead();
     this.#cache.clear();
     this.#pins.clear();
-    this.#inflight = null;
-    this.#refused = null;
+    this.#initial = null;
   }
 
   #cancelRead(): void {
@@ -449,12 +449,6 @@ export class Inspections {
     });
   }
 
-  /** Whether the request out for the shown sample has waited too long for its reply. */
-  #overdue(): boolean {
-    const wanted = this.#inflight;
-    return wanted !== null && this.#draws - wanted.at > RESEND_AFTER;
-  }
-
   #remember(key: string, inspection: InspectionWire): void {
     this.#cache.delete(key);
     this.#cache.set(key, inspection);
@@ -462,38 +456,43 @@ export class Inspections {
       this.#cache.delete(this.#cache.keys().next().value as string);
   }
 
-  /** Asks for the shown object's fields unless they are held, refused for this very sample, or recently asked for. */
+  /** Only the response timer retries an existing initial request. */
   #ask(frame: LaneFrame, entity: string, retry = false): void {
     const key = keyOf(frame.source, frame.dataRevision, frame.sample, entity);
-    const refused = this.#refused;
     if (!this.#visible || this.#awaiting || this.#cache.has(key)) return;
-    if (refused?.key === key && refused.columns === frame.columns) return;
-    if (this.#inflight?.key === key) {
-      if (!retry && !this.#overdue()) return;
-      if (this.#initialRetries >= INSPECTION_RETRIES) {
-        this.#abandon();
-        this.#refused = { key, columns: frame.columns };
+    if (this.#initial && (this.#initial.key !== key || this.#initial.columns !== frame.columns))
+      this.#abandon();
+    if (this.#initial) {
+      if (this.#initial.state === "unavailable" || !retry) return;
+      if (this.#initial.retries >= INSPECTION_RETRIES) {
+        this.#refuseInitial();
         return;
       }
-      this.#initialRetries++;
-    } else this.#initialRetries = 0;
+      this.#initial.retries++;
+    }
+    this.#initial ??= {
+      key,
+      columns: frame.columns,
+      request: ++this.#serial,
+      retries: 0,
+      state: "pending",
+    };
     if (utf8Bytes(entity, MAX_INSPECTION_ENTITY_BYTES) > MAX_INSPECTION_ENTITY_BYTES) {
-      this.#refused = { key, columns: frame.columns };
+      this.#refuseInitial();
       return;
     }
-    this.#inflight = { key, at: this.#draws, request: this.#inflight?.request ?? ++this.#serial };
-    this.#cap = { type: "InspectRelease", request: this.#inflight.request };
-    const request = this.#inflight.request;
+    this.#cap = { type: "InspectRelease", request: this.#initial.request };
+    const request = this.#initial.request;
     this.#cancelInitial?.();
     this.#cancelInitial = this.#after(() => {
-      if (this.#inflight?.request !== request) return;
+      if (this.#initial?.request !== request) return;
       this.#ask(frame, entity, true);
       this.#update();
       this.#changed();
     }, INSPECTION_RETRY_MS);
     this.#send({
       type: "Inspect",
-      request: this.#inflight.request,
+      request: this.#initial.request,
       source: frame.source,
       data_revision: frame.dataRevision,
       sample: frame.sample,
@@ -506,8 +505,6 @@ export class Inspections {
     const next = selection ? this.#viewOf(selection) : ({ state: "none" } as const);
     // Asked for or refused, and no longer the shown sample: asked again if it is shown again.
     if (next.state === "none" || next.state === "absent") this.#wanted = null;
-    if (this.#inflight && this.#inflight.key !== this.#wanted) this.#inflight = null;
-    if (this.#refused && this.#refused.key !== this.#wanted) this.#refused = null;
     this.#at = { selection, ...sampleAt(this.#selection, this.#frames) };
     const before = this.#view;
     if (sameInspection(before, next)) return false;
@@ -537,7 +534,7 @@ export class Inspections {
     this.#ask(frame, selection.entity);
     const found = reply?.state === "Found" ? reply : null;
     return {
-      state: reply ? "ready" : this.#refused?.key === key ? "unavailable" : "loading",
+      state: reply ? "ready" : this.#initial?.state === "unavailable" ? "unavailable" : "loading",
       selection,
       summary,
       error: reply?.state === "Refused" ? reply.reason : undefined,

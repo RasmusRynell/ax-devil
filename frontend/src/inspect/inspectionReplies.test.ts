@@ -149,10 +149,19 @@ it("settles unanswered first reads, pages and pin scans without a request loop",
     return () => clearTimeout(timer);
   };
   try {
-    const { inspections: owner, sent, reply } = setup(after);
+    const { inspections: owner, sent, reply, time } = setup(after);
     owner.follow([frame(0)]);
     owner.select(SELECTION);
-    vi.advanceTimersByTime(8000);
+    // A retained overlay on a 250-Hz video must receive the same complete response window as a paused one.
+    for (let elapsed = 0; elapsed < 7999; elapsed += 4) {
+      const step = Math.min(4, 7999 - elapsed);
+      time.now += step;
+      vi.advanceTimersByTime(step);
+      owner.follow([frame(0)], true);
+    }
+    expect(owner.view.state).toBe("loading");
+    expect(sent.filter((m) => m.type === "InspectRelease")).toHaveLength(0);
+    vi.advanceTimersByTime(1);
     const attempts = sent.filter((m) => m.type === "Inspect");
     expect(attempts).toHaveLength(4);
     expect(new Set(attempts.map((attempt) => attempt.request)).size).toBe(1);
@@ -161,7 +170,9 @@ it("settles unanswered first reads, pages and pin scans without a request loop",
     expect(sent.filter((m) => m.type === "Inspect")).toHaveLength(4);
     owner.setVisible(false);
     owner.setVisible(true);
+    vi.advanceTimersByTime(7999);
     owner.receive(reply(0, initial));
+    expect(owner.view.state).toBe("ready");
     access(owner).next?.();
     vi.advanceTimersByTime(8000);
     expect(access(owner).error).toBe("Details are not available");
