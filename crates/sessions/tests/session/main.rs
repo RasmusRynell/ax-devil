@@ -2,6 +2,7 @@
 //!
 //! `matrix` checks the role table on the pure transition; `revocation` and `streams` run real handles on paused time.
 
+mod admission;
 mod matrix;
 mod owner_seats;
 mod retirement;
