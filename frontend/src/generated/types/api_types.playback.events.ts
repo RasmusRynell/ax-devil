@@ -1,5 +1,6 @@
 // Generated from api_types::playback::events by make; do not edit.
 
+import type { EventRowWire } from "./scene_store.events";
 import type { SearchWire } from "./scene_store.query";
 
 /**
@@ -56,3 +57,25 @@ locate: number | null,
  * A frame whose place in the list is wanted: the answer's `frame_row`.
  */
 frame: number | null, };
+
+/**
+ * Finds the nearest event equal in kind, label and ordered entity ids after a file replacement.
+ * Uses the same File scope authority and answer as `Event`; `event` echoes the prior index.
+ */
+export type FindEventWire = { 
+/**
+ * The lane's position.
+ */
+lane: number, 
+/**
+ * The request id.
+ */
+request: number, 
+/**
+ * The previously shown event and frame.
+ */
+previous: EventRowWire, 
+/**
+ * At most 256 presence bins per object.
+ */
+bins: number, };

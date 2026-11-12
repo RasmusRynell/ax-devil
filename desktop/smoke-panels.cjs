@@ -109,6 +109,24 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
       await shoot(`lane-menu-${tab.toLowerCase()}-${theme}.png`);
     }
   }
+  await js(
+    `[...document.querySelectorAll('${menu} [role=tab]')].find((b) => b.textContent === 'Filter').click()`,
+  );
+  await js(`document.querySelector('${menu} input[type=checkbox]').click()`);
+  await wait(`document.querySelector('${menu} [role=tab][data-active=true]')`);
+  for (const zoom of [1, 2]) {
+    await setView(window, zoom === 1 ? [1100, 720] : [640, 480], zoom);
+    for (const theme of THEMES) {
+      await setTheme(theme);
+      await toStart();
+      await frames({ js });
+      await fits(menu, `Active filter fits at ${zoom * 100}%, ${theme}`);
+      await shoot(`lane-menu-filter-active-${theme}-${zoom * 100}.png`);
+    }
+  }
+  await js(
+    `[...document.querySelectorAll('${menu} button')].find((b) => b.textContent === 'Reset').click()`,
+  );
   await setView(window, [640, 480], 2);
   for (const theme of THEMES) {
     await setTheme(theme);

@@ -44,8 +44,15 @@ export function EventPageBody({
   // A new event on the same lane replaces the old one and keeps what the backend holds for the lane.
   useEffect(() => () => events.want(lane, null), [events, lane]);
   useEffect(() => {
-    if (!live) events.want(lane, item.id, BINS);
-  }, [events, live, lane, item.id]);
+    if (!live && item.kind !== "gap")
+      events.want(lane, item.id, BINS, {
+        event: item.id,
+        frame: item.frame,
+        kind: item.kind,
+        label: item.label,
+        objects: [...item.objects],
+      });
+  }, [events, live, lane, item]);
   const held = useSyncExternalStore(source.files.subscribe, () => events.event(lane));
   const unavailable = useSyncExternalStore(source.files.subscribe, () =>
     events.eventUnavailable(lane),
@@ -54,7 +61,7 @@ export function EventPageBody({
   const found = held?.event === item.id ? held : null;
   const row = found?.detail?.row;
   // The file was replaced by one without this event, or with another at its place.
-  const gone = found !== null && (!row || row.label !== item.label || row.kind !== item.kind);
+  const gone = found !== null && !row;
   // The frame the video shows it on follows how the lane matches, which can change while the page is open.
   const current = row && !gone ? itemOf(row, timeOf) : item;
   useEffect(() => {

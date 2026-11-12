@@ -55,6 +55,7 @@ export function LaneMenu({
       <Tabs
         label="Lane settings"
         tabs={names}
+        active={{ [names[1]]: changed > 0 }}
         help={{ [names[1]]: SECTION_HELP.filter }}
         value={names[TABS.indexOf(tab)]}
         onChange={(name) => setTab(TABS[names.indexOf(name)])}

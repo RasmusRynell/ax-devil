@@ -284,7 +284,8 @@ export function mount(
   /** The requests for one event, oldest first. */
   const eventAsks = () =>
     sent.filter(
-      (message): message is Extract<ClientMessage, { type: "Event" }> => message.type === "Event",
+      (message): message is Extract<ClientMessage, { type: "Event" | "FindEvent" }> =>
+        message.type === "Event" || message.type === "FindEvent",
     );
   /** Lets the debounced request for the Events list go and answers it. */
   const answerEvents = (
@@ -327,9 +328,11 @@ export function mount(
     );
   };
   /** Answers the newest request for an event with `detail`. */
-  const answerEvent = (detail: EventDetailWire | null) => {
-    const { request, event } = eventAsks().at(-1) ?? { request: 0, event: 0 };
-    act(() => files.receive(found(request, { kind: "Event", event, detail })));
+  const answerEvent = (detail: EventDetailWire | null, data_revision = 1) => {
+    const ask = eventAsks().at(-1);
+    const request = ask?.request ?? 0;
+    const event = ask?.type === "FindEvent" ? ask.previous.event : (ask?.event ?? 0);
+    act(() => files.receive(found(request, { kind: "Event", event, detail }, { data_revision })));
   };
   return {
     source,

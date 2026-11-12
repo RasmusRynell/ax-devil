@@ -25,22 +25,11 @@ impl Interner {
     }
 }
 
-/// What a sample's entry costs while building, beyond its text: map entry, offset and per-entity tables.
-const STRING_BYTES: usize = 48;
-const ENTITY_BYTES: usize = 32;
-const CLASS_BYTES: usize = 32;
-const RUN_BYTES: usize = 12;
-const EVENT_BYTES: usize = 24;
-
 /// No run yet.
 const NO_RUN: u32 = u32::MAX;
 
-/// Collects the history from the Scenes of a file in sample order. When the estimate of what it holds passes the cap
-/// it drops everything and the history is [`Built::TooLarge`].
+/// Collects the history from the Scenes of a file in sample order.
 pub(crate) struct HistoryBuilder {
-    cap: usize,
-    bytes: usize,
-    over: bool,
     samples: u32,
     ids: Interner,
     words: Interner,
@@ -57,12 +46,9 @@ pub(crate) struct HistoryBuilder {
 }
 
 impl HistoryBuilder {
-    /// A builder that gives up at about `cap` bytes.
-    pub(crate) fn new(cap: usize) -> Self {
+    /// A builder for the full file history.
+    pub(crate) fn new() -> Self {
         Self {
-            cap,
-            bytes: 0,
-            over: false,
             samples: 0,
             ids: Interner::default(),
             words: Interner::default(),
@@ -78,9 +64,6 @@ impl HistoryBuilder {
 
     /// Adds the next sample, which is sample `n` for the `n`th call.
     pub(crate) fn add(&mut self, scene: &Scene) {
-        if self.over {
-            return;
-        }
         let sample = self.samples;
         self.samples += 1;
         for entity in scene.entities() {
@@ -93,7 +76,6 @@ impl HistoryBuilder {
                 let word = self.word(classification.class_type.as_str());
                 if self.class_seen.insert(u64::from(e) << 32 | u64::from(word)) {
                     self.class_log.push((e, word));
-                    self.bytes += CLASS_BYTES;
                 }
             }
             let run = self.last_run[e as usize];
@@ -102,7 +84,6 @@ impl HistoryBuilder {
                 _ => {
                     self.last_run[e as usize] = self.run_log.len() as u32;
                     self.run_log.push((e, [sample, sample]));
-                    self.bytes += RUN_BYTES;
                 }
             }
         }
@@ -116,19 +97,12 @@ impl HistoryBuilder {
                 self.event_entities.push(e);
             }
             let count = self.event_entities.len() as u32 - first;
-            self.bytes += EVENT_BYTES + count as usize * 4;
             self.events.push(EventRow {
                 sample,
                 kind,
                 label,
                 entities: [first, count],
             });
-        }
-        if self.bytes > self.cap {
-            *self = Self {
-                over: true,
-                ..Self::new(self.cap)
-            };
         }
     }
 
@@ -137,41 +111,20 @@ impl HistoryBuilder {
         if new {
             self.last_run.push(NO_RUN);
             self.events_of.push(0);
-            self.bytes += id.len() + STRING_BYTES + ENTITY_BYTES;
         }
         entity
     }
 
     fn word(&mut self, text: &str) -> u32 {
-        let (word, new) = self.words.intern(text);
-        if new {
-            self.bytes += text.len() + STRING_BYTES;
-        }
-        word
+        self.words.intern(text).0
     }
 
     /// The history, with each entity's file mask judged by `policy`'s rules over the classes it was recorded with. No
     /// policy (the file gave none) has no options.
     pub(crate) fn finish(self, policy: Option<&FilterPolicy>) -> Built {
-        if self.over {
-            return Built::TooLarge;
-        }
         let entities = self.ids.strings.len();
         let options = policy.map_or(&[][..], |policy| &policy.options[..]);
         let mask_words = options.len().div_ceil(32);
-        // What finishing allocates is not in `bytes` yet: each entity's mask and its two ranges, and the grouped
-        // lists. Judge the total before allocating any of it.
-        let finishing = entities
-            .checked_mul(mask_words * 4 + 2 * size_of::<[u32; 2]>())
-            .and_then(|bytes| {
-                bytes.checked_add(
-                    self.class_log.len() * 4 + self.run_log.len() * size_of::<[u32; 2]>(),
-                )
-            });
-        let total = finishing.and_then(|bytes| bytes.checked_add(self.bytes));
-        if total.is_none_or(|total| total > self.cap) {
-            return Built::TooLarge;
-        }
         let (classes, class_ids) = group(entities, self.class_log);
         let (runs, run_pairs) = group(entities, self.run_log);
         let mut file_mask = vec![0_u32; entities * mask_words];

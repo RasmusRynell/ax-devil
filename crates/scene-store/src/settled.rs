@@ -22,6 +22,7 @@ pub(crate) struct Settled {
     pub(crate) writer: RecordWriter<BufWriter<File>>,
     pub(crate) keys: KeyLog,
     pub(crate) history: HistoryBuilder,
+    pub(crate) history_bytes: usize,
     pub(crate) output: Output,
     /// The records readers already have of this artifact.
     pub(crate) known: usize,
@@ -67,11 +68,13 @@ impl Settled {
         let digest = source.digest(&self.cancel)?;
         identity.digest = source.unchanged().then_some(digest);
         self.cancel.check()?;
-        let history = self
-            .history
-            .finish(Some(&decoded.filter))
-            .section()
-            .map_err(internal)?;
+        let built = self.history.finish(Some(&decoded.filter));
+        let section = built.section(self.history_bytes).map_err(internal)?;
+        let held = section.is_none();
+        if held {
+            identity.digest = None;
+        }
+        let history = section.unwrap_or_default();
         let finished = self
             .writer
             .finish(self.keys.all(), &stored, &identity, &history)
@@ -101,7 +104,11 @@ impl Settled {
                 decided: Decided::All,
                 stored: target,
                 fresh: self.fresh,
-                history: Some(Slot::initial(&State::Complete)),
+                history: Some(if held {
+                    built.held()
+                } else {
+                    Slot::initial(&State::Complete)
+                }),
             },
             move || Meta {
                 coverage,

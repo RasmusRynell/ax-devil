@@ -272,14 +272,27 @@ describe("Event pages", () => {
     expect(shown.eventAsks().at(-1)?.lane).toBe(1);
   });
 
+  it("follows a relocated equal event after replacement and seeks its new frame", () => {
+    const shown = open(0);
+    shown.answerEvent(detail());
+    act(() => shown.reread(2));
+    expect(shown.eventAsks().at(-1)?.type).toBe("FindEvent");
+    shown.answerEvent(detail({ row: { ...EVENTS[0], event: 9, frame: 3 } }), 2);
+    fireEvent.click(button("Go to frame"));
+    expect(shown.source.seek).toHaveBeenLastCalledWith(3);
+    expect(page()).toBeTruthy();
+    act(() => shown.reread(3));
+    expect(shown.eventAsks().at(-1)).toMatchObject({
+      type: "FindEvent",
+      previous: { event: 9, frame: 3 },
+    });
+  });
+
   it("closes when the file no longer has the event it was opened for", () => {
-    const { answerEvent } = open(0);
-    answerEvent(detail({ row: EVENTS[2] }));
-    expect(screen.queryByRole("region", { name: "Event page" })).toBeNull();
-    expect(screen.getByRole("listbox", { name: "Events" })).toBeTruthy();
-    cleanup();
-    const again = open(0);
-    again.answerEvent(null);
+    const { answerEvent, reread } = open(0);
+    answerEvent(detail());
+    act(() => reread(2));
+    answerEvent(null, 2);
     expect(screen.queryByRole("region", { name: "Event page" })).toBeNull();
   });
 });

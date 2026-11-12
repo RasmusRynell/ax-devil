@@ -87,7 +87,7 @@ describe("lane menu filter", () => {
       true,
     );
     show({ settings });
-    expect(screen.getByRole("tab", { name: "Filter 3" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Filter 3" }).getAttribute("data-active")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Reset" }));
     expect(onChange).toHaveBeenLastCalledWith({ filter: {}, ranges: OPEN_RANGES, expression: "" });
     // A class switched off and on again is no override; an override for an unknown class is not counted but can be reset.
@@ -95,7 +95,7 @@ describe("lane menu filter", () => {
     fireEvent.click(box("Pedestrian"));
     expect(onChange).toHaveBeenLastCalledWith({ filter: { other: true } });
     show({ settings: { ...LANE_SETTINGS, filter: { other: true } } });
-    expect(screen.getByRole("tab", { name: "Filter" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Filter" }).getAttribute("data-active")).toBe("false");
     expect((screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement).disabled).toBe(
       false,
     );

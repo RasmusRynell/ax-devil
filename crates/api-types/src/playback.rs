@@ -222,6 +222,8 @@ pub enum ClientMessage {
     EventQuery(EventQueryWire),
     /// Asks for one event of a lane's file; the answer is `File`.
     Event(EventAskWire),
+    /// Finds the nearest equal event under the same authority as `Event`.
+    FindEvent(FindEventWire),
     /// Ends the session and releases the source.
     Close,
 }

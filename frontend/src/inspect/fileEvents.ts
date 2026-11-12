@@ -88,15 +88,24 @@ const EVENTS: FileRequestSpec<"Events", Wanted, Basis, EventsPage> = {
 };
 
 /** What an event is wanted to be: which, and how finely its objects' presence is binned. */
-type Event = { event: number; bins: number };
+type Event = { event: number; bins: number; previous?: EventRowWire; data: number };
 
 const EVENT: FileRequestSpec<"Event", Event, Basis, EventView> = {
   kind: "Event",
   shape: "lookup",
   basis: basisOf,
-  message: (lane, request, { event, bins }) => ({ type: "Event", lane, request, event, bins }),
-  page: (body, { event }, revision) =>
-    body.event === event ? { event, revision, detail: body.detail } : null,
+  message: (lane, request, { event, bins, previous, data }, basis) =>
+    previous && data !== basis.data
+      ? { type: "FindEvent", lane, request, previous, bins }
+      : { type: "Event", lane, request, event: previous?.event ?? event, bins },
+  page: (body, wanted, revision) => {
+    if (body.event !== (wanted.previous?.event ?? wanted.event)) return null;
+    if (wanted.previous && body.detail) {
+      wanted.previous = body.detail.row;
+      wanted.data = revision;
+    }
+    return { event: wanted.event, revision, detail: body.detail };
+  },
 };
 
 export class FileEvents {
@@ -105,7 +114,7 @@ export class FileEvents {
   /** The asking of one event, for the File scope to drive. */
   readonly one: FileRequests<"Event", Event, Basis, EventView>;
 
-  constructor(host: FileRequestsHost) {
+  constructor(private readonly host: FileRequestsHost) {
     this.list = new FileRequests(EVENTS, host);
     this.one = new FileRequests(EVENT, host);
   }
@@ -170,9 +179,15 @@ export class FileEvents {
   }
 
   /** Wants `event` of the lane, with presence in at most `bins` spans per object, or nothing with `null`. */
-  want(lane: number, event: number | null, bins = 0): void {
+  want(lane: number, event: number | null, bins = 0, previous?: EventRowWire): void {
     const held = this.one.wanted(lane);
     if (event === null) this.one.release(lane);
-    else if (held?.event !== event || held.bins !== bins) this.one.want(lane, { event, bins });
+    else if (held?.event !== event || held.bins !== bins)
+      this.one.want(lane, {
+        event,
+        bins,
+        previous,
+        data: basisOf(this.host.lanes, lane, this.host.owner()).data,
+      });
   }
 }

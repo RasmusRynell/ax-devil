@@ -373,6 +373,11 @@ impl<I: Incoming> Playing<'_, I> {
                 self.gate.is_own(),
                 file_scope::EventsAsk::List(wire),
             ),
+            Some(Ok(ClientMessage::FindEvent(wire))) => self.file_scopes.ask_events(
+                self.lanes.overlays(),
+                self.gate.is_own(),
+                file_scope::EventsAsk::Find(wire),
+            ),
             Some(Ok(ClientMessage::Event(wire))) => self.file_scopes.ask_events(
                 self.lanes.overlays(),
                 self.gate.is_own(),

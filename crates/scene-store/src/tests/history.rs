@@ -57,13 +57,12 @@ pub(super) fn policy_of(options: &[(&'static str, &'static str)]) -> FilterPolic
 
 /// The history of `scenes` taken as samples 0, 1, ... under `policy`.
 pub(super) fn history_of(scenes: &[Scene], policy: &FilterPolicy) -> History {
-    let mut builder = HistoryBuilder::new(usize::MAX);
+    let mut builder = HistoryBuilder::new();
     for scene in scenes {
         builder.add(scene);
     }
     match builder.finish(Some(policy)) {
         Built::Ready(history) => *history,
-        Built::TooLarge => panic!("the history fits"),
     }
 }
 
@@ -251,12 +250,11 @@ fn a_finished_track_loads_its_history_from_the_artifact_and_a_reopen_finds_it_ag
 }
 
 #[test]
-fn a_history_over_the_cap_is_none_and_the_file_says_why() {
+fn a_history_over_the_cache_cap_still_answers_file_queries() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let policy = policy_of(&[]);
     let emit = || Emit {
         scenes: scenes(),
-        policy: policy.clone(),
+        policy: policy_of(&[]),
         header: false,
         fail: false,
         runs: Arc::default(),
@@ -265,30 +263,78 @@ fn a_history_over_the_cap_is_none_and_the_file_says_why() {
         history_bytes: 64,
         ..Tuning::default()
     };
-
     let track = open(&dir, &registry(&dir, emit(), small));
-    assert_eq!(waited(&track).err(), Some(HistoryUnavailable::TooLarge));
-    drop(track);
-
-    let again = open(&dir, &registry(&dir, emit(), Tuning::default()));
+    let history = waited(&track).expect("a large history is still available");
+    let cancel = CancelToken::new();
+    let timeline =
+        foundation::Timeline::new((0..3).map(foundation::MediaTime).collect()).expect("timeline");
+    let placement = crate::Placement::new(
+        &track.snapshot().keys,
+        Coverage::Sparse,
+        &timeline,
+        &overlay_sync::MatchPolicy::default(),
+        &cancel,
+    )
+    .expect("placement");
+    let query = crate::Query {
+        enabled: vec![],
+        search: crate::Search::default(),
+        sort: crate::Sort {
+            key: crate::SortKey::Id,
+            descending: false,
+        },
+    };
     assert_eq!(
-        again.history().err(),
-        Some(HistoryUnavailable::TooLarge),
-        "a stored artifact keeps its verdict"
+        query
+            .run(&history, &placement, &cancel)
+            .expect("file query")
+            .matched(),
+        2
     );
+    drop((history, track));
+    let again = open(&dir, &registry(&dir, emit(), small));
+    assert_eq!(entities(&waited(&again).expect("rebuilt history")).len(), 3);
 }
 
 #[test]
-fn the_file_masks_count_against_the_cap_before_they_are_allocated() {
-    // 40,000 declared options make a 5 kB mask per entity, far more than one tiny entity otherwise costs.
-    let options: Vec<(&'static str, &'static str)> = vec![("x", "car"); 40_000];
-    let mut builder = HistoryBuilder::new(2_000);
-    builder.add(&scene_of(0, &[("a", &["car"])]));
-
-    assert!(matches!(
-        builder.finish(Some(&policy_of(&options))),
-        Built::TooLarge
-    ));
+fn a_history_larger_than_256_mib_answers_a_file_query() {
+    let mut builder = HistoryBuilder::new();
+    for sample in 0..257 {
+        let class = format!("{sample:03}{}", "x".repeat(1 << 20));
+        builder.add(&scene_of(sample, &[("a", &[&class])]));
+    }
+    let Built::Ready(history) = builder.finish(None);
+    assert!(history.bytes() > 256 << 20);
+    let cancel = CancelToken::new();
+    let keys = SampleKeys {
+        frames: Some(in_order(&(0..257).collect::<Vec<_>>())),
+        times: None,
+    };
+    let timeline =
+        foundation::Timeline::new((0..257).map(foundation::MediaTime).collect()).expect("timeline");
+    let placement = crate::Placement::new(
+        &keys,
+        Coverage::Sparse,
+        &timeline,
+        &overlay_sync::MatchPolicy::default(),
+        &cancel,
+    )
+    .expect("placement");
+    let query = crate::Query {
+        enabled: vec![],
+        search: crate::Search::default(),
+        sort: crate::Sort {
+            key: crate::SortKey::Id,
+            descending: false,
+        },
+    };
+    assert_eq!(
+        query
+            .run(&history, &placement, &cancel)
+            .expect("file query")
+            .matched(),
+        1
+    );
 }
 
 #[test]

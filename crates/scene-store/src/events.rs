@@ -202,6 +202,40 @@ pub struct EventView<'a> {
 }
 
 impl<'a> EventView<'a> {
+    /// Finds Python's nearest equal event: kind, label and ordered ids match; frame distance breaks ties in file order.
+    pub fn nearest(
+        self,
+        previous: &EventRow,
+        cancel: &CancelToken,
+    ) -> Result<Option<u32>, Cancelled> {
+        let mut best = None;
+        let mut distance = u64::MAX;
+        for &event in &self.events.order {
+            cancel.check()?;
+            let Some(data) = self.history.event(event) else {
+                continue;
+            };
+            if data.kind != previous.kind || data.label != previous.label {
+                continue;
+            }
+            if !self
+                .history
+                .event_entities(event)
+                .iter()
+                .map(|&id| self.history.id(id))
+                .eq(previous.objects.iter().map(|object| object.id.as_str()))
+            {
+                continue;
+            }
+            let delta = u64::from(self.events.frames[event as usize]).abs_diff(previous.frame);
+            if best.is_none() || delta < distance {
+                best = Some(event);
+                distance = delta;
+            }
+        }
+        Ok(best)
+    }
+
     /// The row of event `event`; `None` when the video does not show it.
     pub fn row(self, event: u32) -> Option<EventRow> {
         let frame = self.events.frame(event)?;
