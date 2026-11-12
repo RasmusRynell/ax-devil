@@ -68,6 +68,10 @@ module.exports.run = async ({ window }) => {
           !errors.includes("MUST-NOT-REACH-DIALOG"),
           "startup diagnostics do not expose credentials",
         );
+        await until(
+          async () => (await input("focus-error-dialog")).trim() === "ready",
+          "startup error dialog to own X11 focus before Enter",
+        );
         await input("enter");
         let timer;
         const exited = await Promise.race([

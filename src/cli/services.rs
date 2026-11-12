@@ -182,6 +182,7 @@ impl Services {
     ) -> Result<Self, Box<dyn Error>> {
         let stop = interrupt.stop.clone();
         let settings = Arc::new(settings::Settings::load(&paths.config_file)?);
+        settings.validate_storage()?;
         tracing::info!("Loaded settings from {}", paths.config_file.display());
         let cache_dir = paths.cache_dir(settings.state().folder("storage.cache_dir"));
         tracing::info!("Caching in {}", cache_dir.display());

@@ -10,8 +10,28 @@ fn command(config: &Path, port: u16) -> Command {
         .arg("--config")
         .arg(config)
         .args(["use", "built-in:tracking"])
-        .env("PORT", port.to_string());
+        .env("PORT", port.to_string())
+        .env_remove("P2_UNSET_CACHE");
     command
+}
+
+// One deadline owns the whole CLI invocation, including failure and cleanup.
+fn output(mut command: Command) -> std::process::Output {
+    let mut child = command
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while child.try_wait().unwrap().is_none() {
+        if std::time::Instant::now() >= deadline {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("CLI did not complete within its deadline");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    child.wait_with_output().unwrap()
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -24,7 +44,7 @@ async fn catalog_cli_choice_survives_a_running_backends_save_and_is_the_new_defa
         .settings
         .update("scan.on_startup", |_| Some(json!(false)))
         .unwrap();
-    let result = command(path, backend.address.port()).output().unwrap();
+    let result = output(command(path, backend.address.port()));
     assert!(
         result.status.success(),
         "{}",
@@ -62,11 +82,16 @@ async fn catalog_cli_choice_survives_a_running_backends_save_and_is_the_new_defa
 fn catalog_cli_writes_the_file_only_when_the_local_port_refuses_connection() {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
-    std::fs::write(&path, json!({"version": settings::VERSION}).to_string()).unwrap();
+    std::fs::write(
+        &path,
+        json!({"version": settings::VERSION, "settings": {"storage.cache_dir": "$P2_UNSET_CACHE"}})
+            .to_string(),
+    )
+    .unwrap();
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     drop(listener);
-    let result = command(&path, port).output().unwrap();
+    let result = output(command(&path, port));
     assert!(
         result.status.success(),
         "{}",
@@ -102,7 +127,7 @@ async fn catalog_cli_never_writes_around_a_running_backends_owner_refusal() {
         .update("scan.on_startup", |_| Some(json!(false)))
         .unwrap();
     let before = std::fs::read(path).unwrap();
-    let result = command(path, backend.address.port()).output().unwrap();
+    let result = output(command(path, backend.address.port()));
     assert!(!result.status.success());
     assert!(String::from_utf8_lossy(&result.stderr).contains("refuses Owner access"));
     assert_eq!(std::fs::read(path).unwrap(), before);
@@ -113,25 +138,14 @@ fn invalid_storage_startup_prints_the_fix_and_exits_nonzero() {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
     std::fs::write(&path, json!({"version": settings::VERSION, "settings": {"storage.cache_dir": "$P2_INVALID_STORAGE", "camera.password": "MUST-NOT-REACH-ERROR", "scan.on_startup": false}}).to_string()).unwrap();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_ax-devil"))
+    let mut launch = Command::new(env!("CARGO_BIN_EXE_ax-devil"));
+    launch
         .arg("--config")
         .arg(&path)
+        .args(["live", "--host", "127.0.0.1"])
         .env("PORT", "0")
-        .env_remove("P2_INVALID_STORAGE")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while child.try_wait().unwrap().is_none() {
-        if std::time::Instant::now() >= deadline {
-            child.kill().unwrap();
-            child.wait().unwrap();
-            panic!("invalid storage must stop startup");
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-    let result = child.wait_with_output().unwrap();
+        .env_remove("P2_INVALID_STORAGE");
+    let result = output(launch);
     assert!(!result.status.success());
     let reason = String::from_utf8_lossy(&result.stderr);
     for text in [

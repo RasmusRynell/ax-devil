@@ -1,6 +1,6 @@
-//! Load-time recovery of playback and view defaults only; device appearance is read by the frontend.
+//! Preference recovery and service-startup validation of storage roots; device appearance belongs to the frontend.
 
-use crate::Setting;
+use crate::{Error, Setting, Settings, file};
 use serde_json::{Value, json};
 
 /// Recover only preferences whose Python readers tolerate malformed saved values.
@@ -34,16 +34,13 @@ pub(crate) fn recover(setting: &Setting, raw: &Value) -> Option<Value> {
 }
 
 /// Storage roots must never silently fall back when their reference cannot be used.
-pub(crate) fn storage(
+fn storage(
     setting: &Setting,
     raw: &Value,
     lookup: &dyn Fn(&str) -> Option<String>,
 ) -> Result<(), String> {
-    if !matches!(setting.key, "storage.cache_dir" | "storage.catalog_dir") {
-        return Ok(());
-    }
     let expanded = setting.expand(raw, lookup);
-    let text = expanded.as_str().unwrap_or("");
+    let text = expanded.as_str().ok_or_else(|| format!("Invalid storage directory: expected a folder path. Change {} in this configuration file.", setting.key))?;
     if (text.is_empty() && setting.holds_reference(raw))
         || (!text.is_empty() && !std::path::Path::new(text).is_absolute())
     {
@@ -62,4 +59,21 @@ pub(crate) fn storage(
         ));
     }
     Ok(())
+}
+
+impl Settings {
+    /// Refuses unusable storage roots before starting services; independent commands can load settings without using them.
+    pub fn validate_storage(&self) -> Result<(), Error> {
+        let state = self.state();
+        for setting in state.rows().filter(|setting| is_storage(setting)) {
+            let raw = &state.values[setting.key];
+            storage(setting, raw, &*state.lookup)
+                .map_err(|reason| file::fail(self.path(), format!("{}: {reason}", setting.key)))?;
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn is_storage(setting: &Setting) -> bool {
+    matches!(setting.key, "storage.cache_dir" | "storage.catalog_dir")
 }

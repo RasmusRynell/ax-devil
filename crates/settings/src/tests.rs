@@ -500,7 +500,7 @@ fn a_patch_is_checked_against_the_stored_state_and_a_refusal_changes_nothing() {
 }
 
 #[test]
-fn invalid_storage_references_stop_loading_with_the_setting_value_and_fix() {
+fn service_storage_validation_names_the_setting_value_and_fix_without_preventing_loading() {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
     for (reference, resolved) in [("$UNSET", None), ("$REL", Some("MUST-NOT-REACH-ERROR"))] {
@@ -511,8 +511,9 @@ fn invalid_storage_references_stop_loading_with_the_setting_value_and_fix() {
         .unwrap();
         let lookup: Lookup = Arc::new(move |_| resolved.map(str::to_owned));
         let error = Settings::open(&path, TABLE, migrate::MIGRATIONS, lookup)
-            .err()
-            .expect("startup must fail")
+            .unwrap()
+            .validate_storage()
+            .expect_err("startup must fail")
             .to_string();
         for text in [
             "Invalid storage directory",

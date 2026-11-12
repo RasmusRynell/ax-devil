@@ -34,6 +34,8 @@ mod launch;
 use launch::{describe, launch};
 mod live;
 mod plugins;
+mod start_error;
+use start_error::StartError;
 mod services;
 use services::{Interrupt, Services};
 #[cfg(test)]
@@ -203,7 +205,7 @@ pub async fn run() -> ExitCode {
     if global.hand_off {
         return hand_off(global, command, &plugins);
     }
-    // These commands only print: no logging, settings file or port.
+    // This dispatch separates independent utilities from service launches. Services::start owns storage validation.
     match command {
         Some(Command::ListHandlers) => {
             catalog::Report::listing(&plugins.handlers(), &plugins.info()).print()
@@ -270,7 +272,7 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
     let (prefix, result) = match command {
         Some(Command::App(args)) => ("Application failed to start: ", launch_app(&args)),
         command => match paths {
-            Err(error) => ("", Err(error.into())),
+            Err(error) => ("", Err(StartError::from(error).into())),
             Ok(paths) => match command {
                 Some(Command::Serve(args)) => (
                     "Application failed to start: ",
@@ -295,18 +297,24 @@ fn build_launch(
     paths: &Paths,
     command: Option<Command>,
     plugins: &Plugins,
-) -> Result<Option<Launch>, String> {
+) -> Result<Option<Launch>, StartError> {
+    // Only live recipes read camera defaults. Keep a settings failure typed until the shared report boundary.
+    let defaults = if matches!(command, Some(Command::Live(_))) {
+        Some(ax_devil::session::live::defaults(
+            &settings::Settings::load(&paths.config_file)?.state(),
+            true,
+        ))
+    } else {
+        None
+    };
     launch(
         command,
         &plugins.handlers(),
         &RecoveryFolder::new(paths.recovery_dir.clone()),
         &workspace::Environment::of_process(),
-        || {
-            settings::Settings::load(&paths.config_file)
-                .map(|settings| ax_devil::session::live::defaults(&settings.state(), true))
-                .map_err(|error| error.to_string())
-        },
+        || defaults.ok_or_else(|| "Live defaults are unavailable".to_owned()),
     )
+    .map_err(StartError::from)
 }
 
 /// Prints what `command` asks the running app to open, in this process's working folder, for the desktop shell to
@@ -317,21 +325,23 @@ fn hand_off(global: Global, command: Option<Command>, plugins: &Plugins) -> Exit
         global.config,
         global.cache_dir,
     )
+    .map_err(StartError::from)
     .and_then(|paths| build_launch(&paths, command, plugins))
     .and_then(|launch| {
-        launch
-            .as_ref()
-            .and_then(HandOff::of)
-            .ok_or_else(|| "This command does not open anything in the running app.".to_owned())
+        launch.as_ref().and_then(HandOff::of).ok_or_else(|| {
+            StartError::from("This command does not open anything in the running app.".to_owned())
+        })
     })
-    .and_then(|handed| serde_json::to_string(&handed).map_err(|error| error.to_string()));
+    .and_then(|handed| {
+        serde_json::to_string(&handed).map_err(|error| StartError::from(error.to_string()))
+    });
     match handed {
         Ok(text) => {
             announce(&[text]);
             ExitCode::SUCCESS
         }
         Err(reason) => {
-            announce(&[reason]);
+            announce(&[start_error::public_reason(&reason)]);
             ExitCode::FAILURE
         }
     }
@@ -363,19 +373,7 @@ async fn finish(
 
 /// Logs `error` after `prefix`, then its chain of causes at DEBUG, which is where Python shows its traceback.
 fn fail(prefix: &str, error: Box<dyn Error>) -> ExitCode {
-    // Settings validation never includes secrets; only the two storage roots may quote values.
-    // Other startup errors can originate in transports or plugins and have no safe display contract.
-    let reason = if error.downcast_ref::<settings::Error>().is_some() {
-        error.to_string()
-    } else if let Some(reason) = share::refuse_development_build()
-        .err()
-        .filter(|reason| error.to_string() == format!("serve: {reason}"))
-    {
-        // This refusal is a static build instruction, with no user input or transport text.
-        format!("serve: {reason}")
-    } else {
-        "Application failed to start. Check the configuration and log for details.".to_owned()
-    };
+    let reason = start_error::public_reason(error.as_ref());
     if std::env::var("AX_DEVIL_EXIT_ON_STDIN_CLOSE").as_deref() == Ok("1") {
         announce(&[format!("ax-devil-error: {}", serde_json::json!(reason))]);
     }
@@ -433,16 +431,16 @@ async fn serve(
     plugins: Arc<Plugins>,
     interrupt: &Interrupt,
 ) -> Result<ExitCode, Box<dyn Error>> {
-    share::refuse_development_build().map_err(|reason| format!("serve: {reason}"))?;
+    share::refuse_development_build()
+        .map_err(|reason| StartError::from(format!("serve: {reason}")))?;
     let services = Services::start(paths, plugins, None, interrupt)?;
     let chosen = std::env::var(PASSWORD_VARIABLE)
         .ok()
         .filter(|text| !text.is_empty());
     let generated = chosen.is_none();
     let password = match chosen {
-        Some(text) => {
-            Secret::chosen(text).map_err(|reason| format!("{PASSWORD_VARIABLE}: {reason}"))?
-        }
+        Some(text) => Secret::chosen(text)
+            .map_err(|reason| StartError::from(format!("{PASSWORD_VARIABLE}: {reason}")))?,
         None => Secret::generate(),
     };
     let listener = tokio::net::TcpListener::bind((args.bind, args.port)).await?;
@@ -481,7 +479,7 @@ async fn serve(
 /// Starts the desktop shell and waits for it, passing on its exit code.
 fn launch_app(args: &AppArgs) -> Result<ExitCode, Box<dyn Error>> {
     let desktop = desktop::folder()?;
-    let electron = desktop::electron(&desktop)?;
+    let electron = desktop::electron(&desktop).map_err(StartError::from)?;
     let mut shell = Process::new(electron);
     // Shells hosted in an Electron app export this, which would start Electron as plain Node and crash it at once.
     shell.env_remove("ELECTRON_RUN_AS_NODE");

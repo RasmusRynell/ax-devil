@@ -179,7 +179,7 @@ impl Settings {
     /// Loads the config at `path`. A missing file gives the defaults and is created on the first save. An older file
     /// is copied to `<name>.v<N>.json`, migrated and written back. A file that is malformed, has no integer
     /// `version`, or is newer than this build is an error naming the file. Recoverable preferences keep their
-    /// raw saved values; other invalid values fail with the key. Unknown keys are logged and kept.
+    /// raw saved values; service startup checks storage through [`validate_storage`](Self::validate_storage). Other invalid values fail with the key. Unknown keys are logged and kept.
     pub fn load(path: &Path) -> Result<Self, Error> {
         Self::open(
             path,

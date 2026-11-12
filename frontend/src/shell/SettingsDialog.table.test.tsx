@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { useState } from "react";
 import { waitFor, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { AccessContext } from "../client/access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
@@ -103,37 +104,52 @@ describe("settings dialog, real table", () => {
 
 it("stores edited Manual GiB as MiB and preserves an untouched rounded display", async () => {
   const apply = vi.fn().mockResolvedValue(null);
-  const close = vi.fn();
   const state = {
     ...DEFAULT_SETTINGS,
     values: { ...DEFAULT_SETTINGS.values, "playback.video_cache": 1537 },
   };
-  const view = render(
-    <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
-      <FakeSettings state={state} apply={apply}>
-        <SettingsDialog onClose={close} onRestartNeeded={() => {}} />
-      </FakeSettings>
-    </AccessContext.Provider>,
-  );
+  function Harness() {
+    const [open, setOpen] = useState(true);
+    return (
+      <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
+        <FakeSettings state={state} apply={apply}>
+          <button onClick={() => setOpen(true)}>Open settings</button>
+          {open && <SettingsDialog onClose={() => setOpen(false)} onRestartNeeded={() => {}} />}
+        </FakeSettings>
+      </AccessContext.Provider>
+    );
+  }
+  const view = render(<Harness />);
   fireEvent.click(screen.getByRole("tab", { name: "Playback" }));
   const field = screen.getByLabelText("Total allowance (GiB)") as HTMLInputElement;
   expect(field.value).toBe("1.50");
   const mode = screen.getByRole("combobox", { name: "Video cache" });
   fireEvent.change(mode, { target: { value: "auto" } });
-  fireEvent.change(mode, { target: { value: "manual" } });
+  fireEvent.click(screen.getByRole("tab", { name: "General" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Playback" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "Video cache" }), {
+    target: { value: "manual" },
+  });
+  expect((screen.getByLabelText("Total allowance (GiB)") as HTMLInputElement).value).toBe("1.50");
   fireEvent.click(screen.getByRole("button", { name: "OK" }));
-  await waitFor(() => expect(close).toHaveBeenCalled());
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(apply).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Playback" }));
   fireEvent.keyDown(screen.getByLabelText("Total allowance (GiB)"), { key: "ArrowUp" });
   expect((screen.getByLabelText("Total allowance (GiB)") as HTMLInputElement).value).toBe("1.75");
   fireEvent.click(screen.getByRole("button", { name: "OK" }));
   await waitFor(() =>
     expect(apply).toHaveBeenLastCalledWith({ set: { "playback.video_cache": 1792 } }),
   );
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Playback" }));
   fireEvent.change(screen.getByLabelText("Total allowance (GiB)"), { target: { value: "1.51" } });
   fireEvent.click(screen.getByRole("button", { name: "OK" }));
   await waitFor(() =>
     expect(apply).toHaveBeenLastCalledWith({ set: { "playback.video_cache": 1546 } }),
   );
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   view.unmount();
 });

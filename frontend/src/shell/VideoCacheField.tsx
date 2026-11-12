@@ -1,33 +1,36 @@
-import { useId, useState, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { IconButton } from "../kit/IconButton";
 import { FIELD } from "../kit/look";
 import { ownKeys } from "../kit/keys";
 import { numericInput } from "./numericInput";
+
+/** The dialog's last Manual text and exact MiB, retained while other pages are mounted. */
+export interface ManualCache {
+  text: string;
+  mib: number | string;
+}
 
 /** Cache allowance displayed in GiB; untouched rounded text retains the original stored MiB. */
 export function VideoCacheField({
   label,
   value,
   onChange,
+  manual,
+  onManualChange,
 }: {
   label: ReactNode;
   value: string | number;
   onChange: (value: string | number) => void;
+  manual: ManualCache;
+  onManualChange: (value: ManualCache) => void;
 }) {
   const id = useId();
-  const [manual, setManual] = useState(
-    typeof value === "number" ? (value / 1024).toFixed(2) : "1.00",
-  );
-  const [manualValue, setManualValue] = useState<string | number>(
-    typeof value === "number" ? value : 1024,
-  );
   const auto = value === "auto";
-  const parsed = numericInput(manual, "auto_or_whole");
+  const parsed = numericInput(manual.text, "auto_or_whole");
   const edit = (text: string) => {
-    setManual(text);
     const number = numericInput(text, "auto_or_whole");
     const mib = typeof number === "number" ? Math.round(Number(number.toFixed(2)) * 1024) : text;
-    setManualValue(mib);
+    onManualChange({ text, mib });
     onChange(mib);
   };
   const step = (direction: number) => {
@@ -44,7 +47,7 @@ export function VideoCacheField({
           value={auto ? "auto" : "manual"}
           title="Auto uses 25% of available RAM"
           onChange={(event) =>
-            event.target.value === "auto" ? onChange("auto") : onChange(manualValue)
+            event.target.value === "auto" ? onChange("auto") : onChange(manual.mib)
           }
         >
           <option value="auto">Auto</option>
@@ -60,11 +63,12 @@ export function VideoCacheField({
               aria-valuemin={0.25}
               aria-valuemax={1024}
               aria-valuenow={typeof parsed === "number" ? parsed : undefined}
-              value={manual}
+              value={manual.text}
               className={`${FIELD} min-w-0 flex-1 tabular-nums`}
               onChange={(event) => edit(event.target.value)}
               onBlur={() => {
-                if (typeof parsed === "number") setManual(parsed.toFixed(2));
+                if (typeof parsed === "number")
+                  onManualChange({ ...manual, text: parsed.toFixed(2) });
               }}
               onKeyDown={(event) => {
                 ownKeys(new Set(["ArrowUp", "ArrowDown"]))(event);

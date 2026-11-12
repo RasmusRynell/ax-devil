@@ -1,4 +1,4 @@
-import { VideoCacheField } from "./VideoCacheField";
+import { VideoCacheField, type ManualCache } from "./VideoCacheField";
 import type { ReactNode } from "react";
 import type { SettingsState } from "../generated/api";
 import type { SettingKey } from "../generated/settings";
@@ -72,6 +72,7 @@ export function literalSecret(row: Row, value: Value) {
 }
 
 interface FieldProps {
+  cacheDraft?: { manual: ManualCache; onManualChange: (value: ManualCache) => void };
   row: Row;
   label: ReactNode;
   value: Value;
@@ -117,9 +118,10 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
         onChange={onChange}
       />
     ),
-  auto_or_whole: ({ row, label, value, onChange }) =>
-    row.key === "playback.video_cache" ? (
+  auto_or_whole: ({ label, value, onChange, cacheDraft }) =>
+    cacheDraft ? (
       <VideoCacheField
+        {...cacheDraft}
         label={label}
         value={typeof value === "number" ? value : textOf(value)}
         onChange={onChange}

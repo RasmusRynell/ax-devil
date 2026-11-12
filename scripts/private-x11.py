@@ -72,7 +72,7 @@ try:
         x.XSync(display, False)
         # The parent closes stdin in its finally block; closing the display destroys this client's window.
         sys.stdin.read()
-    elif action == "error-dialog":
+    elif action in ("error-dialog", "focus-error-dialog"):
         x.XDefaultRootWindow.argtypes = [c.c_void_p]
         x.XDefaultRootWindow.restype = c.c_ulong
         x.XQueryTree.argtypes = [c.c_void_p, c.c_ulong, c.POINTER(c.c_ulong), c.POINTER(c.c_ulong), c.POINTER(c.POINTER(c.c_ulong)), c.POINTER(c.c_uint)]
@@ -82,6 +82,16 @@ try:
             if x.XFetchName(display, window, c.byref(name)) and name.value:
                 title = name.value.decode(errors="replace")
                 if "ax-devil could not continue" in title:
+                    if action == "focus-error-dialog":
+                        x.XRaiseWindow.argtypes = [c.c_void_p, c.c_ulong]
+                        x.XSetInputFocus.argtypes = [c.c_void_p, c.c_ulong, c.c_int, c.c_ulong]
+                        x.XGetInputFocus.argtypes = [c.c_void_p, c.POINTER(c.c_ulong), c.POINTER(c.c_int)]
+                        x.XRaiseWindow(display, window)
+                        x.XSetInputFocus(display, window, 2, 0)
+                        x.XSync(display, False)
+                        focused, revert = c.c_ulong(), c.c_int()
+                        x.XGetInputFocus(display, c.byref(focused), c.byref(revert))
+                        return focused.value == window
                     return True
             root, parent, children, count = c.c_ulong(), c.c_ulong(), c.POINTER(c.c_ulong)(), c.c_uint()
             if x.XQueryTree(display, window, c.byref(root), c.byref(parent), c.byref(children), c.byref(count)):

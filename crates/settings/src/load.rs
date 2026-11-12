@@ -36,13 +36,11 @@ impl State {
                 || setting.kind.default_value(),
                 |value| setting.kind.with_ids(value),
             );
-            preferences::storage(setting, &raw, &**lookup)
-                .map_err(|reason| invalid(setting.key, &reason))?;
             let mut value = raw.clone();
-            // Other references whose variables are unset or wrong still load; their consumers tolerate defaults.
-            // Storage roots above must be usable before startup. On save: `patch` and `update` refuse it, and `resolved` falls back to the default.
+            // Service startup validates storage paths; independent commands may load them without using them.
             if let Err(reason) = setting.check(&value, &**lookup)
                 && !setting.holds_reference(&value)
+                && !preferences::is_storage(setting)
             {
                 value = preferences::recover(setting, &raw)
                     .ok_or_else(|| invalid(setting.key, &reason))?;
