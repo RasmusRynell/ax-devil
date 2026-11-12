@@ -41,7 +41,7 @@ describe("lane menu filter", () => {
     expect(onChange).toHaveBeenLastCalledWith({ filter: { pedestrian: false } });
   });
 
-  it("applies a score or confidence bound at every keystroke, reading a comma as a decimal point, and refuses what is not a number", () => {
+  it("applies a score or confidence bound at every keystroke, reading a comma as a decimal point, and opens unfinished bounds", () => {
     const { onChange, state, show } = setup();
     tab("Filter");
     const min = screen.getByRole("textbox", { name: "Score min" }) as HTMLInputElement;
@@ -63,12 +63,15 @@ describe("lane menu filter", () => {
     });
     show({ settings: { ...state.settings, ranges: half } });
     onChange.mockClear();
-    for (const garbage of ["abc", "Infinity", "1e999"]) {
+    for (const garbage of ["-", "1e", "abc", "Infinity", "1e999"]) {
+      show({ settings: { ...state.settings, ranges: half } });
       fireEvent.change(min, { target: { value: garbage } });
+      expect(onChange).toHaveBeenLastCalledWith({ ranges: OPEN_RANGES });
+      show({ settings: { ...state.settings, ranges: OPEN_RANGES } });
       expect(min.value).toBe(garbage);
       expect(min.getAttribute("aria-invalid")).toBe("true");
     }
-    expect(onChange).not.toHaveBeenCalled();
+    expect(onChange).toHaveBeenLastCalledWith({ ranges: OPEN_RANGES });
   });
 
   it("counts the controls that differ from their defaults, and resets classes, ranges and expression together", () => {

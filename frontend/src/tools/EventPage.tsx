@@ -22,7 +22,7 @@ export type EventDetail = {
   truncated: boolean;
 };
 
-type ObjectSort = "id" | "class" | "seen";
+type ObjectSort = "" | "id" | "class" | "seen";
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
@@ -30,6 +30,7 @@ const classOf = (row: InvolvedWire): string => row.classes.join(", ");
 
 /** The rows in the order `sort` asks for; the sort is stable, so equal rows keep the order the event names them. */
 function sorted(rows: readonly InvolvedWire[], { key, descending }: SortOf<ObjectSort>) {
+  if (key === "") return rows;
   const order = (a: InvolvedWire, b: InvolvedWire): number =>
     key === "id"
       ? collator.compare(a.id, b.id)
@@ -107,7 +108,7 @@ export function EventPage({
   onObject?: (id: string) => void;
   onEvent: (item: EventItem) => void;
 }) {
-  const [sort, setSort] = useState<SortOf<ObjectSort>>({ key: "id", descending: false });
+  const [sort, setSort] = useState<SortOf<ObjectSort>>({ key: "", descending: false });
   const copied = useCopied(`event:${item.id}`, (id) => (id === "kind" ? item.label : undefined));
   const withHistory = !live;
   const objects = useMemo(() => sorted(detail.objects, sort), [detail, sort]);

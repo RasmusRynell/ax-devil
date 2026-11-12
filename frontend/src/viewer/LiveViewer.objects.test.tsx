@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
@@ -121,6 +121,12 @@ describe("live viewer objects", () => {
 
     act(() => props().onSelect?.(SELECTION));
     expect(shown.boxes).toHaveBeenLastCalledWith(SELECTION, null);
+    fireEvent.keyDown(document.querySelector("[data-popover-bounds]")!, { key: "Escape" });
+    expect(shown.boxes).toHaveBeenLastCalledWith(null, null);
+    act(() => registry.current["media-tools"]?.());
+    expect(screen.queryByRole("region", { name: "Object page" })).toBeNull();
+    act(() => registry.current["media-tools"]?.());
+    act(() => props().onSelect?.(SELECTION));
     act(() => registry.current["media-tools"]?.());
     expect(screen.getByRole("region", { name: "Object page" })).toBeTruthy();
 

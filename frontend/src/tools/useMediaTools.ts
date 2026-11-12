@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Selection } from "../lanes/contract";
-import { freshEvents, FRESH_LIST, type EventsState, type ListState } from "./listState";
+import { freshEvents, freshList, type EventsState, type ListState } from "./listState";
 import type { Place } from "./MediaToolsPanel";
-import { EMPTY, topObject, type PageStack } from "./pageStack";
+import { EMPTY, jump, topObject, type PageStack } from "./pageStack";
 
 /**
  * What a viewer keeps of its media tools while the panel is closed: the width the user gave it, the pages open in it,
@@ -15,36 +15,85 @@ import { EMPTY, topObject, type PageStack } from "./pageStack";
 export function useMediaTools(
   session: { select(selection: Selection): void },
   objectDetails: boolean,
+  visible = false,
 ) {
   const [width, onWidth] = useState<number | null>(null);
   const [pages, setPages] = useState<PageStack>(EMPTY);
-  const [list, onList] = useState<ListState>(FRESH_LIST);
+  const [list, onList] = useState<ListState>(freshList);
   const [events, onEvents] = useState<EventsState>(freshEvents);
   const [chosen, onChosen] = useState<number | null>(null);
   const [outlined, setOutlined] = useState(true);
-  // The lane the open pages are about.
-  const pagesLane = useRef<number | null>(null);
+  // A hidden pick is provisional until the panel opens.
+  const pending = useRef<Selection>(null);
+  const pagePlace = useRef<Place | null>(null);
   const navigate = useCallback(
     (next: PageStack, at: Place) => {
       const top = next.entries.at(-1);
       // An index into one file names nothing in another, so what lay under a page of a new lane is not kept.
-      const moved = pagesLane.current !== null && pagesLane.current !== at.lane;
+      const moved = pagePlace.current !== null && pagePlace.current.lane !== at.lane;
       const shown: PageStack =
         moved && top && next.entries.length > 1
           ? { ...next, entries: [{ key: top.key, origin: null }], mark: null }
           : next;
-      pagesLane.current = shown.entries.length > 0 ? at.lane : null;
+      pagePlace.current = shown.entries.length > 0 ? at : null;
       const object = topObject(shown);
+      onChosen(at.lane);
       setPages(shown);
       setOutlined(true);
       session.select(object && { ...at, entity: object.entity });
     },
     [session],
   );
+  const pick = (selection: Selection) => {
+    const cancelled = pending.current;
+    pending.current = null;
+    if (!selection) {
+      if (cancelled) {
+        const object = topObject(pages);
+        session.select(
+          object && pagePlace.current ? { ...pagePlace.current, entity: object.entity } : null,
+        );
+      }
+      setOutlined(false);
+      return;
+    }
+    if (visible) navigate(jump(pages, { kind: "object", entity: selection.entity }), selection);
+    else {
+      pending.current = selection;
+      session.select(selection);
+      setOutlined(true);
+    }
+  };
+  const chooseLane = useCallback(
+    (lane: number) => {
+      if (pending.current?.lane === lane) {
+        onChosen(lane);
+        return;
+      }
+      const cancelled = pending.current;
+      pending.current = null;
+      onChosen(lane);
+      if (pagePlace.current?.lane !== lane) {
+        pagePlace.current = null;
+        setPages((current) => ({ ...current, entries: [], mark: null }));
+        session.select(null);
+      } else if (cancelled) {
+        navigate(pages, pagePlace.current);
+      }
+    },
+    [session, navigate, pages],
+  );
   useEffect(() => {
-    pagesLane.current = null;
+    const selection = pending.current;
+    if (!visible || !selection) return;
+    pending.current = null;
+    navigate(jump(pages, { kind: "object", entity: selection.entity }), selection);
+  }, [visible, pages, navigate]);
+  useEffect(() => {
+    pending.current = null;
+    pagePlace.current = null;
     setPages(EMPTY);
-    onList(FRESH_LIST);
+    onList(freshList());
     onEvents(freshEvents());
     onChosen(null);
     setOutlined(true);
@@ -52,8 +101,9 @@ export function useMediaTools(
   }, [session, objectDetails]);
   return {
     pages,
+    pick,
+    chooseLane,
     outlined,
-    setOutlined,
     navigate,
     panel: {
       pages,
@@ -63,7 +113,7 @@ export function useMediaTools(
       events,
       onEvents,
       chosen,
-      onChosen,
+      onChosen: chooseLane,
       width,
       onWidth,
     },

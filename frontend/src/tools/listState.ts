@@ -22,6 +22,8 @@ export const SCOPES: Record<Scope, { title: string; hint: string; sort: Sort; no
 
 /** What the user set on the objects list: kept by the viewer, so a page opened from the list steps through the same one after the panel closes and opens. */
 export type ListState = {
+  /** Scroll and cursor per lane and scope; the tables write their position without rerendering the viewer. */
+  tables: Record<number, Record<Scope, TableMemory>>;
   scope: Scope;
   text: string;
   sorts: Record<Scope, Sort>;
@@ -49,9 +51,10 @@ export const freshEvents = (): EventsState => ({
 });
 
 /** A list nobody has searched or sorted. */
-export const FRESH_LIST: ListState = {
+export const freshList = (): ListState => ({
+  tables: {},
   scope: "frame",
   text: "",
   sorts: { frame: SCOPES.frame.sort, file: SCOPES.file.sort },
   anchor: null,
-};
+});

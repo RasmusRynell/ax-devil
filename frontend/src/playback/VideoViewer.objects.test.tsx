@@ -7,7 +7,7 @@ import { scenario } from "../session/fakeScenario";
 import { SessionProvider } from "../session/session";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
 import { focusLane } from "../viewer/laneFocus";
-import type { Picked } from "../lanes/contract";
+import type { Picked, Selection } from "../lanes/contract";
 import type { ClientMessage, LaneInfo } from "../stream/protocol";
 import type { Geometry } from "./renderer";
 import type { VideoCanvas } from "./VideoCanvas";
@@ -18,10 +18,19 @@ import { FIT, ZOOM_STEP } from "./viewport";
 // What the canvas was last given; the picture needs WebGL, and these tests are about what the viewer does with it.
 const canvas = vi.hoisted(() => ({
   props: undefined as ComponentProps<typeof VideoCanvas> | undefined,
+  inspected: null as Selection,
 }));
 vi.mock("./VideoCanvas", () => ({
   VideoCanvas: (props: ComponentProps<typeof VideoCanvas>) => {
     canvas.props = props;
+    return null;
+  },
+}));
+
+vi.mock("./Inspector", async (original) => ({
+  ...(await original<typeof import("./Inspector")>()),
+  Inspector: ({ inspection }: ComponentProps<(typeof import("./Inspector"))["Inspector"]>) => {
+    canvas.inspected = inspection.selection;
     return null;
   },
 }));
@@ -96,8 +105,19 @@ describe("video viewer objects", () => {
     act(() => props().onSelect?.(SELECTION));
     expect(shown.boxes).toHaveBeenLastCalledWith(SELECTION, null);
     expect(page()).toBeNull();
+    act(() => props().onSelect?.(null));
+    run("media-tools");
+    expect(page()).toBeNull();
+    run("media-tools");
+    act(() => props().onSelect?.(SELECTION));
     run("media-tools");
     expect(page()).toBeTruthy();
+
+    run("media-tools");
+    act(() => props().onSelect?.({ ...SELECTION, entity: "9" }));
+    act(() => props().onSelect?.(null));
+    run("media-tools");
+    expect(page()?.querySelector("header")?.textContent).toContain("7");
 
     // Empty space on the video drops the outline, not the page; Back drops the selection too.
     act(() => props().onSelect?.(null));
@@ -305,4 +325,34 @@ describe("video viewer objects", () => {
     run("zoom-reset");
     expect(props().viewport).toEqual(FIT);
   });
+});
+
+it("opens tools on the targeted lane and leaves the other lane's object page behind", async () => {
+  const { props, run } = await mount([
+    { label: "DPM", slot: "DPM", source: 0 },
+    { label: "GT", slot: "GT", source: 1 },
+  ]);
+  act(() => focusLane(1, s.ids["list/A"], "GT"));
+  run("media-tools");
+  expect((screen.getByRole("combobox", { name: "Lane" }) as HTMLSelectElement).value).toBe("1");
+  const shown = geometry();
+  act(() => props().onDrawn?.(shown));
+  act(() => props().onSelect?.(SELECTION));
+  expect(canvas.inspected).toEqual(SELECTION);
+  run("media-tools");
+  const other = { lane: 1, source: 1, entity: "9" };
+  act(() => props().onSelect?.(other));
+  expect(shown.boxes).toHaveBeenLastCalledWith(other, null);
+  act(() => focusLane(1, s.ids["list/A"], "DPM"));
+  fireEvent.contextMenu(screen.getByRole("button", { name: "DPM: settings" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: /Media Tools/i }));
+  expect(page()?.querySelector("header")?.textContent).toContain("7");
+  expect((screen.getByRole("combobox", { name: "Lane" }) as HTMLSelectElement).value).toBe("0");
+  expect(canvas.inspected).toEqual(SELECTION);
+  expect(shown.boxes).toHaveBeenLastCalledWith(SELECTION, null);
+  run("media-tools");
+  act(() => focusLane(1, s.ids["list/A"], "GT"));
+  run("media-tools");
+  expect((screen.getByRole("combobox", { name: "Lane" }) as HTMLSelectElement).value).toBe("1");
+  expect(page()).toBeNull();
 });

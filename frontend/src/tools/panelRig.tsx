@@ -14,7 +14,7 @@ import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
 import { compileFilter } from "../present";
 import { fullSample } from "../present/fixtures";
 import { names } from "../search/match";
-import { freshEvents, FRESH_LIST } from "./listState";
+import { freshEvents, freshList } from "./listState";
 import { MediaToolsPanel } from "./MediaToolsPanel";
 import { EMPTY, topObject, type PageStack } from "./pageStack";
 import { frameObjects } from "./objects";
@@ -83,7 +83,7 @@ function Viewer({
   first?: PageStack;
 }) {
   const [pages, setPages] = useState<PageStack>(first);
-  const [list, onList] = useState(FRESH_LIST);
+  const [list, onList] = useState(freshList);
   const [events, onEvents] = useState(freshEvents);
   const [chosen, onChosen] = useState<number | null>(null);
   const [memory, onMemory] = useState(FRESH_MEMORY);

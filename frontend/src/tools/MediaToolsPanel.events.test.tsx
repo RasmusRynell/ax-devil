@@ -169,13 +169,13 @@ describe("Event pages", () => {
     expect(within(page()).getByText("1 → 2")).toBeTruthy();
     expect(within(page()).getByText("#0")).toBeTruthy();
     expect(within(page()).getByText("00:00:00.000")).toBeTruthy();
-    answerEvent(detail({ same_moment_truncated: true }));
+    answerEvent(detail({ objects: [...detail().objects].reverse(), same_moment_truncated: true }));
     const objects = within(page()).getByRole("listbox", { name: "Objects involved" });
     expect(
       within(objects)
         .getAllByRole("option")
         .map((row) => row.firstElementChild?.textContent),
-    ).toEqual(["1", "2"]);
+    ).toEqual(["2", "1"]);
     // The tick for the event's own frame marks each object's strip.
     expect(page().querySelectorAll("[data-tick='0']")).toHaveLength(2);
     const moment = within(page()).getByRole("region", { name: "Same moment" });

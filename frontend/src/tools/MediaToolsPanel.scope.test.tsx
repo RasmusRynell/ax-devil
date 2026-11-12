@@ -59,3 +59,19 @@ describe("Objects scopes", () => {
     expect(filed()).toBe(true);
   });
 });
+
+it("keeps the Objects scroll and cursor across Events and back", () => {
+  mount();
+  const list = screen.getByRole("listbox", { name: "Objects" });
+  fireEvent.keyDown(list, { key: "ArrowDown" });
+  const cursorText = (table: HTMLElement) =>
+    document.getElementById(table.getAttribute("aria-activedescendant") ?? "")?.textContent;
+  const cursor = cursorText(list);
+  fireEvent.scroll(list.closest<HTMLElement>(".overflow-y-auto")!, { target: { scrollTop: 30 } });
+  fireEvent.click(screen.getByRole("tab", { name: /Events/ }));
+  fireEvent.click(screen.getByRole("tab", { name: "Objects" }));
+  const returned = screen.getByRole("listbox", { name: "Objects" });
+  expect(returned.closest<HTMLElement>(".overflow-y-auto")!.scrollTop).toBe(30);
+  expect(cursor).toBeTruthy();
+  expect(cursorText(returned)).toBe(cursor);
+});
