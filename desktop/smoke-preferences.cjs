@@ -66,13 +66,11 @@ module.exports.run = async () => {
         await js(
           "[...document.querySelectorAll('[role=tab]')].find((t) => t.textContent === 'Playback').click()",
         );
-        const input =
-          "document.getElementById([...document.querySelectorAll('dialog label')].find((l) => l.textContent.includes('Memory for video caching')).htmlFor)";
-        await wait(`${input}?.value === 'auto'`);
-        for (const text of ["512", "auto"]) {
-          await js(`${input}.focus(); ${input}.select()`);
-          await window.webContents.insertText(text);
-          await wait(`${input}.value === '${text}'`);
+        for (const mode of ["manual", "auto"]) {
+          await js(
+            `(() => { const select = document.querySelector('dialog select'); select.value = '${mode}'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`,
+          );
+          await wait(`document.querySelector('dialog select').value === '${mode}'`);
         }
         await js(
           "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'OK').click()",

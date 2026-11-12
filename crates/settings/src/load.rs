@@ -36,9 +36,11 @@ impl State {
                 || setting.kind.default_value(),
                 |value| setting.kind.with_ids(value),
             );
+            preferences::storage(setting, &raw, &**lookup)
+                .map_err(|reason| invalid(setting.key, &reason))?;
             let mut value = raw.clone();
-            // A reference whose variable is unset or wrong here still loads, as it does in Python, which checks it
-            // only when it is saved: `patch` and `update` refuse it, and `resolved` falls back to the default.
+            // Other references whose variables are unset or wrong still load; their consumers tolerate defaults.
+            // Storage roots above must be usable before startup. On save: `patch` and `update` refuse it, and `resolved` falls back to the default.
             if let Err(reason) = setting.check(&value, &**lookup)
                 && !setting.holds_reference(&value)
             {

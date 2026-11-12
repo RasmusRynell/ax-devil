@@ -26,7 +26,7 @@ credential. Only shortcuts are read live.
   and a missing key is the default. A shortcut of `null` is unbound.
 - A row with `env` accepts a whole-value `$NAME` reference, stored as written and expanded where it is used
   (`State::resolved`), silently. A number or folder is checked as expanded on save; text and a choice are read only
-  when used. A reference that gives nothing usable is logged without its value and gives empty text, or the default
+  when used. An unusable non-storage reference is logged without its value and gives empty text, or the default
   where empty is not valid. A folder is read once at start; `State::references` gives a form the values.
 - Unknown top-level keys, settings keys and command ids are logged and kept on save, so another version's settings
   survive. Recovery leaves the saved raw value separate from the effective fallback; only a patch/update naming that key replaces it.

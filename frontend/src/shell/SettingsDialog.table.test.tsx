@@ -101,50 +101,39 @@ describe("settings dialog, real table", () => {
   });
 });
 
-it.each([
-  [" +5 ", 5, "+5.12e2", 512],
-  ["1_024", 1024, "512.", 512],
-  ["5e0", "5e0", "5_12.0", 512],
-  ["5.", "5.", "512.5", 512.5],
-  ["1__2", "1__2", "1__2", "1__2"],
-  [" -5 ", -5, ".5", 0.5],
-  [" +٥ ", 5, "٥١٢.", 512],
-  ["\u00855\u0085", 5, "512e+0", 512],
-  ["\uFEFF5", "\uFEFF5", "nan", "nan"],
-])(
-  "normalizes numeric input %s on submit, preserving references and password whitespace",
-  async (head, parsedHead, cache, parsedCache) => {
-    const apply = vi.fn().mockResolvedValue(null);
-    render(
-      <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
-        <FakeSettings apply={apply}>
-          <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
-        </FakeSettings>
-      </AccessContext.Provider>,
-    );
-    fireEvent.click(screen.getByRole("tab", { name: "Stream defaults" }));
-    for (const [label, value] of [
-      ["RTSP port", " $PORT "],
-      ["Camera head", head],
-      ["Password", " secret "],
-    ])
-      fireEvent.change(screen.getByLabelText(label), { target: { value } });
-    fireEvent.click(screen.getByRole("tab", { name: "Playback" }));
-    fireEvent.change(screen.getByLabelText("Memory for video caching (MiB)"), {
-      target: { value: cache },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "OK" }));
-    await waitFor(() =>
-      expect(apply).toHaveBeenCalledWith(
-        expect.objectContaining({
-          set: expect.objectContaining({
-            "camera.rtsp_port": "$PORT",
-            "camera.head": parsedHead,
-            "playback.video_cache": parsedCache,
-            "camera.password": " secret ",
-          }),
-        }),
-      ),
-    );
-  },
-);
+it("stores edited Manual GiB as MiB and preserves an untouched rounded display", async () => {
+  const apply = vi.fn().mockResolvedValue(null);
+  const close = vi.fn();
+  const state = {
+    ...DEFAULT_SETTINGS,
+    values: { ...DEFAULT_SETTINGS.values, "playback.video_cache": 1537 },
+  };
+  const view = render(
+    <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
+      <FakeSettings state={state} apply={apply}>
+        <SettingsDialog onClose={close} onRestartNeeded={() => {}} />
+      </FakeSettings>
+    </AccessContext.Provider>,
+  );
+  fireEvent.click(screen.getByRole("tab", { name: "Playback" }));
+  const field = screen.getByLabelText("Total allowance (GiB)") as HTMLInputElement;
+  expect(field.value).toBe("1.50");
+  const mode = screen.getByRole("combobox", { name: "Video cache" });
+  fireEvent.change(mode, { target: { value: "auto" } });
+  fireEvent.change(mode, { target: { value: "manual" } });
+  fireEvent.click(screen.getByRole("button", { name: "OK" }));
+  await waitFor(() => expect(close).toHaveBeenCalled());
+  expect(apply).not.toHaveBeenCalled();
+  fireEvent.keyDown(screen.getByLabelText("Total allowance (GiB)"), { key: "ArrowUp" });
+  expect((screen.getByLabelText("Total allowance (GiB)") as HTMLInputElement).value).toBe("1.75");
+  fireEvent.click(screen.getByRole("button", { name: "OK" }));
+  await waitFor(() =>
+    expect(apply).toHaveBeenLastCalledWith({ set: { "playback.video_cache": 1792 } }),
+  );
+  fireEvent.change(screen.getByLabelText("Total allowance (GiB)"), { target: { value: "1.51" } });
+  fireEvent.click(screen.getByRole("button", { name: "OK" }));
+  await waitFor(() =>
+    expect(apply).toHaveBeenLastCalledWith({ set: { "playback.video_cache": 1546 } }),
+  );
+  view.unmount();
+});

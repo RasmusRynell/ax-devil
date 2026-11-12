@@ -128,29 +128,38 @@ pub fn new(home: &Home, name: &str, from: Option<&Path>) -> Result<Report, Strin
     })
 }
 
-/// `catalog use CATALOG`: stores the catalog as the default for new lanes. `catalog use` writes the settings file; a
-/// running app keeps the settings it loaded, so the choice applies at its next start, and any settings save in the
-/// running app first overwrites it.
+/// `catalog use CATALOG` without a running backend: stores the default in the settings file.
 pub fn use_catalog(home: &Home, catalog: &Path) -> Result<Report, String> {
+    let (stored, report) = selection(home, catalog)?;
+    if let Some(stored) = stored {
+        home.settings
+            .update(DEFAULT_SETTING, |_| Some(stored.into()))
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(report)
+}
+
+/// Validates the choice without writing; a refused compiler report has no value to save.
+pub(super) fn selection(home: &Home, catalog: &Path) -> Result<(Option<String>, Report), String> {
     let library = Library::with_folder(home.folder.clone());
     let Named::Listed(id) = named(catalog, home, &library)? else {
         return Err(outside(catalog, home));
     };
     if let Some(refused) = checked(home, &library, &id)? {
-        return Ok(refused);
+        return Ok((None, refused));
     }
     let stored = if id == library.default_id() {
         String::new()
     } else {
         id.to_string()
     };
-    home.settings
-        .update(DEFAULT_SETTING, |_| Some(stored.into()))
-        .map_err(|error| error.to_string())?;
-    Ok(Report {
-        text: format!("Default catalog: {}\n", home.shown(&id)),
-        ok: true,
-    })
+    Ok((
+        Some(stored),
+        Report {
+            text: format!("Default catalog: {}\n", home.shown(&id)),
+            ok: true,
+        },
+    ))
 }
 
 /// The check a user catalog must pass before it is copied or made the default: its problems, or `None`. Built-ins
@@ -247,7 +256,7 @@ fn read_outside(file: &Path) -> Result<String, String> {
 
 /// The check of the catalog document `text`, which was read from `file`, as `check` reports it for that file. The
 /// text read is the text checked.
-fn check_text(text: &str, file: &Path) -> Result<Report, String> {
+pub(super) fn check_text(text: &str, file: &Path) -> Result<Report, String> {
     let scratch = tempfile::tempdir().map_err(|error| {
         format!(
             "Cannot make a folder to check {} in: {error}",

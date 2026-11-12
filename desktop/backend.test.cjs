@@ -18,6 +18,7 @@ function fakeProcess({ stubborn = false } = {}) {
     setImmediate(() => {
       child.signalCode = signal;
       child.emit("exit", null, signal);
+      child.emit("close", null, signal);
     });
   if (!stubborn) child.stdin.on("finish", () => end("SIGTERM"));
   child.kill = (signal) => {
@@ -159,9 +160,25 @@ void test(
       const backend = backendOf(child);
       const started = assert.rejects(backend.ensure());
       child.emit(event, event === "error" ? new Error("spawn failed") : 0);
+      if (event === "exit") child.emit("close", 0, null);
       await started;
       await backend.stop();
       assert.deepEqual(child.signals, []);
     }
   },
 );
+
+void test("startup failure forwards the user-facing reason even when exit precedes the last stdout data", async () => {
+  const child = fakeProcess();
+  const starting = backendOf(child).ensure();
+  child.stderr.write("camera password: MUST-NOT-REACH-DIALOG\n");
+  child.exitCode = 1;
+  child.emit("exit", 1, null);
+  child.stdout.write(
+    `ax-devil-error: ${JSON.stringify("Invalid storage directory: storage.cache_dir. Change settings.json or CACHE.")}\n`,
+  );
+  child.emit("close", 1, null);
+  await assert.rejects(starting, {
+    message: "Invalid storage directory: storage.cache_dir. Change settings.json or CACHE.",
+  });
+});

@@ -217,7 +217,7 @@ fn a_saved_reference_that_does_not_resolve_loads_and_falls_back_but_is_refused_o
     let path = folder.path().join("settings.json");
     fs::write(
         &path,
-        r#"{"version": 1, "settings": {"net.port": "$UNSET", "net.dir": "$REL", "net.mode": "$MODE"}}"#,
+        r#"{"version": 1, "settings": {"net.port": "$UNSET", "net.mode": "$MODE"}}"#,
     )
     .unwrap();
     let settings = Settings::open(&path, NET, &[], Arc::new(lookup)).unwrap();
@@ -236,7 +236,6 @@ fn a_saved_reference_that_does_not_resolve_loads_and_falls_back_but_is_refused_o
         Some(&json!("$MODE")),
         "text stays as written"
     );
-    assert_eq!(state.folder("net.dir"), None, "the standard folder is used");
 
     let kept = settings.patch(&edit(&[("net.port", json!("$UNSET"))]));
     assert_eq!(kept.unwrap_err().location, "net.port");

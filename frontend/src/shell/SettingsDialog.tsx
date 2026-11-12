@@ -80,7 +80,12 @@ export function SettingsDialog({
   const refusedRow = shown.some((row) => row.key === refusal?.location);
   return (
     <>
-      <Dialog title="Settings" onOk={() => void ok()} onCancel={onClose} busy={saving}>
+      <Dialog
+        title={<span className="sr-only [@media(min-height:20rem)]:not-sr-only">Settings</span>}
+        onOk={() => void ok()}
+        onCancel={onClose}
+        busy={saving}
+      >
         <Tabs
           label="Settings pages"
           tabs={pages}
@@ -98,7 +103,7 @@ export function SettingsDialog({
         >
           {[...new Set(rows.map((row) => row.section))].map((section) => (
             <section key={section} className="flex flex-col gap-m">
-              <SectionCaption heading={section} plain />
+              {section && <SectionCaption heading={section} plain />}
               {rows
                 .filter((row) => row.section === section)
                 .map((row) => {

@@ -7,7 +7,9 @@ use catalogs::{CatalogId, Library, Served, sheets};
 use clap::{Subcommand, ValueHint};
 use handlers::Handlers;
 mod manage;
+mod running;
 pub use manage::Home;
+pub use running::use_default;
 use std::{
     ffi::OsString,
     fs,
@@ -44,8 +46,8 @@ pub enum CatalogCommand {
     },
     /// Make a catalog the default for new lanes: `built-in:<name>`, `user:<file name>`, or a file in the catalog folder.
     ///
-    /// A catalog that is not built in is checked first; it must be one the folder lists. A running app applies it
-    /// at its next start, and a settings save before then overwrites it.
+    /// A catalog that is not built in is checked first; it must be one the folder lists. Uses the local backend on
+    /// $PORT (default 7330) when running; otherwise writes the settings file. A refusal never falls back to disk.
     Use {
         /// The catalog.
         #[arg(value_name = "CATALOG", value_hint = ValueHint::FilePath)]

@@ -10,11 +10,12 @@ async function input(action, ...values) {
   if (process.env.AX_DEVIL_PRIVATE_X11 !== "1")
     throw new Error("Native window tests require scripts/isolated --window-manager");
   try {
-    await execute(
+    const result = await execute(
       "python3",
       [path.join(SMOKE_ROOT, "scripts/private-x11.py"), action, ...values.map(String)],
       { timeout: 5000, killSignal: "SIGKILL" },
     );
+    return result.stdout;
   } catch (cause) {
     throw new Error(`Private X11 input ${action} failed (5 second limit)`, { cause });
   }

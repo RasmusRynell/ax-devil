@@ -104,6 +104,9 @@ fn catalog_use_makes_a_catalog_of_the_folder_the_default_and_new_copies_a_catalo
     .unwrap();
     let settings = home.path().join("settings.json");
     fs::write(&settings, r#"{"version": 1}"#).unwrap();
+    let unused = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = unused.local_addr().unwrap().port();
+    drop(unused);
     let run = |args: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_ax-devil"))
             .args(["catalog"])
@@ -111,6 +114,7 @@ fn catalog_use_makes_a_catalog_of_the_folder_the_default_and_new_copies_a_catalo
             .arg(&settings)
             .args(args)
             .env("XDG_DATA_HOME", home.path())
+            .env("PORT", port.to_string())
             .output()
             .unwrap()
     };
@@ -124,7 +128,10 @@ fn catalog_use_makes_a_catalog_of_the_folder_the_default_and_new_copies_a_catalo
     assert!(used.status.success(), "{}", text(&used.stderr));
     assert_eq!(
         text(&used.stdout),
-        format!("Default catalog: {}\n", night.display())
+        format!(
+            "Default catalog: {}\nSaved to the settings file (no local backend running).\n",
+            night.display()
+        )
     );
     assert!(
         fs::read_to_string(&settings)

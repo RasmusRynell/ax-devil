@@ -37,7 +37,7 @@ pub use table::{Scope, Setting, TABLE};
 use tokio::sync::watch;
 
 /// Why settings could not be loaded, validated or saved; the reason is meant for the user and never contains a
-/// setting's value.
+/// setting's value, except the non-secret storage roots needed to diagnose a failed start.
 #[derive(Debug)]
 pub struct Error {
     /// The setting key (`camera.host`, `shortcuts.exit`) or file path the reason is about.

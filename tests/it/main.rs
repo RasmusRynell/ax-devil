@@ -3,6 +3,7 @@
 
 mod access;
 mod bookmarks;
+mod catalog_cli;
 mod common;
 mod glance;
 mod local_video;

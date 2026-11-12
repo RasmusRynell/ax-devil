@@ -118,7 +118,23 @@ function fail(error) {
   exitCode = 1;
   // Already quitting: the dialog would only report that quitting stopped what was starting.
   if (stopping) return;
-  if (!smoke) dialog.showErrorBox("ax-devil could not continue", String(error));
+  if (!smoke || process.env.AX_DEVIL_SMOKE_START_ERROR === "1") {
+    // Break long path segments for the native label without dropping any of the backend's message.
+    const text = String(error?.message ?? error).replace(/([^\s]{48})/gu, "$1\u200b");
+    // Argument errors can precede app readiness; ErrorBox is the native API available then.
+    if (!app.isReady()) dialog.showErrorBox("ax-devil could not continue", text);
+    else
+      dialog.showMessageBoxSync({
+        type: "error",
+        title: "ax-devil could not continue",
+        message: "ax-devil could not continue",
+        detail: text,
+        buttons: ["Quit"],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+  }
   app.quit();
 }
 

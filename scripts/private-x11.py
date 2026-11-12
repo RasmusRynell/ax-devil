@@ -72,6 +72,33 @@ try:
         x.XSync(display, False)
         # The parent closes stdin in its finally block; closing the display destroys this client's window.
         sys.stdin.read()
+    elif action == "error-dialog":
+        x.XDefaultRootWindow.argtypes = [c.c_void_p]
+        x.XDefaultRootWindow.restype = c.c_ulong
+        x.XQueryTree.argtypes = [c.c_void_p, c.c_ulong, c.POINTER(c.c_ulong), c.POINTER(c.c_ulong), c.POINTER(c.POINTER(c.c_ulong)), c.POINTER(c.c_uint)]
+        x.XFetchName.argtypes = [c.c_void_p, c.c_ulong, c.POINTER(c.c_char_p)]
+        def find(window):
+            name = c.c_char_p()
+            if x.XFetchName(display, window, c.byref(name)) and name.value:
+                title = name.value.decode(errors="replace")
+                if "ax-devil could not continue" in title:
+                    return True
+            root, parent, children, count = c.c_ulong(), c.c_ulong(), c.POINTER(c.c_ulong)(), c.c_uint()
+            if x.XQueryTree(display, window, c.byref(root), c.byref(parent), c.byref(children), c.byref(count)):
+                found = any(find(children[i]) for i in range(count.value))
+                if children:
+                    x.XFree(children)
+                return found
+            return False
+        print("ready" if find(x.XDefaultRootWindow(display)) else "waiting")
+    elif action == "enter":
+        x.XStringToKeysym.argtypes = [c.c_char_p]
+        x.XStringToKeysym.restype = c.c_ulong
+        x.XKeysymToKeycode.argtypes = [c.c_void_p, c.c_ulong]
+        xt.XTestFakeKeyEvent.argtypes = [c.c_void_p, c.c_uint, c.c_int, c.c_ulong]
+        key = x.XKeysymToKeycode(display, x.XStringToKeysym(b"Return"))
+        xt.XTestFakeKeyEvent(display, key, True, 20)
+        xt.XTestFakeKeyEvent(display, key, False, 20)
     elif action == "move":
         xt.XTestFakeMotionEvent(display, -1, int(args[0]), int(args[1]), 0)
     elif action in ("click", "double"):

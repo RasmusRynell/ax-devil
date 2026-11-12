@@ -76,6 +76,19 @@ module.exports.run = async ({ window }) => {
           "[...document.querySelectorAll('[role=tab]')].map(b => b.textContent)",
         )) {
           await settingsPage(window, tab);
+          if (tab === "Playback") {
+            await js(
+              `(() => { const select = document.querySelector('dialog select'); select.value = 'manual'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`,
+            );
+            await wait("document.querySelector('dialog input[role=spinbutton]')");
+            assert.equal(
+              await js(
+                `(() => { const panel = document.querySelector('[role=tabpanel]'); return panel.scrollHeight <= panel.clientHeight + 1; })()`,
+              ),
+              true,
+              `Playback controls fit without scrolling at ${zoom * 100}%`,
+            );
+          }
           await frames({ js });
           await fs.writeFile(
             path.join(

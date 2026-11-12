@@ -215,6 +215,12 @@ pub async fn run() -> ExitCode {
             clear_cache::run(folder, scope, force)
         }
         Some(Command::Plugins(command)) => plugins::run(command, plugins).await.print(),
+        Some(Command::Catalog(CatalogCommand::Use { catalog })) => catalog::use_default(
+            &catalog,
+            catalog::Home::resolve(global.config, global.cache_dir),
+        )
+        .await
+        .print(),
         Some(Command::Catalog(catalog)) => catalog::run(
             &catalog,
             catalog::Home::resolve(global.config, global.cache_dir),
@@ -357,7 +363,24 @@ async fn finish(
 
 /// Logs `error` after `prefix`, then its chain of causes at DEBUG, which is where Python shows its traceback.
 fn fail(prefix: &str, error: Box<dyn Error>) -> ExitCode {
-    tracing::error!("{prefix}{error}");
+    // Settings validation never includes secrets; only the two storage roots may quote values.
+    // Other startup errors can originate in transports or plugins and have no safe display contract.
+    let reason = if error.downcast_ref::<settings::Error>().is_some() {
+        error.to_string()
+    } else if let Some(reason) = share::refuse_development_build()
+        .err()
+        .filter(|reason| error.to_string() == format!("serve: {reason}"))
+    {
+        // This refusal is a static build instruction, with no user input or transport text.
+        format!("serve: {reason}")
+    } else {
+        "Application failed to start. Check the configuration and log for details.".to_owned()
+    };
+    if std::env::var("AX_DEVIL_EXIT_ON_STDIN_CLOSE").as_deref() == Ok("1") {
+        announce(&[format!("ax-devil-error: {}", serde_json::json!(reason))]);
+    }
+    tracing::error!("{prefix}{reason}");
+    tracing::debug!("{prefix}{error}");
     if let Some(causes) = causes(error.as_ref()) {
         tracing::debug!("{causes}");
     }
