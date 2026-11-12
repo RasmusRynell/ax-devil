@@ -453,16 +453,25 @@ async fn rejected_tokens_leave_the_current_capability_usable_through_viewer_reso
         "matching token releases the current capability"
     );
     owner.ask(&viewer, 6, 0, revision, 40, "cvat_track_7".into());
+    // The worker can finish before the socket delivers its first token. Hold that completed reply until release.
+    let outgoing = bounded("first reply ready before token delivery", owner.next()).await;
+    assert!(outgoing.frames.is_some(), "the held reply contains data");
     release_message(
         &mut owner,
         serde_json::json!({"type": "InspectRelease", "request": 6}),
     );
     assert!(
-        matches!(
-            verdict(answer(&mut owner).await.0),
-            InspectionWire::Unavailable
-        ),
-        "a matching pre-token cancellation releases the running read"
+        owner.cursor.is_none(),
+        "a matching pre-token cancellation releases the capability"
+    );
+    let (_authority, receiver) = watch::channel(Authority::default());
+    let gate = Gate::new(receiver, || 0);
+    gate.open(timeline());
+    assert!(
+        super::worker::deliver(gate, vec![outgoing])
+            .await
+            .is_empty(),
+        "a matching pre-token cancellation suppresses even a completed reply"
     );
 }
 
