@@ -44,7 +44,7 @@ prototype-matching option; the owner can revisit each.
 | D10: accessibility target is WCAG 2.x AA contrast (4.5:1 text, 3:1 large text and boundaries), every action reachable by keyboard, accessible names on icon-only controls | The tokens are contrast-checked in both themes when built, the write-ui skill states the rule; the accessibility-tree pass comes with polish |
 | Zoom is the browser's. Electron zooms with Ctrl+=, Ctrl+- and Ctrl+0, remembered per host; layouts must fit the window minimum and zoom up to 200% | A web app inherits zoom. `ui.text_size` (System to Larger) stays by owner decision, a separate choice that leaves zoom alone |
 | No root `ARCHITECTURE.md`; the prototype's content lives in `docs/architecture/overview.md` | One home |
-| Development ports 7330 (backend) and 7331 (frontend); the API version is a hash of the generated contract that `export-types` writes to `desktop/generated/api.json`, which the backend and the shell both read | Distinct from the prototype's ports, so both run; one version source |
+| Development ports 7330 (backend) and 7331 (frontend); the API version is a hash of the committed generated TypeScript, baked into the backend by `crates/api-types/build.rs` and written for the shell to the untracked `desktop/generated/api-version.json` by `export-types` | Distinct from the prototype's ports, so both run; no committed hash line for pull requests to conflict on |
 | One `ci.yml`: `make check` once on Ubuntu, and a package-and-smoke job per OS. No test runs on macOS or Windows; no lowest-dependency job (Cargo needs nightly) | The gate runs once; the other systems only prove the packaged app starts |
 
 ## Decisions taken for offline video

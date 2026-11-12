@@ -1,13 +1,17 @@
 //! Writes the Rust API types and the playback constants to one file per Rust module under
 //! frontend/src/generated/types/ (re-exported by frontend/src/generated/api.ts), the settings and command
-//! tables to frontend/src/generated/settings.ts, and the API and shell versions and the reserved shortcuts to
-//! desktop/generated/api.json (the API version is a hash of the TypeScript files), only when they changed.
+//! tables to frontend/src/generated/settings.ts, the shell version and the reserved shortcuts to
+//! desktop/generated/api.json, and the API version (a hash of the TypeScript files, so it is not committed) to the
+//! untracked desktop/generated/api-version.json, only when they changed.
 
+#[path = "../../../contract_version.rs"]
+mod contract_version;
 mod modules;
 mod scan;
 
+use contract_version::contract_version;
 use modules::{Constant, Registry, entry};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 /// The problems found, shown as plain text rather than a quoted string.
 struct Failed(String);
@@ -29,10 +33,11 @@ impl std::error::Error for Failed {}
 const TYPES_FOLDER: &str = "frontend/src/generated/types";
 
 /// The entry file, the settings tables and the desktop JSON, in the order they are written.
-const FIXED_OUTPUTS: [&str; 3] = [
+const FIXED_OUTPUTS: [&str; 4] = [
     "frontend/src/generated/api.ts",
     "frontend/src/generated/settings.ts",
     "desktop/generated/api.json",
+    "desktop/generated/api-version.json",
 ];
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -60,39 +65,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     check_outputs(&destinations)?;
     let entry = entry(files.keys());
     let settings = settings_module()?;
-    // The desktop shell and the development supervisor are CommonJS and read these from JSON.
-    let desktop = serde_json::json!({
-        "apiVersion": contract_version(&files, &entry, &settings),
-        "shellApi": api_types::SHELL_API,
-        "reserved": settings::shortcuts::RESERVED,
-    });
     for (stem, text) in &files {
         write_if_changed(&format!("{TYPES_FOLDER}/{stem}.ts"), text)?;
     }
     write_if_changed(FIXED_OUTPUTS[0], &entry)?;
     write_if_changed(FIXED_OUTPUTS[1], &settings)?;
-    write_if_changed(FIXED_OUTPUTS[2], &format!("{desktop:#}\n"))?;
     prune(&files.keys().map(|stem| format!("{stem}.ts")).collect())?;
+    // The desktop shell and the development supervisor are CommonJS and read these from JSON. The version is
+    // hashed from the files just written, as the backend hashes them when it is built; it has its own file so the
+    // committed one holds no hash for two pull requests to edit.
+    let desktop = serde_json::json!({
+        "shellApi": api_types::SHELL_API,
+        "reserved": settings::shortcuts::RESERVED,
+    });
+    let version = serde_json::json!({
+        "apiVersion": contract_version(std::path::Path::new(&repo_path("frontend/src/generated")))?,
+    });
+    write_if_changed(FIXED_OUTPUTS[2], &format!("{desktop:#}\n"))?;
+    write_if_changed(FIXED_OUTPUTS[3], &format!("{version:#}\n"))?;
     Ok(())
-}
-
-/// The API version: the first 16 hex digits of the SHA-256 of the generated TypeScript (each text after its name),
-/// hashed from memory so line endings on disk and the platform do not matter.
-fn contract_version(files: &BTreeMap<String, String>, entry: &str, settings: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hash = Sha256::new();
-    let named = files
-        .iter()
-        .map(|(stem, text)| (stem.as_str(), text.as_str()))
-        .chain([("api", entry), ("settings", settings)]);
-    for (name, text) in named {
-        hash.update(format!("{name}\0{}\0{text}", text.len()));
-    }
-    hash.finalize()
-        .iter()
-        .take(8)
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
 }
 
 /// Fails before any write unless every output folder resolves inside the repository (no link anywhere in its path),
