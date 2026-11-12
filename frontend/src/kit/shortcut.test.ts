@@ -30,24 +30,13 @@ describe("shortcutOf", () => {
   });
 
   it("uses Qt portable names for macOS Command and Control, and native chip order", () => {
-    expect(
-      shortcutOf(
-        new KeyboardEvent("keydown", {
-          key: "s",
-          ctrlKey: true,
-          metaKey: true,
-          altKey: true,
-          shiftKey: true,
-        }),
-        "MacIntel",
-      ),
-    ).toBe("Meta+Ctrl+Alt+Shift+S");
-    expect(shortcutOf(new KeyboardEvent("keydown", { key: "s", ctrlKey: true }), "MacIntel")).toBe(
-      "Meta+S",
-    );
-    expect(shortcutOf(new KeyboardEvent("keydown", { key: "s", metaKey: true }), "MacIntel")).toBe(
-      "Ctrl+S",
-    );
+    for (const [held, expected] of [
+      [{ ctrlKey: true }, "Meta+S"],
+      [{ metaKey: true }, "Ctrl+S"],
+    ] as const)
+      expect(shortcutOf(new KeyboardEvent("keydown", { key: "s", ...held }), "MacIntel")).toBe(
+        expected,
+      );
     expect(keyParts("Meta+Ctrl+Alt+Shift+S", "MacIntel")).toEqual(["⌃", "⌥", "⇧", "⌘", "S"]);
   });
 

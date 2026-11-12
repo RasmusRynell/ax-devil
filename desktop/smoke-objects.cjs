@@ -2,6 +2,7 @@
 // frame 5), opened with its shortcut. Frame scope lists the frame's objects, File scope the file's, where a click on an
 // object that is not in the frame goes to its first frame and opens its page over the list. Shown in both themes, then at
 // the smallest window at 200% zoom, where the list must fit.
+const { pressShortcut } = require("./shortcut-input.cjs");
 const assert = require("node:assert/strict");
 const fit = require("./fit.cjs");
 const { delay, goToFrame, page, setView } = require("./smoke-kit.cjs");
@@ -12,10 +13,6 @@ const THEMES = ["light", "dark"];
 
 module.exports.objects = async (window, { setTheme, shoot }) => {
   const { js, wait } = page(window);
-  const key = (keyCode, modifiers = []) =>
-    ["keyDown", "keyUp"].forEach((type) =>
-      window.webContents.sendInputEvent({ type, keyCode, modifiers }),
-    );
   const rows = () =>
     js(`[...document.querySelectorAll('${PANEL} [role=option]')].map((row) => ({
       id: row.firstElementChild.textContent,
@@ -44,7 +41,7 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
 
   await setView(window, [1100, 720], 1);
   await goToFrame(window, 0);
-  key("B", ["control"]);
+  pressShortcut(window, "Ctrl+B");
   await wait(`document.querySelector('${PANEL}')`);
 
   // Frame scope: what the lane draws on frame 0.
@@ -112,9 +109,9 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     await setTheme(theme);
     await shoot(`objects-resized-${theme}.png`);
   }
-  key("B", ["control"]);
+  pressShortcut(window, "Ctrl+B");
   await wait(`!document.querySelector('${PANEL}')`);
-  key("B", ["control"]);
+  pressShortcut(window, "Ctrl+B");
   await wait(`document.querySelector('${PANEL}')`);
   assert.equal(await width(), widened, "The panel opens at the width it was given");
 

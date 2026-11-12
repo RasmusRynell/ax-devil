@@ -2,6 +2,7 @@
 // renamed and ended; two on frame 3). The Events tab lists them with the frame's events tinted and the line before the
 // ones still to come; an event's page leads to its objects and an object's page back to its events; Go to frame seeks.
 // Shown in both themes, then in the smallest window at 200% zoom, where the panel must fit.
+const { pressShortcut } = require("./shortcut-input.cjs");
 const { nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -79,8 +80,7 @@ module.exports.run = () =>
 
       await wait(`${SHOWN} >= 0`);
       await goToFrame(window, 3);
-      for (const type of ["keyDown", "keyUp"])
-        window.webContents.sendInputEvent({ type, keyCode: "B", modifiers: ["control"] });
+      pressShortcut(window, "Ctrl+B");
       await wait(`document.querySelector('${PANEL}')`);
       await js(
         `[...document.querySelectorAll('${PANEL} [role=tab]')].find((tab) => tab.textContent.startsWith('Events')).click()`,

@@ -1,4 +1,5 @@
 // Settings smoke actions use real input only after the target is visible, uncovered and stationary.
+const { pressShortcut } = require("./shortcut-input.cjs");
 const assert = require("node:assert/strict");
 const { page, settled } = require("./smoke-kit.cjs");
 
@@ -44,8 +45,7 @@ async function clickVisible(window, expression) {
 }
 
 async function openSettings(window) {
-  for (const type of ["keyDown", "keyUp"])
-    window.webContents.sendInputEvent({ type, keyCode: ",", modifiers: ["control"] });
+  pressShortcut(window, "Ctrl+,");
   await page(window).wait("document.querySelector('dialog[open] h2')?.textContent === 'Settings'");
 }
 
@@ -70,8 +70,7 @@ async function settingsPage(window, name) {
   for (let steps = 0; await js(`${activeTab}.textContent !== ${JSON.stringify(name)}`); steps++) {
     assert.ok(steps < names.length, "ArrowRight must reach every settings page");
     const previous = await js(`${activeTab}.textContent`);
-    for (const type of ["keyDown", "keyUp"])
-      window.webContents.sendInputEvent({ type, keyCode: "Right" });
+    pressShortcut(window, "Right");
     await wait(`${activeTab}.textContent !== ${JSON.stringify(previous)}`);
   }
   await focusedSettingsPage(window, name);

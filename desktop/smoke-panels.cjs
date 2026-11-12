@@ -1,6 +1,7 @@
 // The smoke test's panels over the viewer, at the smallest window and 200% text size, in both themes: the page of a
 // selected object in the media tools and a lane's settings menu in each of its tabs. Each must fit without anything clipped or sticking
 // out, and a screenshot of each lands in the screenshots folder.
+const { pressShortcut } = require("./shortcut-input.cjs");
 const { BrowserWindow } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -26,10 +27,7 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
       [],
       what,
     );
-  const tools = () =>
-    ["keyDown", "keyUp"].forEach((type) =>
-      window.webContents.sendInputEvent({ type, keyCode: "B", modifiers: ["control"] }),
-    );
+  const tools = () => pressShortcut(window, "Ctrl+B");
   const PANEL = 'aside[aria-label="Media tools"]';
   const PAGE = `${PANEL} section[aria-label="Object page"]`;
 
@@ -280,8 +278,7 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
     );
     await shoot(`lane-menu-delete-${theme}-200.png`);
   }
-  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
-  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+  pressShortcut(window, "Escape");
   await delay(300);
   assert.ok(
     await js(

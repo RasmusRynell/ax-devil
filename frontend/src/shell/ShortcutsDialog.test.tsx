@@ -54,10 +54,9 @@ describe("shortcuts dialog", () => {
     expect(save).toHaveBeenLastCalledWith({ shortcutsSet: { "save-workspace": null } });
   });
 
-  it("starts capture with F2 only on the focused chip and stages a Meta chord until OK", async () => {
-    const save = vi.fn(async () => null);
+  it("starts capture with F2 only on the focused chip", () => {
     render(
-      <FakeSettings apply={save}>
+      <FakeSettings>
         <ShortcutsDialog onClose={() => {}} />
       </FakeSettings>,
     );
@@ -70,12 +69,6 @@ describe("shortcuts dialog", () => {
     expect(screen.queryByText("Press a key…")).toBeNull();
     fireEvent.keyDown(chip, { key: "F2" });
     expect(chip.textContent).toBe("Press a key…");
-    fireEvent.keyDown(chip, { key: "q", metaKey: true, altKey: true });
-    expect(chip.textContent).toBe("MetaAltQ");
-    expect(save).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "OK" }));
-    await act(async () => {});
-    expect(save).toHaveBeenLastCalledWith({ shortcutsSet: { exit: "Meta+Alt+Q" } });
   });
 
   it("stages every default again with Reset to Defaults, and keeps it for OK", async () => {

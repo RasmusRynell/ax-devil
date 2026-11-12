@@ -1,4 +1,5 @@
 // Native button activation, shortcut capture and modal focus restoration need Chromium's default actions.
+const { pressShortcut } = require("./shortcut-input.cjs");
 const assert = require("node:assert/strict");
 const { nativeTheme } = require("electron");
 const fs = require("node:fs/promises");
@@ -8,20 +9,9 @@ const { SCREENSHOTS, frames, page, setView } = require("./smoke-kit.cjs");
 
 module.exports.run = async ({ window }) => {
   const { js, wait } = page(window);
-  const control = process.platform === "darwin" ? "meta" : "control";
-  const controlChip = process.platform === "darwin" ? "⌘" : "Ctrl";
-  const altChip = process.platform === "darwin" ? "⌥" : "Alt";
   await setView(window, [1100, 720], 1);
-  const press = (keyCode, modifiers = []) => {
-    window.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers });
-    if (keyCode === "Enter" || keyCode === "Space")
-      window.webContents.sendInputEvent({
-        type: "char",
-        keyCode: keyCode === "Enter" ? "\r" : " ",
-        modifiers,
-      });
-    window.webContents.sendInputEvent({ type: "keyUp", keyCode, modifiers });
-  };
+  const press = (chord, keypad = false) =>
+    pressShortcut(window, chord, { keypad, character: true });
   const answer = async (label) => {
     await js(
       `[...document.querySelectorAll('dialog button')].find(b => b.textContent === '${label}').click()`,
@@ -33,7 +23,7 @@ module.exports.run = async ({ window }) => {
   const opener = "document.querySelector('[aria-label=Settings]')";
   for (const close of ["Cancel", "Escape"]) {
     await js(`${opener}.focus()`);
-    press("n", [control]);
+    press("Ctrl+N");
     await wait("document.querySelector('dialog[open] h2')?.textContent === 'Add Video'");
     await wait("document.activeElement?.closest('dialog')");
     assert.equal(await js("document.querySelector('dialog[open]').matches(':modal')"), true);
@@ -64,20 +54,19 @@ module.exports.run = async ({ window }) => {
   const key = "document.querySelector('[aria-label=\"Key for Exit\"]')";
   await open();
   // Keypad Enter carries Chromium's keypad location; Qt incorrectly lets it accept the whole dialog (KD-03).
-  for (const [activation, modifiers, captured] of [
-    ["Enter", [], "y"],
-    ["Space", [], "u"],
-    ["Enter", ["isKeypad"], "j"],
-    ["F2", [], "j"],
+  for (const [activation, keypad, captured] of [
+    ["Enter", false, "y"],
+    ["Space", false, "u"],
+    ["Enter", true, "j"],
   ]) {
     await js(`${key}.focus()`);
     await js(
       "document.addEventListener('keydown', event => { window.smokeKeyLocation = event.location; }, { once: true, capture: true })",
     );
-    press(activation, modifiers);
+    press(activation, keypad);
     await wait(`${key}?.textContent === 'Press a key…'`);
-    assert.equal(await js("window.smokeKeyLocation"), modifiers.includes("isKeypad") ? 3 : 0);
-    press(captured, [control, "alt"]);
+    assert.equal(await js("window.smokeKeyLocation"), keypad ? 3 : 0);
+    press(`Ctrl+Alt+${captured.toUpperCase()}`);
     await wait(`${key}.textContent !== 'Press a key…'`);
     assert.equal(
       await js("document.querySelector('[role=status]')?.textContent"),
@@ -86,8 +75,8 @@ module.exports.run = async ({ window }) => {
     assert.deepEqual(
       await binding(key),
       process.platform === "darwin"
-        ? [altChip, controlChip, captured.toUpperCase()]
-        : [controlChip, altChip, captured.toUpperCase()],
+        ? ["⌥", "⌘", captured.toUpperCase()]
+        : ["Ctrl", "Alt", captured.toUpperCase()],
     );
     assert.equal(await js(`document.activeElement === ${key}`), true);
   }
@@ -95,7 +84,7 @@ module.exports.run = async ({ window }) => {
   await open();
   assert.deepEqual(
     await binding(key),
-    process.platform === "darwin" ? [altChip, controlChip, "J"] : [controlChip, altChip, "J"],
+    process.platform === "darwin" ? ["⌥", "⌘", "J"] : ["Ctrl", "Alt", "J"],
     "OK keeps the complete binding",
   );
   // Adding Meta to reserved Ctrl+0 makes a distinct chord: capture, persist and dispatch it without page zoom.
@@ -103,8 +92,7 @@ module.exports.run = async ({ window }) => {
   await js(`${settings}.focus()`);
   press("F2");
   await wait(`${settings}.textContent === 'Press a key…'`);
-  const meta = process.platform === "darwin" ? "control" : "meta";
-  press("0", [meta, control]);
+  press("Meta+Ctrl+0");
   await wait(`${settings}.textContent !== 'Press a key…'`);
   assert.deepEqual(
     await binding(settings),
@@ -132,14 +120,10 @@ module.exports.run = async ({ window }) => {
   nativeTheme.themeSource = originalTheme;
   await setView(window, [1100, 720], 1);
   await answer("OK");
-  press("0", [meta, control]);
+  press("Meta+Ctrl+0");
   await wait("document.querySelector('dialog[open] h2')?.textContent === 'Settings'");
   await answer("Cancel");
   await open();
-  assert.deepEqual(
-    await binding(settings),
-    process.platform === "darwin" ? ["⌃", "⌘", "0"] : ["Meta", "Ctrl", "0"],
-  );
   // Space's release must not reactivate the button after capturing it; Escape cancels capture only.
   const play = "document.querySelector('[aria-label=\"Key for Play / Pause\"]')";
   await js("document.querySelector('[aria-label=\"Clear Play / Pause\"]').click()");

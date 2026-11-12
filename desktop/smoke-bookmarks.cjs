@@ -1,6 +1,7 @@
 // The smoke test's bookmark scenario on the video that is open: M marks the frame on screen and brings the Bookmarks
 // view up, a click on the bookmark returns to its frame, Export CSV writes the file the native save dialog (answered by
 // a stub here) chose, and the view fits the smallest window at 200% text size, in both themes.
+const { pressShortcut } = require("./shortcut-input.cjs");
 const { dialog, nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -22,11 +23,9 @@ module.exports.run = async ({ window }) => {
   const theme = nativeTheme.themeSource;
   await setView(window, [1100, 720], 1);
   await goToFrame(window, 12);
-  const key = (type) => window.webContents.sendInputEvent({ type, keyCode: "M" });
   // The shortcut belongs to the viewer: the page has the keyboard once the picture is focused.
   await js("document.querySelector('main [tabindex]')?.focus()");
-  key("keyDown");
-  key("keyUp");
+  pressShortcut(window, "M");
   const BOOKMARKS = "aside[aria-label=Sidebar] section[aria-label=Bookmarks]";
   await wait(`document.querySelector('${BOOKMARKS} button')`);
   const rows = () =>

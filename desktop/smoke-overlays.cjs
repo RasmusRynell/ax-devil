@@ -1,6 +1,7 @@
 // The smoke test's overlay scenarios on the real canvas: what the picture's marks are made of must not depend on the app
 // theme or the page zoom, and what the pointer shows (outline, chip, object page) must sit on the marks that are drawn.
 // Run on frame 0 of MINI-02 (one lane, DET), whose object 3 is the box 31,22 16x24 of its 64x48 picture.
+const { pressShortcut } = require("./shortcut-input.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -235,10 +236,7 @@ module.exports.overlays = async (window, { setTheme }) => {
     });
   await wait("document.querySelector('[data-outline=selected]')");
   const PAGE = 'aside[aria-label="Media tools"] section[aria-label="Object page"]';
-  const tools = () =>
-    ["keyDown", "keyUp"].forEach((type) =>
-      window.webContents.sendInputEvent({ type, keyCode: "B", modifiers: ["control"] }),
-    );
+  const tools = () => pressShortcut(window, "Ctrl+B");
   tools();
   await wait(`document.querySelector('${PAGE} [aria-busy=false]')`);
   const text = await js(`document.querySelector('${PAGE}').innerText`);
@@ -253,8 +251,7 @@ module.exports.overlays = async (window, { setTheme }) => {
     await js("!!document.querySelector('[data-outline=selected]')"),
     "The selected object has an outline",
   );
-  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
-  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+  pressShortcut(window, "Escape");
   await wait("!document.querySelector('[data-outline=selected]')");
   assert.ok(
     await js(`!!document.querySelector('${PAGE}')`),

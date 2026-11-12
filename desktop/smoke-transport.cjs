@@ -1,5 +1,6 @@
 // The smoke test's transport scenario, on the video the video scenario opened: what the browser does with the seek
 // bar's track, and with controls that have faded out.
+const { pressShortcut } = require("./shortcut-input.cjs");
 const assert = require("node:assert/strict");
 const { center, hideChrome, page, settled, showChrome, until } = require("./smoke-kit.cjs");
 
@@ -55,8 +56,7 @@ async function fadedControls(window) {
   })()`);
   assert.ok(overVideo, "A click where a faded control lies reaches the video");
   // A key press first, so the focus a script gives counts as the keyboard's.
-  for (const type of ["keyDown", "keyUp"])
-    window.webContents.sendInputEvent({ type, keyCode: "Shift" });
+  pressShortcut(window, "Shift");
   await js(`${TRANSPORT}.querySelector('button').focus()`);
   await until(
     () =>

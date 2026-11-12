@@ -1,4 +1,5 @@
 // The smoke test's video scenario: add a video the way a user does, then check the picture on the real canvas.
+const { pressShortcut } = require("./shortcut-input.cjs");
 const { dialog, nativeTheme } = require("electron");
 const fs = require("node:fs/promises");
 const assert = require("node:assert/strict");
@@ -341,7 +342,7 @@ async function fullscreen(window) {
   const native = process.platform !== "darwin";
   const { js, wait } = page(window);
   const key = async (keyCode) => {
-    for (const type of ["keyDown", "keyUp"]) window.webContents.sendInputEvent({ type, keyCode });
+    pressShortcut(window, keyCode);
     await frames({ js });
   };
   const fullscreenPane = `document.fullscreenElement?.querySelector('canvas') && document.fullscreenElement.querySelector('[data-keeps-chrome]')`;
@@ -411,8 +412,10 @@ async function fullscreen(window) {
       "[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((item) => item.textContent)",
     );
     const expected = [
-      "Export videoCtrl+E",
-      "Toggle Media Tools PanelCtrl+B",
+      process.platform === "darwin" ? "Export video⌘E" : "Export videoCtrl+E",
+      process.platform === "darwin"
+        ? "Toggle Media Tools Panel⌘B"
+        : "Toggle Media Tools PanelCtrl+B",
       "Toggle Lane FullscreenF",
       "Add BookmarkM",
       "Reset Zoom0",

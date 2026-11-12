@@ -1,6 +1,7 @@
 // The smoke test's object page scenario on the real canvas: an object with colours, a motion state and a picture, in both
 // themes. No single decoder gives one object all of these, so the video has two lanes: an ADF v1 frame file, whose car is
 // moving, and an ADF beta frame file, whose car has a picture. Both name their colours and score the class.
+const { pressShortcut } = require("./shortcut-input.cjs");
 const { nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -90,8 +91,7 @@ module.exports.run = () =>
       await wait(`${SHOWN} >= 0`);
       await goToFrame(window, 0);
       // The media tools show the page of the object picked on a picture.
-      for (const type of ["keyDown", "keyUp"])
-        window.webContents.sendInputEvent({ type, keyCode: "B", modifiers: ["control"] });
+      pressShortcut(window, "Ctrl+B");
       await wait(`document.querySelector('${PANEL}')`);
       const cells = await until(async () => {
         const found = await laneCells(window);
@@ -171,8 +171,7 @@ module.exports.run = () =>
         `[...document.querySelectorAll('[role=dialog] label')].find((label) => label.innerText === 'Cars').click()`,
       );
       await wait(`document.querySelector('${INSPECTOR}').innerText.includes('Hidden by filter')`);
-      await window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
-      await window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+      pressShortcut(window, "Escape");
       await wait("!document.querySelector('[role=dialog]')");
       await inBothThemes("inspector-hidden");
     },
