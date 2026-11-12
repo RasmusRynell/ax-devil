@@ -12,6 +12,17 @@ it("words a feed as Python's viewer does and a capture time as the UTC time of d
   expect(problemLine("Overlay", { status: "Failed", reason: "SourceUnavailable" })).toBe(
     "Overlay: ✕ Failed — Data source not available. Choose another in Edit.",
   );
+  for (const alternatives of [
+    "none",
+    "scene#2, tracks#2",
+    "a#2, b#2, c#2, d#2, e#2, f#2, g#2, h#2 (+3 more)",
+  ]) {
+    expect(
+      problemLine("Overlay", { status: "Failed", reason: "SourceUnavailable" }, alternatives),
+    ).toBe(
+      `Overlay: ✕ Failed — Data source not available. Available sources: ${alternatives}. Choose another in Edit.`,
+    );
+  }
   expect(problemLine("Video", { status: "Stalled", seconds: 5 })).toBe(
     "Video: Stalled — No frames for 5 s",
   );

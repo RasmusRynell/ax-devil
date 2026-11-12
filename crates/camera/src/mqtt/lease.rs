@@ -84,13 +84,16 @@ impl Lease {
                     &sources
                 )
             );
-            return Err(CameraError::new(
+            let mut error = CameraError::new(
                 ErrorKind::SourceUnavailable,
                 format!(
                     "the camera offers no analytics data source {}",
                     self.plan.publisher.source.0
                 ),
-            ));
+            );
+            error.source_alternatives =
+                Some(source_alternatives(&self.plan.publisher.source.0, &sources));
+            return Err(error);
         }
         if self.saved.is_none() {
             let state = self.device.mqtt_client_state().await?;
@@ -234,37 +237,46 @@ fn client_config(plan: &Plan) -> Value {
     config
 }
 
-/// How many sources the log line for a missing one names.
+/// How many sources a missing-source status names.
 const SUGGESTED: usize = 8;
+
+/// Keep only eight keys while counting, preserving discovery order and Python's same-channel selection.
+fn source_alternatives(wanted: &str, available: &[SourceKey]) -> (Vec<String>, usize) {
+    let channel = wanted
+        .rsplit_once('#')
+        .map_or(wanted, |(_, channel)| channel);
+    let suffix = format!("#{channel}");
+    let same = !channel.is_empty() && available.iter().any(|key| key.0.ends_with(&suffix));
+    let mut keys = Vec::new();
+    let mut remaining = 0;
+    for key in available
+        .iter()
+        .filter(|key| !same || key.0.ends_with(&suffix))
+    {
+        if keys.len() < SUGGESTED {
+            keys.push(key.0.clone());
+        } else {
+            remaining += 1;
+        }
+    }
+    (keys, remaining)
+}
 
 /// The log line for a data source the camera does not offer: the sources on the same `#channel` when there are any,
 /// else all of them, at most [`SUGGESTED`] with the rest counted, or `none`. It names the host and sources, no login.
 fn unavailable_source(wanted: &str, host: &str, available: &[SourceKey]) -> String {
-    let channel = wanted
-        .rsplit_once('#')
-        .map_or(wanted, |(_, channel)| channel);
-    let all: Vec<&str> = available.iter().map(|source| source.0.as_str()).collect();
-    let same_channel: Vec<&str> = all
-        .iter()
-        .copied()
-        .filter(|key| !channel.is_empty() && key.ends_with(&format!("#{channel}")))
-        .collect();
-    let relevant = if same_channel.is_empty() {
-        all
+    let (keys, remaining) = source_alternatives(wanted, available);
+    let mut listed = if keys.is_empty() {
+        "none".to_owned()
     } else {
-        same_channel
-    };
-    let mut listed = match relevant.len() {
-        0 => "none".to_owned(),
-        count => relevant[..count.min(SUGGESTED)]
-            .iter()
+        keys.iter()
             .map(|key| escaped(key))
             .collect::<Vec<_>>()
-            .join(", "),
+            .join(", ")
     };
     let (wanted, host) = (escaped(wanted), escaped(host));
-    if relevant.len() > SUGGESTED {
-        listed = format!("{listed} (+{} more)", relevant.len() - SUGGESTED);
+    if remaining > 0 {
+        listed = format!("{listed} (+{} more)", remaining);
     }
     format!(
         "Analytics data source '{wanted}' is not available on device {host}. Available sources: {listed}. \
@@ -281,6 +293,18 @@ mod tests {
             .iter()
             .map(|key| SourceKey((*key).into()))
             .collect();
+        let (keys, remaining) = source_alternatives(wanted, &available);
+        assert!(
+            keys.len() <= 8,
+            "collection, not only display, must be bounded"
+        );
+        if available.len() == 11 {
+            assert_eq!(
+                keys,
+                (0..8).map(|n| format!("topic{n}#2")).collect::<Vec<_>>()
+            );
+            assert_eq!(remaining, 3);
+        }
         let message = unavailable_source(wanted, "cam.local", &available);
         let (_, rest) = message.split_once("Available sources: ").expect("the list");
         rest.split_once(". Choose").expect("its end").0.to_owned()

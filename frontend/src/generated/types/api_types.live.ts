@@ -134,4 +134,8 @@ behind: boolean,
 /**
  * Whether the overlay is up but has delivered nothing on this connection yet; frames do not wait for it meanwhile.
  */
-waiting: boolean, };
+waiting: boolean, 
+/**
+ * Available MQTT sources, at most eight with the remainder counted. Only an audience with host details receives it.
+ */
+alternatives?: string, };

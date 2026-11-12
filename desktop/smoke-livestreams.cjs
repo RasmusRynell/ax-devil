@@ -151,6 +151,23 @@ module.exports.run = async () => {
         );
         await wait("!document.querySelector('dialog')");
 
+        // Capture the playback worker's receiver so layout checks can supply a status without a camera or broker.
+        await js(`(() => {
+          const descriptor = Object.getOwnPropertyDescriptor(Worker.prototype, 'onmessage');
+          Object.defineProperty(Worker.prototype, 'onmessage', {
+            configurable: true,
+            set(callback) {
+              descriptor.set.call(this, (event) => {
+                if (event.data.type === 'message' && event.data.message.type === 'LiveStatus')
+                  window.liveStatusReceiver = callback;
+                callback(window.alternativesStatus
+                  ? { data: { type: "message", message: window.alternativesStatus } }
+                  : event);
+              });
+            },
+            get: descriptor.get,
+          });
+        })()`);
         // Opening a stream shows what it waits for until its first picture; the address answers nothing.
         await js(
           `${row("scene")}.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))`,
@@ -164,6 +181,46 @@ module.exports.run = async () => {
           await frames({ js });
           await shoot(`live-viewer-waiting-${theme}.png`);
         }
+        await wait("!!window.liveStatusReceiver");
+        const alternatives =
+          Array.from(
+            { length: 8 },
+            (_, n) => `com.axis.analytics_extremely_long_environment_source_${n}#2`,
+          ).join(", ") + " (+3 more)";
+        await js(`window.alternativesStatus = {
+          type: 'LiveStatus', video: { status: 'Connecting' },
+          overlay: { status: 'Failed', reason: 'SourceUnavailable' },
+          behind: false, waiting: false, alternatives: ${JSON.stringify(alternatives)},
+        }; window.liveStatusReceiver({ data: { type: "message", message: window.alternativesStatus } })`);
+        await wait(
+          "document.querySelector('[role=toolbar][aria-label=Live] p')?.textContent.includes('Available sources:')",
+        );
+        await js("document.querySelector('nav [aria-label=Live][aria-pressed=true]')?.click()");
+        for (const zoom of [1, 2]) {
+          await setView(window, [640, 480], zoom);
+          for (const theme of ["light", "dark"]) {
+            nativeTheme.themeSource = theme;
+            await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+            await frames({ js });
+            assert.deepEqual(
+              await js(
+                `(${fit.page.toString()})(document.querySelector('[role=toolbar][aria-label=Live]'))`,
+              ),
+              [],
+              "Live alternatives must fit",
+            );
+            assert.equal(
+              await js(`(() => {
+              const line = document.querySelector('[role=toolbar][aria-label=Live] p');
+              return line.title === line.textContent && line.scrollWidth > line.clientWidth;
+            })()`),
+              true,
+              "Truncated alternatives keep their full text reachable",
+            );
+            await shoot(`live-alternatives-${theme}-${zoom * 100}.png`);
+          }
+        }
+        await setView(window, [1100, 720], 1);
       },
       { command: "open", env: { AX_DEVIL_SMOKE_BROKER: BROKER } },
     );

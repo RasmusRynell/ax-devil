@@ -271,6 +271,7 @@ export class LiveSession implements LaneDisplay {
         );
       this.#open(message);
     } else if (message.type === "LiveStatus") {
+      this.#parts.alternatives = message.alternatives;
       const { video, overlay, behind, waiting } = message;
       Object.assign(this.#parts, { video, overlay, behind, waiting });
     } else if (message.type === "LiveEvents") {

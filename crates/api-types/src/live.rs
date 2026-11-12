@@ -1,7 +1,7 @@
 //! Wire types of live camera streams: what an item resolves to, what the user asks to add, the playback socket's live
 //! messages, and the answers of the live routes.
 //!
-//! Nothing here carries the camera's host, a login or any text from the device or the connection: a reason is a
+//! No host or login is carried here. Bounded source alternatives are host-side detail, projected per audience; a reason is a
 //! [`LiveReason`] code, which the client words, and the details stay in the backend's log. A live feed is a playback
 //! socket opened with a ticket like any other stream; it differs from a recording in four ways:
 //!
@@ -168,6 +168,10 @@ pub struct LiveStatusWire {
     pub behind: bool,
     /// Whether the overlay is up but has delivered nothing on this connection yet; frames do not wait for it meanwhile.
     pub waiting: bool,
+    /// Available MQTT sources, at most eight with the remainder counted. Only an audience with host details receives it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub alternatives: Option<String>,
 }
 
 /// One change to object identity, as a line of the Events list.

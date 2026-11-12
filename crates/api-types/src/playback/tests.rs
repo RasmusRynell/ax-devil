@@ -103,6 +103,7 @@ fn messages_use_the_names_the_frontend_parses() {
         }
     );
     let status = ServerMessage::LiveStatus(LiveStatusWire {
+        alternatives: None,
         video: LiveFeedStatus::Reconnecting {
             attempt: 2,
             reason: LiveReason::Unreachable,

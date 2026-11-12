@@ -129,6 +129,8 @@ pub struct CameraError {
     /// What went wrong.
     pub kind: ErrorKind,
     detail: String,
+    /// Bounded MQTT alternatives and count omitted; host-side detail only.
+    pub source_alternatives: Option<(Vec<String>, usize)>,
 }
 
 impl CameraError {
@@ -137,6 +139,7 @@ impl CameraError {
     pub(crate) fn new(kind: ErrorKind, detail: impl Into<String>) -> Self {
         Self {
             kind,
+            source_alternatives: None,
             detail: crate::logtext::escaped(&detail.into()),
         }
     }
