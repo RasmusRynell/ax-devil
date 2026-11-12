@@ -69,12 +69,14 @@ const replyOf = (
 });
 
 /** One real inspection owner with a captured transport and controlled clock. */
-export function setup() {
+export function setup(after: (run: () => void, ms: number) => () => void = () => () => {}) {
   const sent: ClientMessage[] = [];
   const time = { now: 0 };
   const inspections = new Inspections(
     (message) => sent.push(message),
     () => time.now,
+    undefined,
+    after,
   );
   const samples = () => sent.flatMap((m) => (m.type === "Inspect" ? [m.sample] : []));
   const reply = (sample: number, inspection: InspectionWire, revision = 1) => {

@@ -33,6 +33,11 @@ pub const MAX_FIELDS: usize = 4096;
 /// leaves would otherwise multiply; what does not fit continues on another page.
 pub const MAX_INSPECTION_BYTES: usize = 8 * 1024 * 1024;
 
+/// Maximum UTF-8 bytes of path segments retained in one pin label; display separators are not path data.
+pub const MAX_PIN_PATH_BYTES: usize = 64 << 10;
+/// The most UTF-8 bytes returned by one value, path or Raw text chunk.
+pub const MAX_INSPECTION_CHUNK_BYTES: usize = 64 << 10;
+
 /// Sections of the inspection, in display order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]

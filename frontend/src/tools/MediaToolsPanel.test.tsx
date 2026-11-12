@@ -92,6 +92,11 @@ describe("Frame scope", () => {
     search("score>0.5");
     expect(says("Loading…")).toBe(true);
     expect(screen.queryByText("No matching objects")).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(8000);
+    });
+    expect(says("Loading…")).toBe(false);
+    expect(says("Details are not available")).toBe(true);
     search("class:car");
     expect(ids()).toEqual(["7", "9"]);
   });

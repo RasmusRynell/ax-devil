@@ -209,6 +209,36 @@ entity: string,
 items: Array<ItemWire>, };
 
 /**
+ *Maximum UTF-8 bytes of a playback socket request, including JSON framing.
+ */
+export const MAX_INSPECTION_REQUEST_BYTES = 65536;
+
+/**
+ *Maximum UTF-8 bytes in one inspected text chunk.
+ */
+export const MAX_INSPECTION_CHUNK_BYTES = 65536;
+
+/**
+ *Maximum UTF-8 bytes of saved pin path segments, excluding display separators.
+ */
+export const MAX_PIN_PATH_BYTES = 65536;
+
+/**
+ *Maximum field paths in one Frame-scope inspection search.
+ */
+export const MAX_INSPECTION_QUERY_PATHS = 64;
+
+/**
+ *Maximum UTF-8 bytes of one Frame-scope inspection query path.
+ */
+export const MAX_INSPECTION_QUERY_PATH_BYTES = 1024;
+
+/**
+ *Maximum UTF-8 bytes of one inspected entity id.
+ */
+export const MAX_INSPECTION_ENTITY_BYTES = 1024;
+
+/**
  *The maximum pinned inspection fields.
  */
 export const MAX_INSPECTION_PINS = 64;

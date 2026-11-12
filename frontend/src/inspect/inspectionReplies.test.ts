@@ -141,3 +141,82 @@ it("restarts an interrupted pin scan at zero after copying, and makes refusal te
     vi.unstubAllGlobals();
   }
 });
+
+it("settles unanswered first reads, pages and pin scans without a request loop", () => {
+  vi.useFakeTimers();
+  const after = (run: () => void, ms: number) => {
+    const timer = setTimeout(run, ms);
+    return () => clearTimeout(timer);
+  };
+  try {
+    const { inspections: owner, sent, reply } = setup(after);
+    owner.follow([frame(0)]);
+    owner.select(SELECTION);
+    vi.advanceTimersByTime(8000);
+    const attempts = sent.filter((m) => m.type === "Inspect");
+    expect(attempts).toHaveLength(4);
+    expect(new Set(attempts.map((attempt) => attempt.request)).size).toBe(1);
+    expect(owner.view.state).toBe("unavailable");
+    vi.advanceTimersByTime(60_000);
+    expect(sent.filter((m) => m.type === "Inspect")).toHaveLength(4);
+    owner.setVisible(false);
+    owner.setVisible(true);
+    owner.receive(reply(0, initial));
+    access(owner).next?.();
+    vi.advanceTimersByTime(8000);
+    expect(access(owner).error).toBe("Details are not available");
+    expect(access(owner).next).not.toBeNull();
+    owner.setPins([{ group: "debug", path: ["late"], identity: "late-digest" }]);
+    vi.advanceTimersByTime(8000);
+    const count = sent.length;
+    const view = owner.view;
+    if (view.state !== "ready") throw Error("ready");
+    expect(view.pins).toEqual(["unavailable"]);
+    vi.advanceTimersByTime(60_000);
+    expect(sent).toHaveLength(count);
+    owner.reconnect();
+    owner.follow([frame(0)]);
+    owner.receive(reply(0, initial));
+    expect(owner.view.state).toBe("ready");
+    owner.disconnect();
+  } finally {
+    vi.useRealTimers();
+  }
+}, 5000);
+
+it("settles a stalled or over-budget Raw copy before any clipboard write", () => {
+  vi.useFakeTimers();
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  const after = (run: () => void, ms: number) => {
+    const timer = setTimeout(run, ms);
+    return () => clearTimeout(timer);
+  };
+  try {
+    const { inspections: owner, sent, reply } = setup(after);
+    owner.follow([frame(0)]);
+    owner.select(SELECTION);
+    owner.receive(reply(0, initial));
+    access(owner).raw();
+    vi.advanceTimersByTime(8000);
+    expect(access(owner).progress).toBeNull();
+    expect(access(owner).error).toBe("Details are not available");
+    for (const result of [
+      { state: "Chunk" as const, text: "x", total: 268435457, next: 1 },
+      { state: "Chunk" as const, text: "界".repeat(21846), total: 100000, next: 65538 },
+      { state: "Chunk" as const, text: "", total: 1, next: 0 },
+    ]) {
+      access(owner).raw();
+      const request = sent.at(-1);
+      if (request?.type !== "InspectContinue") throw Error("Raw request");
+      owner.receiveContinuation({ type: "InspectContinued", request: request.request, result });
+      expect(access(owner).progress).toBeNull();
+      expect(access(owner).error).toBe("Details are not available");
+    }
+    expect(writeText).not.toHaveBeenCalled();
+    owner.disconnect();
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
+}, 5000);

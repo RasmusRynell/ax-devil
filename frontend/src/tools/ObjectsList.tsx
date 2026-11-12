@@ -85,6 +85,7 @@ export function ObjectsList({
   lane,
   canSeek,
   selectable,
+  inspectable = true,
   frameOnly,
   list,
   onList,
@@ -98,6 +99,8 @@ export function ObjectsList({
   lane: number;
   canSeek: boolean;
   selectable: boolean;
+  /** Whether the current seat/view permits reading object details. */
+  inspectable?: boolean;
   /** Lists only the frame on screen, for a viewer with no file behind it: a live stream. */
   frameOnly: boolean;
   /** The scope, search and sorts, which the viewer keeps while the panel is closed. */
@@ -143,12 +146,12 @@ export function ObjectsList({
   // Frame scope searches the leaves the backend reads at the paths the search names, for the sample on screen.
   const paths = useMemo(() => (inFile ? NO_PATHS : inspectedPaths(wire)), [inFile, wire]);
   const leaves = useSyncExternalStore(source.fields.subscribe, () =>
-    source.fields.view(frame, paths),
+    source.fields.view(frame, paths, inspectable),
   );
   // `leaves` is a dependency so that a connection that forgot them is asked again.
   useEffect(() => {
-    source.fields.ask(frame, paths);
-  }, [source, frame, paths, leaves]);
+    source.fields.ask(frame, paths, inspectable);
+  }, [source, frame, paths, leaves, inspectable]);
   const ready = leaves.state === "ready" ? leaves.leaves : null;
   const matched = useMemo(
     () =>

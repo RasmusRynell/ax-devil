@@ -6,6 +6,13 @@
  * (the authority gate may drop it) is sent again while a list listens, a few times, and when a list starts to listen.
  */
 
+import {
+  MAX_INSPECTION_QUERY_PATHS,
+  MAX_INSPECTION_QUERY_PATH_BYTES,
+  MAX_INSPECTION_REQUEST_BYTES,
+} from "../generated/api";
+import { utf8Bytes } from "./utf8";
+import { INSPECTION_RETRY_MS, INSPECTION_RETRIES } from "./requestTiming";
 import type { LaneFrame } from "../lanes/contract";
 import type { ClientMessage, LeafWire, ServerMessage } from "../stream/protocol";
 
@@ -33,10 +40,6 @@ const NONE: LeavesView = { state: "ready", leaves: new Map() };
 
 /** How many answers are kept, so that stepping back and forth asks the backend once per sample. */
 const KEPT = 16;
-/** How long a request may stay unanswered while a list listens before it is sent again, and how often it is. */
-const RETRY_MS = 2000;
-const MAX_RETRIES = 3;
-
 /** What a search compares: an integer exactly, `null` and a truth value as the text the reference makes of them. */
 function valueOf(leaf: LeafWire): string | number | bigint {
   switch (leaf.kind) {
@@ -57,7 +60,13 @@ const keyOf = (
   revision: number,
   sample: number,
   paths: readonly string[],
-): string => `${source}:${revision}:${sample}:${paths.join("\n")}`;
+): string => `${source}:${revision}:${sample}:${JSON.stringify(paths)}`;
+
+const withinPaths = (paths: readonly string[]): boolean =>
+  paths.length <= MAX_INSPECTION_QUERY_PATHS &&
+  paths.every(
+    (path) => utf8Bytes(path, MAX_INSPECTION_QUERY_PATH_BYTES) <= MAX_INSPECTION_QUERY_PATH_BYTES,
+  );
 
 export class FrameFields {
   readonly #send: (message: ClientMessage) => void;
@@ -75,6 +84,8 @@ export class FrameFields {
   #cancel: (() => void) | null = null;
   #retries = 0;
   #serial = 0;
+  #allowed = true;
+  #connected = true;
   /** A sample the backend does not answer for: asked again only when the viewer holds it anew. */
   #refused: { key: string; columns: unknown } | null = null;
 
@@ -101,8 +112,13 @@ export class FrameFields {
   };
 
   /** What is known of the leaves of the frame's sample at `paths`; the same object until that changes. */
-  view(frame: LaneFrame | undefined, paths: readonly string[]): LeavesView {
+  view(
+    frame: LaneFrame | undefined,
+    paths: readonly string[],
+    allowed = this.#allowed,
+  ): LeavesView {
     if (!frame || paths.length === 0) return NONE;
+    if (!allowed || !this.#connected || !withinPaths(paths)) return UNAVAILABLE;
     const key = keyOf(frame.source, frame.dataRevision, frame.sample, paths);
     const refused = this.#refused;
     if (refused?.key === key && refused.columns === frame.columns) return UNAVAILABLE;
@@ -110,17 +126,33 @@ export class FrameFields {
   }
 
   /** Wants the leaves of the frame's sample at `paths`; asks the backend unless it has answered or is being awaited. */
-  ask(frame: LaneFrame | undefined, paths: readonly string[]): void {
+  ask(frame: LaneFrame | undefined, paths: readonly string[], allowed = this.#allowed): void {
+    if (allowed !== this.#allowed) {
+      this.#allowed = allowed;
+      this.#answers.clear();
+      this.#refused = null;
+      this.#forget();
+    }
+    if (!allowed || !this.#connected) {
+      this.#forget();
+      return;
+    }
     if (!frame || paths.length === 0) {
+      this.#forget();
+      return;
+    }
+    if (!withinPaths(paths)) {
+      this.#refused = null;
       this.#forget();
       return;
     }
     const { source, dataRevision, sample, columns } = frame;
     const key = keyOf(source, dataRevision, sample, paths);
+    if (this.#refused?.key !== key) this.#refused = null;
+    if (this.#refused?.key === key && this.#refused.columns === columns) return;
     // Another sample is wanted: the request out for this one is no longer worth sending again.
     if (this.#asked && this.#asked.key !== key) this.#forget();
     if (this.#answers.has(key)) return;
-    if (this.#refused?.key === key && this.#refused.columns === columns) return;
     if (this.#asked?.key === key) return;
     const message = {
       type: "InspectFields" as const,
@@ -130,10 +162,23 @@ export class FrameFields {
       sample,
       paths: [...paths],
     };
+    if (
+      utf8Bytes(JSON.stringify(message), MAX_INSPECTION_REQUEST_BYTES) >
+      MAX_INSPECTION_REQUEST_BYTES
+    ) {
+      this.#refuse(key, columns);
+      return;
+    }
     this.#asked = { key, columns, message };
     this.#retries = 0;
     this.#send(message);
     this.#watch();
+  }
+
+  #refuse(key: string, columns: unknown): void {
+    this.#refused = { key, columns };
+    this.#forget();
+    this.#listeners.forEach((listener) => listener());
   }
 
   /** Forgets the request out, and its timer. */
@@ -150,15 +195,18 @@ export class FrameFields {
   /** While a list listens, sends the request out again if it stays unanswered: the authority gate may have dropped it. */
   #watch(): void {
     this.#unwatch();
-    if (!this.#asked || this.#listeners.size === 0 || this.#retries >= MAX_RETRIES) return;
+    if (!this.#asked || this.#listeners.size === 0) return;
     this.#cancel = this.#after(() => {
       this.#cancel = null;
       if (!this.#asked) return;
+      if (this.#retries >= INSPECTION_RETRIES) {
+        this.#refuse(this.#asked.key, this.#asked.columns);
+        return;
+      }
       this.#retries++;
-      this.#asked.message = { ...this.#asked.message, request: ++this.#serial };
       this.#send(this.#asked.message);
       this.#watch();
-    }, RETRY_MS);
+    }, INSPECTION_RETRY_MS);
   }
 
   /** The backend's answer. */
@@ -169,8 +217,7 @@ export class FrameFields {
     this.#forget();
     const { objects } = reply;
     if (objects === null) {
-      if (asked) this.#refused = { key, columns: asked.columns };
-      this.#listeners.forEach((listener) => listener());
+      this.#refuse(key, asked.columns);
       return;
     }
     const leaves = new Map<string, ObjectLeaves>();
@@ -185,8 +232,18 @@ export class FrameFields {
     this.#listeners.forEach((listener) => listener());
   }
 
+  /** Connection loss abandons requests immediately; a fresh connection may ask again. */
+  disconnect(): void {
+    this.#connected = false;
+    this.#answers.clear();
+    this.#forget();
+    this.#refused = null;
+    this.#listeners.forEach((listener) => listener());
+  }
+
   /** A new connection: nothing of the old one holds. */
   reconnect(): void {
+    this.#connected = true;
     this.#answers.clear();
     this.#forget();
     this.#refused = null;

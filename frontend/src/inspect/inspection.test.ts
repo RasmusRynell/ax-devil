@@ -190,9 +190,11 @@ describe("inspections", () => {
     const revisions = () => sent.flatMap((m) => (m.type === "Inspect" ? [m.data_revision] : []));
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
-    inspections.follow([frame(0, withCar, 2)]);
-    expect(revisions()).toEqual([1, 2]);
+    inspections.follow([frame(0, withCar, 2)], true);
     expect(inspections.receive(reply(0, found(CLASS), 1))).toBe(false);
+    expect(revisions()).toEqual([1]);
+    inspections.catchUp();
+    expect(revisions()).toEqual([1, 2]);
     expect(inspections.view.state).toBe("loading");
     inspections.receive(reply(0, found(CLASS), 2));
     expect(inspections.view.state).toBe("ready");

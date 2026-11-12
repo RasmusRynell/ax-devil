@@ -32,6 +32,7 @@ import {
   useCommand,
   useFollowing,
   useOverlays,
+  useOwnerSeat,
   useStream,
 } from "../session/session";
 import { useSettings } from "../client/settings";
@@ -59,6 +60,7 @@ function Live({
   useReportStatus(viewer, item, view);
   const { shortcuts } = useSettings();
   const { objectDetails, laneNames } = useOverlays();
+  const inspectable = useOwnerSeat() || objectDetails;
   const allowed = useAllowed();
   const following = useFollowing();
   const pane = useRef<HTMLDivElement>(null);
@@ -190,6 +192,7 @@ function Live({
               view={view}
               canSeek={false}
               selectable={objectDetails}
+              inspectable={inspectable}
               log={session.events}
               memory={inspector}
               onMemory={setInspector}

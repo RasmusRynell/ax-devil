@@ -6,6 +6,7 @@ use super::{Outgoing, text};
 use api_types::{
     inspect::{
         InspectionContinuation, InspectionRead, InspectionReadResult, InspectionWire, ItemWire,
+        MAX_INSPECTION_ENTITY_BYTES, MAX_INSPECTION_QUERY_PATH_BYTES, MAX_INSPECTION_QUERY_PATHS,
         ObjectItemsWire,
     },
     playback::ServerMessage,
@@ -26,13 +27,6 @@ use std::sync::{Arc, Mutex};
 mod queue;
 use foundation::CancelToken;
 use queue::{Job, Queue};
-
-/// The longest object id an `Inspect` may name, in bytes.
-const MAX_ENTITY_BYTES: usize = 1024;
-
-/// The most paths an `InspectFields` may name, and the longest one in bytes.
-const MAX_PATHS: usize = 64;
-const MAX_PATH_BYTES: usize = 1024;
 
 /// What one search may walk and collect over all the objects of a sample: leaves, and bytes of keys and texts.
 const SEARCH_BUDGET: Budget = Budget {
@@ -55,10 +49,13 @@ impl Ask {
     fn within_bounds(&self) -> bool {
         match self {
             Self::Object(entity, _, _) | Self::Continue(entity, _, _) => {
-                entity.len() <= MAX_ENTITY_BYTES
+                entity.len() <= MAX_INSPECTION_ENTITY_BYTES
             }
             Self::Paths(paths) => {
-                paths.len() <= MAX_PATHS && paths.iter().all(|path| path.len() <= MAX_PATH_BYTES)
+                paths.len() <= MAX_INSPECTION_QUERY_PATHS
+                    && paths
+                        .iter()
+                        .all(|path| path.len() <= MAX_INSPECTION_QUERY_PATH_BYTES)
             }
         }
     }
@@ -136,21 +133,41 @@ impl Inspections {
         entity: String,
         target: Option<Target>,
     ) {
-        if !self.admit() {
+        let allowed = self.admit();
+        let repeated = allowed && self.repeated(generation, source, data_revision, sample, &entity);
+        if repeated && target.is_none() {
+            self.release();
+        } else if repeated && self.objects.running.is_some() {
             return;
         }
-        self.release();
-        let token = sessions::Secret::generate().to_string();
-        let position = Arc::new(Mutex::new(Position::default()));
-        self.cursor = Some((
-            token.clone(),
-            source,
-            data_revision,
-            sample,
-            entity.clone(),
-            position.clone(),
-            generation,
-        ));
+        if allowed && !repeated {
+            self.release();
+        }
+        let readable = allowed && entity.len() <= MAX_INSPECTION_ENTITY_BYTES;
+        let (token, position) = if repeated && target.is_some() {
+            // The matching cursor was established above and no invalidation ran for a held retransmission.
+            let cursor = self
+                .cursor
+                .as_ref()
+                .expect("a repeated held request has its cursor");
+            (cursor.0.clone(), cursor.5.clone())
+        } else {
+            (
+                sessions::Secret::generate().to_string(),
+                Arc::new(Mutex::new(Position::default())),
+            )
+        };
+        if readable && (!repeated || target.is_some()) {
+            self.cursor = Some((
+                token.clone(),
+                source,
+                data_revision,
+                sample,
+                entity.clone(),
+                position.clone(),
+                generation,
+            ));
+        }
         let validity = position::validity(&position);
         let ask = Ask::Object(entity, token, position);
         let request = Request {
@@ -161,7 +178,18 @@ impl Inspections {
             sample,
             ask,
         };
-        self.objects.ask(request, target);
+        if readable {
+            self.objects.ask(request, target);
+        } else {
+            self.refuse(&request);
+        }
+    }
+
+    fn refuse(&mut self, request: &Request) {
+        let mut outgoing = unavailable(request);
+        // Only an echo of this request and a non-data refusal; permission/frame checks must not suppress it.
+        outgoing.inspection = None;
+        self.refused = Some(outgoing);
     }
 
     /// Releases this socket's capability, including its permutation and page addresses.
@@ -186,9 +214,7 @@ impl Inspections {
 
     /// Queues a continuation under freshly checked sample authority.
     fn continue_target(&mut self, read: InspectionRead, target: Option<Target>) {
-        if !self.admit() {
-            return;
-        }
+        let allowed = self.admit();
         let valid = self.continuation_target(&read.token);
         let (source, data_revision, sample) = valid.unwrap_or_default();
         let entity = self
@@ -215,16 +241,13 @@ impl Inspections {
                     .unwrap_or_default(),
             ),
         };
-        if valid.is_none() {
-            self.refused = Some(unavailable(&request));
+        if !allowed || valid.is_none() {
+            self.refuse(&request);
             return;
         }
         if target.is_none() || request.validity.is_cancelled() {
             self.release();
-            self.refused = Some(unavailable(&Request {
-                validity: CancelToken::new(),
-                ..request
-            }));
+            self.refuse(&request);
             return;
         }
         self.objects.ask(request, target);
@@ -254,9 +277,7 @@ impl Inspections {
         paths: Vec<String>,
         target: Option<Target>,
     ) {
-        if !self.admit() {
-            return;
-        }
+        let allowed = self.admit();
         let request = Request {
             validity: CancelToken::new(),
             generation,
@@ -265,7 +286,11 @@ impl Inspections {
             sample,
             ask: Ask::Paths(paths),
         };
-        self.searches.ask(request, target);
+        if allowed {
+            self.searches.ask(request, target);
+        } else {
+            self.refuse(&request);
+        }
     }
 
     /// The next answer or token refusal; waits while there is neither.
@@ -404,25 +429,13 @@ fn inspection_at(
             if position::validity(position).is_cancelled() {
                 return InspectionWire::Unavailable;
             }
-            let traversal =
-                match scene::inspection::Traversal::new(entity, position::validity(position)) {
-                    Ok(traversal) => Arc::new(traversal),
-                    Err(reason) => {
-                        return InspectionWire::Refused { reason };
-                    }
-                };
+            let traversal = match position::prepare(position, entity) {
+                Ok(traversal) => traversal,
+                Err(reason) => return InspectionWire::Refused { reason },
+            };
+            let page = traversal.page(entity, 0, &[]);
             if position::validity(position).is_cancelled() {
                 return InspectionWire::Unavailable;
-            }
-            let page = traversal.page(entity, 0, &[]);
-            {
-                let mut position = position
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if position.validity.is_cancelled() {
-                    return InspectionWire::Unavailable;
-                }
-                position.traversal = Some(traversal);
             }
             remember(position, 0, &page);
             let next = page.next.map(|next| next as u32);

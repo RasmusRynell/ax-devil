@@ -73,7 +73,7 @@ export class ViewerData {
     this.files = new FileScope(lanes, send, after);
     this.catalogs = new Catalogs((id) => send({ type: "Catalog", id }));
     this.#laneCatalogs = new LaneCatalogs(this.catalogs, () => this.#fallback);
-    this.inspections = new Inspections(send, undefined, changed);
+    this.inspections = new Inspections(send, undefined, changed, after);
     this.fields = new FrameFields(send, after);
     this.next = new NextEntry(send);
   }
@@ -194,6 +194,7 @@ export class ViewerData {
     this.#matched = [];
     this.samples.clear();
     this.inspections.disconnect();
+    this.fields.disconnect();
     this.files.suspend();
     this.next.close();
   }

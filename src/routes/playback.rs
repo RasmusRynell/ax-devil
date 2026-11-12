@@ -73,7 +73,7 @@ use tokio::{
 };
 
 /// Client messages are small; anything larger is not this protocol.
-const MAX_CLIENT_MESSAGE: usize = 64 * 1024;
+const MAX_CLIENT_MESSAGE: usize = api_types::inspect::MAX_INSPECTION_REQUEST_BYTES;
 /// How long an ending viewer gets to take its last messages, the error that ends it included, before its socket is
 /// dropped: a viewer that stopped reading must not keep its socket and tasks for good.
 const FLUSH_GRACE: Duration = Duration::from_secs(1);

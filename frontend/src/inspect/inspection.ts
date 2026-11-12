@@ -1,10 +1,23 @@
+import { readMessage, validChunk, type InspectionRead } from "./inspectionRead";
+import { utf8Bytes } from "./utf8";
+import {
+  afterInspection,
+  INSPECTION_RETRIES,
+  INSPECTION_RETRY_MS,
+  INSPECTION_WAIT_MS,
+} from "./requestTiming";
 /** Inspection state and ordering for a viewer. */
 
-import { MAX_COPY_BYTES, MAX_INSPECTION_PINS } from "../generated/api";
+import {
+  MAX_COPY_BYTES,
+  MAX_INSPECTION_PINS,
+  MAX_INSPECTION_ENTITY_BYTES,
+  MAX_INSPECTION_CHUNK_BYTES,
+} from "../generated/api";
 import { InspectionPins } from "./inspectionPins";
 import type { FieldId } from "./fields";
 import { writeClipboard } from "../tools/table/clipboard";
-import { keyOf, summarize, sameInspection, type Shown } from "./inspectionSummary";
+import { keyOf, sampleAt, shownAt, sameInspection } from "./inspectionSummary";
 import type { InspectionView, LaneFrame, Selection, Summary } from "../lanes/contract";
 import type { ClientMessage, FieldWire, InspectionWire, ServerMessage } from "../stream/protocol";
 
@@ -22,18 +35,14 @@ type Reply = Extract<ServerMessage, { type: "Inspected" }>;
 export class Inspections {
   readonly #changed: () => void;
   #serial = 0;
+  readonly #after: typeof afterInspection;
+  #cancelInitial: (() => void) | null = null;
+  #cancelWait: (() => void) | null = null;
+  #initialRetries = 0;
   readonly #pins = new InspectionPins();
   #accessRevision = 0;
   #pageOffset = 0;
-  #pending: {
-    request: number;
-    key: string;
-    lane: number;
-    token: string;
-    field: number | "raw" | "pins" | null;
-    path: boolean;
-    offset: number;
-  } | null = null;
+  #pending: InspectionRead | null = null;
   #copy: { value: string; received: number; total: number } | null = null;
   #error: string | null = null;
   #copied = false;
@@ -45,24 +54,18 @@ export class Inspections {
   #frames: readonly (LaneFrame | undefined)[] = [];
   /** The newest draw; `#frames`, which the view is made from, is it only once the view has followed it. */
   #newest: readonly (LaneFrame | undefined)[] = [];
-  /** The newest data revision each source was drawn with: a reply of an older one is dropped. */
   readonly #revisions = new Map<number, number>();
-  /** The replies kept, oldest first. */
   readonly #cache = new Map<string, InspectionWire>();
-  /** The request out for the shown sample, and the draw it was sent at. */
   #wanted: string | null = null;
   #inflight: { key: string; at: number; request: number } | null = null;
-  /** The sample, as held by these columns, the backend said it would not answer for. */
+  /** Refused until these sample columns change. */
   #refused: { key: string; columns: unknown } | null = null;
-  /** Draws so far, which time how long a request has been out. */
   #draws = 0;
-  /** Whether an inspector page shows the selection: only then are its fields asked for. */
   #visible = true;
-  /** Whether a connection opened and no frame of its data has been drawn yet: nothing is asked until one is. */
+  /** Waits for the new connection's first draw. */
   #awaiting = false;
-  /** The summary last shown of the selected object, which an absent view keeps showing. */
+  /** The summary retained while the object is absent. */
   #last: Summary | null = null;
-  /** The sample the view was last made for, so that drawing the same one again costs nothing. */
   #at: {
     selection: Selection;
     sample: string | null;
@@ -81,7 +84,9 @@ export class Inspections {
     send: (message: ClientMessage) => void,
     now: () => number = () => performance.now(),
     changed: () => void = () => {},
+    after: typeof afterInspection = afterInspection,
   ) {
+    this.#after = after;
     this.#changed = changed;
     this.#send = send;
     this.#now = now;
@@ -139,7 +144,7 @@ export class Inspections {
 
   /** Selects an object, or clears the selection with `null`. */
   select(selection: Selection): boolean {
-    if (this.#error) {
+    if (this.#error || this.#view.state === "unavailable") {
       this.#abandon();
     }
     if (
@@ -193,7 +198,7 @@ export class Inspections {
     this.#frames = frames;
     this.#behind = false;
     this.#followedAt = now;
-    const at = this.#sampleAt();
+    const at = sampleAt(this.#selection, this.#frames);
     const held = this.#at;
     if (
       held?.selection === this.#selection &&
@@ -212,22 +217,25 @@ export class Inspections {
     const key = keyOf(message.source, message.data_revision, message.sample, message.entity);
     if (
       message.request !== this.#inflight?.request ||
+      message.data_revision !== this.#revisions.get(message.source) ||
       key !== this.#wanted ||
       !this.#cap ||
       !this.#visible
     )
       return false;
-    if (key === this.#inflight?.key) this.#inflight = null;
-    if (message.data_revision === this.#revisions.get(message.source)) {
-      if (message.inspection.state === "Unavailable") {
-        this.#abandon();
-        this.#refused = { key, columns: this.#sampleAt().columns };
-      } else {
-        if (message.inspection.state === "Found" && message.inspection.continuation)
-          this.#cap = { type: "InspectRelease", token: message.inspection.continuation.token };
-        if (message.inspection.state === "Refused") this.#abandon();
-        this.#remember(key, message.inspection);
-      }
+    if (key === this.#inflight?.key) {
+      this.#inflight = null;
+      this.#cancelInitial?.();
+      this.#cancelInitial = null;
+    }
+    if (message.inspection.state === "Unavailable") {
+      this.#abandon();
+      this.#refused = { key, columns: sampleAt(this.#selection, this.#frames).columns };
+    } else {
+      if (message.inspection.state === "Found" && message.inspection.continuation)
+        this.#cap = { type: "InspectRelease", token: message.inspection.continuation.token };
+      if (message.inspection.state === "Refused") this.#abandon();
+      this.#remember(key, message.inspection);
     }
     const changed = this.#update();
     this.#askPins();
@@ -261,6 +269,9 @@ export class Inspections {
   }
 
   #abandon(): void {
+    this.#cancelInitial?.();
+    this.#cancelInitial = null;
+    this.#initialRetries = 0;
     if (this.#cap) this.#send(this.#cap);
     this.#cap = null;
     this.#cancelRead();
@@ -271,6 +282,8 @@ export class Inspections {
   }
 
   #cancelRead(): void {
+    this.#cancelWait?.();
+    this.#cancelWait = null;
     if (this.#pending?.field === "pins") this.#pins.restart();
     this.#serial++;
     if (this.#writingCopy) this.#writingCopy.value = "";
@@ -335,28 +348,28 @@ export class Inspections {
 
   #sendRead(): void {
     const pending = this.#pending;
-    if (
-      pending?.field === "pins" &&
-      new TextEncoder().encode(JSON.stringify(this.#pins.wanted())).length > 60 * 1024
-    ) {
-      this.#pins.refuse();
-      this.#pending = null;
-      this.#cancelRead();
-      this.#error = "Pinned fields exceed the inspection request budget";
+    if (!pending) return;
+    const message = readMessage(pending, pending.field === "pins" ? this.#pins.wanted() : []);
+    if (typeof message === "string") {
+      this.#failRead(message);
       this.#notify();
       return;
     }
-    if (pending)
-      this.#send({
-        type: "InspectContinue",
-        request: pending.request,
-        token: pending.token,
-        field: typeof pending.field === "number" ? pending.field : null,
-        pins: pending.field === "pins" ? this.#pins.wanted() : undefined,
-        raw: pending.field === "raw" ? true : undefined,
-        path: pending.path,
-        offset: pending.offset,
-      });
+    this.#cancelWait?.();
+    const request = pending.request;
+    this.#cancelWait = this.#after(() => {
+      if (this.#pending?.request !== request) return;
+      this.#failRead("Details are not available");
+      this.#notify();
+    }, INSPECTION_WAIT_MS);
+    this.#send(message);
+  }
+
+  #failRead(reason: string): void {
+    if (this.#pending?.field === "pins") this.#pins.refuse();
+    this.#pending = null;
+    this.#cancelRead();
+    this.#error = reason;
   }
 
   /** Accepts a page or chunk only for the current inspection request, selection, lane and sample. */
@@ -370,14 +383,11 @@ export class Inspections {
       !this.#visible
     )
       return false;
+    this.#cancelWait?.();
+    this.#cancelWait = null;
     const result = message.result;
     if (result.state === "Refused") {
-      if (pending.field === "pins") {
-        this.#pins.refuse();
-        this.#pending = null;
-      }
-      this.#cancelRead();
-      this.#error = result.reason;
+      this.#failRead(result.reason);
     } else if (result.state === "Pins" && pending.field === "pins") {
       this.#pins.accept(result.fields, result.next);
       this.#pending = null;
@@ -393,17 +403,25 @@ export class Inspections {
       this.#pending = null;
     } else if (result.state === "Chunk" && this.#copy) {
       const copy = this.#copy;
-      copy.total = result.total;
-      copy.value = `${copy.value}${result.text}`;
-      copy.received = result.next ?? result.total;
-      if (result.next !== null) {
-        pending.offset = result.next;
-        pending.request = ++this.#serial;
-        this.#sendRead();
+      const bytes = utf8Bytes(result.text, MAX_INSPECTION_CHUNK_BYTES);
+      const received = copy.received + bytes;
+      if (!validChunk(copy, result, bytes, pending.field === "raw")) {
+        this.#failRead("Details are not available");
       } else {
-        this.#pending = null;
-        this.#commitCopy();
+        copy.total = result.total;
+        copy.value = `${copy.value}${result.text}`;
+        copy.received = received;
+        if (result.next !== null) {
+          pending.offset = result.next;
+          pending.request = ++this.#serial;
+          this.#sendRead();
+        } else {
+          this.#pending = null;
+          this.#commitCopy();
+        }
       }
+    } else {
+      this.#failRead("Details are not available");
     }
     this.#notify();
     return true;
@@ -437,19 +455,6 @@ export class Inspections {
     return wanted !== null && this.#draws - wanted.at > RESEND_AFTER;
   }
 
-  /** Which sample the selection's lane shows, and in which style. */
-  #sampleAt(): { sample: string | null; columns: unknown; style: number | null } {
-    const frame = this.#selection && this.#frames[this.#selection.lane];
-    return frame
-      ? {
-          sample: keyOf(frame.source, frame.dataRevision, frame.sample, ""),
-          columns: frame.columns,
-          // What the lane keeps of the sample (class toggles, frame filter) changes with the style.
-          style: frame.styleRevision,
-        }
-      : { sample: null, columns: null, style: null };
-  }
-
   #remember(key: string, inspection: InspectionWire): void {
     this.#cache.delete(key);
     this.#cache.set(key, inspection);
@@ -457,24 +462,35 @@ export class Inspections {
       this.#cache.delete(this.#cache.keys().next().value as string);
   }
 
-  /** What the selection's lane shows of the object. */
-  #shown(selection: NonNullable<Selection>): Shown {
-    const frame = this.#frames[selection.lane];
-    if (!frame || frame.source !== selection.source) return "gone";
-    const summary = summarize(frame, selection.entity);
-    if (summary === null) return "gone";
-    return summary === "filtered" ? summary : { frame, summary };
-  }
-
   /** Asks for the shown object's fields unless they are held, refused for this very sample, or recently asked for. */
-  #ask(frame: LaneFrame, entity: string): void {
+  #ask(frame: LaneFrame, entity: string, retry = false): void {
     const key = keyOf(frame.source, frame.dataRevision, frame.sample, entity);
     const refused = this.#refused;
     if (!this.#visible || this.#awaiting || this.#cache.has(key)) return;
     if (refused?.key === key && refused.columns === frame.columns) return;
-    if (this.#inflight?.key === key && !this.#overdue()) return;
-    this.#inflight = { key, at: this.#draws, request: ++this.#serial };
+    if (this.#inflight?.key === key) {
+      if (!retry && !this.#overdue()) return;
+      if (this.#initialRetries >= INSPECTION_RETRIES) {
+        this.#abandon();
+        this.#refused = { key, columns: frame.columns };
+        return;
+      }
+      this.#initialRetries++;
+    } else this.#initialRetries = 0;
+    if (utf8Bytes(entity, MAX_INSPECTION_ENTITY_BYTES) > MAX_INSPECTION_ENTITY_BYTES) {
+      this.#refused = { key, columns: frame.columns };
+      return;
+    }
+    this.#inflight = { key, at: this.#draws, request: this.#inflight?.request ?? ++this.#serial };
     this.#cap = { type: "InspectRelease", request: this.#inflight.request };
+    const request = this.#inflight.request;
+    this.#cancelInitial?.();
+    this.#cancelInitial = this.#after(() => {
+      if (this.#inflight?.request !== request) return;
+      this.#ask(frame, entity, true);
+      this.#update();
+      this.#changed();
+    }, INSPECTION_RETRY_MS);
     this.#send({
       type: "Inspect",
       request: this.#inflight.request,
@@ -492,7 +508,7 @@ export class Inspections {
     if (next.state === "none" || next.state === "absent") this.#wanted = null;
     if (this.#inflight && this.#inflight.key !== this.#wanted) this.#inflight = null;
     if (this.#refused && this.#refused.key !== this.#wanted) this.#refused = null;
-    this.#at = { selection, ...this.#sampleAt() };
+    this.#at = { selection, ...sampleAt(this.#selection, this.#frames) };
     const before = this.#view;
     if (sameInspection(before, next)) return false;
     this.#view = next;
@@ -500,7 +516,7 @@ export class Inspections {
   }
 
   #viewOf(selection: NonNullable<Selection>): InspectionView {
-    const shown = this.#shown(selection);
+    const shown = shownAt(selection, this.#frames);
     if (typeof shown === "string") {
       this.#abandon();
       return { state: "absent", selection, reason: shown, last: this.#last };

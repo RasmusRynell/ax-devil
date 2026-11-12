@@ -30,7 +30,7 @@ const answer = (
     source: 0,
     data_revision: 1,
     sample,
-    paths: ["id"],
+    paths: asked.paths,
     objects,
   };
 };
@@ -72,7 +72,7 @@ describe("the leaves of a frame's objects", () => {
     expect(fields.view(frame(2), paths).state).toBe("pending");
   });
 
-  it("are not asked again for a sample the backend does not answer for until the viewer holds it anew", () => {
+  it("settle a refusal without loading, and recover when permission returns or the sample is held anew", () => {
     const sent: ClientMessage[] = [];
     const fields = new FrameFields((message) => sent.push(message), after);
     const held = {};
@@ -84,6 +84,15 @@ describe("the leaves of a frame's objects", () => {
     expect(sent).toHaveLength(1);
     fields.ask(frame(1, {}), ["id"]);
     expect(sent).toHaveLength(2);
+    fields.receive(answer(sent, 1, []));
+    expect(fields.view(frame(1), ["id"]).state).toBe("ready");
+    fields.ask(frame(1), ["id"], false);
+    expect(fields.view(frame(1), ["id"], false).state).toBe("unavailable");
+    expect(sent).toHaveLength(2);
+    fields.ask(frame(1), ["id"], true);
+    expect(sent).toHaveLength(3);
+    fields.receive(answer(sent, 1, []));
+    expect(fields.view(frame(1), ["id"], true).state).toBe("ready");
   });
 
   it("are asked afresh when a list reopens, ignoring a held refusal from its previous request", async () => {
@@ -125,8 +134,14 @@ describe("the leaves of a frame's objects", () => {
     fields.ask(held, ["id"]);
     vi.advanceTimersByTime(2000);
     expect(sent).toHaveLength(2);
+    expect(sent[1]).toEqual(sent[0]);
     vi.advanceTimersByTime(60_000);
     expect(sent).toHaveLength(4);
+    expect(fields.view(held, ["id"]).state).toBe("unavailable");
+    fields.ask(held, ["id"]);
+    fields.receive(answer(sent, 1, []));
+    expect(sent).toHaveLength(4);
+    expect(fields.view(held, ["id"]).state).toBe("unavailable");
 
     fields.ask(frame(2), ["id"]);
     fields.receive(answer(sent, 2, []));
@@ -144,6 +159,29 @@ describe("the leaves of a frame's objects", () => {
     close();
     vi.advanceTimersByTime(60_000);
     expect(sent).toHaveLength(7);
+    const count = sent.length;
+    fields.disconnect();
+    expect(fields.view(frame(4), ["id"]).state).toBe("unavailable");
+    vi.advanceTimersByTime(60_000);
+    expect(sent).toHaveLength(count);
+    fields.reconnect();
+    fields.ask(held, ["id"]);
+    expect(sent).toHaveLength(count + 1);
+    for (const paths of [
+      ["界".repeat(1024)],
+      Array(65).fill("id") as string[],
+      Array(64).fill("x".repeat(1024)) as string[],
+    ]) {
+      const before = sent.length;
+      fields.ask(held, paths);
+      expect(fields.view(held, paths).state).toBe("unavailable");
+      expect(sent).toHaveLength(before);
+    }
+    fields.ask(held, ["id"]);
+    expect(sent).toHaveLength(count + 2);
+    fields.receive(answer(sent, 1, []));
+    expect(fields.view(held, ["id"]).state).toBe("ready");
+    fields.disconnect();
     vi.useRealTimers();
   });
 });

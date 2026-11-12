@@ -56,6 +56,7 @@ export class LiveSession implements LaneDisplay {
     this.#lanes,
     (message) => this.#connection?.send(message),
     (callback, ms) => this.#deps.after(callback, ms),
+    () => this.#publish(),
   );
   /** The Events list, which records from the moment the stream opens whether or not anything shows it. */
   readonly events = new EventLog();

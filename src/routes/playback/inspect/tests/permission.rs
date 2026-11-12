@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 #[tokio::test]
 async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capability() {
+    bounded("whole denied-inspection lifecycle", async {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("fields.xml");
     let extra = (0..5000)
@@ -171,6 +172,12 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
     );
     let retained = inspections.cursor.as_ref().unwrap().5.clone();
     allowed.store(false, Ordering::SeqCst);
+    let (_authority, receiver) = watch::channel(Authority::default());
+    let gate = Gate::new(receiver, || 0).with_inspection({
+        let allowed = allowed.clone();
+        Arc::new(move || allowed.load(Ordering::SeqCst))
+    });
+    gate.open(timeline());
     for (field, raw, pins, offset) in [
         (None, None, None, next_page),
         (Some(ordinal), None, None, next_chunk),
@@ -193,17 +200,23 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
             inspections.objects.running.is_none(),
             "denied pages, value chunks and Raw chunks start no work"
         );
+        assert!(matches!(denied(&mut inspections, gate.clone()).await,
+            ServerMessage::InspectContinued { result: InspectionReadResult::Refused { .. }, .. }));
     }
     inspections.ask(&viewer, 0, 0, revision, 10, "cvat_track_7".into());
     assert!(
         inspections.objects.running.is_none(),
         "denied initial inspection starts no work"
     );
+    assert!(matches!(denied(&mut inspections, gate.clone()).await,
+        ServerMessage::Inspected { inspection: InspectionWire::Unavailable, .. }));
     inspections.ask_fields(&viewer, 0, 0, revision, 10, vec!["raw.frame_number".into()]);
     assert!(
         inspections.searches.running.is_none(),
         "denied query starts no work"
     );
+    assert!(matches!(denied(&mut inspections, gate).await,
+        ServerMessage::InspectedFields { objects: None, .. }));
 
     allowed.store(true, Ordering::SeqCst);
     inspections.continue_target(
@@ -236,6 +249,9 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
             "permission refusal releases the cached Scene, preparation and pin addresses"
         );
     }
+    inspections.ask_fields(&viewer, 6, 0, revision, 10, vec!["raw.frame_number".into()]);
+    assert!(matches!(answer(&mut inspections).await.0, ServerMessage::InspectedFields { objects: Some(_), .. }),
+        "permission restoration permits a fresh field search");
     inspections.ask(&viewer, 0, 0, revision, 10, "cvat_track_7".into());
     assert!(
         matches!(
@@ -244,6 +260,7 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
         ),
         "restored permission permits a fresh inspection"
     );
+    }).await;
 }
 
 #[tokio::test]
@@ -284,4 +301,16 @@ async fn a_blocking_inspection_finishing_after_permission_withdrawal_is_not_deli
     drop(release);
     let outgoing = bounded("withdrawn inspection answer", inspections.next()).await;
     assert!(deliver(gate, vec![outgoing]).await.is_empty());
+}
+
+async fn denied(inspections: &mut Inspections, gate: Gate) -> ServerMessage {
+    let outgoing = bounded("permission refusal returned", inspections.next()).await;
+    assert!(outgoing.frames.is_none() && outgoing.data.is_none());
+    let mut replies = deliver(gate, vec![outgoing]).await;
+    assert_eq!(
+        replies.len(),
+        1,
+        "non-data refusal reaches even a denied principal"
+    );
+    replies.pop().unwrap()
 }

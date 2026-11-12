@@ -187,6 +187,36 @@ pub enum InspectionReadResult {
 /// Inspection limits exported from the owning Scene module to the client.
 pub const CONSTANTS: &[(&str, u64, &str)] = &[
     (
+        "MAX_INSPECTION_REQUEST_BYTES",
+        MAX_INSPECTION_REQUEST_BYTES as u64,
+        "Maximum UTF-8 bytes of a playback socket request, including JSON framing.",
+    ),
+    (
+        "MAX_INSPECTION_CHUNK_BYTES",
+        scene::inspection::MAX_INSPECTION_CHUNK_BYTES as u64,
+        "Maximum UTF-8 bytes in one inspected text chunk.",
+    ),
+    (
+        "MAX_PIN_PATH_BYTES",
+        scene::inspection::MAX_PIN_PATH_BYTES as u64,
+        "Maximum UTF-8 bytes of saved pin path segments, excluding display separators.",
+    ),
+    (
+        "MAX_INSPECTION_QUERY_PATHS",
+        MAX_INSPECTION_QUERY_PATHS as u64,
+        "Maximum field paths in one Frame-scope inspection search.",
+    ),
+    (
+        "MAX_INSPECTION_QUERY_PATH_BYTES",
+        MAX_INSPECTION_QUERY_PATH_BYTES as u64,
+        "Maximum UTF-8 bytes of one Frame-scope inspection query path.",
+    ),
+    (
+        "MAX_INSPECTION_ENTITY_BYTES",
+        MAX_INSPECTION_ENTITY_BYTES as u64,
+        "Maximum UTF-8 bytes of one inspected entity id.",
+    ),
+    (
         "MAX_INSPECTION_PINS",
         MAX_INSPECTION_PINS as u64,
         "The maximum pinned inspection fields.",
@@ -213,3 +243,13 @@ pub struct InspectionPin {
 }
 /// The most pin previews retained by one Inspector.
 pub const MAX_INSPECTION_PINS: usize = 64;
+
+/// The most query paths in one Frame-scope search.
+pub const MAX_INSPECTION_QUERY_PATHS: usize = 64;
+/// The most UTF-8 bytes in one Frame-scope query path.
+pub const MAX_INSPECTION_QUERY_PATH_BYTES: usize = 1024;
+/// The most UTF-8 bytes in an inspected entity id.
+pub const MAX_INSPECTION_ENTITY_BYTES: usize = 1024;
+
+/// The socket's message and frame limit, including JSON framing.
+pub const MAX_INSPECTION_REQUEST_BYTES: usize = 64 << 10;

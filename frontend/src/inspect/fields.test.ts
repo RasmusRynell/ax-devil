@@ -185,3 +185,21 @@ it("pins an abbreviated path by its full-path digest across sample order changes
   expect(bounded).toHaveLength(64);
   expect(togglePin(bounded, { group: "debug", path: ["65th"] })).toBe(bounded);
 });
+
+it("saves a pin label within 65,536 UTF-8 bytes without cutting a code point", () => {
+  const prefix = "界".repeat(21845);
+  const value: FieldWire = {
+    group: "debug",
+    identity: "full-path-digest",
+    path: [`${prefix}ab😀`],
+    value: int("1"),
+  };
+  const row = inspectorLines([value], [], NONE, "7").lines.find(
+    (line) => line.kind === "field" && line.id,
+  );
+  if (row?.kind !== "field" || !row.id) throw Error("pinnable field");
+  const saved = JSON.parse(JSON.stringify(togglePin([], row.id))) as FieldId[];
+  expect(saved[0].path).toEqual([`${prefix}a`]);
+  expect(new TextEncoder().encode(saved[0].path.join("")).length).toBe(65536);
+  expect(saved[0].identity).toBe("full-path-digest");
+}, 5000);

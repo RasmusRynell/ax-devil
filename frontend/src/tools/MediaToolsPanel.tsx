@@ -75,6 +75,7 @@ export function MediaToolsPanel({
   view,
   canSeek,
   selectable,
+  inspectable = true,
   log,
   pages,
   onNavigate,
@@ -96,6 +97,8 @@ export function MediaToolsPanel({
   canSeek: boolean;
   /** Whether selecting an object is switched on. */
   selectable: boolean;
+  /** Whether this seat/view permits inspection; independent of selecting objects. */
+  inspectable?: boolean;
   /** The Events list of a live stream, which has no file behind it: only the frame on screen lists objects. */
   log?: EventLog;
   pages: PageStack;
@@ -335,6 +338,7 @@ export function MediaToolsPanel({
           lane={lane}
           canSeek={canSeek}
           selectable={selectable}
+          inspectable={inspectable}
           frameOnly={log !== undefined}
           list={list}
           onList={onList}

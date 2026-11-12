@@ -97,6 +97,24 @@ fn released_work_neither_starts_nor_delivers_and_a_fresh_inspection_works() {
             Some((track.clone(), snapshot.clone(), frame)),
         );
         bounded("initial read started", track.started.notified()).await;
+        let first = owner.cursor.as_ref().unwrap().0.clone();
+        owner.ask_target(
+            101,
+            0,
+            revision,
+            10,
+            "cvat_track_7".into(),
+            Some((track.clone(), snapshot.clone(), frame)),
+        );
+        assert_eq!(
+            owner.cursor.as_ref().unwrap().0,
+            first,
+            "a retransmission keeps the admitted capability"
+        );
+        assert!(
+            owner.objects.queued.is_none(),
+            "a retransmission does not queue another decode"
+        );
         owner.ask(&viewer, 102, 0, revision, 10, "cvat_track_7".into());
         drop(release);
         let old = bounded("superseded initial result", owner.next()).await;

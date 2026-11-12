@@ -168,7 +168,7 @@ async fn a_held_sample_is_found_or_absent_and_anything_else_is_unavailable_witho
         (0, revision, 80, "2".to_owned()),
         (0, revision + 1, 10, "2".to_owned()),
         (3, revision, 10, "2".to_owned()),
-        (0, revision, 10, "x".repeat(MAX_ENTITY_BYTES + 1)),
+        (0, revision, 10, "x".repeat(MAX_INSPECTION_ENTITY_BYTES + 1)),
     ];
     for (source, data_revision, sample, entity) in unavailable {
         inspections.ask(&viewer, 0, source, data_revision, sample, entity);
@@ -234,8 +234,18 @@ async fn a_search_of_the_fields_is_answered_for_every_object_and_only_for_a_held
 
     let unanswerable = [
         (0, revision, 80, vec!["x".to_owned()]),
-        (0, revision, 10, vec!["x".to_owned(); MAX_PATHS + 1]),
-        (0, revision, 10, vec!["x".repeat(MAX_PATH_BYTES + 1)]),
+        (
+            0,
+            revision,
+            10,
+            vec!["x".to_owned(); MAX_INSPECTION_QUERY_PATHS + 1],
+        ),
+        (
+            0,
+            revision,
+            10,
+            vec!["x".repeat(MAX_INSPECTION_QUERY_PATH_BYTES + 1)],
+        ),
     ];
     for (source, data_revision, sample, paths) in unanswerable {
         inspections.ask_fields(&viewer, 0, source, data_revision, sample, paths);
@@ -353,6 +363,25 @@ async fn a_cursor_cannot_cross_sockets_or_outlast_its_held_sample() {
     assert!(frames.is_some());
     let position = inspections.cursor.as_ref().unwrap().5.clone();
     assert!(position.lock().unwrap().scene.is_some());
+    let prepared = position.lock().unwrap().traversal.clone().unwrap();
+    // A delayed first reply may be retried after its worker finished, without another permutation allocation.
+    inspections.ask(&viewer, 0, 0, revision, 10, "2".into());
+    let (retry, _) = answer(&mut inspections).await;
+    let InspectionWire::Found {
+        continuation: Some(retried),
+        ..
+    } = verdict(retry)
+    else {
+        panic!("retried cursor");
+    };
+    assert_eq!(retried.token, read.token);
+    assert!(
+        Arc::ptr_eq(
+            &prepared,
+            position.lock().unwrap().traversal.as_ref().unwrap()
+        ),
+        "a retry must reuse the classification order"
+    );
     inspections.release();
     assert!(
         position.lock().unwrap().traversal.is_none(),

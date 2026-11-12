@@ -148,10 +148,10 @@ fn pin_field(
     ordinal: usize,
 ) -> api_types::inspect::FieldWire {
     // Pin labels use a bounded preview even when an ordinary page can accommodate a longer path.
-    let total = item.field.path.iter().map(String::len).sum::<usize>()
-        + item.field.path.len().saturating_sub(1);
-    if total > 64 << 10 {
-        let mut left = 64 << 10;
+    let bytes = item.field.path.iter().map(String::len).sum::<usize>();
+    let total = bytes + item.field.path.len().saturating_sub(1);
+    if bytes > scene::inspection::MAX_PIN_PATH_BYTES {
+        let mut left = scene::inspection::MAX_PIN_PATH_BYTES;
         for part in &mut item.field.path {
             let mut end = left.min(part.len());
             while !part.is_char_boundary(end) {

@@ -1,6 +1,6 @@
 import { MOTION_STATES } from "../present/columns";
 import { maskKeeps } from "../present/filter/filter";
-import type { InspectionView, LaneFrame, Summary } from "../lanes/contract";
+import type { InspectionView, LaneFrame, Summary, Selection } from "../lanes/contract";
 
 const encoder = new TextEncoder();
 
@@ -71,4 +71,32 @@ export function sameInspection(before: InspectionView, next: InspectionView): bo
             before.truncated === next.truncated &&
             before.access?.revision === next.access?.revision)))
   );
+}
+
+/** Which sample and appearance the selection's lane shows. */
+export function sampleAt(
+  selection: Selection,
+  frames: readonly (LaneFrame | undefined)[],
+): { sample: string | null; columns: unknown; style: number | null } {
+  const frame = selection && frames[selection.lane];
+  return frame
+    ? {
+        sample: keyOf(frame.source, frame.dataRevision, frame.sample, ""),
+        columns: frame.columns,
+        // What the lane keeps of the sample (class toggles, frame filter) changes with the style.
+        style: frame.styleRevision,
+      }
+    : { sample: null, columns: null, style: null };
+}
+
+/** What the selected object's lane shows. */
+export function shownAt(
+  selection: NonNullable<Selection>,
+  frames: readonly (LaneFrame | undefined)[],
+): Shown {
+  const frame = frames[selection.lane];
+  if (!frame || frame.source !== selection.source) return "gone";
+  const summary = summarize(frame, selection.entity);
+  if (summary === null) return "gone";
+  return summary === "filtered" ? summary : { frame, summary };
 }

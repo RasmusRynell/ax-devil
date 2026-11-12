@@ -1,4 +1,5 @@
-import { MAX_INSPECTION_PINS } from "../generated/api";
+import { utf8Prefix } from "./utf8";
+import { MAX_INSPECTION_PINS, MAX_PIN_PATH_BYTES } from "../generated/api";
 import type { FieldGroupWire, FieldWire, LeafWire } from "../stream/protocol";
 
 /** The groups in display order, with their headings. */
@@ -151,17 +152,12 @@ function debugLines(own: readonly FieldWire[]): Line[] {
 /** A colour field is named by its colour, the last part of its path. */
 function fieldLine(field: FieldWire): Line {
   // New saved pins retain only a display preview; their digest resolves the full path on every sample.
-  let left = 64 * 1024;
+  let left = MAX_PIN_PATH_BYTES;
   const path = field.identity
     ? field.path.map((part) => {
-        let shown = part;
-        if (part.length > left) {
-          let end = left;
-          if (end > 0 && /[\uD800-\uDBFF]/.test(part[end - 1])) end--;
-          shown = new TextDecoder().decode(new TextEncoder().encode(part.slice(0, end)));
-        }
-        left -= shown.length;
-        return shown;
+        const shown = utf8Prefix(part, left);
+        left -= shown.bytes;
+        return shown.text;
       })
     : field.path;
   const id = { group: field.group, path, identity: field.identity };

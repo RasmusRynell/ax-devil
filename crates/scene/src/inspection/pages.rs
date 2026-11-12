@@ -7,7 +7,7 @@ pub const MAX_COPY_BYTES: usize = 256 << 20;
 const PAGE_FIELDS: usize = super::MAX_FIELDS;
 const PAGE_BYTES: usize = super::MAX_INSPECTION_BYTES;
 const TEXT_BYTES: usize = 16 << 10;
-pub(super) const CHUNK_BYTES: usize = 64 << 10;
+pub(super) const CHUNK_BYTES: usize = super::MAX_INSPECTION_CHUNK_BYTES;
 
 /// A field and the position and full byte count of a text abbreviated for display.
 pub struct PageField {
@@ -128,7 +128,7 @@ impl Sink for Page<'_> {
         }
         let path_size = path.iter().map(|part| part.len()).sum::<usize>();
         let size = if self.preview {
-            path_size.min(CHUNK_BYTES)
+            path_size.min(super::MAX_PIN_PATH_BYTES)
         } else if path_size > PAGE_BYTES - TEXT_BYTES {
             CHUNK_BYTES
         } else {
@@ -153,7 +153,7 @@ impl Sink for Page<'_> {
         self.bytes += display_bytes;
         let path_bytes = path.iter().map(|part| part.len()).sum::<usize>();
         let path_limit = if self.preview {
-            CHUNK_BYTES
+            super::MAX_PIN_PATH_BYTES
         } else {
             PAGE_BYTES - TEXT_BYTES
         };

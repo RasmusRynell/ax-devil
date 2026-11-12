@@ -40,6 +40,34 @@ pub(super) fn validity(position: &PositionRef) -> foundation::CancelToken {
         .clone()
 }
 
+/// A retransmission reuses the capability's prepared order; preparation never holds the capability lock.
+pub(super) fn prepare(
+    position: &PositionRef,
+    entity: &scene::Entity,
+) -> Result<Arc<scene::inspection::Traversal>, String> {
+    let (validity, prepared) = {
+        let state = position
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        (state.validity.clone(), state.traversal.clone())
+    };
+    if validity.is_cancelled() {
+        return Err("Inspection expired; select the object again".into());
+    }
+    if let Some(prepared) = prepared {
+        return Ok(prepared);
+    }
+    let prepared = Arc::new(scene::inspection::Traversal::new(entity, validity.clone())?);
+    let mut state = position
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if validity.is_cancelled() {
+        return Err("Inspection expired; select the object again".into());
+    }
+    state.traversal = Some(prepared.clone());
+    Ok(prepared)
+}
+
 pub(super) fn remember(position: &PositionRef, first: usize, page: &scene::inspection::FieldPage) {
     let fields = page
         .fields
