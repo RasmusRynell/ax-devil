@@ -7,7 +7,7 @@ import { KIND, QUIET, type Kind } from "../kit/look";
 import { RowList } from "../kit/RowList";
 import { useAllowed } from "../session/session";
 import { useSettings } from "../client/settings";
-import { folderOf, RECENT_ID, recentLabel, usedOn, useRecents } from "../client/recents";
+import { RECENT_ID, recentLabel, usedOn, useRecents } from "../client/recents";
 
 const OPEN: readonly [id: CommandId, icon: IconName, kind?: Kind][] = [
   ["open-workspace", "folder"],
@@ -47,11 +47,11 @@ export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
         <div className="[@media(max-height:20rem)]:hidden">
           <RowList
             heading="Recent workspaces"
-            rows={recents.map(({ path, name, usedMs }) => ({
+            rows={recents.map(({ path, name, folder, usedMs }) => ({
               id: `${RECENT_ID}${path}`,
               icon: "folder",
               label: recentLabel(name),
-              subtitle: folderOf(path),
+              subtitle: folder,
               title: path,
               disabled: !allowed.host,
               trailing: <span className="shrink-0 text-muted">{usedOn(usedMs)}</span>,

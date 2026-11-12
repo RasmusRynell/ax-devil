@@ -325,7 +325,7 @@ impl Scene {
 
     /// The files item `key` was read from changed.
     pub(super) fn source_changed(&mut self, key: &str) {
-        self.apply(DocCommand::SourceChanged(self.item(key)));
+        self.apply(DocCommand::SourceChanged(self.item(key), Vec::new(), true));
     }
 
     /// Takes item `key` out of the workspace.

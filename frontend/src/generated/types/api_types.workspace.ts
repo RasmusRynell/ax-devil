@@ -149,10 +149,10 @@ open: boolean,
  */
 resolution: ResolutionState, 
 /**
- * How many times the files the open viewer shows changed since it opened, once they have; the viewer offers to
- * reload.
+ * Pending source revisions: a playlist viewer offers only its shown entry, as resolver inputs do not change
+ * the overlays on screen. Single-file viewers use the item revision.
  */
-changed?: number, 
+changes?: SourceChangesInfo, 
 /**
  * Why the last reload of the open viewer failed, until the next. The viewer keeps its old Content.
  */
@@ -236,6 +236,10 @@ export type RecentWorkspace = {
  * The file to open, absolute: a workspace file, or the recovery copy of unsaved changes to one.
  */
 path: string, 
+/**
+ * The containing folder for display, with the home shortened only for an audience allowed host details.
+ */
+folder: string, 
 /**
  * The workspace file name this row is for, with its suffix: the saved file's for a recovery copy of it.
  */
@@ -323,6 +327,19 @@ export type RowKindWire = "item" | "playlist" | "entry" | "lane";
  * Whether what a row stands for can be opened.
  */
 export type RowStatusInfo = { "status": "Pending" } | { "status": "Unavailable" } & ErrorWire | { "status": "Ready" };
+
+/**
+ * Pending changes contain only identities already carried by the Content projection.
+ */
+export type SourceChangesInfo = { 
+/**
+ * A pending whole-item change, absent for changes only to resolver inputs.
+ */
+item: number | null, 
+/**
+ * Pending changes by active entry identity; no file paths cross this boundary.
+ */
+entries: { [key in string]?: number }, };
 
 /**
  * The workspace and what is known about each item, as one audience may see it.

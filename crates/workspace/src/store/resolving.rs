@@ -65,7 +65,10 @@ impl WorkspaceState {
             item.id,
             Reload::Running {
                 attempt: job.attempt,
-                seen: self.changed.get(&item.id).copied().unwrap_or(0),
+                seen: self
+                    .changed
+                    .get(&item.id)
+                    .map_or(0, |changes| changes.revision),
             },
         );
         job
@@ -129,16 +132,24 @@ impl WorkspaceState {
             Some(Reload::Running { seen, .. }) => Some(seen),
             _ => None,
         };
-        let counted = self.changed.get(&item).copied().unwrap_or(0);
+        let counted = self
+            .changed
+            .get(&item)
+            .map_or(0, |changes| changes.revision);
         let resolution = match result {
             Ok(content) => {
                 self.settle_hidden(&item, &content);
                 self.next_generation += 1;
                 // The new Content has read the changes counted before the reload, not those that came during it.
-                match counted.saturating_sub(reloading.unwrap_or(counted)) {
-                    0 => self.changed.remove(&item),
-                    later => self.changed.insert(item, later),
-                };
+                if let Some(changes) = self.changed.get_mut(&item) {
+                    changes.covered(reloading.unwrap_or(counted));
+                    let ids: std::collections::HashSet<_> =
+                        content.entries().iter().map(|entry| &entry.id).collect();
+                    changes.entries.retain(|entry, _| ids.contains(entry));
+                    if changes.revision == 0 {
+                        self.changed.remove(&item);
+                    }
+                }
                 Resolution::Resolved {
                     content,
                     generation: ContentGen(self.next_generation),

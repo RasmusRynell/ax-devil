@@ -90,7 +90,7 @@ impl Sources {
     /// Looks at the files of every recorded item once. Records up to `known` whose item is not in `live` are forgotten.
     /// Returns the items with a path that differs from what was read and looked the same twice; what was seen then
     /// becomes what was read. Blocks on the disk.
-    pub(super) fn look(&self, live: &HashSet<Key>, known: u64) -> Vec<Key> {
+    pub(super) fn look(&self, live: &HashSet<Key>, known: u64) -> Vec<(Key, BTreeSet<PathBuf>)> {
         let due: Vec<(Key, u64, Vec<Watch>)> = {
             let mut records = locked(&self.0);
             records
@@ -158,13 +158,50 @@ impl Sources {
                 {
                     watch.accept(snapshot);
                 }
-                changed.push(key);
+                changed.push((key, differing));
             } else {
                 watched.seen = Some((differing, now));
             }
         }
         changed
     }
+}
+
+/// Maps settled files against active Content. Resolver inputs and failed-attempt-only files remain item-level;
+/// Python offers playlist reloads only for considered overlay files of the entry on screen.
+pub(super) fn changed_entries(
+    workspace: &workspace::store::WorkspaceState,
+    item: ItemId,
+    paths: &BTreeSet<PathBuf>,
+) -> workspace::store::DocCommand {
+    use workspace::store::{DocCommand, HiddenRef, Resolution};
+    let Some(Resolution::Resolved {
+        content: workspace::Content::Playlist(playlist),
+        ..
+    }) = workspace.resolutions.get(&item)
+    else {
+        return DocCommand::SourceChanged(item, Vec::new(), true);
+    };
+    let whole_item = paths.iter().any(|path| {
+        !playlist
+            .entries
+            .iter()
+            .any(|entry| entry.overlays.iter().any(|overlay| &overlay.path == path))
+    });
+    let entries = playlist
+        .entries
+        .iter()
+        .filter(|entry| {
+            let hidden = entry.lanes_hidden_at_first();
+            entry.overlays.iter().any(|overlay| {
+                let lane = HiddenRef::Lane(entry.id.clone(), overlay.label.clone());
+                paths.contains(&overlay.path)
+                    && !workspace.is_hidden(&lane, hidden.contains(overlay.label.as_str()))
+            })
+        })
+        .map(|entry| entry.id.clone())
+        .collect();
+    DocCommand::SourceChanged(item, entries, whole_item)
 }
 
 impl<C: Clone + Send + 'static> Service<C> {
@@ -189,10 +226,15 @@ impl<C: Clone + Send + 'static> Service<C> {
                 })
                 .collect()
         };
-        for (session, item) in self.inner.sources.look(&live, known) {
+        for ((session, item), paths) in self.inner.sources.look(&live, known) {
             self.locked(|sessions, deferred| {
                 // A refusal means the session ended: nothing to tell.
-                let _ = apply(sessions, session, Input::SourceChanged { item }, deferred);
+                let _ = apply(
+                    sessions,
+                    session,
+                    Input::SourceChanged { item, paths },
+                    deferred,
+                );
             });
         }
     }

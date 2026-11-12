@@ -210,7 +210,7 @@ async fn a_reload_validates_entries_shown_meanwhile_before_it_commits() {
                     // The active Content must keep its watch until commit.
                     std::fs::write(&files[0], "old changed").unwrap();
                     service.check_sources(); service.check_sources();
-                    assert_eq!(owner.state().doc.workspace.changed.get(&id), Some(&1), "retry must not record the replacement watch");
+                    assert_eq!(owner.state().doc.workspace.changed.get(&id).map(|changes| changes.revision), Some(1), "retry must not record the replacement watch");
                 }
                 view.viewers.get_mut(&keys[2].viewer).unwrap().entry = Some(keys[2].entry.clone());
                 navigating.view(view.clone(), 3).unwrap();
@@ -245,10 +245,10 @@ async fn a_reload_validates_entries_shown_meanwhile_before_it_commits() {
                     // Commit replaces the watch: old paths retire, new paths become watched.
                     std::fs::write(&files[0], "old changed again").unwrap();
                     service.check_sources(); service.check_sources();
-                    assert_eq!(owner.state().doc.workspace.changed.get(&id), Some(&1), "commit must retire the old overlay watch");
+                    assert_eq!(owner.state().doc.workspace.changed.get(&id).map(|changes| changes.revision), Some(1), "commit must retire the old overlay watch");
                     std::fs::write(&files[1], "new changed").unwrap();
                     service.check_sources(); service.check_sources();
-                    assert_eq!(owner.state().doc.workspace.changed.get(&id), Some(&2), "commit must publish the retained watch");
+                    assert_eq!(owner.state().doc.workspace.changed.get(&id).map(|changes| changes.revision), Some(2), "commit must publish the retained watch");
                 }
                 {
                 let calls = calls.lock().unwrap();
@@ -308,8 +308,7 @@ fn edit_offer(
         .workspace
         .changed
         .get(&item)
-        .copied()
-        .unwrap_or(0);
+        .map_or(0, |changes| changes.revision);
     *stamp += 1;
     std::fs::write(file, "x".repeat(*stamp)).unwrap();
     service.check_sources();
@@ -320,7 +319,6 @@ fn edit_offer(
         .workspace
         .changed
         .get(&item)
-        .copied()
-        .unwrap_or(0);
+        .map_or(0, |changes| changes.revision);
     assert_eq!(after, before + u32::from(expected), "{reason}");
 }

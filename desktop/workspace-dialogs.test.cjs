@@ -304,3 +304,12 @@ void test("a window on another machine's server is refused this machine's channe
   ask(remote, "app:restart");
   assert.deepEqual([restarts, calls.opens, calls.saves, calls.folders], [0, [], [], []]);
 });
+
+void test("CSV suggestions use the workspace folder or home for an unsaved workspace", async () => {
+  const page = await pageContents();
+  picked = { canceled: true };
+  await exportTo(page, path.join(root, "review", "Gate bookmarks.csv"), "csv");
+  assert.equal(calls.saves.at(-1).defaultPath, path.join(root, "review", "Gate bookmarks.csv"));
+  await exportTo(page, "Untitled bookmarks.csv", "csv");
+  assert.equal(calls.saves.at(-1).defaultPath, path.join(home, "Untitled bookmarks.csv"));
+});

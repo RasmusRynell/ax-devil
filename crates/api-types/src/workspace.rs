@@ -38,11 +38,22 @@ pub struct WorkspaceState {
 pub struct RecentWorkspace {
     /// The file to open, absolute: a workspace file, or the recovery copy of unsaved changes to one.
     pub path: String,
+    /// The containing folder for display, with the home shortened only for an audience allowed host details.
+    pub folder: String,
     /// The workspace file name this row is for, with its suffix: the saved file's for a recovery copy of it.
     pub name: String,
     /// When it was last used, in Unix milliseconds.
     #[ts(type = "number")]
     pub used_ms: u64,
+}
+
+/// Pending changes contain only identities already carried by the Content projection.
+#[derive(Serialize, Deserialize, TS)]
+pub struct SourceChangesInfo {
+    /// A pending whole-item change, absent for changes only to resolver inputs.
+    pub item: Option<u32>,
+    /// Pending changes by active entry identity; no file paths cross this boundary.
+    pub entries: std::collections::BTreeMap<String, u32>,
 }
 
 /// One row of the workspace tree.
@@ -112,11 +123,11 @@ pub struct ItemState {
     pub open: bool,
     /// Whether the item has Content yet.
     pub resolution: ResolutionState,
-    /// How many times the files the open viewer shows changed since it opened, once they have; the viewer offers to
-    /// reload.
+    /// Pending source revisions: a playlist viewer offers only its shown entry, as resolver inputs do not change
+    /// the overlays on screen. Single-file viewers use the item revision.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub changed: Option<u32>,
+    pub changes: Option<SourceChangesInfo>,
     /// Why the last reload of the open viewer failed, until the next. The viewer keeps its old Content.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -322,6 +333,7 @@ pub struct HiddenTarget {
 pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<WorkspaceState>();
     types.visit::<RecentWorkspace>();
+    types.visit::<SourceChangesInfo>();
     types.visit::<RowInfo>();
     types.visit::<RowKindWire>();
     types.visit::<RowStatusInfo>();

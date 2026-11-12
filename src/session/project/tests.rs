@@ -176,11 +176,31 @@ fn doc() -> (Doc, [ItemId; 6]) {
 
 #[test]
 fn a_guest_learns_no_path_credential_or_reason_and_sees_only_what_is_open() {
-    let (doc, [_, _, failed, _, _, _]) = doc();
+    let (mut doc, [_, playlist, failed, _, _, _]) = doc();
+    let entry = ContentId::of_entry(&playlist, "MOT sequences", "SEQ-01");
+    doc.workspace.changed.insert(
+        playlist,
+        workspace::store::SourceChanges {
+            revision: 2,
+            item: Some(2),
+            entries: std::collections::HashMap::from([(entry.clone(), 1)]),
+        },
+    );
     let public = Audience {
         host_details: false,
     };
-    let guest = serde_json::to_string(&project(&doc, public, false)).unwrap();
+    let projected = project(&doc, public, false);
+    let changed = projected
+        .workspace
+        .items
+        .iter()
+        .find(|item| item.id == playlist.to_string())
+        .unwrap();
+    assert_eq!(
+        changed.changes.as_ref().unwrap().entries,
+        std::collections::BTreeMap::from([(entry.to_string(), 1)])
+    );
+    let guest = serde_json::to_string(&projected).unwrap();
     for secret in [
         "SECRET",
         "/home",

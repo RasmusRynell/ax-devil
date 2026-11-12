@@ -8,7 +8,10 @@
           "file": null,
           "items": [
             {
-              "changed": 1,
+              "changes": {
+                "entries": {},
+                "item": 1
+              },
               "id": "00000000-0000-4000-8000-000000000001",
               "kind": "video",
               "label": "a.mp4",
@@ -62,7 +65,10 @@
           "file": null,
           "items": [
             {
-              "changed": 1,
+              "changes": {
+                "entries": {},
+                "item": 1
+              },
               "id": "00000000-0000-4000-8000-000000000001",
               "kind": "video",
               "label": "a.mp4",
@@ -124,7 +130,10 @@
           "file": null,
           "items": [
             {
-              "changed": 2,
+              "changes": {
+                "entries": {},
+                "item": 2
+              },
               "id": "00000000-0000-4000-8000-000000000001",
               "kind": "video",
               "label": "a.mp4",
@@ -178,7 +187,10 @@
           "file": null,
           "items": [
             {
-              "changed": 2,
+              "changes": {
+                "entries": {},
+                "item": 2
+              },
               "id": "00000000-0000-4000-8000-000000000001",
               "kind": "video",
               "label": "a.mp4",

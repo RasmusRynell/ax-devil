@@ -305,7 +305,7 @@ async fn a_playlist_added_through_the_dialog_is_watched_for_changes_in_its_folde
     std::fs::create_dir(root.path().join("SEQ-02")).unwrap();
     let doc = owner
         .until("playlist change notification", |message| {
-            message["doc"]["workspace"]["items"][0]["changed"] == 1
+            message["doc"]["workspace"]["items"][0]["changes"]["item"] == 1
         })
         .await;
     assert_eq!(

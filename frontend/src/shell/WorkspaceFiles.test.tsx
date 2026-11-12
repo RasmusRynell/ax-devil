@@ -5,7 +5,7 @@ import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import { scenario } from "../session/fakeScenario";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
-import { folderOf, usedOn } from "../client/recents";
+import { usedOn } from "../client/recents";
 import { ChangesProvider } from "../client/resource";
 import { Shell } from "./Shell";
 
@@ -58,13 +58,13 @@ describe("workspace files", () => {
     // A recovery copy: the row is named for the saved file, and opens the copy.
     const path = "/state/unsaved/Untitled.ax-devil.workspace";
     const name = "Gate review.ax-devil.workspace";
-    let list = [{ path, name, usedMs: Date.now() }];
+    let list = [{ path, name, folder: "~/reviews", usedMs: Date.now() }];
     const recents = vi.fn(() => Promise.resolve(Response.json(list)));
     vi.stubGlobal("fetch", recents);
     await renderShell();
     const row = await screen.findByRole("button", { name: /Gate review/ });
+    expect(row.textContent).toContain("~/reviews");
     expect(row.title).toBe(path);
-    expect(row.textContent).toContain("/state/unsaved");
     fireEvent.click(row);
     expect(sent()).toEqual([{ type: "open", path }]);
     // A failed first recovery write publishes no copy and no Changed notice: the valid older entry stays.
@@ -72,7 +72,9 @@ describe("workspace files", () => {
     expect(screen.getByRole("button", { name: /Gate review/ })).toBeTruthy();
 
     // A saved/recovered entry replaces the list only when its owner announces the settled filesystem change.
-    list = [{ path: "/srv/Other.ax-devil.workspace", name: "Other", usedMs: Date.now() }];
+    list = [
+      { path: "/srv/Other.ax-devil.workspace", name: "Other", folder: "/srv", usedMs: Date.now() },
+    ];
     await act(async () =>
       FakeSocket.latest.emit({ type: "changed", topic: "recents", revision: 2 }),
     );
@@ -147,15 +149,6 @@ describe("workspace files", () => {
     }
     expect(sent()).toEqual([{ type: "keep" }, { type: "discard" }]);
   });
-});
-
-it("names the folder of a recent workspace, keeping a filesystem root whole", () => {
-  expect(folderOf("/state/unsaved/a.ax-devil.workspace")).toBe("/state/unsaved");
-  expect(folderOf("/a.ax-devil.workspace")).toBe("/");
-  expect(folderOf("C:\\a.ax-devil.workspace")).toBe("C:\\");
-  expect(folderOf("C:/work/a.ax-devil.workspace")).toBe("C:/work");
-  expect(folderOf("C:/a.ax-devil.workspace")).toBe("C:/");
-  expect(folderOf("\\\\server\\share\\a.ax-devil.workspace")).toBe("\\\\server\\share");
 });
 
 describe("when a recent workspace was used", () => {

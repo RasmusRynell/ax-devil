@@ -21,6 +21,20 @@ pub struct Recent {
     pub recovers: Option<PathBuf>,
 }
 
+impl Recent {
+    /// The containing folder, shortened only with the home the caller is allowed to read.
+    pub fn display_folder(&self, home: Option<&Path>) -> String {
+        let folder = self.path.parent().unwrap_or(&self.path);
+        if let Some(rest) = home.and_then(|home| folder.strip_prefix(home).ok()) {
+            if rest.as_os_str().is_empty() {
+                return "~".into();
+            }
+            return format!("~/{}", rest.to_string_lossy());
+        }
+        folder.to_string_lossy().into_owned()
+    }
+}
+
 /// The recent workspaces list in one file. Callers run it off the async executor.
 pub struct Recents {
     file: PathBuf,
@@ -156,4 +170,35 @@ fn hidden(list: &[Recent]) -> Vec<bool> {
                     .any(|copy| copy.recovers.as_ref() == Some(&file.path))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_folder_is_shortened_only_with_the_home_the_audience_may_know() {
+        let home = tempfile::tempdir().unwrap();
+        let recent = Recent {
+            path: home.path().join("reviews/gate.ax-devil.workspace"),
+            used_ms: 0,
+            recovers: None,
+        };
+        assert_eq!(recent.display_folder(Some(home.path())), "~/reviews");
+        assert_eq!(
+            recent.display_folder(None),
+            home.path().join("reviews").to_string_lossy()
+        );
+        let sibling = Recent {
+            path: home
+                .path()
+                .with_extension("sibling")
+                .join("gate.ax-devil.workspace"),
+            ..recent
+        };
+        assert_eq!(
+            sibling.display_folder(Some(home.path())),
+            sibling.path.parent().unwrap().to_string_lossy()
+        );
+    }
 }

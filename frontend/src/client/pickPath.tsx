@@ -54,6 +54,7 @@ export const exportFile = (name: string, extension: "mp4" | "png" | "csv"): Path
   native: (bridge) => bridge.pickExportFile?.(name, extension),
   picker: {
     mode: "save",
+    start: /[/\\]/.test(name) ? name : undefined,
     title: extension === "csv" ? "Export CSV" : "Export video",
     extensions: [`.${extension}`],
     name,

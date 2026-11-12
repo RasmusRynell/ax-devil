@@ -18,6 +18,7 @@ import { activated, moved, pinned, resized } from "../viewer/placement";
 import { Pane } from "../viewer/Pane";
 import { useHeaderFailure } from "./headerFailure";
 import { PaneMenu, type PaneMenuAt } from "./PaneMenu";
+import { entriesOf, shownEntry } from "../viewer/shownEntry";
 import { ReloadFailed, ReloadOffer } from "../viewer/ReloadOffer";
 import { Seam } from "../viewer/Seam";
 import { useClosePanes, useHidden, useViewers, type Viewer } from "../viewer/useViewers";
@@ -55,25 +56,34 @@ const PaneContent = memo(function PaneContent({
   onDismiss: (offer: string, count: number) => void;
 }) {
   const { item } = viewer;
+  const [views] = useView("viewers");
+  const hidden = useHidden();
   const { resolution } = item;
   if (resolution.status !== "Resolved") return <ItemStatus item={item} />;
   const { content } = resolution;
   const Viewer = viewerFor(content);
   // A reload is a new generation, whose changes count from none again.
-  const offer = `${item.id}.${content.generation}`;
+  const entry = shownEntry(entriesOf(content), hidden, views[viewer.id]?.entry)?.id;
+  const offer = `${item.id}.${content.generation}.${entry ?? "item"}`;
+  const revision =
+    content.kind === "Playlist"
+      ? entry
+        ? (item.changes?.entries[entry] ?? 0)
+        : 0
+      : (item.changes?.item ?? 0);
   // A new generation is a new stream: closing and reopening the item shows a fresh viewer.
   return (
     <>
       <ReloadOffer
         item={item.id}
-        changed={item.changed ?? 0}
+        changed={revision}
         dismissed={dismissed[offer] ?? 0}
         onDismiss={(count) => onDismiss(offer, count)}
       />
       <ReloadFailed
         failure={item.reload_failure}
-        dismissed={dismissed[`${offer}.failed`] ?? 0}
-        onDismiss={(attempt) => onDismiss(`${offer}.failed`, attempt)}
+        dismissed={dismissed[`${item.id}.${content.generation}.failed`] ?? 0}
+        onDismiss={(attempt) => onDismiss(`${item.id}.${content.generation}.failed`, attempt)}
       />
       <Viewer
         key={`${viewer.id}.${content.id}.${content.generation}`}

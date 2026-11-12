@@ -124,6 +124,8 @@ pub enum Input {
     SourceChanged {
         /// The item.
         item: ItemId,
+        /// Files that settled after changing.
+        paths: std::collections::BTreeSet<std::path::PathBuf>,
     },
     /// A job finished. Dropped when the job is no longer registered.
     Complete {
@@ -241,8 +243,9 @@ fn apply(next: &mut SessionState, fx: &mut Effects, input: Input) -> Result<(), 
             next.grants.remove(&grant);
             Ok(())
         }
-        Input::SourceChanged { item } => {
-            commands::content(next, fx, DocCommand::SourceChanged(item));
+        Input::SourceChanged { item, paths } => {
+            let command = super::sources::changed_entries(&next.doc.workspace, item, &paths);
+            commands::content(next, fx, command);
             Ok(())
         }
         Input::Complete { job, completion } => {

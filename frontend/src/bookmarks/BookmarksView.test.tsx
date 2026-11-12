@@ -178,10 +178,9 @@ describe("the Bookmarks view", () => {
   });
 
   it("exports every bookmark to the file the dialog chose", async () => {
-    window.axDevilWindow = {
-      pickExportFile: () => Promise.resolve("/tmp/marks.csv"),
-    } as unknown as typeof window.axDevilWindow;
-    await renderView("initial");
+    const pick = vi.fn(() => Promise.resolve("/tmp/marks.csv"));
+    window.axDevilWindow = { pickExportFile: pick } as unknown as typeof window.axDevilWindow;
+    const room = await renderView("initial");
     fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
     const exported = () =>
       FakeSocket.latest.received.flatMap((message) =>
@@ -189,6 +188,12 @@ describe("the Bookmarks view", () => {
       );
     await waitFor(() =>
       expect(exported()).toEqual([{ type: "exportBookmarks", path: "/tmp/marks.csv" }]),
+    );
+    expect(pick).toHaveBeenLastCalledWith("Untitled bookmarks.csv", "csv");
+    act(() => room.show(marks, "saved"));
+    fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+    await waitFor(() =>
+      expect(pick).toHaveBeenLastCalledWith("/workspaces/Untitled bookmarks.csv", "csv"),
     );
     delete window.axDevilWindow;
   });

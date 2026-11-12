@@ -126,7 +126,16 @@ pub(super) fn project_in(doc: &Doc, audience: Audience, env: &Environment) -> Do
                     }
                     Some(Resolution::Pending { attempt: _ }) | None => ResolutionState::Pending,
                 },
-                changed: changed.get(id).copied(),
+                changes: changed
+                    .get(id)
+                    .map(|changes| api_types::workspace::SourceChangesInfo {
+                        item: changes.item,
+                        entries: changes
+                            .entries
+                            .iter()
+                            .map(|(entry, revision)| (entry.to_string(), *revision))
+                            .collect(),
+                    }),
                 reload_failure: match reloads.get(id) {
                     Some(Reload::Failed { attempt, error }) => Some(ReloadFailure {
                         attempt: *attempt,

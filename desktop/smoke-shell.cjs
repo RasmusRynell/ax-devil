@@ -1,7 +1,7 @@
 // The smoke test's shell scenario: the start panel, the window chrome, the title, and every dialog and menu fit-checked
 // at the window minimum and 200% zoom, in both themes.
 const { pressShortcut } = require("./shortcut-input.cjs");
-const { dialog, nativeTheme } = require("electron");
+const { app, dialog, nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -40,7 +40,7 @@ module.exports.run = async ({ window }) => {
   // A recent workspace in a deep folder, as a long state folder gives: the start panel still has to fit.
   const state = isolatedState();
   const deep = path.join(
-    state,
+    app.getPath("home"),
     "ax-devil-smoke-recents",
     "a-folder-whose-name-is-far-too-long-for-the-narrow-sidebar",
     "and-another-one-below-it",
@@ -168,7 +168,10 @@ module.exports.run = async ({ window }) => {
   );
   assert.equal(recent.truncated, true, "the long folder is truncated");
   assert.equal(recent.oneLine, true, "the folder stays on one line");
-  assert.equal(recent.folder.replaceAll("\\", "/"), path.dirname(deep).replaceAll("\\", "/"));
+  assert.equal(
+    recent.folder.replaceAll("\\", "/"),
+    path.join("~", path.relative(app.getPath("home"), path.dirname(deep))).replaceAll("\\", "/"),
+  );
   for (const [theme, zoom] of [
     ["light", 1],
     ["dark", 1],

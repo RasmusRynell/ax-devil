@@ -8,9 +8,13 @@ import { exportFile, usePickPath } from "../client/pickPath";
 export function useExportBookmarks(onFail: (error: unknown) => void): () => void {
   const command = useCommand();
   const pick = usePickPath();
-  const name = `${useDoc()?.workspace.name ?? "Untitled"} bookmarks.csv`;
+  const workspace = useDoc()?.workspace;
+  const name = `${workspace?.name ?? "Untitled"} bookmarks.csv`;
+  const current = workspace?.file;
+  const cut = current ? Math.max(current.lastIndexOf("/"), current.lastIndexOf("\\")) : -1;
+  const suggested = current && cut >= 0 ? `${current.slice(0, cut + 1)}${name}` : name;
   return () =>
-    void pick?.(exportFile(name, "csv")).then(
+    void pick?.(exportFile(suggested, "csv")).then(
       (path) =>
         path
           ? command({ type: "workspace", command: { type: "exportBookmarks", path } }).catch(onFail)

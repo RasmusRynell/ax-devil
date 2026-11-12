@@ -249,7 +249,8 @@ function installIpc({ connect, disconnect, restart, device }) {
       throw new Error("Expected a file name and an export extension");
     const chosen = await dialog.showSaveDialog(window, {
       title: extension === "csv" ? "Export CSV" : "Export Video",
-      defaultPath: path.basename(name),
+      defaultPath:
+        extension === "csv" ? path.resolve(app.getPath("home"), name) : path.basename(name),
       filters: [{ name: EXPORT_FILTERS[extension], extensions: [extension] }],
       properties: ["showOverwriteConfirmation"],
     });

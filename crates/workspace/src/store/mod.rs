@@ -14,6 +14,7 @@
 
 mod batch;
 mod bookmarks;
+mod changes;
 mod details;
 mod edit;
 mod hidden;
@@ -22,6 +23,7 @@ mod rows;
 
 use crate::{Content, ItemId, Source, Workspace, WorkspaceItem};
 use batch::Batch;
+pub use changes::SourceChanges;
 use foundation::{HostPath, UserError};
 use overlay_sync::MatchPolicy;
 use serde::{Deserialize, Serialize};
@@ -93,9 +95,9 @@ pub struct WorkspaceState {
     /// Items with a viewer requested: a viewer should open for each once it resolves. Closing a viewer removes the
     /// item, so a frontend that connects late sees what is requested now.
     pub open: HashSet<ItemId>,
-    /// Open items whose files changed since their Content resolved, with how many times. They are not resolved
+    /// Open items with pending source revisions since their Content resolved. They are not resolved
     /// again, which would end the stream the viewer shows: the viewer offers to, and `Resolve` does.
-    pub changed: HashMap<ItemId, u32>,
+    pub changed: HashMap<ItemId, SourceChanges>,
     /// Open items whose Content is read again, or whose last reload failed. Their old Content stays in
     /// `resolutions` and on screen meanwhile.
     pub reloads: HashMap<ItemId, Reload>,
@@ -123,8 +125,8 @@ pub struct WorkspaceParts<'a> {
     pub resolutions: &'a HashMap<ItemId, Resolution>,
     /// Items with a viewer requested.
     pub open: &'a HashSet<ItemId>,
-    /// Open items whose files changed since their Content resolved, with how many times.
-    pub changed: &'a HashMap<ItemId, u32>,
+    /// Open items with pending source revisions since their Content resolved.
+    pub changed: &'a HashMap<ItemId, SourceChanges>,
     /// Open items being read again, or whose last reload failed.
     pub reloads: &'a HashMap<ItemId, Reload>,
     /// What the user chose to hide or show.
@@ -215,7 +217,8 @@ pub enum DocCommand {
     /// The files an item was read from changed. An item whose viewer is open on its Content only counts the change
     /// (see [`WorkspaceState::changed`]); any other resolves again under a new attempt, even while it resolves, since
     /// that attempt may have read the old files. Sent by the backend's own watcher, never by a seat.
-    SourceChanged(ItemId),
+    /// The entry ids name considered overlay files; the boolean marks changes belonging to the whole item.
+    SourceChanged(ItemId, Vec<crate::ContentId>, bool),
     /// Removes the item from the workspace with its resolution, its viewer request, its bookmarks and its reviewed
     /// marks. A result still resolving for it is dropped. Does nothing for an unknown item.
     Remove(ItemId),
@@ -348,13 +351,16 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
                 });
             }
         }
-        DocCommand::SourceChanged(id) => {
+        DocCommand::SourceChanged(id, entries, whole_item) => {
             let known = next.workspace.items.iter().find(|item| item.id == id);
             if let Some(item) = known.cloned() {
                 let shown = next.open.contains(&id)
                     && matches!(next.resolutions.get(&id), Some(Resolution::Resolved { .. }));
                 if shown {
-                    *next.changed.entry(id).or_default() += 1;
+                    next.changed
+                        .entry(id)
+                        .or_default()
+                        .record(entries, whole_item);
                     // The offer to reload replaces the news that the last reload failed: that was about older files.
                     if matches!(next.reloads.get(&id), Some(Reload::Failed { .. })) {
                         next.reloads.remove(&id);
