@@ -115,7 +115,7 @@
               "label": "v.mp4",
               "open": false,
               "recipe": {
-                "label": "v.mp4",
+                "label": null,
                 "overlays": [
                   {
                     "handler": "MOT_FILE",

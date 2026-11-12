@@ -20,10 +20,14 @@ async fn unsaved_work_survives_the_window_and_one_window_holds_a_copy_at_a_time(
     // An edit is written to a recovery copy, which is the newest recent workspace.
     let mut owner = Socket::own(&address, None).await;
     let told = |m: &serde_json::Value| m["type"] == "changed" && m["topic"] == "recents";
-    let before = owner.until(told).await["revision"].clone();
+    let before = owner.until("initial recents change notice", told).await["revision"].clone();
     owner.say(add_video(1)).await;
     // The Owner is told the list changed.
-    owner.until(|m| told(m) && m["revision"] != before).await;
+    owner
+        .until("recents change notice after recovery", |m| {
+            told(m) && m["revision"] != before
+        })
+        .await;
     eventually("the recovery copy, listed", || {
         let copy = copies(folder.path()).pop();
         copy.as_deref().and_then(items_in) == Some(1) && newest_recent(folder.path()) == copy
@@ -160,38 +164,67 @@ async fn unsaved_work_survives_the_window_and_one_window_holds_a_copy_at_a_time(
     assert_eq!(unchanged["epoch"], reopened["epoch"]);
 }
 
-#[cfg(unix)]
 #[tokio::test]
-async fn work_that_cannot_be_kept_is_not_replaced() {
-    use std::os::unix::fs::PermissionsExt;
-    let folder = tempfile::tempdir().unwrap();
-    let unsaved = folder.path().join("unsaved");
-    std::fs::create_dir(&unsaved).unwrap();
-    let mode =
-        |mode| std::fs::set_permissions(&unsaved, std::fs::Permissions::from_mode(mode)).unwrap();
-    mode(0o500);
-    if std::fs::File::create(unsaved.join("probe")).is_ok() {
-        mode(0o700);
-        return; // running as a user the folder mode does not stop (root)
+async fn recovery_failure_does_not_prevent_replacement() {
+    for blocked in ["unsaved", "recent.json"] {
+        let folder = tempfile::tempdir().unwrap();
+        let obstruction = folder.path().join(blocked);
+        if blocked == "unsaved" {
+            std::fs::write(&obstruction, "not a directory").unwrap();
+        } else {
+            std::fs::create_dir(&obstruction).unwrap();
+        }
+        let target = folder.path().join(format!("other{SUFFIX}"));
+        workspace_files::save(&workspace::Workspace::default(), &target).unwrap();
+        let address = backend(folder.path(), None).await;
+        let mut owner = Socket::own(&address, None).await;
+        let session = owner
+            .until("welcome message", |message| message["type"] == "welcome")
+            .await["session"]
+            .clone();
+        let mut second = Socket::connect(&address, "/api/session").await;
+        second
+            .say(
+                json!({"type": "hello", "auth": {"type": "attach", "session": session},
+            "cursors": {"show": true, "share": true}}),
+            )
+            .await;
+        let seat = second
+            .until("seat message", |message| message["type"] == "seat")
+            .await;
+        assert_eq!(seat["access"], "owner");
+        for (seq, command) in [
+            (2, json!({"type": "new"})),
+            (4, json!({"type": "open", "path": target})),
+        ] {
+            owner.say(add_video(seq - 1)).await;
+            // Resolution publishes another Doc; compare the same settled state on both seats.
+            let resolved = |ws: &serde_json::Value| {
+                ws["modified"] == true && ws["items"][0]["resolution"]["status"] == "Resolved"
+            };
+            let modified = doc(&mut owner, resolved).await;
+            assert_eq!(doc(&mut second, resolved).await, modified);
+            second.say(workspace(seq, command)).await;
+            let (outcome, empty) = settle(&mut second, seq, |ws| ws["items"] == json!([])).await;
+            assert_eq!(doc(&mut owner, |ws| ws["items"] == json!([])).await, empty);
+            assert_eq!(outcome, json!({"status": "ok"}), "{blocked}");
+            assert_eq!(empty["modified"], false);
+            let listed: Vec<_> = recents(folder.path())
+                .list()
+                .into_iter()
+                .map(|recent| recent.path)
+                .collect();
+            let expected = if blocked == "unsaved" && seq == 4 {
+                vec![target.clone()]
+            } else {
+                Vec::new()
+            };
+            assert_eq!(listed, expected, "only usable workspaces enter Recents");
+            if blocked == "unsaved" {
+                assert!(copies(folder.path()).is_empty());
+            }
+        }
     }
-    let address = backend(folder.path(), None).await;
-    let mut owner = Socket::own(&address, None).await;
-    owner.say(add_video(1)).await;
-    doc(&mut owner, |ws| ws["modified"] == true).await;
-
-    // New would drop the edit with nowhere to keep it, so it is refused and the workspace stays as it was.
-    owner.say(workspace(2, json!({"type": "new"}))).await;
-    let outcome = ack(&mut owner, 2).await;
-    assert_eq!(outcome["status"], "failed");
-    assert_eq!(outcome["error"]["code"], "SaveFailed");
-    owner.say(add_video(3)).await;
-    doc(&mut owner, |ws| ws["items"].as_array().unwrap().len() == 2).await;
-
-    mode(0o700);
-    owner.say(workspace(4, json!({"type": "new"}))).await;
-    let (outcome, empty) = settle(&mut owner, 4, |ws| ws["items"] == json!([])).await;
-    assert_eq!(outcome, json!({"status": "ok"}));
-    assert_eq!(empty["modified"], false);
 }
 
 #[tokio::test]

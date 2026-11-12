@@ -6,9 +6,10 @@ use std::fs;
 use std::sync::Arc;
 
 #[test]
-fn a_video_path_becomes_an_item_labelled_with_the_file_name_whatever_the_working_folder() {
-    let item = video(Path::new("recordings/gate.mp4"), &[], &Handlers::built_in()).unwrap();
-    assert_eq!(item.label, "gate.mp4");
+fn an_unnamed_video_follows_its_path_when_edited() {
+    let mut item = video(Path::new("recordings/gate.mp4"), &[], &Handlers::built_in()).unwrap();
+    assert!(item.label.is_empty());
+    assert_eq!(item.display_name(), "gate.mp4");
     let Source::Video(recipe) = &item.recipe.source else {
         panic!("a video item has a video recipe");
     };
@@ -16,6 +17,11 @@ fn a_video_path_becomes_an_item_labelled_with_the_file_name_whatever_the_working
     assert!(recipe.video.as_path().ends_with("recordings/gate.mp4"));
     let again = video(Path::new("recordings/gate.mp4"), &[], &Handlers::built_in()).unwrap();
     assert_ne!(item.id, again.id);
+    item.recipe = video(Path::new("recordings/yard.mp4"), &[], &Handlers::built_in())
+        .unwrap()
+        .recipe;
+    assert_eq!(item.display_name(), "yard.mp4");
+    assert!(item.label.is_empty());
 }
 
 #[test]

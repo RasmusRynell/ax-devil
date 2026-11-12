@@ -112,8 +112,8 @@ export function AddLiveStreamDialog({
   // The connection the camera was last asked about for each mode's list, which is read on choosing the mode and on Refresh.
   // A changed connection forgets both, so coming back to an earlier one lists nothing until a mode choice or Refresh.
   const [asked, setAsked] = useState<Record<Listed, string | null>>({ mqtt: null, datahub: null });
-  // Whether the person at the form has chosen the overlay or its decoder, which the configured ones no longer replace.
-  const edited = useRef(false);
+  // Mode and decoder choices are independent: changing the mode still retains the initial shared decoder.
+  const edited = useRef({ mode: false, handler: false });
 
   const hostDefault = textOf(values["camera.host"]);
   const hostKnown = !!(form.host.trim() || hostDefault.trim());
@@ -167,18 +167,24 @@ export function AddLiveStreamDialog({
   useEffect(() => {
     if (!handlers || decoded.current) return;
     decoded.current = true;
-    const configured =
-      start.overlay || edited.current ? undefined : configuredOverlay(values, handlers.decoders);
+    const configured = start.overlay ? undefined : configuredOverlay(values, handlers.decoders);
     if (!configured) return;
-    setForm((now) => ({ ...now, ...configured }));
-    if (configured.overlay === "mqtt" || configured.overlay === "datahub") {
+    setForm((now) => ({
+      ...now,
+      overlay: edited.current.mode ? now.overlay : configured.overlay,
+      handler: edited.current.handler ? now.handler : configured.handler,
+    }));
+    if (
+      !edited.current.mode &&
+      (configured.overlay === "mqtt" || configured.overlay === "datahub")
+    ) {
       const { overlay } = configured;
       setAsked((now) => ({ ...now, [overlay]: current.current }));
     }
   }, [handlers, values, start]);
 
   const onMode = (next: OverlayMode) => {
-    edited.current = true;
+    edited.current.mode = true;
     setForm((now) => ({ ...now, overlay: next }));
     if (next !== "mqtt" && next !== "datahub") return;
     // A mode's list is read when the mode is chosen unless it has been, as long as the connection stands.
@@ -221,7 +227,7 @@ export function AddLiveStreamDialog({
   const props: PanelProps = {
     form,
     set: <K extends FieldKey>(field: K, value: LiveForm[K]) => {
-      if (field === "handler") edited.current = true;
+      if (field === "handler") edited.current.handler = true;
       setForm((now) => ({ ...now, [field]: value }));
     },
     settings: values,

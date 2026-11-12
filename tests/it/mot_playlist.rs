@@ -31,7 +31,9 @@ impl Playlist {
     async fn add(backend: &Backend) -> Self {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/datasets/mot");
         let mut owner = Socket::own(&backend.address.to_string(), None).await;
-        let welcome = owner.until(|message| message["type"] == "welcome").await;
+        let welcome = owner
+            .until("welcome message", |message| message["type"] == "welcome")
+            .await;
         let resolved = session_client::post(
             &backend.address.to_string(),
             "/api/resolvers/mot_challenge/resolve",
@@ -70,7 +72,9 @@ impl Playlist {
         let seq = self.seq;
         let ticket = self
             .owner
-            .until(|message| message["type"] == "ticket" && message["seq"] == seq)
+            .until("ticket message for the requested sequence", |message| {
+                message["type"] == "ticket" && message["seq"] == seq
+            })
             .await;
         let mut viewer = backend.viewer().await;
         viewer.open(ticket["ticket"].as_str().unwrap(), None).await;
@@ -282,7 +286,9 @@ async fn a_playlist_added_through_the_dialog_is_watched_for_changes_in_its_folde
     )
     .unwrap();
     let mut owner = Socket::own(&backend.address.to_string(), None).await;
-    let welcome = owner.until(|message| message["type"] == "welcome").await;
+    let welcome = owner
+        .until("welcome message", |message| message["type"] == "welcome")
+        .await;
     let resolved = session_client::post(
         &backend.address.to_string(),
         "/api/resolvers/mot_challenge/resolve",
@@ -298,7 +304,9 @@ async fn a_playlist_added_through_the_dialog_is_watched_for_changes_in_its_folde
     // The viewer is open, so a sequence added to the folder is counted, not resolved over its stream.
     std::fs::create_dir(root.path().join("SEQ-02")).unwrap();
     let doc = owner
-        .until(|message| message["doc"]["workspace"]["items"][0]["changed"] == 1)
+        .until("playlist change notification", |message| {
+            message["doc"]["workspace"]["items"][0]["changed"] == 1
+        })
         .await;
     assert_eq!(
         doc["doc"]["workspace"]["items"][0]["resolution"]["status"],

@@ -17,7 +17,7 @@ async fn a_change_is_announced_to_an_owner_connection_and_never_to_a_join_link()
     // An Owner is told every topic's current revision at once, so a change made before it connected is not missed.
     let mut seen = Vec::new();
     let first = owner
-        .until(|m| {
+        .until("initial settings change notice", |m| {
             seen.push(m["type"].clone());
             topic("settings")(m)
         })
@@ -25,7 +25,10 @@ async fn a_change_is_announced_to_an_owner_connection_and_never_to_a_join_link()
         .as_u64()
         .unwrap();
     assert_eq!(seen.first(), Some(&json!("welcome")));
-    let listed = owner.until(topic("sessions")).await["revision"].clone();
+    let listed = owner
+        .until("initial sessions change notice", topic("sessions"))
+        .await["revision"]
+        .clone();
     owner
         .say(command(
             1,
@@ -35,7 +38,7 @@ async fn a_change_is_announced_to_an_owner_connection_and_never_to_a_join_link()
     // Sharing also puts the session in the list other windows read.
     let (mut seat, mut relisted) = (None, false);
     owner
-        .until(|m| {
+        .until("sharing seat and sessions change notice", |m| {
             if m["type"] == "seat" && !m["sharing"].is_null() {
                 seat = Some(m.clone());
             }
@@ -61,7 +64,9 @@ async fn a_change_is_announced_to_an_owner_connection_and_never_to_a_join_link()
     )
     .await;
     let told = owner
-        .until(|m| topic("settings")(m) && m["revision"] != first)
+        .until("settings change notice after save", |m| {
+            topic("settings")(m) && m["revision"] != first
+        })
         .await;
     assert_eq!(
         told,
@@ -71,7 +76,7 @@ async fn a_change_is_announced_to_an_owner_connection_and_never_to_a_join_link()
     // The guest's own view is answered after the changes, and no notice came before it.
     guest.say(view(1, false)).await;
     guest
-        .until(|m| {
+        .until("guest seat without change notices", |m| {
             assert_ne!(m["type"], "changed", "a guest was told");
             m["type"] == "seat" && m["viewsDone"] == 1
         })
@@ -87,7 +92,7 @@ async fn an_owner_attached_as_a_guest_seat_is_still_told_of_a_settings_change() 
     let address = serve(folder.path()).await;
     // A Session created with Full access reads the server's environment, so an Owner without it attaches as a Guest, if it is shared.
     let mut creator = Socket::own(&address, Some(PASSWORD)).await;
-    let session = creator.until(of_type("welcome")).await["session"].clone();
+    let session = creator.until("welcome message", of_type("welcome")).await["session"].clone();
     creator
         .say(command(
             1,
@@ -95,7 +100,9 @@ async fn an_owner_attached_as_a_guest_seat_is_still_told_of_a_settings_change() 
         ))
         .await;
     creator
-        .until(|m| m["type"] == "seat" && !m["sharing"].is_null())
+        .until("seat with sharing started", |m| {
+            m["type"] == "seat" && !m["sharing"].is_null()
+        })
         .await;
     patch_settings(
         &address,
@@ -110,7 +117,9 @@ async fn an_owner_attached_as_a_guest_seat_is_still_told_of_a_settings_change() 
             "auth": {"type": "attach", "session": session, "serverPassword": PASSWORD},
             "cursors": {"show": true, "share": true}}))
         .await;
-    let first = attached.until(topic("settings")).await["revision"]
+    let first = attached
+        .until("initial settings change notice", topic("settings"))
+        .await["revision"]
         .as_u64()
         .unwrap();
     let saved = patch_settings(
@@ -120,7 +129,9 @@ async fn an_owner_attached_as_a_guest_seat_is_still_told_of_a_settings_change() 
     )
     .await;
     let told = attached
-        .until(|m| topic("settings")(m) && m["revision"].as_u64() != Some(first))
+        .until("settings change notice after save", |m| {
+            topic("settings")(m) && m["revision"].as_u64() != Some(first)
+        })
         .await;
     assert_eq!(told["revision"], saved["revision"]);
 }

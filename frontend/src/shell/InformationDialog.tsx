@@ -33,7 +33,7 @@ function Block({ info, level }: { info: Information; level: number }) {
             <th
               scope="row"
               style={{ paddingLeft: `calc(var(--spacing-m) * ${level * 2 + 2})` }}
-              className="px-m py-xs text-left font-normal text-muted"
+              className="px-m py-xs text-left align-top font-normal text-muted"
             >
               <MiddleElided text={label} className="max-w-[24ch]" />
             </th>
@@ -50,13 +50,13 @@ function Block({ info, level }: { info: Information; level: number }) {
 
 /**
  * The information of a workspace item: its settings as a list of labelled values, with the lists of its lanes under it.
- * It opens as wide as its values (up to 80 characters each, then they wrap) and the user drags its corner to resize it.
+ * Values wrap inside the available width; the table scrolls and its corner lets the user resize it.
  */
 export function InformationDialog({ info, onClose }: { info: Information; onClose: () => void }) {
   return (
     <Dialog title={info.title} onOk={onClose} okLabel="Close" focusOk>
-      <div className="max-h-[80vh] max-w-[90vw] min-w-[40ch] resize overflow-auto">
-        <table className="w-full border-collapse text-body">
+      <div className="max-h-[80vh] max-w-full min-h-0 min-w-[min(40ch,100%)] resize overflow-auto">
+        <table className="w-full border-collapse text-body [&_td>div]:wrap-anywhere">
           <thead>
             <tr className="border-b border-line text-left text-muted">
               <th scope="col" className="px-m py-xs font-normal">

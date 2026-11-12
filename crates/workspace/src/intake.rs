@@ -65,7 +65,7 @@ pub fn video(
     let overlays = recipes;
     Ok(WorkspaceItem {
         id: ItemId::generate(),
-        label,
+        label: String::new(),
         recipe: Recipe::new(Source::Video(VideoRecipe {
             video: HostPath::new(absolute),
             overlays,

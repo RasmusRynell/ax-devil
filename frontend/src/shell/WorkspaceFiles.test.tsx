@@ -6,6 +6,7 @@ import { scenario } from "../session/fakeScenario";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { folderOf, usedOn } from "../client/recents";
+import { ChangesProvider } from "../client/resource";
 import { Shell } from "./Shell";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
@@ -35,9 +36,11 @@ async function renderShell(state = DEFAULT_SETTINGS) {
   render(
     <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
       <FakeSettings state={state}>
-        <SessionProvider>
-          <Shell version="1.2.3" />
-        </SessionProvider>
+        <ChangesProvider>
+          <SessionProvider>
+            <Shell version="1.2.3" />
+          </SessionProvider>
+        </ChangesProvider>
       </FakeSettings>
     </AccessContext.Provider>,
   );
@@ -51,13 +54,12 @@ const sent = () =>
   );
 
 describe("workspace files", () => {
-  it("opens a recent workspace from the start panel", async () => {
+  it("opens recent workspaces and refreshes recovery entries from Changed notices", async () => {
     // A recovery copy: the row is named for the saved file, and opens the copy.
     const path = "/state/unsaved/Untitled.ax-devil.workspace";
     const name = "Gate review.ax-devil.workspace";
-    const recents = vi.fn(() =>
-      Promise.resolve(Response.json([{ path, name, usedMs: Date.now() }])),
-    );
+    let list = [{ path, name, usedMs: Date.now() }];
+    const recents = vi.fn(() => Promise.resolve(Response.json(list)));
     vi.stubGlobal("fetch", recents);
     await renderShell();
     const row = await screen.findByRole("button", { name: /Gate review/ });
@@ -65,8 +67,29 @@ describe("workspace files", () => {
     expect(row.textContent).toContain("/state/unsaved");
     fireEvent.click(row);
     expect(sent()).toEqual([{ type: "open", path }]);
-    // The list is asked again once the command is answered, as the opened file's entry may have changed.
-    await waitFor(() => expect(recents).toHaveBeenCalledTimes(2));
+    // A failed first recovery write publishes no copy and no Changed notice: the valid older entry stays.
+    await act(async () => {});
+    expect(screen.getByRole("button", { name: /Gate review/ })).toBeTruthy();
+
+    // A saved/recovered entry replaces the list only when its owner announces the settled filesystem change.
+    list = [{ path: "/srv/Other.ax-devil.workspace", name: "Other", usedMs: Date.now() }];
+    await act(async () =>
+      FakeSocket.latest.emit({ type: "changed", topic: "recents", revision: 2 }),
+    );
+    await screen.findByRole("button", { name: /Other/ });
+    expect(screen.queryByRole("button", { name: /Gate review/ })).toBeNull();
+    // Failed recovery/Recents updates cannot invent an unusable entry; a reread still shows the valid list.
+    const reads = recents.mock.calls.length;
+    await act(async () =>
+      FakeSocket.latest.emit({ type: "changed", topic: "recents", revision: 3 }),
+    );
+    await waitFor(() => expect(recents).toHaveBeenCalledTimes(reads + 1));
+    expect(screen.getByRole("button", { name: /Other/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Other/ }));
+    expect(sent()).toEqual([
+      { type: "open", path },
+      { type: "open", path: list[0]!.path },
+    ]);
   });
 
   it("shows no recent workspaces heading when there are none, and Enter runs Open Workspace, the default", async () => {

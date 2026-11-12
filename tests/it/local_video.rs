@@ -94,7 +94,9 @@ async fn a_thumbnail_is_a_jpeg_with_a_tag_and_a_client_that_holds_it_is_told_it_
         &["local".as_ref(), "--video".as_ref(), video.as_ref()],
     );
     let mut window = Socket::own(&backend.address, None).await;
-    let session = window.until(|m| m["type"] == "welcome").await["session"]
+    let session = window
+        .until("welcome message", |m| m["type"] == "welcome")
+        .await["session"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -145,7 +147,9 @@ async fn local_video_opens_an_untitled_workspace_with_one_resolved_item_for_the_
 
     // The video belongs to the first window; a second window starts empty.
     let mut second = Socket::own(&backend.address, None).await;
-    let doc = second.until(|message| message["type"] == "doc").await;
+    let doc = second
+        .until("doc message", |message| message["type"] == "doc")
+        .await;
     assert_eq!(doc["doc"]["workspace"]["items"], serde_json::json!([]));
 }
 

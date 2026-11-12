@@ -51,7 +51,10 @@ async fn ctrl_c_ends_open_viewers_and_the_backend_exits() {
     session
         .say(json!({"type": "command", "seq": 1, "cmd": {"type": "requestTicket", "key": key}}))
         .await;
-    let ticket = session.until(|message| message["type"] == "ticket").await["ticket"].clone();
+    let ticket = session
+        .until("ticket message", |message| message["type"] == "ticket")
+        .await["ticket"]
+        .clone();
 
     let mut viewer = Socket::connect(&address, "/api/playback").await;
     viewer

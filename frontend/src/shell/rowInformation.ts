@@ -146,7 +146,9 @@ export function rowInformation(
       const stream = camerasOf(items)
         .flatMap((camera) => camera.streams)
         .find(({ id }) => id === item.id);
-      return stream ? streamInformation(stream) : null;
+      if (!stream) return null;
+      const information = streamInformation(stream);
+      return row.info.kind === "lane" ? (information.children[0] ?? null) : information;
     }
     case "SeekableVideo": {
       if (row.info.kind === "lane") return videoLane(item.label, label, item.recipe);

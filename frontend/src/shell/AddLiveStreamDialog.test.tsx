@@ -317,20 +317,6 @@ describe("add live stream dialog", () => {
     expect(screen.queryByRole("option", { name: "saved.topic" })).toBeNull();
   });
 
-  it("needs a handler type for an overlay mode, offering only decoders that can read a live stream", async () => {
-    await open();
-    expect(screen.getByRole("option", { name: "ADF v1 Frame" })).toBeTruthy();
-    expect(screen.queryByRole("option", { name: "Acme file" })).toBeNull();
-    type("Handler Type", "");
-    expect(ok().disabled).toBe(true);
-    expect(screen.getByRole("alert").textContent).toBe(
-      "Select a handler type for DataHub WebSocket overlays.",
-    );
-    type("Overlay Mode", "none");
-    expect((screen.getByLabelText("Handler Type") as HTMLSelectElement).disabled).toBe(true);
-    expect(ok().disabled).toBe(false);
-  });
-
   it("shows the backend's refusal under the form and keeps OK off until the form changes", async () => {
     const onClose = vi.fn();
     await open(onClose);

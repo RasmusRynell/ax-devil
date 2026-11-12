@@ -96,19 +96,22 @@ module.exports.run = async ({ window }) => {
     );
     await wait("document.querySelector('[role=menu]')");
     await js(
-      "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent.startsWith('Add Live Stream')).click()",
+      "[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((b) => b.textContent.startsWith('Add Live Stream')).click()",
     );
     await wait("document.querySelector('dialog[open] h2')?.textContent === 'Add Live Stream'");
     await fill("Host", "127.0.0.1");
     await fill("Username", "root");
     await fill("Password", "pass");
-    // No overlay, so the stream asks for nothing but the video.
+    // Embedded metadata has a source-bearing overlay lane.
     await js(`(() => {
       const label = [...document.querySelectorAll('dialog[open] label')].find((l) => l.textContent === 'Overlay Mode');
       const select = document.getElementById(label.htmlFor);
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'none');
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'rtsp');
       select.dispatchEvent(new Event('change', { bubbles: true }));
     })()`);
+    // The initial shared handler arrives even when its discovery finishes after the mode edit.
+    const handler = `document.getElementById([...document.querySelectorAll('dialog[open] label')].find(l => l.textContent === 'Handler Type').htmlFor)`;
+    await wait(`${handler}?.value === 'ADF_V1_FRAME'`);
     const add =
       "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'OK')";
     await wait(`${add}?.disabled === false`);
@@ -116,15 +119,44 @@ module.exports.run = async ({ window }) => {
     await wait("!document.querySelector('dialog')");
     const live = "document.querySelector('[data-section=live] [role=treeitem]')";
     await wait(`!!${live}`);
-    for (const shown of ["light", "dark"]) {
-      await setTheme(shown);
-      await shoot(`rows-live-mark-${shown}.png`);
+    await js(
+      `${live}.getAttribute('aria-expanded') === 'false' && ${live}.querySelector('span[aria-hidden]').click()`,
+    );
+    const lane = row("RTSP Embedded");
+    await wait(`!!${lane}`);
+    for (const zoom of [1, 2]) {
+      await setView(window, zoom === 1 ? [1100, 720] : [1500, 1500], zoom);
+      for (const shown of ["light", "dark"]) {
+        await setTheme(shown);
+        await shoot(`rows-live-mark-${shown}-${zoom * 100}.png`);
+        await menuAt(lane);
+        assert.deepEqual(
+          await js(
+            "[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((m) => m.textContent)",
+          ),
+          ["Information"],
+        );
+        await js("document.querySelector('[role=menu] [role=menuitem]').click()");
+        await wait("document.querySelector('dialog[open] table')");
+        assert.match(
+          await js("document.querySelector('dialog[open] table').textContent"),
+          /overlay sourceRTSP/,
+        );
+        await shoot(`rows-live-information-${shown}-${zoom * 100}.png`);
+        await js(
+          "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Close').click()",
+        );
+        await wait("!document.querySelector('dialog')");
+      }
     }
-    await js(`(() => {
-      const found = ${live};
-      found.click();
-      found.closest('[role=tree]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
-    })()`);
+    await setView(window, [1100, 720], 1);
+    await js(`${live}.click()`);
+    await wait(
+      `${live}.closest('[role=tree]').getAttribute('aria-activedescendant') === ${live}.id`,
+    );
+    await js(
+      `${live}.closest('[role=tree]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))`,
+    );
     await wait(`!${live}`);
   } finally {
     nativeTheme.themeSource = theme;

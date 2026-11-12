@@ -258,6 +258,20 @@
               "warnings": []
             },
             {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001\u001flive",
+              "kind": "lane",
+              "label": "MQTT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
               "detail": "10.0.0.5 · head 2 (2)",
               "entry": "00000000-0000-4000-8000-000000000002",
               "hidden": false,
@@ -266,6 +280,20 @@
               "kind": "item",
               "label": "10.0.0.5",
               "location": "10.0.0.5 · head 2",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002\u001flive",
+              "kind": "lane",
+              "label": "MQTT",
+              "location": null,
               "status": {
                 "status": "Ready"
               },

@@ -4,7 +4,7 @@
 // Each test crate that includes this module uses a different part of it.
 #![allow(dead_code)]
 
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{SinkExt, Stream, StreamExt};
 use serde_json::{Value, json};
 use std::{
     io::{Read, Write},
@@ -13,7 +13,7 @@ use std::{
 use tokio::{
     net::{TcpListener, TcpStream},
     task::JoinHandle,
-    time::timeout,
+    time::{Instant, timeout, timeout_at},
 };
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
 
@@ -62,21 +62,9 @@ impl Socket {
             .unwrap();
     }
 
-    /// The next message that satisfies `wanted`, skipping the rest.
-    pub async fn until(&mut self, mut wanted: impl FnMut(&Value) -> bool) -> Value {
-        loop {
-            let message = timeout(WAIT, self.0.next())
-                .await
-                .expect("no message in time")
-                .expect("the socket closed")
-                .expect("the socket failed");
-            if let Message::Text(text) = message {
-                let message: Value = serde_json::from_str(&text).unwrap();
-                if wanted(&message) {
-                    return message;
-                }
-            }
-        }
+    /// The next message that satisfies `wanted`, within one deadline for the entire search.
+    pub async fn until(&mut self, expected: &str, wanted: impl FnMut(&Value) -> bool) -> Value {
+        until_json(&mut self.0, expected, wanted).await
     }
 
     /// The first binary message that satisfies `wanted`, skipping the rest.
@@ -97,7 +85,7 @@ impl Socket {
 
     /// The Doc once none of its items is pending.
     pub async fn settled_doc(&mut self) -> Value {
-        self.until(|message| {
+        self.until("document with all items resolved", |message| {
             let items = &message["doc"]["workspace"]["items"];
             message["type"] == "doc"
                 && items.as_array().is_some_and(|items| {
@@ -126,6 +114,30 @@ impl Socket {
         }
     }
 }
+
+async fn until_json(
+    stream: &mut (impl Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin),
+    expected: &str,
+    mut wanted: impl FnMut(&Value) -> bool,
+) -> Value {
+    let deadline = Instant::now() + WAIT;
+    loop {
+        let message = timeout_at(deadline, stream.next())
+            .await
+            .unwrap_or_else(|_| panic!("Timed out waiting for {expected}"))
+            .expect("the socket closed")
+            .expect("the socket failed");
+        if let Message::Text(text) = message {
+            let message: Value = serde_json::from_str(&text).unwrap();
+            if wanted(&message) {
+                return message;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;
 
 /// `GET path` on the backend at `address` with the server `password`, and the JSON body of the answer.
 pub async fn get(address: &str, path: &str, password: &str) -> Value {

@@ -20,7 +20,7 @@ fn now_ms() -> u64 {
 
 impl WorkspaceFiles {
     /// Brings the recovery copy up to date with `state`: written while modified, deleted when not. A failure is
-    /// logged and the next sync tries again; keeping a modified workspace's copy is the one that reports it.
+    /// logged and the next sync tries again.
     pub(super) async fn sync(
         &self,
         files: &mut SessionFiles,
@@ -74,6 +74,9 @@ impl WorkspaceFiles {
                 .off(move || copy.write(&workspace, recovers.as_deref()))
                 .await;
             if let Err(error) = written {
+                if files.copy.as_ref().is_some_and(|copy| !copy.is_written()) {
+                    files.copy = None;
+                }
                 tracing::warn!("Cannot write the recovery copy: {}", error.reason);
                 return Err(error);
             }
@@ -110,6 +113,7 @@ impl WorkspaceFiles {
         // recent again. An unmodified workspace's copy that could not be deleted stays unlisted: it was discarded or saved.
         if let Some(copy) = files.copy.take()
             && state.doc.workspace.modified()
+            && copy.is_written()
         {
             let recovers = state.doc.workspace.file.as_ref();
             self.record(files, copy.path(), recovers.map(|file| file.as_path()))

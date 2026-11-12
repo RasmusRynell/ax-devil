@@ -232,7 +232,7 @@ describe("opening", () => {
       active: 1,
       viewers: { 1: { item: TREE.ids.mot, entry: TREE.ids["mot/A"] } },
     });
-    fireEvent.keyDown(tree, { key: "Enter", ctrlKey: true });
+    fireEvent.keyDown(tree, { key: "Enter", ctrlKey: true, altKey: true });
     await act(async () => {});
     expect(shown().viewers[2]).toMatchObject({
       item: TREE.ids.mot,
@@ -371,15 +371,18 @@ describe("items", () => {
     leave();
   });
 
-  it("removes the whole item at once from the menu or with Delete, and edits it with F2", async () => {
+  it("removes a top-level item with modified Delete, refuses a nested row, and edits with modified F2", async () => {
     await renderTree();
-    fireEvent.contextMenu(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
+    fireEvent.keyDown(screen.getByRole("tree", { name: "Videos" }), {
+      key: "Delete",
+      ctrlKey: true,
+      altKey: true,
+    });
     await act(async () => {});
     const tree = screen.getByRole("tree", { name: "Playlists" });
     tree.focus();
     fireEvent.keyDown(tree, { key: "ArrowDown" });
-    fireEvent.keyDown(tree, { key: "Delete" });
+    fireEvent.keyDown(tree, { key: "Delete", ctrlKey: true, altKey: true });
     await act(async () => {});
     // A nested row has no Remove of its own, so only the first Delete reached the item.
     expect(commands()).toEqual([{ type: "remove", item: TREE.ids.v }]);
@@ -392,7 +395,7 @@ describe("items", () => {
       async () => new Response(JSON.stringify({ decoders: [], resolvers: [] })),
     );
     await renderTree();
-    fireEvent.keyDown(screen.getByRole("tree", { name: "Videos" }), { key: "F2" });
+    fireEvent.keyDown(screen.getByRole("tree", { name: "Videos" }), { key: "F2", altKey: true });
     expect(await screen.findByRole("dialog", { name: "Edit Video" })).toBeTruthy();
     expect((screen.getByLabelText("Video path") as HTMLInputElement).value).toBe("/data/v/v.mp4");
   });
