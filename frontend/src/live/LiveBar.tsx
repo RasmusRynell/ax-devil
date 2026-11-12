@@ -41,7 +41,7 @@ function FeedChip({
         ? ["Waiting for data…", "neutral", "Waiting for data…"]
         : [headline(status), toneOf(status), describe(status)];
   return (
-    <Chip tone={tone} title={title}>
+    <Chip tone={tone} title={`${name}: ${text}. ${title}`}>
       {`${name}: ${text}`}
     </Chip>
   );
@@ -68,9 +68,10 @@ export function LiveBar({
 }) {
   const { shown, paused, video, overlay, behind, waiting } = view;
   const time = shown ? utcTime(shown.timestampUs) : "00:00:00";
-  const problems = [problemLine("Video", video), overlay && problemLine("Overlay", overlay)].filter(
-    (line) => line,
-  );
+  const problems = [
+    problemLine("Video", video),
+    overlay && problemLine("Overlay", overlay, view.alternatives),
+  ].filter((line): line is string => line !== null);
   const retry = (needsRetry(video) || needsRetry(overlay)) && (
     <Button
       icon="refresh-cw"
@@ -87,7 +88,7 @@ export function LiveBar({
     <div role="toolbar" aria-label="Live" className="border-b border-line bg-panel text-fg">
       <div className="flex flex-wrap items-center gap-x-m px-m py-xs">
         {/* The feed tags give way (ending in an ellipsis, the full text on hover) before any control does. */}
-        <div className="flex min-w-0 flex-1 items-center gap-m">
+        <div className="flex min-w-0 flex-1 basis-full items-center gap-m sm:basis-auto">
           <FeedChip name="Video" status={video} />
           {overlay && (
             <FeedChip name="Overlay" status={overlay} behind={behind} waiting={waiting} />
@@ -129,7 +130,7 @@ export function LiveBar({
             title={problems.join("\n")}
           >
             {problems.map((line) => (
-              <p key={line} className="m-0">
+              <p key={line} className="m-0 truncate" title={line}>
                 {line}
               </p>
             ))}

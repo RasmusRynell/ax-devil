@@ -1,7 +1,7 @@
 //! What a viewer is told of each feed: the connection's state, and for video whether it still delivers.
 //!
-//! Pure and clock-free like the live gate: every call passes the time in. Credentials, hosts and the device's own
-//! text are never here, only the state and a [`LiveReason`].
+//! Pure and clock-free like the live gate: every call passes the time in. The shared channel carries reason codes;
+//! bounded MQTT alternatives are formatted separately under each audience's host-detail rights.
 
 use std::{sync::Mutex, time::Duration};
 
@@ -123,6 +123,7 @@ struct Inner {
 impl Inner {
     fn wire(&self, now: Mono) -> LiveStatusWire {
         LiveStatusWire {
+            alternatives: None,
             video: self.video.wire(now),
             overlay: self.overlay.as_ref().map(|overlay| overlay.wire(now)),
             behind: self.behind,
@@ -200,6 +201,34 @@ impl Board {
                 overlay.set(link, now);
             }
         });
+    }
+
+    /// Formats bounded source alternatives under this viewer's own rights, never on the shared status channel.
+    pub fn alternatives(&self, audience: api_types::Audience) -> Option<String> {
+        if !audience.host_details {
+            return None;
+        }
+        let inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Status::Failed(error) = &inner.overlay.as_ref()?.link else {
+            return None;
+        };
+        let (keys, remaining) = error.source_alternatives.as_ref()?;
+        let listed = if keys.is_empty() {
+            "none".to_owned()
+        } else {
+            keys.iter()
+                .map(|key| camera::escaped(key))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        Some(if *remaining > 0 {
+            format!("{listed} (+{remaining} more)")
+        } else {
+            listed
+        })
     }
 
     /// A video unit arrived.

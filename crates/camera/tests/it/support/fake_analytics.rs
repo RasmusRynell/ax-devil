@@ -7,6 +7,7 @@ pub struct Analytics {
     pub config: Value,
     pub active: bool,
     pub publishers: Vec<Value>,
+    pub sources: Vec<Value>,
     /// Answer every publisher removal with a failure.
     pub fail_deletes: bool,
     /// Every `configureClient` request's parameters, in order.
@@ -21,6 +22,10 @@ impl Default for Analytics {
                 "clientId": "old-client",
                 "cleanSession": true,
             }),
+            sources: vec![
+                json!({"key": "com.axis.analytics_scene_description.v0.beta#1"}),
+                json!({"key": "com.axis.consolidated_track.v1.beta#1"}),
+            ],
             active: false,
             fail_deletes: false,
             configured: Vec::new(),
@@ -41,6 +46,9 @@ impl Analytics {
         let body: Value = serde_json::from_slice(body).unwrap_or_default();
         if path == CLIENT {
             return Some(self.client(&body));
+        }
+        if path == "/config/rest/analytics-mqtt/v1beta/data_sources" {
+            return Some(json!({"status": "success", "data": self.sources}).to_string());
         }
         let id = path.strip_prefix(PUBLISHERS)?;
         let success = |data: Value| json!({ "status": "success", "data": data }).to_string();

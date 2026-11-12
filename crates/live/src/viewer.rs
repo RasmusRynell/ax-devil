@@ -137,6 +137,16 @@ impl LiveViewer {
         self.status.borrow().clone()
     }
 
+    /// Projects host-side alternatives for this connection; the shared status contains none.
+    pub fn project_status(
+        &self,
+        mut status: LiveStatusWire,
+        audience: api_types::Audience,
+    ) -> LiveStatusWire {
+        status.alternatives = self.feed.shared.board.alternatives(audience);
+        status
+    }
+
     /// Changes how the lane selects samples, and whether it is shown. Frames shown from now on carry `revision`.
     pub fn set_policy(&mut self, revision: u32, matching: MatchPolicy, subscribed: bool) {
         self.policy = LanePolicy {

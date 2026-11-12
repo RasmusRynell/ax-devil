@@ -31,14 +31,6 @@ const REASONS: Record<LiveReason, string> = {
 /** The reason a feed is not live, in words. */
 export const reasonText = (reason: LiveReason): string => REASONS[reason];
 
-/**
- * What the user can do about a reason, where only they can: the stream's own Edit lists the sources the camera offers,
- * which the status does not carry (it reaches every viewer of the stream, and the list is the camera's).
- */
-const ADVICE: Partial<Record<LiveReason, string>> = {
-  SourceUnavailable: "Choose another in Edit.",
-};
-
 type FeedState = LiveFeedStatus["status"];
 
 /** Each state of a feed as the viewer words it: its label, what it means, its tone, and whether it is a problem. */
@@ -91,15 +83,25 @@ export function headline(status: LiveFeedStatus): string {
 }
 
 /** Why a feed stands as it does: its reason, with what to do about it, else what its state means. */
-function because(status: LiveFeedStatus): string {
+function because(status: LiveFeedStatus, alternatives?: string): string {
   if (status.status === "Stalled") return `No frames for ${status.seconds} s`;
   if (!("reason" in status)) return STATES[status.status].description;
-  return [reasonText(status.reason), ADVICE[status.reason]].filter(Boolean).join(". ");
+  if (status.reason === "SourceUnavailable" && alternatives !== undefined)
+    return `${reasonText(status.reason)}. Available sources: ${alternatives}. Choose another in Edit.`;
+  return status.reason === "SourceUnavailable"
+    ? `${reasonText(status.reason)}. Choose another in Edit.`
+    : reasonText(status.reason);
 }
 
 /** The line a problem gets under the bar, `Video: Failed — Login rejected`; `null` for a feed that is not in trouble. */
-export function problemLine(feed: string, status: LiveFeedStatus): string | null {
-  return STATES[status.status].problem ? `${feed}: ${headline(status)} — ${because(status)}` : null;
+export function problemLine(
+  feed: string,
+  status: LiveFeedStatus,
+  alternatives?: string,
+): string | null {
+  return STATES[status.status].problem
+    ? `${feed}: ${headline(status)} — ${because(status, alternatives)}`
+    : null;
 }
 
 /** What the pane says until the first picture: the video's state, then why, such as `Connecting…`, `Waiting for the device to answer.`. */

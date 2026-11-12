@@ -13,6 +13,8 @@ use support::fake_broker::{self, Behaviour, FakeBroker};
 use support::fake_vapix::FakeVapix;
 use tokio::time::{sleep, timeout};
 
+mod sources;
+
 const KEY: &str = "com.axis.analytics_scene_description.v0.beta#1";
 const FAST: Reconnect = Reconnect {
     first: Duration::from_millis(20),
@@ -403,29 +405,6 @@ async fn a_camera_with_an_authenticated_mqtt_client_is_refused_before_anything_c
     assert_eq!(error.kind, ErrorKind::Unrestorable);
     assert!(!error.kind.retryable());
     assert!(error.detail().contains("cannot be read back"), "{error}");
-    assert_eq!(camera_state(&vapix), before);
-    assert_eq!(broker.connects(), 0);
-}
-
-#[tokio::test]
-async fn a_data_source_the_camera_does_not_offer_is_refused_before_anything_changes() {
-    let (vapix, broker) = (FakeVapix::start().await, FakeBroker::start().await);
-    let before = camera_state(&vapix);
-    let mut messages = open_mqtt(
-        &vapix.camera(),
-        &broker_for(&broker, "unused"),
-        SourceKey("com.axis.nothing\n2026 ERROR forged#1".into()),
-        FAST,
-    );
-    let Status::Failed(error) =
-        status_where(&mut messages, |s| matches!(s, Status::Failed(_))).await
-    else {
-        unreachable!()
-    };
-    assert_eq!(error.kind, ErrorKind::SourceUnavailable);
-    // The key is the app's, but whatever reaches an error is printed on a line of its own.
-    assert!(error.to_string().contains("nothing\\n2026"), "{error}");
-    assert!(!error.to_string().contains('\n'), "{error}");
     assert_eq!(camera_state(&vapix), before);
     assert_eq!(broker.connects(), 0);
 }

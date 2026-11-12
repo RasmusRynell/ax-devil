@@ -13,6 +13,8 @@ import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
 export type LiveView = PlaybackView & {
   /** Newer frames are not shown; the connection stays up. */
   paused: boolean;
+  /** Available sources, only for an audience with host details. */
+  alternatives?: string;
   video: LiveFeedStatus;
   /** `null` while the video has no overlay, or before the backend has said. */
   overlay: LiveFeedStatus | null;
@@ -25,7 +27,7 @@ export type LiveView = PlaybackView & {
 /** What the session itself knows of the stream; the lanes, catalogs, inspection and frame come with it to `viewOf`. */
 export type Parts = Pick<
   LiveView,
-  "status" | "failure" | "paused" | "video" | "overlay" | "behind" | "waiting"
+  "status" | "failure" | "paused" | "video" | "overlay" | "behind" | "waiting" | "alternatives"
 >;
 
 /** The stream before the backend has said anything. */
@@ -88,6 +90,7 @@ export const sameLive = (a: LiveView, b: LiveView): boolean =>
   a.paused === b.paused &&
   a.behind === b.behind &&
   a.waiting === b.waiting &&
+  a.alternatives === b.alternatives &&
   sameFeed(a.video, b.video) &&
   sameFeed(a.overlay, b.overlay) &&
   a.shown?.sequenceId === b.shown?.sequenceId &&

@@ -152,7 +152,9 @@ pub(super) async fn stream(
         lane_defaults: lane_defaults(setup.library),
         catalogs: catalogs.listing(),
     }));
-    let status = text(&ServerMessage::LiveStatus(viewer.status()));
+    let status = text(&ServerMessage::LiveStatus(
+        viewer.project_status(viewer.status(), setup.audience),
+    ));
     let mut live = Live {
         viewer,
         gate,
@@ -383,6 +385,7 @@ impl<I: Incoming> Live<'_, I> {
                     Some(Update::Frame(shown)) => self.show(*shown).await?,
                     Some(Update::Events(events)) => self.events(*events).await?,
                     Some(Update::Status(status)) => {
+                        let status = self.viewer.project_status(status, self.audience);
                         self.send(text(&ServerMessage::LiveStatus(status))).await?;
                     }
                     Some(Update::Gap { time_us }) => {
