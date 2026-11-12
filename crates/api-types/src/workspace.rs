@@ -50,7 +50,7 @@ pub struct RecentWorkspace {
 /// Pending changes contain only identities already carried by the Content projection.
 #[derive(Serialize, Deserialize, TS)]
 pub struct SourceChangesInfo {
-    /// A pending whole-item change, absent for changes only to resolver inputs.
+    /// A pending whole-item change, including resolver inputs and files read only by a failed attempt.
     pub item: Option<u32>,
     /// Pending changes by active entry identity; no file paths cross this boundary.
     pub entries: std::collections::BTreeMap<String, u32>,

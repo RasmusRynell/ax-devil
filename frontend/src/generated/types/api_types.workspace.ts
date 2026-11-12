@@ -333,7 +333,7 @@ export type RowStatusInfo = { "status": "Pending" } | { "status": "Unavailable" 
  */
 export type SourceChangesInfo = { 
 /**
- * A pending whole-item change, absent for changes only to resolver inputs.
+ * A pending whole-item change, including resolver inputs and files read only by a failed attempt.
  */
 item: number | null, 
 /**
