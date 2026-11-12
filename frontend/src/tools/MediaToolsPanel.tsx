@@ -12,7 +12,7 @@ import { Select } from "../kit/Fields";
 import { IconButton } from "../kit/IconButton";
 import { Tabs } from "../kit/Tabs";
 import type { EventLog } from "../live/eventLog";
-import type { InspectorMemory } from "../playback/fields";
+import type { InspectorMemory } from "../inspect/fields";
 import { Inspector, reachOf } from "../playback/Inspector";
 import type { PlaybackView } from "../playback/view";
 import { EventPageBody } from "./EventPageBody";

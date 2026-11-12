@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import type { Picked, Viewport } from "./contract";
+import type { Picked, Viewport } from "../lanes/contract";
 import type { PlaybackSession, Surface } from "./session";
-import type { VideoFrame } from "./protocol";
+import type { VideoFrame } from "../stream/protocol";
 import { VideoCanvas } from "./VideoCanvas";
 import { FIT, ZOOM_STEP } from "./viewport";
 

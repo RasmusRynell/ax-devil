@@ -1,9 +1,9 @@
 /** What a playback session is given, and what it reports of the clock. */
 
-import type { LaneSettings } from "./contract";
-import type { Saved } from "./lanes";
-import type { LanePolicyWire } from "./protocol";
-import type { Connect } from "./wire";
+import type { LaneSettings } from "../lanes/contract";
+import type { Saved } from "../lanes/lanes";
+import type { LanePolicyWire } from "../stream/protocol";
+import type { Connect } from "../stream/wire";
 
 /** What one window may hold of decoded frames, shared by its panes (see `budget.ts`); the most one viewer ever holds. */
 export const BUFFER_BUDGET_BYTES = 512 * 1024 * 1024;

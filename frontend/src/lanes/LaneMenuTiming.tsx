@@ -1,7 +1,7 @@
 import { Checkbox, Select } from "../kit/Fields";
 import type { AlignmentWire, BasisWire } from "../generated/api";
 import { Switch } from "../kit/Switch";
-import type { CadenceWire } from "./protocol";
+import type { CadenceWire } from "../stream/protocol";
 import { useSettings } from "../client/settings";
 import {
   DEFAULT_STICKY,

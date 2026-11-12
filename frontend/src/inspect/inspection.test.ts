@@ -2,9 +2,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import { compileFilter } from "../present";
 import { fullSample } from "../present/fixtures";
-import type { LaneFrame } from "./contract";
+import type { LaneFrame } from "../lanes/contract";
 import { Inspections } from "./inspection";
-import type { ClientMessage, FieldWire, InspectionWire, ServerMessage } from "./protocol";
+import type { ClientMessage, FieldWire, InspectionWire, ServerMessage } from "../stream/protocol";
 
 const SELECTION = { lane: 0, source: 0, entity: "7" };
 const withCar = fullSample([

@@ -1,9 +1,9 @@
 /** What a live session shows the UI: one immutable snapshot, replaced only when something in it changed. */
 
 import type { LiveFeedStatus } from "../generated/api";
-import type { InspectionView } from "../playback/contract";
-import type { LaneState } from "../playback/lanes";
-import type { CatalogInfoWire, VideoFrame } from "../playback/protocol";
+import type { InspectionView } from "../lanes/contract";
+import type { LaneState } from "../lanes/lanes";
+import type { CatalogInfoWire, VideoFrame } from "../stream/protocol";
 import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
 
 /**

@@ -1,4 +1,4 @@
-import type { FieldGroupWire, FieldWire, LeafWire } from "./protocol";
+import type { FieldGroupWire, FieldWire, LeafWire } from "../stream/protocol";
 
 /** The groups in display order, with their headings. */
 const GROUPS: readonly (readonly [FieldGroupWire, string])[] = [

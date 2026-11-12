@@ -1,4 +1,4 @@
-import type { CadenceWire } from "./protocol";
+import type { CadenceWire } from "../stream/protocol";
 import { reasonOf } from "../client/errors";
 import { Icon } from "../kit/Icon";
 import { NoticeList, noticeOf, type Notice } from "../kit/NoticeList";
@@ -6,7 +6,7 @@ import { Popover } from "../kit/Popover";
 import { LaneMenu } from "./LaneMenu";
 import { alignmentTone } from "./LaneMenuTiming";
 import type { LaneSettings, LaneState } from "./lanes";
-import type { CatalogInfoWire } from "./protocol";
+import type { CatalogInfoWire } from "../stream/protocol";
 
 /** What the lane has to report: why it failed or stopped reading, why its last change was not applied, and what its file warned of. */
 export function laneNotices(lane: LaneState): Notice[] {

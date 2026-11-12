@@ -5,7 +5,7 @@ import { fullSample, syntheticSample } from "../present/fixtures";
 import { AtlasFull, compileFilter, type FontHandle, type Glyph } from "../present";
 import type { CompiledFilter, SampleView } from "../present";
 import { FakeText } from "../present/text/fakeSource";
-import type { LaneFrame } from "./contract";
+import type { LaneFrame } from "../lanes/contract";
 import { describeRow, LaneLayouts, type PlacedLane } from "./laneLayouts";
 
 // No page here: the shell's bridge is a field of a stand-in window.

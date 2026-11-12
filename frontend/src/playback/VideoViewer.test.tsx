@@ -8,7 +8,7 @@ import { SessionStore } from "../session/store";
 import { exportOf } from "../viewer/exportTargets";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { videoFrame } from "./fakePlayback";
-import type { ClientMessage, LaneInfo, ServerMessage } from "./protocol";
+import type { ClientMessage, LaneInfo, ServerMessage } from "../stream/protocol";
 import type { VideoViewerProps } from "./VideoViewer";
 import {
   Viewer,

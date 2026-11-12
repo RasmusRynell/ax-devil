@@ -7,14 +7,14 @@ import { clockOf } from "../tools/eventItem";
 import { ObjectEvents } from "../tools/ObjectEvents";
 import { UNKNOWN_CLASS } from "../tools/objects";
 import { PresenceStrip } from "../tools/PresenceStrip";
-import { jumpsFrom, type Jumps } from "./appearanceJumps";
-import type { Appearance } from "./appearances";
-import type { InspectionView, Summary } from "./contract";
-import type { InspectorMemory } from "./fields";
-import { InspectorLines } from "./InspectorLines";
-import type { FieldWire } from "./protocol";
+import { jumpsFrom, type Jumps } from "../inspect/appearanceJumps";
+import type { Appearance } from "../inspect/appearances";
+import type { InspectionView, Summary } from "../lanes/contract";
+import type { InspectorMemory } from "../inspect/fields";
+import { InspectorLines } from "../inspect/InspectorLines";
+import type { FieldWire } from "../stream/protocol";
 import type { PlaybackView } from "./view";
-import { useAppearance, type AppearanceSource } from "./useAppearance";
+import { useAppearance, type AppearanceSource } from "../inspect/useAppearance";
 
 const ATTRIBUTES_NOTE = "Attributes are only available while an object is in the frame.";
 

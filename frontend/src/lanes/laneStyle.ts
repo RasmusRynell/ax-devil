@@ -14,7 +14,7 @@ import {
   type SampleView,
 } from "../present";
 import type { LaneFrame, LaneSettings } from "./contract";
-import type { FilterOptionInfo } from "./protocol";
+import type { FilterOptionInfo } from "../stream/protocol";
 
 /** The class mask of each style, made once however many frames use it, so the presenter sees one object. */
 const masks = new WeakMap<LaneStyleWire, ClassMask>();

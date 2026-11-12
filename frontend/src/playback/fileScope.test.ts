@@ -1,10 +1,10 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FileBody, FileRowWire, Located } from "../generated/api";
-import { after, found, READY, readyLane } from "./fakeFileAnswer";
-import { FileScope } from "./fileScope";
+import { after, found, READY, readyLane } from "../inspect/fakeFileAnswer";
+import { FileScope } from "../inspect/fileScope";
 import { setup } from "./fakePlayback";
-import type { ClientMessage } from "./protocol";
+import type { ClientMessage } from "../stream/protocol";
 
 const SORT = { key: "id", descending: false } as const;
 const ROW: FileRowWire = {

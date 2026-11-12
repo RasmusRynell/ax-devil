@@ -8,7 +8,7 @@ import type {
   SampleView,
 } from "../present";
 import type { LaneMatch } from "./laneData";
-import type { VideoFrame } from "./protocol";
+import type { VideoFrame } from "../stream/protocol";
 
 /**
  * What the session hands the display for one lane of one frame: the held Sample Item and everything the presenter

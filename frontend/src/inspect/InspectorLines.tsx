@@ -26,7 +26,7 @@ import {
   type InspectorMemory,
   type Line,
 } from "./fields";
-import type { FieldGroupWire, FieldWire } from "./protocol";
+import type { FieldGroupWire, FieldWire } from "../stream/protocol";
 import { useCopied, type Copied } from "./useCopied";
 
 const ROW = '[role="listitem"]';

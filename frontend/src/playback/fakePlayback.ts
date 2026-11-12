@@ -1,7 +1,7 @@
 // A playback session against a fake server, a fake display refresh and a fake clock, for tests.
-import { opened as openedMessage } from "./fakeOpened";
-import { catalogDocument, mapBytes, sampleBytes } from "./fakeData";
-import type { LaneFrame } from "./contract";
+import { opened as openedMessage } from "../lanes/fakeOpened";
+import { catalogDocument, mapBytes, sampleBytes } from "../stream/fakeData";
+import type { LaneFrame } from "../lanes/contract";
 import { PlaybackSession } from "./session";
 import type { PlaybackIntent, SessionDeps } from "./sessionDeps";
 import type {
@@ -10,8 +10,8 @@ import type {
   LaneStatusWire,
   ServerMessage,
   VideoFrame,
-} from "./protocol";
-import { decode, type Incoming } from "./wire";
+} from "../stream/protocol";
+import { decode, type Incoming } from "../stream/wire";
 
 export const FRAME_BYTES = 100;
 

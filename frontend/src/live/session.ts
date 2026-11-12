@@ -7,27 +7,21 @@
 
 import { reasonOf } from "../client/errors";
 import type { LiveOpenedWire } from "../generated/api";
-import type { FileScope } from "../playback/fileScope";
-import type { FrameFields } from "../playback/frameFields";
-import type {
-  LaneDisplay,
-  LaneFrame,
-  LaneSettings,
-  Selection,
-  Surface,
-} from "../playback/contract";
-import { sampleBudgetBytes } from "../playback/data/dataWindow";
-import { LaneSet } from "../playback/lanes";
-import type { LaneMatch } from "../playback/laneData";
+import type { FileScope } from "../inspect/fileScope";
+import type { FrameFields } from "../inspect/frameFields";
+import type { LaneDisplay, LaneFrame, LaneSettings, Selection, Surface } from "../lanes/contract";
+import { sampleBudgetBytes } from "../stream/data/dataWindow";
+import { LaneSet } from "../lanes/lanes";
+import type { LaneMatch } from "../lanes/laneData";
 import {
   PLAYBACK_PROTOCOL,
   type Envelope,
   type ServerMessage,
   type VideoFrame,
-} from "../playback/protocol";
+} from "../stream/protocol";
 import { BUFFER_BUDGET_BYTES, ENDED, RETRY_MS, type SessionDeps } from "../playback/sessionDeps";
 import { ViewerData } from "../playback/viewerData";
-import type { Connection, Incoming } from "../playback/wire";
+import type { Connection, Incoming } from "../stream/wire";
 import { EventLog } from "./eventLog";
 import { REST, sameLive, viewOf, type LiveView, type Parts } from "./view";
 

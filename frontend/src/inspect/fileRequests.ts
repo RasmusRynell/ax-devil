@@ -12,9 +12,9 @@
  */
 
 import type { FileBody, FileScopeUnavailable } from "../generated/api";
-import type { LaneState } from "./contract";
-import type { LaneSet, ReadyStatus } from "./lanes";
-import type { ClientMessage, ServerMessage } from "./protocol";
+import type { LaneState } from "../lanes/contract";
+import type { LaneSet, ReadyStatus } from "../lanes/lanes";
+import type { ClientMessage, ServerMessage } from "../stream/protocol";
 
 /** How long a change to a wanted list waits for another before it is sent. */
 export const DEBOUNCE_MS = 150;

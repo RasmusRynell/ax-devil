@@ -16,6 +16,9 @@ const FRONTEND_LAYERS = {
   engines: ["present", "overlay", "search", "casefold"],
   client: ["client", "session"],
   workflows: [
+    "stream",
+    "lanes",
+    "inspect",
     "playback",
     "viewer",
     "viewers",

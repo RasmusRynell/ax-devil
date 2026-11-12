@@ -1,4 +1,4 @@
-import type { ClientMessage } from "./protocol";
+import type { ClientMessage } from "../stream/protocol";
 
 /** The entry a viewer would open next, and the labels of the lanes it would show. */
 export type PreparedEntry = { entry: string; lanes: readonly string[] };

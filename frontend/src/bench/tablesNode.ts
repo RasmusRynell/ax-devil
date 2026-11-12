@@ -10,7 +10,7 @@ import { frameObjects, recordOf, sortObjects, type FrameObject, type Sort } from
 import type { Column } from "../tools/table/columns";
 import { fitColumns } from "../tools/table/fit";
 import { measureColumns, type Fonts } from "../tools/table/measure";
-import type { LaneFrame } from "../playback/contract";
+import type { LaneFrame } from "../lanes/contract";
 import { syntheticSample } from "../present/fixtures";
 import { matches } from "../search/match";
 import { parseSearch } from "../search/query";

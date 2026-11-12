@@ -1,10 +1,10 @@
 /** What a playback session shows the UI: one immutable snapshot that is replaced only when something in it changed. */
 
-import type { FrameInfo, PlaybackClock } from "./clock";
-import type { InspectionView, Selection } from "./contract";
-import type { FrameFailures } from "./failures";
-import type { LaneState } from "./lanes";
-import type { CadenceWire, CatalogInfoWire, ServerMessage, VideoPtsWire } from "./protocol";
+import type { FrameInfo, PlaybackClock } from "../stream/clock";
+import type { InspectionView, Selection } from "../lanes/contract";
+import type { FrameFailures } from "../stream/failures";
+import type { LaneState } from "../lanes/lanes";
+import type { CadenceWire, CatalogInfoWire, ServerMessage, VideoPtsWire } from "../stream/protocol";
 import { videoDetails } from "./videoDetails";
 
 export type PlaybackView = {

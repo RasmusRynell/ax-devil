@@ -12,12 +12,12 @@ import { LiveBar, NoPicture } from "../live/LiveBar";
 import { LiveSession } from "../live/session";
 import { useReportStatus } from "../live/streamState";
 import { ContextMenu } from "../kit/ContextMenu";
-import type { LaneSettings } from "../playback/contract";
-import { connectWorker } from "../playback/connect";
-import { FRESH_MEMORY, type InspectorMemory } from "../playback/fields";
+import type { LaneSettings } from "../lanes/contract";
+import { connectWorker } from "../stream/connect";
+import { FRESH_MEMORY, type InspectorMemory } from "../inspect/fields";
 import { shownLanes } from "../playback/laneCells";
-import { savedDefaults } from "../playback/lanes";
-import { LIVE_LANE_COMMANDS, laneContextEntries } from "../playback/laneContextMenu";
+import { savedDefaults } from "../lanes/lanes";
+import { LIVE_LANE_COMMANDS, laneContextEntries } from "../lanes/laneContextMenu";
 import { useLaneFullscreen } from "../playback/laneFullscreen";
 import { LaneGrid } from "../playback/LaneGrid";
 import { ObjectLayer, type ObjectLayerHandle } from "../playback/ObjectLayer";
@@ -25,7 +25,7 @@ import type { Geometry } from "../playback/renderer";
 import { Status } from "../playback/VideoViewer";
 import { useSharedViewport } from "../playback/sharedViewport";
 import { FIT, ZOOM_STEP } from "../playback/viewport";
-import type { Connect } from "../playback/wire";
+import type { Connect } from "../stream/wire";
 import {
   useAllowed,
   useCan,

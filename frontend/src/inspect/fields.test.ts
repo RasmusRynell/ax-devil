@@ -10,7 +10,7 @@ import {
   type FieldId,
   type Line,
 } from "./fields";
-import type { FieldGroupWire, FieldWire, LeafWire } from "./protocol";
+import type { FieldGroupWire, FieldWire, LeafWire } from "../stream/protocol";
 
 const DOTTED: FieldId = { group: "raw", path: ["a.b"] };
 const NESTED: FieldId = { group: "raw", path: ["a", "b"] };

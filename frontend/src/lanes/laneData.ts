@@ -3,12 +3,12 @@
 import type { LaneStyleWire } from "../generated/api";
 import type { LaneFrame, LaneSettings } from "./contract";
 import type { LaneCatalogs } from "./laneCatalog";
-import type { FrameMaps } from "./data/FrameMaps";
-import { UNKNOWN } from "./data/FrameMaps";
-import type { SampleStore } from "./data/SampleStore";
+import type { FrameMaps } from "../stream/data/FrameMaps";
+import { UNKNOWN } from "../stream/data/FrameMaps";
+import type { SampleStore } from "../stream/data/SampleStore";
 import { frameOf, styleOf } from "./laneStyle";
 import type { LaneSet, ReadyStatus } from "./lanes";
-import { MATCH_RETAINED } from "./protocol";
+import { MATCH_RETAINED } from "../stream/protocol";
 
 /**
  * Draw the lane's marks; draw nothing, because the lane has none for the frame or is not shown; or wait, because the

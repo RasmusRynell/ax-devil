@@ -11,7 +11,7 @@ import type {
   LaneInfo,
   LanePolicyWire,
   LaneStatusWire,
-} from "./protocol";
+} from "../stream/protocol";
 
 export type { LaneSettings, LaneState } from "./contract";
 

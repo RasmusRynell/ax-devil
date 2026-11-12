@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { OPEN_RANGES } from "../present";
 import { LANE_DEFAULTS, LANE_SETTINGS } from "./fakeOpened";
 import { LaneSet, effectiveDefault, startWith, type LaneSettings } from "./lanes";
-import type { LaneStatusWire } from "./protocol";
+import type { LaneStatusWire } from "../stream/protocol";
 
 const ready: LaneStatusWire = {
   status: "Ready",

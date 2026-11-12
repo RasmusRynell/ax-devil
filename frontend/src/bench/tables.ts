@@ -8,12 +8,12 @@
 import { createElement, type ReactElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
-import type { LaneFrame } from "../playback/contract";
-import type { FieldGroupWire, FieldWire } from "../playback/protocol";
-import { FRESH_MEMORY, type InspectorMemory } from "../playback/fields";
+import type { LaneFrame } from "../lanes/contract";
+import type { FieldGroupWire, FieldWire } from "../stream/protocol";
+import { FRESH_MEMORY, type InspectorMemory } from "../inspect/fields";
 import { Inspector } from "../playback/Inspector";
-import { LANE_SETTINGS } from "../playback/fakeOpened";
-import { LaneSet } from "../playback/lanes";
+import { LANE_SETTINGS } from "../lanes/fakeOpened";
+import { LaneSet } from "../lanes/lanes";
 import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
 import { freshEvents, FRESH_LIST, type ListState } from "../tools/listState";
 import { MediaToolsPanel } from "../tools/MediaToolsPanel";

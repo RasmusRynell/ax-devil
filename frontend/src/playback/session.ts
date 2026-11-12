@@ -12,16 +12,16 @@ import {
   steppedSpeed,
   type ClockIntent,
   type FrameSource,
-} from "./clock";
-import type { LaneControl, LaneFrame, LaneSettings, Selection, Surface } from "./contract";
-import { dataWindow, sampleBudgetBytes } from "./data/dataWindow";
-import { FrameFailures } from "./failures";
-import { followClock } from "./follow";
-import { FrameBuffer, windowSize } from "./FrameBuffer";
-import { DataWait, displaySource } from "./frameSource";
-import { WantPlanner, sameWant } from "./direction";
-import type { LaneMatch } from "./laneData";
-import { LaneSet } from "./lanes";
+} from "../stream/clock";
+import type { LaneControl, LaneFrame, LaneSettings, Selection, Surface } from "../lanes/contract";
+import { dataWindow, sampleBudgetBytes } from "../stream/data/dataWindow";
+import { FrameFailures } from "../stream/failures";
+import { followClock } from "../stream/follow";
+import { FrameBuffer, windowSize } from "../stream/FrameBuffer";
+import { DataWait, displaySource } from "../stream/frameSource";
+import { WantPlanner, sameWant } from "../stream/direction";
+import type { LaneMatch } from "../lanes/laneData";
+import { LaneSet } from "../lanes/lanes";
 import { Link } from "./link";
 import {
   PLAYBACK_PROTOCOL,
@@ -29,13 +29,13 @@ import {
   type ServerMessage,
   type VideoFrame,
   type Want,
-} from "./protocol";
+} from "../stream/protocol";
 import { BUFFER_BUDGET_BYTES, ENDED, type ResumeState, type SessionDeps } from "./sessionDeps";
 import { INITIAL_VIEW, buildView, sameView, type PlaybackView } from "./view";
 import { ViewerData } from "./viewerData";
-import type { Incoming } from "./wire";
+import type { Incoming } from "../stream/wire";
 
-export type { Surface } from "./contract";
+export type { Surface } from "../lanes/contract";
 
 export class PlaybackSession implements LaneControl {
   readonly #deps: SessionDeps;

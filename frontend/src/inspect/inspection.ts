@@ -13,8 +13,8 @@
 
 import { MOTION_STATES } from "../present/columns";
 import { maskKeeps } from "../present/filter/filter";
-import type { InspectionView, LaneFrame, Selection, Summary } from "./contract";
-import type { ClientMessage, FieldWire, InspectionWire, ServerMessage } from "./protocol";
+import type { InspectionView, LaneFrame, Selection, Summary } from "../lanes/contract";
+import type { ClientMessage, FieldWire, InspectionWire, ServerMessage } from "../stream/protocol";
 
 /** How many replies are kept, so that stepping back and forth asks the backend once per frame. */
 const CACHE_SIZE = 16;

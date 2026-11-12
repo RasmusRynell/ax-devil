@@ -6,8 +6,8 @@
  * (the authority gate may drop it) is sent again while a list listens, a few times, and when a list starts to listen.
  */
 
-import type { LaneFrame } from "./contract";
-import type { ClientMessage, LeafWire, ServerMessage } from "./protocol";
+import type { LaneFrame } from "../lanes/contract";
+import type { ClientMessage, LeafWire, ServerMessage } from "../stream/protocol";
 
 type Reply = Extract<ServerMessage, { type: "InspectedFields" }>;
 

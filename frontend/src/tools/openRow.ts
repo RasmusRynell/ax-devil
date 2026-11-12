@@ -1,4 +1,4 @@
-import type { FilePage } from "../playback/fileScope";
+import type { FilePage } from "../inspect/fileScope";
 import type { ListState } from "./listState";
 
 /**

@@ -3,7 +3,7 @@ import type { InvolvedWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { IconButton } from "../kit/IconButton";
 import { SectionCaption } from "../kit/SectionCaption";
-import { useCopied } from "../playback/useCopied";
+import { useCopied } from "../inspect/useCopied";
 import { categoryDot } from "./category";
 import { clockOf, kindText, summaryOf, type EventItem } from "./eventItem";
 import { shortTime } from "./objectColumns";

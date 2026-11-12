@@ -3,10 +3,10 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { FakeSettings } from "../client/fakeSettings";
 import { scenario } from "../session/fakeScenario";
 import { hiddenOf } from "../viewer/hidden";
-import { LANE_SETTINGS } from "./fakeOpened";
+import { LANE_SETTINGS } from "../lanes/fakeOpened";
 import { LaneGrid } from "./LaneGrid";
 import { columnsFor, layoutLanes } from "./laneCells";
-import type { LaneState } from "./lanes";
+import type { LaneState } from "../lanes/lanes";
 import type { PlaybackSession } from "./session";
 import type { PlaybackView } from "./view";
 

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { choicesOf } from "../export/lanes";
 import type { Hidden } from "../viewer/hidden";
-import type { LaneDisplay, Picked, Selection, Viewport } from "./contract";
+import type { LaneDisplay, Picked, Selection, Viewport } from "../lanes/contract";
 import { InfoHud } from "./InfoHud";
-import { LaneChip } from "./LaneChip";
+import { LaneChip } from "../lanes/LaneChip";
 import { allHidden, LANE_GAP, laneAt, layoutLanes, shownLanes } from "./laneCells";
 import type { Geometry } from "./renderer";
 import type { PlaybackView } from "./view";

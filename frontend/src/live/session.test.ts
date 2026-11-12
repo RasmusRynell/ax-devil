@@ -1,12 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
 import type { LiveFeedStatus, LiveOpenedWire } from "../generated/api";
-import type { LaneFrame } from "../playback/contract";
-import { catalogDocument, mapBytes, sampleBytes } from "../playback/fakeData";
-import { LANE_DEFAULTS } from "../playback/fakeOpened";
+import type { LaneFrame } from "../lanes/contract";
+import { catalogDocument, mapBytes, sampleBytes } from "../stream/fakeData";
+import { LANE_DEFAULTS } from "../lanes/fakeOpened";
 import { videoFrame } from "../playback/fakePlayback";
-import { PLAYBACK_PROTOCOL, type ClientMessage, type ServerMessage } from "../playback/protocol";
-import { decode, type Incoming } from "../playback/wire";
+import { PLAYBACK_PROTOCOL, type ClientMessage, type ServerMessage } from "../stream/protocol";
+import { decode, type Incoming } from "../stream/wire";
 import { EVENT_LOG_CAP } from "./eventLog";
 import { LiveSession } from "./session";
 

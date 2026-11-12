@@ -1,16 +1,16 @@
 /** What a viewer holds of its lanes' data: Sample Items, Frame Maps and catalogs, and what each lane draws from them. */
 
-import { Catalogs } from "./catalogs";
-import { FileScope } from "./fileScope";
-import { FrameMaps } from "./data/FrameMaps";
-import { SampleStore } from "./data/SampleStore";
-import { FrameFields } from "./frameFields";
-import { Inspections } from "./inspection";
-import { LaneCatalogs } from "./laneCatalog";
-import { LaneData, type LaneMatch } from "./laneData";
+import { Catalogs } from "../lanes/catalogs";
+import { FileScope } from "../inspect/fileScope";
+import { FrameMaps } from "../stream/data/FrameMaps";
+import { SampleStore } from "../stream/data/SampleStore";
+import { FrameFields } from "../inspect/frameFields";
+import { Inspections } from "../inspect/inspection";
+import { LaneCatalogs } from "../lanes/laneCatalog";
+import { LaneData, type LaneMatch } from "../lanes/laneData";
 import { NextEntry } from "./nextEntry";
-import type { LaneFrame, LaneSettings, Surface } from "./contract";
-import { startWith, type LaneSet, type Saved } from "./lanes";
+import type { LaneFrame, LaneSettings, Surface } from "../lanes/contract";
+import { startWith, type LaneSet, type Saved } from "../lanes/lanes";
 import type {
   ClientMessage,
   FrameMapEnvelope,
@@ -18,7 +18,7 @@ import type {
   SampleEnvelope,
   ServerMessage,
   VideoFrame,
-} from "./protocol";
+} from "../stream/protocol";
 
 type Opened = Extract<ServerMessage, { type: "Opened" }>;
 

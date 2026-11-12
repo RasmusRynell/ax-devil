@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { EventDetailWire, EventRowWire } from "../generated/api";
 import { after, found, readyLane, unavailable } from "./fakeFileAnswer";
 import { FileScope } from "./fileScope";
-import type { ClientMessage } from "./protocol";
+import type { ClientMessage } from "../stream/protocol";
 
 const ROW: EventRowWire = {
   event: 4,

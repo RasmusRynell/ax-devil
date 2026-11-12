@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { after, found, READY, readyLane, unavailable } from "./fakeFileAnswer";
 import { basisOf, FileRequests, type Basis, type FileRequestsHost } from "./fileRequests";
-import type { ClientMessage } from "./protocol";
+import type { ClientMessage } from "../stream/protocol";
 
 const FAILED = { state: "Failed", code: "Internal", params: {}, reason: "Disk full" } as const;
 const ask = (lane: number, request: number): ClientMessage => ({

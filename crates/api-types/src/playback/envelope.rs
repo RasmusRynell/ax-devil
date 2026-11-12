@@ -1,5 +1,5 @@
 //! Encoders of the binary envelopes of the playback socket. The layouts are documented with the constants in
-//! [`crate::playback`], and `frontend/src/playback/protocol.ts` parses them.
+//! [`crate::playback`], and `frontend/src/stream/protocol.ts` parses them.
 
 use super::{
     ENVELOPE_MAGIC, ENVELOPE_VERSION, FLAG_KEYFRAME, FLAG_LAST_FRAME, FLAG_SAMPLE_TIME,

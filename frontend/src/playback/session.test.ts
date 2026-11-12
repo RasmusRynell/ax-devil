@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { CommandRefused } from "../client/errors";
 import { flush, opened, setup, type OpenedMessage } from "./fakePlayback";
-import { PLAYBACK_PROTOCOL } from "./protocol";
+import { PLAYBACK_PROTOCOL } from "../stream/protocol";
 
 describe("opening", () => {
   it("asks for the video, shows indexing, then shows the first frame paused", async () => {

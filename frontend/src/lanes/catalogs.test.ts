@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
 import { Catalogs } from "./catalogs";
-import { catalogDocument } from "./fakeData";
+import { catalogDocument } from "../stream/fakeData";
 
 function held() {
   const asked: string[] = [];

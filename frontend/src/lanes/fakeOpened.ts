@@ -2,7 +2,7 @@
 import type { LaneDefaultsWire, LaneInfo, ServerMessage } from "../generated/api";
 import type { LaneSettings } from "./contract";
 import { OPEN_RANGES } from "../present";
-import { PLAYBACK_PROTOCOL } from "./protocol";
+import { PLAYBACK_PROTOCOL } from "../stream/protocol";
 
 export const LANE_DEFAULTS: LaneDefaultsWire = {
   catalog: "built-in:standard",

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { FakeSettings } from "../client/fakeSettings";
-import { opened } from "../playback/fakeOpened";
-import type { Incoming } from "../playback/wire";
+import { opened } from "../lanes/fakeOpened";
+import type { Incoming } from "../stream/wire";
 import { scenario } from "../session/fakeScenario";
 import { FakeSocket } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
@@ -12,7 +12,7 @@ import { PlaylistViewer } from "./PlaylistViewer";
 // The picture needs WebGL, and the socket is the test's: it opens a 100-frame video as soon as it is asked.
 vi.mock("../playback/VideoCanvas", () => ({ VideoCanvas: () => null }));
 const sockets = vi.hoisted(() => [] as ((incoming: Incoming) => void)[]);
-vi.mock("../playback/connect", () => ({
+vi.mock("../stream/connect", () => ({
   connectWorker: (onIncoming: (incoming: Incoming) => void) => {
     sockets.push(onIncoming);
     return {

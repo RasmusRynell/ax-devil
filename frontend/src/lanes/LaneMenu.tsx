@@ -7,7 +7,7 @@ import { EXPORT_TIP, EXPORT_WAITS, HIDE_LANE_TIP } from "./laneContextMenu";
 import { changedControls, LaneMenuFilter } from "./LaneMenuFilter";
 import { LaneMenuLook } from "./LaneMenuLook";
 import { LaneMenuTiming } from "./LaneMenuTiming";
-import type { CadenceWire } from "./protocol";
+import type { CadenceWire } from "../stream/protocol";
 
 const TABS = ["Look", "Filter", "Timing"] as const;
 

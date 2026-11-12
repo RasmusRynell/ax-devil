@@ -21,10 +21,10 @@ import {
   type FileView,
   type LaneRequests,
 } from "./fileRequests";
-import { styleOf } from "./laneStyle";
+import { styleOf } from "../lanes/laneStyle";
 import { parseSearch } from "../search/query";
-import type { LaneSet } from "./lanes";
-import type { ClientMessage } from "./protocol";
+import type { LaneSet } from "../lanes/lanes";
+import type { ClientMessage } from "../stream/protocol";
 
 /** The lane's class toggles as the bitmask words a query sends: bit `i` of word `i >> 5` is class `i`. */
 function classesOf(lanes: LaneSet, lane: number): number[] {

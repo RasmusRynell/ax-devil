@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { LaneDisplay, Picked, Selection, Viewport } from "./contract";
+import type { LaneDisplay, Picked, Selection, Viewport } from "../lanes/contract";
 import {
   RendererUnavailable,
   VideoRenderer,

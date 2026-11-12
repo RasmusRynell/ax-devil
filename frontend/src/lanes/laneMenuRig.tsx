@@ -4,7 +4,7 @@ import { AccessContext } from "../client/access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import type { CatalogInfoWire, LaneStatusWire } from "../generated/api";
 import type { SettingsApi } from "../client/settings";
-import type { CadenceWire } from "./protocol";
+import type { CadenceWire } from "../stream/protocol";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { LaneMenu } from "./LaneMenu";
 import type { LaneState } from "./lanes";

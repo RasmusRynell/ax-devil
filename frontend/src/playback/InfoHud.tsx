@@ -1,7 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import type { LaneDisplay } from "./contract";
+import type { LaneDisplay } from "../lanes/contract";
 import { hudSections, linesFit, type HudSection } from "./hud";
-import { basisOf } from "./lanes";
+import { basisOf } from "../lanes/lanes";
 import type { PlaybackView } from "./view";
 
 /**

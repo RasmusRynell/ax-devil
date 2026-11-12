@@ -1,9 +1,9 @@
 // What the File scope tests share: a ready lane, a fake clock and the backend's answers.
 import type { FileBody, FileScopeUnavailable } from "../generated/api";
-import { LANE_SETTINGS } from "./fakeOpened";
+import { LANE_SETTINGS } from "../lanes/fakeOpened";
 import type { FileMessage } from "./fileRequests";
-import { LaneSet } from "./lanes";
-import type { LaneStatusWire } from "./protocol";
+import { LaneSet } from "../lanes/lanes";
+import type { LaneStatusWire } from "../stream/protocol";
 
 /** A lane's Ready status: a Car option on by default and a Bus option off. */
 export const READY: Extract<LaneStatusWire, { status: "Ready" }> = {

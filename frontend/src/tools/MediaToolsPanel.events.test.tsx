@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { EventDetailWire } from "../generated/api";
-import { unavailable } from "../playback/fakeFileAnswer";
+import { unavailable } from "../inspect/fakeFileAnswer";
 import { FRAME, fileEvent, mount, says, showEvents } from "./panelRig";
 
 beforeEach(() => vi.stubGlobal("ResizeObserver", undefined));

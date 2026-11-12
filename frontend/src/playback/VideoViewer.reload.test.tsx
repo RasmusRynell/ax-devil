@@ -6,7 +6,7 @@ import { viewing } from "../session/fakeViews";
 import { SessionProvider } from "../session/session";
 import { SessionStore } from "../session/store";
 import { videoFrame } from "./fakePlayback";
-import type { ClientMessage } from "./protocol";
+import type { ClientMessage } from "../stream/protocol";
 import {
   Viewer,
   answer,

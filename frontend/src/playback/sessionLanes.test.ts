@@ -1,10 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
 import type { SampleView } from "../present";
-import { catalogDocument, EMPTY, NONE } from "./fakeData";
-import { LANE_SETTINGS } from "./fakeOpened";
+import { catalogDocument, EMPTY, NONE } from "../stream/fakeData";
+import { LANE_SETTINGS } from "../lanes/fakeOpened";
 import { flush, opened, setup, type OpenedMessage } from "./fakePlayback";
-import type { ClientMessage, LaneInfo, LaneStatusWire } from "./protocol";
+import type { ClientMessage, LaneInfo, LaneStatusWire } from "../stream/protocol";
 
 const READY: LaneStatusWire = {
   status: "Ready",

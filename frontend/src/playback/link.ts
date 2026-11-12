@@ -1,7 +1,7 @@
 import { CommandRefused } from "../client/errors";
-import type { ClientMessage } from "./protocol";
+import type { ClientMessage } from "../stream/protocol";
 import { RETRY_MS, type SessionDeps } from "./sessionDeps";
-import type { Connection, Incoming } from "./wire";
+import type { Connection, Incoming } from "../stream/wire";
 
 type Open = Extract<ClientMessage, { type: "Open" }>;
 

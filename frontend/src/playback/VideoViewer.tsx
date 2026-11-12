@@ -13,19 +13,19 @@ import {
 import { useSettings } from "../client/settings";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { usePaneBudget } from "./budget";
-import { connectWorker } from "./connect";
-import type { LaneSettings } from "./contract";
-import { FRESH_MEMORY, type InspectorMemory } from "./fields";
-import { savedDefaults } from "./lanes";
+import { connectWorker } from "../stream/connect";
+import type { LaneSettings } from "../lanes/contract";
+import { FRESH_MEMORY, type InspectorMemory } from "../inspect/fields";
+import { savedDefaults } from "../lanes/lanes";
 import { Playback } from "./PlaybackPane";
 import { Status } from "./PlaybackStatus";
 import { leave, take } from "./reloadHandoff";
 import type { PreparedEntry } from "./nextEntry";
 import { PlaybackSession } from "./session";
 import type { PlaybackIntent, ResumeState } from "./sessionDeps";
-import { useFileScopeOwner } from "./useFileScopeOwner";
+import { useFileScopeOwner } from "../inspect/useFileScopeOwner";
 import { useSharedViewport } from "./sharedViewport";
-import type { Connect } from "./wire";
+import type { Connect } from "../stream/wire";
 
 export { Status };
 

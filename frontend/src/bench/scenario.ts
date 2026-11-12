@@ -1,6 +1,6 @@
 /** One scenario: a real `VideoRenderer` on a canvas, driven at a 30 fps cadence by animation frames. */
 
-import type { Viewport } from "../playback/contract";
+import type { Viewport } from "../lanes/contract";
 import { type LaneCell, VideoRenderer } from "../playback/renderer";
 import { FIT, ZOOM_STEP } from "../playback/viewport";
 import { clearProbe, installProbes, probe } from "./probes";

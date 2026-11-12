@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { LaneFrame } from "./contract";
+import type { LaneFrame } from "../lanes/contract";
 import { FrameFields } from "./frameFields";
-import type { ClientMessage, ServerMessage } from "./protocol";
+import type { ClientMessage, ServerMessage } from "../stream/protocol";
 
 const after = (run: () => void, ms: number) => {
   const timer = setTimeout(run, ms);

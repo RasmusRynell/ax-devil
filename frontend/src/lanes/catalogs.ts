@@ -1,7 +1,7 @@
 /** The catalogs a session has asked the backend for, compiled once per id and shared by every lane that uses them. */
 
 import { compileCatalog, locate, type CompiledCatalog, type Diagnostic } from "../present";
-import type { CatalogInfoWire } from "./protocol";
+import type { CatalogInfoWire } from "../stream/protocol";
 
 /** How many diagnostics of a failed compile the lane's notice lists. */
 const SHOWN_DIAGNOSTICS = 5;
