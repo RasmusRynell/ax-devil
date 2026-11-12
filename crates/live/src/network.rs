@@ -388,8 +388,8 @@ pub fn request_from_settings(
     })
 }
 
-/// Starts the scan the app makes by itself at launch when `scan.on_startup` is on: at a quarter of the load, finding
-/// hosts and never signing in, since nothing is sent to a host the user has not started a scan for.
+/// Starts a scan at a quarter of the load when `scan.on_startup` is on, using the same saved sign-in setting and
+/// logins as a manual scan.
 pub fn scan_on_startup(network: &Arc<Network>, state: &settings::State) {
     let on = state
         .stored("scan.on_startup")
@@ -400,10 +400,7 @@ pub fn scan_on_startup(network: &Arc<Network>, state: &settings::State) {
     }
     match request_from_settings(state, None, None, ScanLoad::Startup) {
         Ok(request) => {
-            network.rescan(ScanRequest {
-                logins: Vec::new(),
-                ..request
-            });
+            network.rescan(request);
         }
         Err(error) => tracing::warn!("The scan at launch cannot start: {}", error.reason),
     }

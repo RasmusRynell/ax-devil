@@ -28,9 +28,9 @@ started: a viewer was opened for the host in this run. A hover or a poll asks a 
 
 ## Network (MUST)
 
-- Network scan sends no credentials until a device answered as Axis; then only over the identifying protocol, as
-  HTTP Digest (`device_discovery/network_scan.py`). The startup scan runs at reduced load, can be turned off and
-  signs in to nothing: only a scan the user starts does.
+- Network scan sends no credentials until a device answered as Axis; then only over the identifying protocol,
+  as HTTP Digest (`device_discovery/network_scan.py`). The startup scan runs at reduced load, can be turned off and
+  signs in with the saved logins when `scan.sign_in` is on, as the Python app does.
 - DataHub: Digest before Basic; a rejected Digest never falls back to Basic; redirects rejected; no automatic
   HTTPS-to-HTTP fallback (`data_sources/README.md#live-transports`). Certificate verification: D12.
 - Device API defaults to HTTPS. No telemetry. Regular tests never use the network.

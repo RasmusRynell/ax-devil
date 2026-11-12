@@ -479,8 +479,7 @@ pub const TABLE: &[Setting] = &[
     },
     Setting {
         key: "scan.sign_in",
-        // Whether a scan the user starts signs in to a device that answered as an Axis camera; the scan at launch
-        // never does.
+        // Whether a scan signs in to a device that answered as an Axis camera, the scan at launch included.
         kind: Kind::Bool { default: true },
         label: "Try to sign in to found cameras by default",
         page: Some("Network scan"),
