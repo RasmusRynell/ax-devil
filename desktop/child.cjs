@@ -31,6 +31,7 @@ function observe(child, { signal: interrupt = "SIGINT", graceMs = BACKEND_INTERR
   };
   return {
     done,
+    ended: () => ended,
     signal,
     after,
     stop() {

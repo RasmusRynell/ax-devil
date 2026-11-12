@@ -4,6 +4,7 @@ const path = require("node:path");
 const { promisify } = require("node:util");
 const { SMOKE_ROOT, settled, frames, page, until } = require("./smoke-kit.cjs");
 const execute = promisify(execFile);
+const { shortcutInput } = require("./shortcut-input.cjs");
 const { observe } = require("./child.cjs");
 
 async function input(action, ...values) {
@@ -19,6 +20,12 @@ async function input(action, ...values) {
   } catch (cause) {
     throw new Error(`Private X11 input ${action} failed (5 second limit)`, { cause });
   }
+}
+
+// Native key events use the same portable chord mapper as renderer smoke input.
+async function pressShortcut(chord) {
+  const { keyCode, modifiers } = shortcutInput(chord);
+  await input("key", keyCode, ...modifiers);
 }
 
 async function point(window, selector) {
@@ -99,4 +106,4 @@ async function withUnfocused(window, work) {
     }
   }
 }
-module.exports = { input, point, drag, focus, withUnfocused };
+module.exports = { input, pressShortcut, point, drag, focus, withUnfocused };

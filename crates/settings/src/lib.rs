@@ -14,6 +14,7 @@ mod access;
 mod env;
 mod expand;
 mod file;
+mod identity;
 mod kind;
 mod load;
 mod migrate;

@@ -1,14 +1,12 @@
-const { app } = require("electron");
-const { spawn, execFile } = require("node:child_process");
-const { promisify } = require("node:util");
+const { app, desktopCapturer, screen } = require("electron");
+const { spawn } = require("node:child_process");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const assert = require("node:assert/strict");
 const { observe } = require("./child.cjs");
 const { until, SCREENSHOTS } = require("./smoke-kit.cjs");
-const { input } = require("./smoke-x11.cjs");
-const execute = promisify(execFile);
+const { input, pressShortcut } = require("./smoke-x11.cjs");
 
 module.exports.run = async ({ window }) => {
   window.hide();
@@ -29,7 +27,13 @@ module.exports.run = async ({ window }) => {
       const result = path.join(folder, `result-${theme}`);
       const child = spawn(
         process.execPath,
-        [app.getAppPath(), "--ozone-platform=x11", "--smoke-test", "--config", config],
+        [
+          ...(app.isPackaged ? [] : [app.getAppPath()]),
+          "--ozone-platform=x11",
+          "--smoke-test",
+          "--config",
+          config,
+        ],
         {
           env: {
             ...process.env,
@@ -59,11 +63,18 @@ module.exports.run = async ({ window }) => {
           async () => (await input("error-dialog")).trim() === "ready",
           "native startup error dialog without a main window",
         );
-        await execute("import", [
-          "-window",
-          "root",
+        const sources = await desktopCapturer.getSources({
+          types: ["screen"],
+          thumbnailSize: screen.getPrimaryDisplay().size,
+        });
+        assert.ok(
+          sources.length && !sources[0].thumbnail.isEmpty(),
+          "private display capture contains the native dialog",
+        );
+        await fs.writeFile(
           path.join(SCREENSHOTS, `start-error-${theme}.png`),
-        ]);
+          sources[0].thumbnail.toPNG(),
+        );
         assert.ok(
           !errors.includes("MUST-NOT-REACH-DIALOG"),
           "startup diagnostics do not expose credentials",
@@ -72,7 +83,7 @@ module.exports.run = async ({ window }) => {
           async () => (await input("focus-error-dialog")).trim() === "ready",
           "startup error dialog to own X11 focus before Enter",
         );
-        await input("enter");
+        await pressShortcut("Enter");
         let timer;
         const exited = await Promise.race([
           lifecycle.done,

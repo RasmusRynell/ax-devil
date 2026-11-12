@@ -1,6 +1,6 @@
 //! What both backends start from: the services their routes are adapters over, the stop signal, and the quit.
 
-use super::catalog_folder;
+use super::{StartError, catalog_folder};
 use crate::paths::Paths;
 use ax_devil::{
     AppState,
@@ -179,10 +179,11 @@ impl Services {
         plugins: Arc<Plugins>,
         launch: Option<Launch>,
         interrupt: &Interrupt,
-    ) -> Result<Self, Box<dyn Error>> {
+    ) -> Result<Self, StartError> {
         let stop = interrupt.stop.clone();
-        let settings = Arc::new(settings::Settings::load(&paths.config_file)?);
-        settings.validate_storage()?;
+        let settings =
+            Arc::new(settings::Settings::load(&paths.config_file).map_err(StartError::Settings)?);
+        settings.validate_storage().map_err(StartError::Settings)?;
         tracing::info!("Loaded settings from {}", paths.config_file.display());
         let cache_dir = paths.cache_dir(settings.state().folder("storage.cache_dir"));
         tracing::info!("Caching in {}", cache_dir.display());

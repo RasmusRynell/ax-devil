@@ -71,14 +71,11 @@ fn lan_ip() -> Option<IpAddr> {
 }
 
 /// Development builds serve no frontend, so a browser on another machine would get nothing from them.
-pub fn refuse_development_build() -> Result<(), String> {
+pub fn refuse_development_build() -> Result<(), &'static str> {
     if cfg!(feature = "embed-assets") {
         Ok(())
     } else {
-        Err(
-            "this development build serves no frontend; run `make build` for the release build"
-                .into(),
-        )
+        Err("this development build serves no frontend; run `make build` for the release build")
     }
 }
 
@@ -193,7 +190,7 @@ impl ShareListener {
         if let Some(base) = self.base() {
             return Ok(base);
         }
-        refuse_development_build().map_err(ShareError)?;
+        refuse_development_build().map_err(|reason| ShareError(reason.to_owned()))?;
         let listener = tokio::net::TcpListener::bind(self.address)
             .await
             .map_err(|error| ShareError(format!("cannot listen on {}: {error}", self.address)))?;

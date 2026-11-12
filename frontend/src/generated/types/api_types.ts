@@ -37,7 +37,11 @@ owner: boolean,
 /**
  * Whether the caller is an Owner with Full access.
  */
-fullAccess: boolean, };
+fullAccess: boolean, 
+/**
+ * Opaque SHA-256 identity of the settings file saves replace (canonical parent, final name unchanged); only an Owner with Full access receives it.
+ */
+configIdentity?: string, };
 
 /**
  * A login of the `scan.logins` setting as a client sends it, in the list that is saved whole and in order. With an

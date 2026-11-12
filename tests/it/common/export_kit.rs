@@ -289,7 +289,8 @@ pub fn can_export() -> bool {
     static READY: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
     let desktop = Path::new(env!("CARGO_MANIFEST_DIR")).join("desktop");
     let ready = READY.get_or_init(|| {
-        ax_devil::desktop::electron(&desktop)?;
+        ax_devil::desktop::electron(&desktop)
+            .map_err(|path| ax_devil::desktop::missing_electron(&path))?;
         ax_devil::desktop::render_page(&desktop)?;
         ax_devil::desktop::catalog_checker(&desktop)?;
         // SAFETY: this runs once, before any test of the binary starts a backend or a page; the other tests'

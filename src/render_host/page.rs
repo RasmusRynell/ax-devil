@@ -147,7 +147,8 @@ impl Drop for Page {
 /// The spawner of the real page: Electron running the desktop folder's renderer (`render.cjs`) offscreen with no
 /// display.
 pub(super) fn electron(desktop: &Path) -> Result<Spawn, RenderError> {
-    let electron = desktop::electron(desktop).map_err(RenderError::new)?;
+    let electron = desktop::electron(desktop)
+        .map_err(|path| RenderError::new(desktop::missing_electron(&path)))?;
     desktop::render_page(desktop).map_err(RenderError::new)?;
     let desktop = desktop.to_path_buf();
     Ok(Box::new(move |graphics, handshake| {

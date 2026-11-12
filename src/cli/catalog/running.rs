@@ -31,7 +31,7 @@ async fn save_at(catalog: &Path, home: &Home, port: u16) -> Result<Report, Strin
             "Cannot use the backend at {base}; no settings file was written. Check PORT and the running app."
         )
     };
-    let Some((status, info)) = request(port, "GET", "/api/info", Value::Null).await? else {
+    let Some(mut backend) = Backend::connect(port).await? else {
         // As in the shell, this is a point-in-time port probe, not a cross-process lock.
         let mut report = manage::use_catalog(home, catalog)?;
         if report.ok {
@@ -41,6 +41,7 @@ async fn save_at(catalog: &Path, home: &Home, port: u16) -> Result<Report, Strin
         }
         return Ok(report);
     };
+    let (status, info) = backend.request("GET", "/api/info", Value::Null).await?;
     if status != 200
         || info["app"] != "ax-devil"
         || info["api"] != api_types::api_version()
@@ -51,6 +52,20 @@ async fn save_at(catalog: &Path, home: &Home, port: u16) -> Result<Report, Strin
             "The backend at {base} is incompatible or refuses Owner access; no settings file was written."
         ));
     }
+    let requested = home.settings.identity();
+    if requested
+        .as_deref()
+        .is_none_or(|id| info["configIdentity"].as_str() != Some(id))
+    {
+        // Discovery sees only PORT. A different or unavailable identity takes the approved no-match file path.
+        let mut report = manage::use_catalog(home, catalog)?;
+        if report.ok {
+            report.text.push_str(
+                "Saved to the requested settings file (no matching local backend configuration).\n",
+            );
+        }
+        return Ok(report);
+    }
     let (stored, mut report) = manage::selection(home, catalog)?;
     let Some(stored) = stored else {
         return Ok(report);
@@ -60,9 +75,9 @@ async fn save_at(catalog: &Path, home: &Home, port: u16) -> Result<Report, Strin
     } else {
         &stored
     };
-    let (status, fresh) = request(port, "POST", "/api/catalogs/reload", json!({"id": id}))
-        .await?
-        .ok_or_else(failure)?;
+    let (status, fresh) = backend
+        .request("POST", "/api/catalogs/reload", json!({"id": id}))
+        .await?;
     if status != 200 {
         return Err(failure());
     }
@@ -74,14 +89,13 @@ async fn save_at(catalog: &Path, home: &Home, port: u16) -> Result<Report, Strin
         }
     }
     let revision = fresh["revision"].as_u64().ok_or_else(failure)?;
-    let (status, _) = request(
-        port,
-        "PATCH",
-        "/api/settings",
-        json!({"set": {DEFAULT_SETTING: stored}, "catalogRevision": revision}),
-    )
-    .await?
-    .ok_or_else(failure)?;
+    let (status, _) = backend
+        .request(
+            "PATCH",
+            "/api/settings",
+            json!({"set": {DEFAULT_SETTING: stored}, "catalogRevision": revision}),
+        )
+        .await?;
     if status != 200 {
         return Err(format!(
             "The backend at {base} refused the default catalog (HTTP {status}); no settings file was written."
@@ -93,52 +107,84 @@ async fn save_at(catalog: &Path, home: &Home, port: u16) -> Result<Report, Strin
     Ok(report)
 }
 
-// One bounded loopback request, with no credentials, proxies or redirects. Only connection refusal means absent.
-async fn request(
+// One pinned loopback connection for discovery and writes: a replacement process on PORT cannot receive a
+// PATCH intended for the backend whose configuration was checked. No credentials, proxies or redirects.
+struct Backend {
     port: u16,
-    method: &str,
-    path: &str,
-    body: Value,
-) -> Result<Option<(u16, Value)>, String> {
-    use http_body_util::{BodyExt, Full};
-    let fail =
-        || format!("Cannot reach the local backend on PORT={port}; no settings file was written.");
-    tokio::time::timeout(Duration::from_secs(5), async {
-        let stream = match tokio::net::TcpStream::connect(("127.0.0.1", port)).await {
-            Ok(stream) => stream,
-            Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => return Ok(None),
-            Err(_) => return Err(fail()),
-        };
-        let (mut sender, connection) =
-            hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream))
+    sender: hyper::client::conn::http1::SendRequest<http_body_util::Full<bytes::Bytes>>,
+    connection: tokio::task::JoinHandle<Result<(), hyper::Error>>,
+}
+
+impl Drop for Backend {
+    fn drop(&mut self) {
+        self.connection.abort();
+    }
+}
+
+impl Backend {
+    async fn connect(port: u16) -> Result<Option<Self>, String> {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let stream = match tokio::net::TcpStream::connect(("127.0.0.1", port)).await {
+                Ok(stream) => stream,
+                Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => {
+                    return Ok(None);
+                }
+                Err(_) => return Err(unreachable(port)),
+            };
+            let (sender, connection) =
+                hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream))
+                    .await
+                    .map_err(|_| unreachable(port))?;
+            Ok(Some(Self {
+                port,
+                sender,
+                connection: tokio::spawn(connection),
+            }))
+        })
+        .await
+        .map_err(|_| unreachable(port))?
+    }
+
+    async fn request(
+        &mut self,
+        method: &str,
+        path: &str,
+        body: Value,
+    ) -> Result<(u16, Value), String> {
+        use http_body_util::{BodyExt, Full};
+        let port = self.port;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let payload = if body.is_null() {
+                String::new()
+            } else {
+                body.to_string()
+            };
+            let sent = hyper::Request::builder()
+                .method(method)
+                .uri(path)
+                .header("host", format!("127.0.0.1:{port}"))
+                .header("content-type", "application/json")
+                .body(Full::new(bytes::Bytes::from(payload)))
+                .map_err(|_| unreachable(port))?;
+            let response = self
+                .sender
+                .send_request(sent)
                 .await
-                .map_err(|_| fail())?;
-        let connection = tokio::spawn(connection);
-        let payload = if body.is_null() {
-            String::new()
-        } else {
-            body.to_string()
-        };
-        let sent = hyper::Request::builder()
-            .method(method)
-            .uri(path)
-            .header("host", format!("127.0.0.1:{port}"))
-            .header("content-type", "application/json")
-            .body(Full::new(bytes::Bytes::from(payload)))
-            .map_err(|_| fail())?;
-        let response = sender.send_request(sent).await.map_err(|_| fail())?;
-        let status = response.status().as_u16();
-        // Bound untrusted replies from an incompatible process on the expected local port.
-        let body = http_body_util::Limited::new(response.into_body(), 4 * 1024 * 1024)
-            .collect()
-            .await
-            .map_err(|_| fail())?
-            .to_bytes();
-        drop(sender);
-        connection.abort();
-        let value = serde_json::from_slice(&body).map_err(|_| fail())?;
-        Ok(Some((status, value)))
-    })
-    .await
-    .map_err(|_| fail())?
+                .map_err(|_| unreachable(port))?;
+            let status = response.status().as_u16();
+            let body = http_body_util::Limited::new(response.into_body(), 4 * 1024 * 1024)
+                .collect()
+                .await
+                .map_err(|_| unreachable(port))?
+                .to_bytes();
+            let value = serde_json::from_slice(&body).map_err(|_| unreachable(port))?;
+            Ok((status, value))
+        })
+        .await
+        .map_err(|_| unreachable(port))?
+    }
+}
+
+fn unreachable(port: u16) -> String {
+    format!("Cannot reach the local backend on PORT={port}; no settings file was written.")
 }

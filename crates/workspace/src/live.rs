@@ -393,17 +393,14 @@ impl LiveRecipe {
             let Some(decoder) = handlers.decoder(handler) else {
                 return Err(UserError::new(
                     ErrorCode::UnknownHandler,
-                    format!("Unknown live overlay handler type: {handler}"),
+                    "Unknown live overlay handler type. List them with: ax-devil list-handlers",
                 )
                 .at(Location::field("handler")));
             };
             if !decoder.reads_live() {
                 return Err(invalid(
                     "handler",
-                    format!(
-                        "{} cannot decode a live overlay; select another handler type.",
-                        decoder.spec().name
-                    ),
+                    "This handler cannot decode a live overlay; select another handler type.",
                 ));
             }
         }

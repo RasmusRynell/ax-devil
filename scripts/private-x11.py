@@ -101,14 +101,20 @@ try:
                 return found
             return False
         print("ready" if find(x.XDefaultRootWindow(display)) else "waiting")
-    elif action == "enter":
+    elif action == "key":
         x.XStringToKeysym.argtypes = [c.c_char_p]
         x.XStringToKeysym.restype = c.c_ulong
         x.XKeysymToKeycode.argtypes = [c.c_void_p, c.c_ulong]
         xt.XTestFakeKeyEvent.argtypes = [c.c_void_p, c.c_uint, c.c_int, c.c_ulong]
-        key = x.XKeysymToKeycode(display, x.XStringToKeysym(b"Return"))
-        xt.XTestFakeKeyEvent(display, key, True, 20)
-        xt.XTestFakeKeyEvent(display, key, False, 20)
+        names = {"Enter": "Return", "control": "Control_L", "meta": "Super_L", "alt": "Alt_L", "shift": "Shift_L"}
+        key, *modifiers = args
+        codes = [x.XKeysymToKeycode(display, x.XStringToKeysym(names.get(name, name).encode())) for name in [*modifiers, key]]
+        if not all(codes):
+            sys.exit("Private X11 shortcut contains an unknown key")
+        for code in codes:
+            xt.XTestFakeKeyEvent(display, code, True, 20)
+        for code in reversed(codes):
+            xt.XTestFakeKeyEvent(display, code, False, 20)
     elif action == "move":
         xt.XTestFakeMotionEvent(display, -1, int(args[0]), int(args[1]), 0)
     elif action in ("click", "double"):

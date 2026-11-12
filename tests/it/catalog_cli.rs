@@ -134,28 +134,127 @@ async fn catalog_cli_never_writes_around_a_running_backends_owner_refusal() {
 }
 
 #[test]
-fn invalid_storage_startup_prints_the_fix_and_exits_nonzero() {
+fn launch_reports_never_expose_expanded_defaults_and_storage_stays_actionable() {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
-    std::fs::write(&path, json!({"version": settings::VERSION, "settings": {"storage.cache_dir": "$P2_INVALID_STORAGE", "camera.password": "MUST-NOT-REACH-ERROR", "scan.on_startup": false}}).to_string()).unwrap();
+    for hand_off in [false, true] {
+        std::fs::write(
+            &path,
+            json!({"version": settings::VERSION, "settings": {
+                "camera.rtsp_handler": "$AX_TEST_SECRET", "scan.on_startup": false
+            }})
+            .to_string(),
+        )
+        .unwrap();
+        let mut launch = Command::new(env!("CARGO_BIN_EXE_ax-devil"));
+        launch.arg("--config").arg(&path);
+        if hand_off {
+            launch.arg("--hand-off");
+        }
+        launch
+            .args(["live", "--host", "127.0.0.1", "--overlay", "rtsp"])
+            .env("AX_TEST_SECRET", "AX-SYNTHETIC-SECRET")
+            .env("AX_DEVIL_EXIT_ON_STDIN_CLOSE", "1")
+            .env("PORT", "0");
+        let result = output(launch);
+        assert!(!result.status.success());
+        let stdout = String::from_utf8_lossy(&result.stdout);
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(!stdout.contains("AX-SYNTHETIC-SECRET"), "{stdout}");
+        assert!(!stderr.contains("AX-SYNTHETIC-SECRET"), "{stderr}");
+        assert!(
+            format!("{stdout}{stderr}").contains("handler: Unknown live overlay handler type.")
+        );
+    }
+    std::fs::write(
+        &path,
+        json!({"version": settings::VERSION, "settings": {
+            "storage.cache_dir": "$AX_TEST_UNSET", "scan.on_startup": false
+        }})
+        .to_string(),
+    )
+    .unwrap();
     let mut launch = Command::new(env!("CARGO_BIN_EXE_ax-devil"));
     launch
         .arg("--config")
         .arg(&path)
         .args(["live", "--host", "127.0.0.1"])
+        .env("AX_DEVIL_EXIT_ON_STDIN_CLOSE", "1")
         .env("PORT", "0")
-        .env_remove("P2_INVALID_STORAGE");
+        .env_remove("AX_TEST_UNSET");
     let result = output(launch);
     assert!(!result.status.success());
-    let reason = String::from_utf8_lossy(&result.stderr);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    let payload = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("ax-devil-error: "))
+        .unwrap();
+    let reason: String = serde_json::from_str(payload).unwrap();
     for text in [
-        "Invalid storage directory",
         "storage.cache_dir",
-        "P2_INVALID_STORAGE",
+        "$AX_TEST_UNSET",
         "Change",
         path.to_str().unwrap(),
     ] {
         assert!(reason.contains(text), "{reason}");
     }
-    assert!(!reason.contains("MUST-NOT-REACH-ERROR"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn catalog_cli_changes_only_the_requested_configuration() {
+    let backend = Backend::start().await;
+    let a = backend.state.settings.path();
+    backend
+        .state
+        .settings
+        .update("scan.on_startup", |_| Some(json!(false)))
+        .unwrap();
+    let before = std::fs::read(a).unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    let b = folder.path().join("settings.json");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(a, &b).unwrap();
+    #[cfg(not(unix))]
+    std::fs::write(&b, json!({"version": settings::VERSION}).to_string()).unwrap();
+    let result = output(command(&b, backend.address.port()));
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(
+        std::fs::read(a).unwrap(),
+        before,
+        "a different backend must not receive the write"
+    );
+    assert_eq!(
+        settings::Settings::load(&b)
+            .unwrap()
+            .state()
+            .resolved("overlays.default_catalog"),
+        Some(json!("built-in:tracking"))
+    );
+    #[cfg(unix)]
+    let alias_parent = folder.path().join("alias-parent");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(a.parent().unwrap(), &alias_parent).unwrap();
+    #[cfg(unix)]
+    let alias = alias_parent.join(a.file_name().unwrap());
+    #[cfg(not(unix))]
+    let alias = a.parent().unwrap().join(".").join(a.file_name().unwrap());
+    let result = output(command(&alias, backend.address.port()));
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(String::from_utf8_lossy(&result.stdout).contains("running local backend"));
+    assert_eq!(
+        backend
+            .state
+            .settings
+            .state()
+            .resolved("overlays.default_catalog"),
+        Some(json!("built-in:tracking"))
+    );
 }

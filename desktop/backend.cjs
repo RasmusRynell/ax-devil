@@ -55,10 +55,12 @@ function startProcess(executable, args, env, onExit, { onSpawn = () => {}, spawn
       clearTimeout(timer);
       reject(error);
     });
-    child.once("exit", (code, signal) => {
-      if (ready) {
-        clearTimeout(timer);
-        onExit(code ?? signal);
+    void lifecycle.done.then(({ code, signal, error }) => {
+      clearTimeout(timer);
+      if (ready) onExit(code ?? signal ?? error);
+      else {
+        // Give already queued stdout one turn to deliver its final reason, without awaiting inherited pipes.
+        setImmediate(() => reject(new Error(startReason ?? "Backend stopped during startup")));
       }
     });
     // Exit may precede the last stdout data. Close follows both pipes, so the start reason has arrived.
@@ -77,16 +79,12 @@ function startProcess(executable, args, env, onExit, { onSpawn = () => {}, spawn
         return;
       }
       const match = /^ax-devil: (http:\/\/127\.0\.0\.1:\d+)/.exec(line);
-      if (match) {
+      if (match && !lifecycle.ended()) {
         clearTimeout(timer);
         ready = true;
         resolve({ child, lifecycle, origin: match[1] });
       }
     });
-    if (child.exitCode != null || child.signalCode != null) {
-      clearTimeout(timer);
-      reject(new Error(startReason ?? "Backend stopped during startup"));
-    }
     onSpawn(child, lifecycle);
   });
 }
