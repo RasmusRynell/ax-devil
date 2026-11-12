@@ -1,4 +1,4 @@
-//! Preference recovery and service-startup validation of storage roots; device appearance belongs to the frontend.
+//! Preference recovery and storage validation; device appearance belongs to the frontend.
 
 use crate::{Error, Setting, Settings, file};
 use serde_json::{Value, json};
@@ -64,8 +64,17 @@ fn storage(
 impl Settings {
     /// Refuses unusable storage roots before starting services; independent commands can load settings without using them.
     pub fn validate_storage(&self) -> Result<(), Error> {
+        self.validate_storage_where(is_storage)
+    }
+
+    /// Refuses an unusable cache root before an operation uses it, without requiring unrelated storage.
+    pub fn validate_cache_storage(&self) -> Result<(), Error> {
+        self.validate_storage_where(|setting| setting.key == "storage.cache_dir")
+    }
+
+    fn validate_storage_where(&self, include: impl Fn(&Setting) -> bool) -> Result<(), Error> {
         let state = self.state();
-        for setting in state.rows().filter(|setting| is_storage(setting)) {
+        for setting in state.rows().filter(|setting| include(setting)) {
             let raw = &state.values[setting.key];
             storage(setting, raw, &*state.lookup)
                 .map_err(|reason| file::fail(self.path(), format!("{}: {reason}", setting.key)))?;

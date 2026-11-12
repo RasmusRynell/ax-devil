@@ -204,15 +204,13 @@ pub async fn run() -> ExitCode {
     if global.hand_off {
         return hand_off(global, command, &plugins);
     }
-    // This dispatch separates independent utilities from service launches. Services::start owns storage validation.
+    // Services validate their storage at startup; cache clearing validates only the cache it selects.
     match command {
         Some(Command::ListHandlers) => {
             catalog::Report::listing(&plugins.handlers(), &plugins.info()).print()
         }
         Some(Command::ClearCache { force, scope }) => {
-            let folder = settings_folder(global, |paths, settings| {
-                paths.cache_dir(settings.state().folder("storage.cache_dir"))
-            });
+            let folder = cache_folder(global);
             clear_cache::run(folder, scope, force)
         }
         Some(Command::Plugins(command)) => plugins::run(command, plugins).await.print(),
@@ -231,11 +229,8 @@ pub async fn run() -> ExitCode {
     }
 }
 
-/// A folder that depends on the settings file: resolves the paths of `global`, loads the settings and applies `pick`.
-fn settings_folder(
-    global: Global,
-    pick: impl FnOnce(&Paths, &settings::Settings) -> PathBuf,
-) -> Result<PathBuf, String> {
+/// The cache to clear, validating the selected cache root before it can fall back to another location.
+fn cache_folder(global: Global) -> Result<PathBuf, String> {
     let paths = Paths::resolve(
         &|name| std::env::var_os(name),
         global.config,
@@ -243,7 +238,9 @@ fn settings_folder(
     )?;
     let settings =
         settings::Settings::load(&paths.config_file).map_err(|error| error.to_string())?;
-    Ok(pick(&paths, &settings))
+    paths
+        .cache_to_clear(&settings)
+        .map_err(|error| error.to_string())
 }
 
 /// Starts what `command` asks for: the desktop backend, `serve` or the shell.

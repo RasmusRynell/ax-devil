@@ -61,6 +61,18 @@ impl Paths {
         chosen.unwrap_or_else(|| self.default_cache_dir.clone())
     }
 
+    /// The cache selected for clearing: an explicit override, otherwise the validated cache setting or its default.
+    pub fn cache_to_clear(
+        &self,
+        settings: &settings::Settings,
+    ) -> Result<PathBuf, settings::Error> {
+        if let Some(folder) = &self.cache_override {
+            return Ok(folder.clone());
+        }
+        settings.validate_cache_storage()?;
+        Ok(self.cache_dir(settings.state().folder("storage.cache_dir")))
+    }
+
     /// The folder of the user's render catalogs: the `storage.catalog_dir` setting (`setting`), else the standard
     /// folder. The folder need not exist, and nothing creates it.
     pub fn catalog_dir(&self, setting: Option<PathBuf>) -> PathBuf {

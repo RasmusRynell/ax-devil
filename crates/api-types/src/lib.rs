@@ -55,7 +55,7 @@ pub struct AppInfo {
     pub owner: bool,
     /// Whether the caller is an Owner with Full access.
     pub full_access: bool,
-    /// Opaque SHA-256 identity of the settings file saves replace (canonical parent, final name unchanged); only an Owner with Full access receives it.
+    /// Opaque SHA-256 identity of the settings file saves replace (nearest existing ancestor canonicalized, remaining names unchanged); only an Owner with Full access receives it.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub config_identity: Option<String>,

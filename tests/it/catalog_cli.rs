@@ -1,4 +1,4 @@
-//! CLI default persistence across a running backend's later saves.
+//! CLI settings ownership and startup/cache refusals.
 use crate::common::Backend;
 use serde_json::{Value, json};
 use std::{path::Path, process::Command};
@@ -256,5 +256,115 @@ async fn catalog_cli_changes_only_the_requested_configuration() {
             .state()
             .resolved("overlays.default_catalog"),
         Some(json!("built-in:tracking"))
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn catalog_cli_updates_the_owner_before_the_configuration_folder_exists() {
+    let folder = tempfile::tempdir().unwrap();
+    let config_home = folder.path().join("not-yet-created/config");
+    let path = config_home.join("ax-devil/settings.json");
+    let backend = Backend::start_with(
+        false,
+        ax_devil::plugins::Plugins::fixed(handlers::Handlers::built_in()),
+        |state| state.settings = std::sync::Arc::new(settings::Settings::load(&path).unwrap()),
+    )
+    .await;
+    assert!(!config_home.exists());
+    let mut launch = Command::new(env!("CARGO_BIN_EXE_ax-devil"));
+    launch
+        .args(["catalog", "use", "built-in:tracking"])
+        .env("XDG_CONFIG_HOME", &config_home)
+        .env("PORT", backend.address.port().to_string());
+    let result = output(launch);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    backend
+        .state
+        .settings
+        .update("playback.prepare_next_video", |_| Some(json!(true)))
+        .unwrap();
+    let disk: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(
+        disk["settings"]["overlays.default_catalog"], "built-in:tracking",
+        "the first-launch CLI choice must survive the owner's next save"
+    );
+    assert!(String::from_utf8_lossy(&result.stdout).contains("running local backend"));
+}
+
+#[test]
+fn clearing_invalid_cache_storage_refuses_without_touching_the_standard_cache() {
+    let folder = tempfile::tempdir().unwrap();
+    let path = folder.path().join("settings.json");
+    let xdg_cache = folder.path().join("cache");
+    let protected = xdg_cache.join("ax-devil/frame-index/keep.axidx");
+    std::fs::create_dir_all(protected.parent().unwrap()).unwrap();
+    std::fs::write(&protected, "standard cache must survive").unwrap();
+    let command = |override_folder: Option<&Path>| {
+        let mut launch = Command::new(env!("CARGO_BIN_EXE_ax-devil"));
+        launch.args(["clear-cache", "--config"]).arg(&path);
+        if let Some(folder) = override_folder {
+            launch.arg("--cache-dir").arg(folder);
+        }
+        launch
+            .arg("--force")
+            .env("XDG_CACHE_HOME", &xdg_cache)
+            .env_remove("AX_TEST_BAD_CACHE")
+            .env_remove("AX_TEST_BAD_CATALOG")
+            .current_dir(folder.path());
+        launch
+    };
+    for value in [
+        json!("relative-cache"),
+        json!(42),
+        json!("$AX_TEST_BAD_CACHE"),
+    ] {
+        std::fs::write(
+            &path,
+            json!({"version": settings::VERSION, "settings": {
+                "storage.cache_dir": value, "storage.catalog_dir": "$AX_TEST_BAD_CATALOG"
+            }})
+            .to_string(),
+        )
+        .unwrap();
+        let result = output(command(None));
+        assert!(
+            !result.status.success(),
+            "invalid cache storage must refuse clear-cache"
+        );
+        let reason = String::from_utf8_lossy(&result.stderr);
+        for text in [
+            "storage.cache_dir",
+            "Invalid storage directory",
+            "Change",
+            path.to_str().unwrap(),
+        ] {
+            assert!(reason.contains(text), "{reason}");
+        }
+        assert_eq!(
+            std::fs::read_to_string(&protected).unwrap(),
+            "standard cache must survive"
+        );
+    }
+    let explicit = folder.path().join("explicit-cache");
+    let removed = explicit.join("frame-index/remove.axidx");
+    std::fs::create_dir_all(removed.parent().unwrap()).unwrap();
+    std::fs::write(&removed, "explicitly selected cache").unwrap();
+    let result = output(command(Some(&explicit)));
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(
+        !removed.exists(),
+        "an explicit override selects the cache to clear"
+    );
+    assert!(
+        protected.exists(),
+        "the standard cache is never an invalid-setting fallback"
     );
 }

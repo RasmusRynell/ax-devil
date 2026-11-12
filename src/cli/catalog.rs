@@ -47,7 +47,8 @@ pub enum CatalogCommand {
     /// Make a catalog the default for new lanes: `built-in:<name>`, `user:<file name>`, or a file in the catalog folder.
     ///
     /// A catalog that is not built in is checked first; it must be one the folder lists. Uses the local backend on
-    /// $PORT (default 7330) when it owns this configuration; otherwise writes the requested settings file. A refusal never falls back to disk.
+    /// $PORT (default 7330) when its configuration identity matches; writes the file only for an absent or confirmed different backend.
+    /// A refusal never falls back to disk.
     Use {
         /// The catalog.
         #[arg(value_name = "CATALOG", value_hint = ValueHint::FilePath)]

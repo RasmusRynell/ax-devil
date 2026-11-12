@@ -39,7 +39,7 @@ owner: boolean,
  */
 fullAccess: boolean, 
 /**
- * Opaque SHA-256 identity of the settings file saves replace (canonical parent, final name unchanged); only an Owner with Full access receives it.
+ * Opaque SHA-256 identity of the settings file saves replace (nearest existing ancestor canonicalized, remaining names unchanged); only an Owner with Full access receives it.
  */
 configIdentity?: string, };
 

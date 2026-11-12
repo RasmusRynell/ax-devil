@@ -4,7 +4,7 @@ use catalogs::DEFAULT_SETTING;
 use serde_json::{Value, json};
 use std::{path::Path, time::Duration};
 
-/// Saves through the backend on the shell's PORT, or to disk only if that port refuses a connection.
+/// Saves through a matching backend on the shell's PORT; only an absent or confirmed different backend permits a file write.
 pub async fn use_default(catalog: &Path, home: Result<Home, String>) -> Report {
     match save(catalog, home).await {
         Ok(report) => report,
@@ -52,12 +52,16 @@ async fn save_at(catalog: &Path, home: &Home, port: u16) -> Result<Report, Strin
             "The backend at {base} is incompatible or refuses Owner access; no settings file was written."
         ));
     }
-    let requested = home.settings.identity();
-    if requested
-        .as_deref()
-        .is_none_or(|id| info["configIdentity"].as_str() != Some(id))
-    {
-        // Discovery sees only PORT. A different or unavailable identity takes the approved no-match file path.
+    let unknown = || {
+        "Cannot establish configuration identity for the requested file or the running backend; no settings file was written. Check the configuration path and its parent folders.".to_owned()
+    };
+    let requested = home.settings.identity().ok_or_else(unknown)?;
+    let serving = info["configIdentity"]
+        .as_str()
+        .filter(|id| id.len() == 64 && id.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .ok_or_else(unknown)?;
+    if serving != requested {
+        // Discovery sees only PORT. Only a confirmed different configuration takes the no-match file path.
         let mut report = manage::use_catalog(home, catalog)?;
         if report.ok {
             report.text.push_str(
@@ -166,6 +170,8 @@ impl Backend {
                 .header("content-type", "application/json")
                 .body(Full::new(bytes::Bytes::from(payload)))
                 .map_err(|_| unreachable(port))?;
+            // Consuming a response body can wake this task before the connection dispatcher is ready again.
+            self.sender.ready().await.map_err(|_| unreachable(port))?;
             let response = self
                 .sender
                 .send_request(sent)
