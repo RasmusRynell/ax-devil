@@ -11,7 +11,7 @@ use sessions::{
 };
 use std::time::Duration;
 use tokio::time::{Instant, advance};
-use workspace::store::{DocCommand, Resolution};
+use workspace::store::{ContentGen, DocCommand, Resolution};
 use workspace::{ContentId, ItemId, LiveOverlay, LiveRecipe, Protocol, Recipe, Secret, Source};
 
 #[tokio::test(start_paused = true)]
@@ -177,15 +177,27 @@ async fn releasing_and_replacing_viewers_frees_grants_and_pending_tickets_at_the
     };
     assert_eq!(
         owner
-            .command(Command::ReleaseStreams(vec![ViewerId(8); 9]))
+            .command(Command::RequestTicket(key.clone(), vec![ViewerId(8); 9]))
             .err(),
         Some(Refusal::Invalid)
     );
-    let cancelled = ticket(9, vec![ViewerId(8)]);
-    owner
-        .command(Command::ReleaseStreams(vec![ViewerId(9)]))
-        .unwrap();
-    let last = ticket(10, vec![]);
+    // A stale successor must not roll back the predecessor's cleanup.
+    assert_eq!(
+        owner
+            .command(Command::RequestTicket(
+                ContentRef {
+                    viewer: ViewerId(9),
+                    generation: ContentGen(0),
+                    ..key.clone()
+                },
+                vec![ViewerId(8)]
+            ))
+            .err(),
+        Some(Refusal::ContentUnavailable)
+    );
+    assert_eq!(authority(&leases[7]), Authority::Revoked);
+    let cancelled = ticket(9, vec![]);
+    let last = ticket(10, vec![ViewerId(9)]);
     assert_eq!(authority(&leases[7]), Authority::Revoked);
     assert_eq!(
         rig.service.redeem(&cancelled).err(),

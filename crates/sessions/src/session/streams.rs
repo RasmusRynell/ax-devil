@@ -18,7 +18,7 @@ use tokio::time::Instant;
 /// How long a ticket can be redeemed.
 pub const TICKET_TTL: Duration = Duration::from_secs(10);
 /// The most streams (granted and still ticketed) one seat holds.
-const MAX_STREAMS_PER_SEAT: usize = 8;
+pub(super) const MAX_STREAMS_PER_SEAT: usize = 8;
 /// The most streams the whole session holds.
 const MAX_STREAMS_PER_SESSION: usize = 64;
 
@@ -115,10 +115,8 @@ pub(super) fn request(
     seat: SeatId,
     lease: Lease,
     key: ContentRef,
-    release: &[ViewerId],
     fresh: &Fresh,
 ) -> Result<(), Refusal> {
-    self::release(next, fx, seat, release)?;
     end(next, fx, seat, key.viewer);
     next.tickets.retain(|ticket| ticket.expires > fresh.now);
     if next.streams_of(seat) >= MAX_STREAMS_PER_SEAT

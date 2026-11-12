@@ -137,13 +137,9 @@ control: ControlCommand, } | { "type": "requestTicket",
  */
 key: ContentRef, 
 /**
- * Other viewers this seat releases before admission; at most eight.
+ * Other viewers this seat releases even when admission is refused; at most eight.
  */
-release: number[], } | { "type": "releaseStreams", 
-/**
- * The viewers whose streams this seat releases; at most eight.
- */
-viewers: number[], } | { "type": "workspace", 
+release: number[], } | { "type": "workspace", 
 /**
  * The change.
  */

@@ -84,8 +84,6 @@ pub enum Command {
     Control(Control),
     /// Ask for a ticket to receive a stream.
     RequestTicket(ContentRef, Vec<ViewerId>),
-    /// Release this seat's streams and tickets for the listed viewers.
-    ReleaseStreams(Vec<ViewerId>),
 }
 
 impl Command {
@@ -97,7 +95,6 @@ impl Command {
             Self::SetViewport { .. } | Self::SetOverlay { .. } => Use::Command(Scope::View),
             Self::Control(_) => Use::Command(Scope::Control),
             Self::RequestTicket(key, _) => Use::Stream(key),
-            Self::ReleaseStreams(_) => Use::Seat,
         }
     }
 }
@@ -171,10 +168,7 @@ pub(super) fn run(
         }
         Command::SetOverlay { overlay, shown } => set_overlay(next, seat, lease, overlay, shown),
         Command::Control(control) => self::control(next, control, fresh),
-        Command::ReleaseStreams(viewers) => streams::release(next, fx, seat, &viewers),
-        Command::RequestTicket(key, release) => {
-            streams::request(next, fx, seat, lease, key, &release, fresh)
-        }
+        Command::RequestTicket(key, _) => streams::request(next, fx, seat, lease, key, fresh),
     }
 }
 

@@ -1,13 +1,13 @@
 import type { ContentRef, SessionCommand } from "../generated/api";
 
-type Command = Extract<SessionCommand, { type: "requestTicket" | "releaseStreams" }>;
+type Command = Extract<SessionCommand, { type: "requestTicket" }>;
 type Queued = {
   key: ContentRef;
   resolve: (ticket: string) => void;
   reject: (reason: Error) => void;
 };
 
-/** A seat's admission lane: releases share its next ticket request or one end-of-task command. */
+/** A seat's admission lane: cleanup travels only on its next ticket request. */
 export class StreamRequests {
   #queued: Queued[] = [];
   #releasing = new Set<number>();
@@ -28,7 +28,6 @@ export class StreamRequests {
       return;
     }
     this.#releasing.add(viewer);
-    if (this.#releasing.size === 1) queueMicrotask(() => this.#releaseStreams());
   }
 
   /** Sends synchronously when online, consuming every pending release before the next request. */
@@ -44,15 +43,9 @@ export class StreamRequests {
     });
   }
 
-  #releaseStreams(): void {
-    if (!this.online() || this.#releasing.size === 0) return;
-    const viewers = [...this.#releasing];
+  /** A welcome rotates the lease, sweeping old streams before queued admissions resume. */
+  welcome(): void {
     this.#releasing.clear();
-    void this.ask({ type: "releaseStreams", viewers }).catch(() => undefined);
-  }
-
-  /** Sends queued requests in call order after welcome; releases were cancelled while offline. */
-  flush(): void {
     if (this.online())
       for (const { key, resolve, reject } of this.#queued.splice(0))
         void this.request(key).then(resolve, reject);

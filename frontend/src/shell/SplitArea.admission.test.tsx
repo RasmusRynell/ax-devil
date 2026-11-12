@@ -6,7 +6,7 @@ import type { SessionClientMessage } from "../generated/api";
 import type { LaneDisplay } from "../lanes/contract";
 import { opened, videoFrame } from "../playback/fakePlayback";
 import { flushFrames, installViewerHarness } from "../playback/videoViewerHarness";
-import { scenario } from "../session/fakeScenario";
+import { scenario, type Scenario } from "../session/fakeScenario";
 import { FakeSocket } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
 import { SessionProvider } from "../session/session";
@@ -27,7 +27,7 @@ vi.mock("../playback/VideoCanvas", () => ({
 }));
 installViewerHarness();
 
-async function setup() {
+async function setup(sharedItem = false) {
   const streams = new Set<number>();
   let requests = 0;
   let refusals = 0;
@@ -58,8 +58,6 @@ async function setup() {
       }
       if (message.type === "command") {
         commands++;
-        if (message.cmd.type === "releaseStreams")
-          for (const viewer of message.cmd.viewers) streams.delete(viewer);
       }
       if (message.type === "command" && message.cmd.type === "requestTicket") {
         for (const viewer of message.cmd.release) streams.delete(viewer);
@@ -117,17 +115,33 @@ async function setup() {
     </SessionProvider>,
   );
   await act(async () => {});
-  const scene = scenario("split");
+  const one = scenario("one-video");
+  const shared: Scenario = {
+    ...one,
+    steps: [
+      ...one.steps,
+      {
+        from: "reloaded",
+        command: { type: "workspace", command: { type: "new" } },
+        to: "empty",
+      },
+    ],
+    doc: (state, audience) =>
+      state === "empty" ? scenario("empty").doc() : one.doc(state, audience),
+  };
+  const scene = sharedItem ? shared : scenario("split");
   const room = FakeSocket.rooms.get("room-1")!;
   await act(async () => {
     store.setView((view) => ({
       ...view,
       ...viewing(
-        ..."abcdefgh".split("").map((key) => [scene.ids[key], { pinned: key !== "h" }] as const),
+        ..."abcdefgh"
+          .split("")
+          .map((key) => [scene.ids[sharedItem ? "a" : key], { pinned: key !== "h" }] as const),
       ),
       active: 8,
     }));
-    room.show(scene, "eight-open");
+    room.show(scene, sharedItem ? "changed-2" : "eight-open");
   });
   flushFrames();
   expect(streams.size).toBe(8);
@@ -183,4 +197,30 @@ it("reconnects eight viewers ready and paused with eight commands and no command
   expect(state.store.getSnapshot().connection).toBe("online");
   expect(screen.getAllByRole("slider", { name: "Timeline" })).toHaveLength(8);
   expect(screen.getAllByRole("button", { name: "Play" })).toHaveLength(8);
+}, 5000);
+
+it("reloading eight panes then New Workspace stays within the ten-command burst", async () => {
+  vi.useFakeTimers();
+  const state = await setup(true);
+  await act(() => vi.advanceTimersByTimeAsync(1000));
+  const before = state.commands;
+  fireEvent.click(screen.getAllByRole("button", { name: "Reload" })[0]);
+  await act(async () => {});
+  flushFrames();
+  expect(screen.getAllByRole("slider", { name: "Timeline" })).toHaveLength(8);
+  await act(() => state.store.command({ type: "workspace", command: { type: "new" } }));
+  expect(screen.queryAllByRole("slider", { name: "Timeline" })).toHaveLength(0);
+  expect(state.commands - before).toBe(10);
+  expect(state.limited).toBe(0);
+  expect(state.refusals).toBe(0);
+  expect(state.store.getSnapshot().connection).toBe("online");
+}, 5000);
+
+it("closing a pane with no successor sends no Session command", async () => {
+  const state = await setup(true);
+  const before = state.commands;
+  fireEvent.click(screen.getAllByRole("button", { name: "Close this pane" })[7]);
+  await act(async () => {});
+  expect(screen.getAllByRole("slider", { name: "Timeline" })).toHaveLength(7);
+  expect(state.commands).toBe(before);
 }, 5000);

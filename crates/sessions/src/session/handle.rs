@@ -4,6 +4,7 @@ use super::{
     Command, GrantId, Lease, Refusal, SeatId, SessionState, Ticket,
     roster::RosterEntry,
     service::{Service, apply},
+    streams::MAX_STREAMS_PER_SEAT,
     transition::{Fresh, Input, Outcome},
     views::View,
 };
@@ -105,7 +106,7 @@ impl<C: Clone + Send + 'static> Handle<C> {
         }
     }
 
-    /// Asks for `command` as this seat. A refusal changes nothing.
+    /// Asks for `command` as this seat. Carried releases commit even when admission is refused.
     pub fn command(&self, command: Command) -> Result<Reply, Refusal> {
         let fresh = Fresh::now();
         let ticket = Ticket(fresh.secret.clone());
@@ -116,8 +117,31 @@ impl<C: Clone + Send + 'static> Handle<C> {
             command,
             fresh,
         };
-        self.service
-            .locked(|sessions, deferred| apply(sessions, self.session, input, deferred))?;
+        self.service.locked(|sessions, deferred| {
+            if let Input::Command {
+                command: Command::RequestTicket(_, release),
+                ..
+            } = &input
+            {
+                if release.len() > MAX_STREAMS_PER_SEAT {
+                    return Err(Refusal::Invalid);
+                }
+                if !release.is_empty() {
+                    // Cleanup belongs to the current lease, independently of the successor's stream rights.
+                    let _ = apply(
+                        sessions,
+                        self.session,
+                        Input::ReleaseStreams {
+                            seat: self.seat,
+                            lease: self.lease,
+                            viewers: release.clone(),
+                        },
+                        deferred,
+                    );
+                }
+            }
+            apply(sessions, self.session, input, deferred)
+        })?;
         Ok(if wants_ticket {
             Reply::Ticket(ticket)
         } else {

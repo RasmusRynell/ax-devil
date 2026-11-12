@@ -333,8 +333,6 @@ export class FakeSocket {
   ) {
     const refuse = () =>
       this.emit({ type: "ack", seq, outcome: { status: "refused", code: "NotAllowed" } });
-    if (cmd.type === "releaseStreams")
-      return this.emit({ type: "ack", seq, outcome: { status: "ok" } });
     if (cmd.type === "requestTicket")
       return FakeSocket.refuseTickets
         ? refuse()

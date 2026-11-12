@@ -272,7 +272,7 @@ export class SessionStore {
     this.#name = null;
   }
 
-  /** Batches release with admission, or cancels a queued offline request for this viewer. */
+  /** Carries cleanup on the next admission, or cancels this viewer's queued offline request. */
   releaseStream(viewer: number): void {
     this.#streams.release(viewer);
   }
@@ -472,6 +472,7 @@ export class SessionStore {
       you: message.seat,
       seatings: this.#state.seatings + 1,
     };
+    this.#streams.welcome();
     this.#syncLeft = SYNC_BURST;
     this.#ping();
     this.#flush();
@@ -479,7 +480,6 @@ export class SessionStore {
   }
 
   #flush(): void {
-    this.#streams.flush();
     const pending = this.#pending;
     if (pending && pending.seq > this.#sent) {
       if (this.#connection?.send({ type: "view", seq: pending.seq, view: pending.view }))
