@@ -11,7 +11,7 @@ void test("a saved window survives a restart, and a missing file saves nothing",
     const file = path.join(folder, "window.json");
     assert.equal(readWindow(file), undefined);
     const saved = { x: 100, y: 40, width: 1000, height: 700, maximized: true };
-    writeWindow(file, saved);
+    assert.equal(writeWindow(file, saved), null);
     assert.deepEqual(readWindow(file), saved);
   } finally {
     fs.rmSync(folder, { recursive: true, force: true });
@@ -115,4 +115,22 @@ void test("bounds with the title bar off screen are moved into the display they 
     width: 1280,
     height: 600,
   });
+});
+
+void test("window persistence reports a refused non-regular target without touching it", (t) => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "ax-window-safe-"));
+  t.after(() => fs.rmSync(folder, { recursive: true, force: true }));
+  const file = path.join(folder, "window.json");
+  fs.mkdirSync(file);
+  assert.match(writeWindow(file, {}), /regular file/);
+  assert.deepEqual(fs.readdirSync(folder), ["window.json"]);
+  if (process.platform !== "win32") {
+    fs.rmdirSync(file);
+    const target = path.join(folder, "unrelated");
+    fs.writeFileSync(target, "untouched", { mode: 0o600 });
+    fs.symlinkSync(target, file);
+    assert.match(writeWindow(file, {}), /regular file/);
+    assert.equal(fs.readFileSync(target, "utf8"), "untouched");
+    assert.equal(fs.statSync(target).mode & 0o777, 0o600);
+  }
 });

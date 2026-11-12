@@ -211,11 +211,17 @@ function installIpc({ connect, disconnect, restart, device }) {
       event.returnValue = {};
     }
   });
-  on("device:set", ({ window }, key, value) => {
-    if (!device.set(key, value)) return;
-    for (const other of BrowserWindow.getAllWindows())
-      if (other !== window && trusted.has(other.webContents))
-        other.webContents.send("device:changed", device.read());
+  ipcMain.on("device:set", (event, changes) => {
+    try {
+      const { window } = sender(event);
+      event.returnValue = device.write(changes);
+      if (event.returnValue !== null) return;
+      for (const other of BrowserWindow.getAllWindows())
+        if (other !== window && trusted.has(other.webContents))
+          other.webContents.send("device:changed", device.read());
+    } catch (error) {
+      event.returnValue = error.message;
+    }
   });
   handle("window:is-maximized", ({ window }) => window.isMaximized());
   handle("window:is-fullscreen", ({ window }) => window.isFullScreen());

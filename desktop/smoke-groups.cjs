@@ -34,6 +34,7 @@ module.exports = {
     "sidebar",
   ],
   backends: [
+    "preferences",
     "pixels",
     "reload",
     "livestreams",

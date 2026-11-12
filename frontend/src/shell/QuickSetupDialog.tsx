@@ -6,6 +6,7 @@ import { Dialog, DialogBody } from "../kit/Dialog";
 import { SectionCaption } from "../kit/SectionCaption";
 import { isEmpty, settingsPatch, useAppearance, useSettings } from "../client/settings";
 import { textOf, type Row } from "./SettingField";
+import { useRepairIntent } from "./useRepairIntent";
 import { useSaveDialog } from "./useSaveDialog";
 
 /** The rows Quick Setup asks for: the settings a new user is most likely to want to choose first. */
@@ -88,8 +89,9 @@ const PREVIEWS: Partial<Record<SettingKey, (value: string) => ReactNode>> = {
 
 /**
  * The first-run choices, built from the settings table. Theme and text size apply as they are picked; Done, or any
- * other way of closing, stores the choices and marks Quick Setup done so it is not offered again. A refused write
- * keeps the live theme and text size preview, closes the dialog and goes to `onNotice`, which the shell shows as a dialog, without marking it done.
+ * other way of closing stores the choices and completion flag. A Server refusal keeps the live preview unconfirmed
+ * and persists nothing. If the Server accepted but Device persistence failed, the completion flag is already saved;
+ * the notice names the unsaved Device keys. Either failure closes this dialog and reports through `onNotice`.
  */
 export function QuickSetupDialog({
   onClose,
@@ -98,10 +100,11 @@ export function QuickSetupDialog({
   onClose: () => void;
   onNotice: (message: string) => void;
 }) {
-  const { values, savedValues, previewDevice } = useSettings();
+  const { values, savedValues, previewDevice, recovered } = useSettings();
   const [base] = useState(savedValues);
   const [opened] = useState(values);
   const [draft, setDraft] = useState(opened);
+  const repair = useRepairIntent(recovered);
   const theme = values["ui.theme"];
   const textSize = values["ui.text_size"];
   useEffect(() => {
@@ -110,7 +113,12 @@ export function QuickSetupDialog({
   useAppearance(textOf(draft["ui.theme"]), textOf(draft["ui.text_size"]));
   const { saving, submit } = useSaveDialog(onClose);
   const done = async () => {
-    const patch = settingsPatch(base, { ...draft, "ui.quick_setup_done": true }, opened);
+    const patch = settingsPatch(
+      base,
+      { ...draft, "ui.quick_setup_done": true },
+      opened,
+      repair.keys(),
+    );
     if (isEmpty(patch)) return onClose();
     const outcome = await submit(patch);
     if (outcome.kind === "refused") {
@@ -131,6 +139,7 @@ export function QuickSetupDialog({
               options: row.kind.options ?? [],
               value: textOf(draft[row.key]),
               onChange: (value: string) => {
+                repair.edit(row.key);
                 if (row.scope === "device") previewDevice(row.key, value);
                 setDraft({ ...draft, [row.key]: value });
               },

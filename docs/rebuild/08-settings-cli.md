@@ -11,7 +11,7 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
   Defaults, config parsing, dialog rows, the restart marker and View-menu toggles are generated from it.
   *Current:* `DEFAULT_CONFIG`, enums with `from_config`, `GlobalSettings` properties and hand-built dialog rows.
 - **MUST** keep one immutable settings state replaced whole; consumers subscribe, never poll.
-- **MUST** apply on OK: validate every field, write atomically, then notify; a failed save changes nothing.
+- **MUST** apply on OK: validate every field, write atomically, then notify; cross-scope outcomes follow the [app invariants](../domain/app-invariants.md#settings-and-shortcuts).
 - **MUST** apply live where the stack allows; settings that cannot carry one shared restart marker.
 - **MUST** keep the state, log, recents and recovery folders fixed in the standard folders, with no setting and no
   live switching. Only the cache and catalog roots are settings, and a saved change applies at the next start.

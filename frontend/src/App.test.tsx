@@ -1,3 +1,4 @@
+import { browserBacking } from "./client/deviceSettings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { adoptFragment, credential } from "./client/access";
@@ -102,7 +103,7 @@ describe("app shell", () => {
     expect(JSON.parse(patch?.[1]?.body as string)).toEqual({
       set: { "storage.cache_dir": "/var/cache" },
     });
-    expect(JSON.parse(window.localStorage.getItem("ax-devil.device") ?? "{}")).toEqual({
+    expect(browserBacking().read()).toEqual({
       "ui.theme": "light",
     });
   });

@@ -5,15 +5,18 @@ import { AccessContext } from "./access";
 import { DEFAULT_SETTINGS } from "./fakeSettings";
 import { ChangesProvider, useNoticeSink } from "./resource";
 import type { SettingsPatch } from "../generated/api";
-import { deviceStore } from "./deviceSettings";
+import { browserBacking, deviceStore } from "./deviceSettings";
 import { SettingsProvider, useSettings } from "./settings";
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   deviceStore.reset("ui.theme");
   deviceStore.reset("ui.text_size");
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  window.dispatchEvent(new StorageEvent("storage", { key: null }));
 });
 
 function Catalog() {
@@ -219,7 +222,7 @@ describe("settings", () => {
     );
     fireEvent.click(await screen.findByRole("button", { name: "Larger text" }));
     await waitFor(() => expect(document.documentElement.dataset.textSize).toBe("large"));
-    expect(JSON.parse(window.localStorage.getItem("ax-devil.device") ?? "{}")).toEqual({
+    expect(browserBacking().read()).toEqual({
       "ui.text_size": "large",
     });
     expect(fetched).not.toHaveBeenCalled();

@@ -275,7 +275,10 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   if (stopping) return;
   stopping = true;
-  if (windowState) writeWindow(windowFile, windowState);
+  if (windowState) {
+    const refused = writeWindow(windowFile, windowState);
+    if (refused) console.error(refused);
+  }
   void backend.stop().then(() => {
     stopped = true;
     app.exit(exitCode);

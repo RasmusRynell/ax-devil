@@ -75,7 +75,7 @@ contextBridge.exposeInMainWorld("axDevilWindow", {
   // the page paints.
   deviceValues: () => ipcRenderer.sendSync("device:values"),
   // Stores one device setting, or removes it with null.
-  setDeviceValue: (key, value) => ipcRenderer.send("device:set", key, value),
+  setDeviceValues: (changes) => ipcRenderer.sendSync("device:set", changes),
   // Reports every value after another window changed one; returns the way to stop listening.
   onDeviceValuesChange: (listener) => {
     const changed = (_event, values) => listener(values);

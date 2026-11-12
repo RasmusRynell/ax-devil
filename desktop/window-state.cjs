@@ -1,7 +1,6 @@
 // The saved position and size of the main window. They live in a file of their own that only the shell reads: the
 // device file is served to every window's page, a remote one included, and the window is this machine's.
-const fs = require("node:fs");
-const path = require("node:path");
+const { readJson, writeJson } = require("./atomic-json.cjs");
 
 const DEFAULT_SIZE = { width: 1280, height: 800 };
 
@@ -78,21 +77,19 @@ function windowBounds(saved, areas) {
 /** The state saved in `file`, or undefined when there is none or it cannot be read. */
 function readWindow(file) {
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
+    return readJson(file);
   } catch {
     return undefined;
   }
 }
 
-/** Saves `state` in `file`, whole or not at all; a failure only costs the next start its position. */
+/** Saves `state` whole, returning null on success or the failure reason. */
 function writeWindow(file, state) {
-  const partial = `${file}.partial`;
   try {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(partial, JSON.stringify(state));
-    fs.renameSync(partial, file);
+    writeJson(file, state);
+    return null;
   } catch (error) {
-    console.error(`Could not save the window position: ${error.message}`);
+    return `Could not save the window position: ${error.message}`;
   }
 }
 

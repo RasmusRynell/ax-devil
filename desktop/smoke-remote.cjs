@@ -202,7 +202,7 @@ async function remote(local, shell) {
         )
           ? ["restoreDrag"]
           : []),
-        "setDeviceValue",
+        "setDeviceValues",
         "toggleFullScreen",
         "toggleMaximize",
         "zoomFactor",
