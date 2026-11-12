@@ -15,7 +15,7 @@ import {
 } from "./OverlayRow";
 import { Refusal } from "../kit/Refusal";
 import { checkFiles, useFileProblems } from "./useFileProblems";
-import { chooseFile, usePickPath, VIDEO, type PickPath } from "../pickPath";
+import { chooseFile, usePickPath, VIDEO, type PickPath } from "../client/pickPath";
 
 const blankEntry = (key: number): OverlayEntry => ({ key, path: "", picked: "" });
 

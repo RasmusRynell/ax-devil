@@ -1,23 +1,23 @@
-// A playback session against a fake server, a fake display refresh and a fake clock, for tests.
-import { opened as openedMessage } from "./fakeOpened";
-import { catalogDocument, mapBytes, sampleBytes } from "./fakeData";
-import type { LaneFrame } from "./contract";
-import { PlaybackSession } from "./session";
-import type { PlaybackIntent, SessionDeps } from "./sessionDeps";
+// A playback stream against a fake server, a fake display refresh and a fake clock, for tests.
+import { opened as openedMessage } from "../lanes/fakeOpened";
+import { catalogDocument, mapBytes, sampleBytes } from "../stream/fakeData";
+import type { LaneFrame } from "../lanes/contract";
+import { PlaybackStream } from "./stream";
+import type { PlaybackIntent, StreamDeps } from "./streamDeps";
 import type {
   ClientMessage,
   LaneInfo,
   LaneStatusWire,
   ServerMessage,
   VideoFrame,
-} from "./protocol";
-import { decode, type Incoming } from "./wire";
+} from "../stream/protocol";
+import { decode, type Incoming } from "../stream/wire";
 
 export const FRAME_BYTES = 100;
 
 export type OpenedMessage = Extract<ServerMessage, { type: "Opened" }>;
 
-/** Lets the ticket the session asked for arrive, so it can open its socket. */
+/** Lets the ticket the stream asked for arrive, so it can open its socket. */
 export const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 export function videoFrame(sequenceId: number): VideoFrame {
@@ -41,10 +41,10 @@ export function videoFrame(sequenceId: number): VideoFrame {
 export const opened = (frames = 10, lanes?: LaneInfo[]): ServerMessage =>
   openedMessage(frames, FRAME_BYTES, lanes);
 
-/** A session against a fake server, a fake display refresh and a fake clock, with a window of ten frames. */
+/** A stream against a fake server, a fake display refresh and a fake clock, with a window of ten frames. */
 export async function setup(
   resume?: { frame: number; speed: number },
-  deps: Partial<SessionDeps> = {},
+  deps: Partial<StreamDeps> = {},
 ) {
   const sent: ClientMessage[] = [];
   const intents: PlaybackIntent[] = [];
@@ -58,7 +58,7 @@ export async function setup(
   let deliver: (incoming: Incoming) => void = () => {};
   let connections = 0;
   let closedConnections = 0;
-  const session = new PlaybackSession({
+  const stream = new PlaybackStream({
     ticket: () => ticket(),
     onIntent: (intent) => intents.push(intent),
     connect: (onIncoming) => {
@@ -80,7 +80,7 @@ export async function setup(
     resume,
     ...deps,
   });
-  session.setSurface({
+  stream.setSurface({
     present: (frame, lanes) => {
       presented.push(frame.sequenceId);
       drawn.push({ sequenceId: frame.sequenceId, lanes: [...lanes] });
@@ -133,10 +133,10 @@ export async function setup(
     refreshes.splice(0).forEach((callback) => callback());
   };
   const wants = () => sent.filter((message) => message.type === "Want");
-  session.start();
+  stream.start();
   await flush();
   return {
-    session,
+    stream,
     server,
     sent,
     intents,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { DEFAULT_SETTINGS } from "../fakeSettings";
+import { DEFAULT_SETTINGS } from "../client/fakeSettings";
 import {
   configuredOverlay,
   formFrom,

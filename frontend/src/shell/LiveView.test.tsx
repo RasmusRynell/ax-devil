@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { AccessContext } from "../access";
-import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
+import { AccessContext } from "../client/access";
+import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import type { NetworkRow, NetworkSnapshot } from "../generated/api";
 import type { AddSeed } from "../live/cameras";
-import type { SettingsApi } from "../settings";
+import type { SettingsApi } from "../client/settings";
 import { scenario } from "../session/fakeScenario";
 import { FakeSocket, type Room } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";

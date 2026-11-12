@@ -4,7 +4,7 @@
  * loaded only when they reach both sides of the frame; otherwise the backend is asked.
  */
 
-import type { EventsPage } from "../playback/fileEvents";
+import type { EventsPage } from "../inspect/fileEvents";
 
 /** How many of the rows, which are in frame order, are on frames at or before `frame`. */
 export function rowsUpTo(frames: readonly number[], frame: number): number {

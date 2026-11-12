@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { DEFAULT_SETTINGS } from "../fakeSettings";
+import { DEFAULT_SETTINGS } from "../client/fakeSettings";
 import { ConnectionRows } from "./LiveFields";
 import { formValues, startForm, type LiveForm } from "./liveForm";
 

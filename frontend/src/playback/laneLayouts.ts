@@ -11,7 +11,7 @@ import {
   type SampleView,
   type TextSource,
 } from "../present";
-import type { LaneFrame } from "./contract";
+import type { LaneFrame } from "../lanes/contract";
 import { uiZoom } from "./uiZoom";
 
 /** A lane to lay out: what it draws (`undefined`: nothing) and the displayed picture's size in CSS pixels. */

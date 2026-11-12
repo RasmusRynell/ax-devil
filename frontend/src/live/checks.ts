@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { ask } from "../ask";
+import { ask } from "../client/ask";
 import type { NetworkRow } from "../generated/api";
 import type { Camera } from "./cameras";
 

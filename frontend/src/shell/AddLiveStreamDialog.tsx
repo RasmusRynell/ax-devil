@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CommandFailed, reasonOf } from "../errors";
+import { CommandFailed, reasonOf } from "../client/errors";
 import type { HandlersInfo, LiveConnection, NewLiveWire } from "../generated/api";
-import { useAccess } from "../access";
+import { useAccess } from "../client/access";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { seedOf, type AddSeed } from "../live/cameras";
 import { askResolutions, askSources, DEBOUNCE_MS, sizesOf, useDiscovery } from "../live/discovery";
 import { useExpansions } from "../live/expansions";
 import { fetchHandlers } from "../resolvers/handlers";
 import { useCommand, useDoc } from "../session/session";
-import { useSettings } from "../settings";
+import { useSettings } from "../client/settings";
 import {
   ConnectionRows,
   modeName,

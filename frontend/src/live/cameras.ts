@@ -1,7 +1,7 @@
 /** The workspace's live streams as the Live view lists them: grouped by camera. */
 
 import { useMemo } from "react";
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import type { ItemState, LiveOverlayKind, LiveShown, NewLiveWire } from "../generated/api";
 import { useDoc } from "../session/session";
 import { useShownItems } from "../viewer/useViewers";

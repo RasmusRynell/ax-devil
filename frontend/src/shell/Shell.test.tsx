@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { ErrorWire } from "../generated/api";
 import type { CommandId } from "../generated/settings";
-import { installFakeFullscreen } from "../fakeFullscreen";
+import { installFakeFullscreen } from "../client/fakeFullscreen";
 import { scenario } from "../session/fakeScenario";
 import { FakeSocket } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";

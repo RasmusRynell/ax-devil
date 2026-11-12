@@ -1,10 +1,10 @@
-import { scopeOf } from "../commands";
+import { scopeOf } from "../client/commands";
 import type { CommandId } from "../generated/settings";
 import { Icon } from "../kit/Icon";
 import { IconButton } from "../kit/IconButton";
 import { useFailedPlugins } from "../plugins/failed";
 import { useAllowed } from "../session/session";
-import { useSettings } from "../settings";
+import { useSettings } from "../client/settings";
 import { ACTIVITY, type ActivityItem } from "./views";
 
 interface Props {

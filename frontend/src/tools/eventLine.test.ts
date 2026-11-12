@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
-import type { EventsPage } from "../playback/fileEvents";
+import type { EventsPage } from "../inspect/fileEvents";
 import { eventRow, lineFor, lineOf } from "./eventLine";
 
 const at = (event: number, frame: number) => ({

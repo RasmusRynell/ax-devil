@@ -1,8 +1,8 @@
 /** The objects of the frame on screen as Frame scope lists them: found in the lane's drawn sample, searched and sorted here. */
 
 import type { FileSortKey, FileSortWire, SearchWire } from "../generated/api";
-import type { LaneFrame } from "../playback/contract";
-import type { FrameLeaves } from "../playback/frameFields";
+import type { LaneFrame } from "../lanes/contract";
+import type { FrameLeaves } from "../inspect/frameFields";
 import { filterRows } from "../present";
 import { MOTION_STATES } from "../present/columns";
 import type { SearchRecord } from "../search/match";

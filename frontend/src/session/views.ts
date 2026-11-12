@@ -1,4 +1,4 @@
-import type { Scope } from "../commands";
+import type { Scope } from "../client/commands";
 import type { Can, View } from "../generated/api";
 
 /** What the window shows before anyone has chosen anything. */

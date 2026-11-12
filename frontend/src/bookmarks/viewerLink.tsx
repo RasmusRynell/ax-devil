@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import type { PlaybackSession } from "../playback/session";
+import type { PlaybackStream } from "../playback/stream";
 import type { PlaybackView } from "../playback/view";
 import {
   useCan,
@@ -47,11 +47,11 @@ export function useAskSeek(): Seeking["ask"] {
 const NOTHING = () => undefined;
 
 /**
- * Takes the frame asked for this entry: when the session is ready it jumps there and pauses, and a window that follows
+ * Takes the frame asked for this entry: when the stream is ready it jumps there and pauses, and a window that follows
  * the presenter's clock or may not change its view drops the request instead.
  */
 export function useSeekRequest(
-  session: PlaybackSession,
+  stream: PlaybackStream,
   status: PlaybackView["status"],
   entry: string,
 ) {
@@ -66,25 +66,25 @@ export function useSeekRequest(
     if (!asked || !done || status !== "ready" || !front) return;
     done();
     if (!canChange || following) return;
-    const last = session.getSnapshot().frameCount - 1;
+    const last = stream.getSnapshot().frameCount - 1;
     // Pausing first: pausing a playing clock returns it to the frame on screen, which would undo the seek.
-    session.pause();
-    session.seek(Math.min(asked.frame, last));
-  }, [asked, done, status, session, canChange, following, front]);
+    stream.pause();
+    stream.seek(Math.min(asked.frame, last));
+  }, [asked, done, status, stream, canChange, following, front]);
 }
 
 /**
  * The command that bookmarks the frame on screen of the entry `entry` of `item`, then shows the Bookmarks view while
  * the viewer stays in front. Does nothing before the viewer is ready.
  */
-export function useAddBookmark(session: PlaybackSession, item: string, entry: string) {
+export function useAddBookmark(stream: PlaybackStream, item: string, entry: string) {
   const command = useCommand();
   const setView = useSetView();
   return useCallback(() => {
-    const view = session.getSnapshot();
+    const view = stream.getSnapshot();
     if (view.status !== "ready") return;
     const frame = view.shown?.sequenceId ?? view.playhead;
-    const time = view.shown?.timestampUs ?? session.frameTime(frame) ?? 0;
+    const time = view.shown?.timestampUs ?? stream.frameTime(frame) ?? 0;
     command({
       type: "content",
       command: {
@@ -96,7 +96,7 @@ export function useAddBookmark(session: PlaybackSession, item: string, entry: st
       // A refused bookmark leaves the sidebar as it was, which says so.
       () => undefined,
     );
-  }, [session, item, entry, command, setView]);
+  }, [stream, item, entry, command, setView]);
 }
 
 const SEEN = "ax-devil.sidebarEpoch";

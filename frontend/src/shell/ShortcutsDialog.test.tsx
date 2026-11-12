@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
+import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 
 beforeAll(() => {

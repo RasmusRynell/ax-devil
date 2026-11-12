@@ -7,7 +7,7 @@
 
 import type { Viewport as Region } from "../generated/api";
 import type { CellRect } from "../overlay/painter";
-import type { Viewport } from "./contract";
+import type { Viewport } from "../lanes/contract";
 
 export type Size = { width: number; height: number };
 

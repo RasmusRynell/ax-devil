@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useAccess } from "../access";
-import { reasonOf } from "../errors";
+import { useAccess } from "../client/access";
+import { reasonOf } from "../client/errors";
 import type { NetworkSnapshot } from "../generated/api";
 import { type SettingKey } from "../generated/settings";
 import { Button } from "../kit/Button";
@@ -8,7 +8,7 @@ import { Checkbox } from "../kit/Fields";
 import { FIELD } from "../kit/look";
 import { SectionCaption } from "../kit/SectionCaption";
 import { rescan, type ScanProblem } from "../live/network";
-import { useSettings } from "../settings";
+import { useSettings } from "../client/settings";
 import { LoginsEditor } from "./LoginsEditor";
 import { type Value } from "./SettingField";
 import { useScanGuard } from "./useScanGuard";

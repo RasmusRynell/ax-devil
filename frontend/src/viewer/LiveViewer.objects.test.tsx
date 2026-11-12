@@ -1,13 +1,13 @@
 import { act, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
-import type { Picked } from "../playback/contract";
-import { LANE_DEFAULTS } from "../playback/fakeOpened";
-import { PLAYBACK_PROTOCOL } from "../playback/protocol";
+import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
+import type { Picked } from "../lanes/contract";
+import { LANE_DEFAULTS } from "../lanes/fakeOpened";
+import { PLAYBACK_PROTOCOL } from "../stream/protocol";
 import type { Geometry } from "../playback/renderer";
 import type { VideoCanvas } from "../playback/VideoCanvas";
-import type { Connect, Incoming } from "../playback/wire";
+import type { Connect, Incoming } from "../stream/wire";
 import { scenario } from "../session/fakeScenario";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider, useDoc } from "../session/session";

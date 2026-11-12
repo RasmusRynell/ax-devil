@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FileScopeUnavailable } from "../generated/api";
-import { unavailable } from "../playback/fakeFileAnswer";
+import { unavailable } from "../inspect/fakeFileAnswer";
 import { fullSample } from "../present/fixtures";
 import { FRAME, file, ids, mount, says, search, showFile } from "./panelRig";
 

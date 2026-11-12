@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { FrameInfo } from "./clock";
+import type { FrameInfo } from "../stream/clock";
 import { hudSections, linesFit, ptsOf, type HudLane } from "./hud";
-import { MATCH_EXACT, MATCH_TOLERATED, type VideoPtsWire } from "./protocol";
+import { MATCH_EXACT, MATCH_TOLERATED, type VideoPtsWire } from "../stream/protocol";
 
 const PTS: VideoPtsWire = { time_base: [1, 12800], first_pts: 0 };
 const frame = (sequenceId: number): FrameInfo => ({

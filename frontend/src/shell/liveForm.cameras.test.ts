@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { DEFAULT_SETTINGS } from "../fakeSettings";
+import { DEFAULT_SETTINGS } from "../client/fakeSettings";
 import { scenario } from "../session/fakeScenario";
 import { formFrom, newLive } from "./liveForm";
 import { camerasOf, seedOf } from "../live/cameras";

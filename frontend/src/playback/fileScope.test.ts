@@ -1,10 +1,10 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FileBody, FileRowWire, Located } from "../generated/api";
-import { after, found, READY, readyLane } from "./fakeFileAnswer";
-import { FileScope } from "./fileScope";
+import { after, found, READY, readyLane } from "../inspect/fakeFileAnswer";
+import { FileScope } from "../inspect/fileScope";
 import { setup } from "./fakePlayback";
-import type { ClientMessage } from "./protocol";
+import type { ClientMessage } from "../stream/protocol";
 
 const SORT = { key: "id", descending: false } as const;
 const ROW: FileRowWire = {
@@ -129,10 +129,10 @@ describe("a lane the list, an event and an object's appearances share", () => {
 describe("in a playback session", () => {
   it("asks once the lane is ready and again when the viewer follows, then owns its frames", async () => {
     vi.useRealTimers();
-    const { session, server, sent, retries } = await setup();
+    const { stream, server, sent, retries } = await setup();
     server.open(10, [{ label: "DPM", slot: "DPM", source: 0 }]);
     server.status(0, READY);
-    session.files.request(0, "car", SORT, 0, 50, 64);
+    stream.files.request(0, "car", SORT, 0, 50, 64);
     const debounce = () => {
       const index = retries.map((timer) => timer.ms).lastIndexOf(150);
       expect(index).toBeGreaterThanOrEqual(0);
@@ -144,8 +144,8 @@ describe("in a playback session", () => {
     const request = (queries()[0] as Extract<ClientMessage, { type: "FileQuery" }>).request;
     const policy = sent.filter((message) => message.type === "LanePolicy").length;
     server.say(found(request, objects(), { policy_revision: policy }));
-    expect(session.files.view(0).page?.rows).toEqual([ROW]);
-    session.follow({ frame: 0, playing: false, speedCenti: 100, atUs: 0 }, () => 0);
+    expect(stream.files.view(0).page?.rows).toEqual([ROW]);
+    stream.follow({ frame: 0, playing: false, speedCenti: 100, atUs: 0 }, () => 0);
     debounce();
     expect(queries()).toHaveLength(2);
   });

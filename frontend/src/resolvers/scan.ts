@@ -1,6 +1,6 @@
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import type { ChoiceInfo, ErrorWire, ScanCountInfo, ScanRequest } from "../generated/api";
-import { ask, type Answer } from "../ask";
+import { ask, type Answer } from "../client/ask";
 
 /** Resolver settings as the backend takes them. */
 export type Settings = Record<string, unknown>;

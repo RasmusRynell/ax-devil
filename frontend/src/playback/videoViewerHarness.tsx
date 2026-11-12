@@ -1,18 +1,18 @@
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { useMemo } from "react";
 import { afterEach, beforeEach, vi } from "vite-plus/test";
-import { FakeSettings } from "../fakeSettings";
+import { FakeSettings } from "../client/fakeSettings";
 import type { SettingsState } from "../generated/api";
 import { FakeSocket } from "../session/fakeSession";
 import { useDoc, useView } from "../session/session";
 import { useFrontViewer } from "../viewer/useViewers";
-import { opened } from "./fakeOpened";
-import type { ClientMessage, LaneInfo, ServerMessage } from "./protocol";
+import { opened } from "../lanes/fakeOpened";
+import type { ClientMessage, LaneInfo, ServerMessage } from "../stream/protocol";
 import { VideoViewer, type VideoViewerProps } from "./VideoViewer";
-import type { Connect, Incoming } from "./wire";
+import type { Connect, Incoming } from "../stream/wire";
 
 // What the video viewer suites share. Each suite mocks "./VideoCanvas" itself (the picture needs WebGL; these suites
-// are about the session behind it) and calls installViewerHarness() once at its top level.
+// are about the stream behind it) and calls installViewerHarness() once at its top level.
 
 let frames: FrameRequestCallback[] = [];
 /** Runs the animation frames the viewer has asked for. */

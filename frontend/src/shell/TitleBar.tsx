@@ -1,6 +1,6 @@
 import type { MenuCommand } from "../kit/Menu";
 import { useDoc } from "../session/session";
-import "../windowBridge";
+import "../client/windowBridge";
 import { MenuBar } from "./MenuBar";
 import { ShareControl } from "./ShareControl";
 import { useWindowTitle } from "./useWindowTitle";

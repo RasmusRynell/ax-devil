@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { FakeSettings } from "../fakeSettings";
+import { FakeSettings } from "../client/fakeSettings";
 import { scenario } from "../session/fakeScenario";
 import { hiddenOf } from "../viewer/hidden";
-import { LANE_SETTINGS } from "./fakeOpened";
+import { LANE_SETTINGS } from "../lanes/fakeOpened";
 import { LaneGrid } from "./LaneGrid";
 import { columnsFor, layoutLanes } from "./laneCells";
-import type { LaneState } from "./lanes";
-import type { PlaybackSession } from "./session";
+import type { LaneState } from "../lanes/lanes";
+import type { PlaybackStream } from "./stream";
 import type { PlaybackView } from "./view";
 
 // The picture needs WebGL; the cells are what the grid hands it.
@@ -83,7 +83,7 @@ function mount(
       disconnect() {}
     },
   );
-  const session = { setLane: vi.fn() };
+  const stream = { setLane: vi.fn() };
   const view = {
     lanes: labels.map((label) => lane(label, views[label] ?? true)),
     ...frame,
@@ -93,7 +93,7 @@ function mount(
     render(
       <FakeSettings>
         <LaneGrid
-          session={session as unknown as PlaybackSession}
+          stream={stream as unknown as PlaybackStream}
           view={view}
           name="clip"
           title={title}
@@ -105,22 +105,22 @@ function mount(
       </FakeSettings>,
     );
   });
-  return session;
+  return stream;
 }
 
 describe("lane grid", () => {
   it("leaves a hidden lane out, stops its data and gives the rest the room", () => {
-    const session = mount(["GT", "DPM", "SEG"], "dpm-hidden", {}, undefined, undefined, grid);
+    const stream = mount(["GT", "DPM", "SEG"], "dpm-hidden", {}, undefined, undefined, grid);
     expect(screen.getByText("GT")).toBeTruthy();
     expect(screen.getByText("SEG")).toBeTruthy();
     expect(screen.queryByText("DPM")).toBeNull();
-    expect(session.setLane.mock.calls).toEqual([[1, { visible: false }]]);
+    expect(stream.setLane.mock.calls).toEqual([[1, { visible: false }]]);
   });
 
   it("shows a lane again once it is no longer hidden", () => {
-    const session = mount(["GT", "DPM"], "dpm-shown", { DPM: false });
+    const stream = mount(["GT", "DPM"], "dpm-shown", { DPM: false });
     expect(screen.getByText("DPM")).toBeTruthy();
-    expect(session.setLane.mock.calls).toEqual([[1, { visible: true }]]);
+    expect(stream.setLane.mock.calls).toEqual([[1, { visible: true }]]);
   });
 
   it("puts a lane's tag at the corner of the visible picture, not of the cell around it", () => {

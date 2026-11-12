@@ -1,11 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { AccessContext, type Access } from "../access";
-import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
+import { AccessContext, type Access } from "../client/access";
+import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import type { SettingsState } from "../generated/api";
 import type { CommandId } from "../generated/settings";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
-import type { SettingsApi } from "../settings";
+import type { SettingsApi } from "../client/settings";
 import { Shell } from "./Shell";
 
 /** The shell under the given settings, access and Session (the window's own by default), once it is seated. */

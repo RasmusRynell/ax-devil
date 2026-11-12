@@ -1,8 +1,8 @@
 /** Which lanes an export can draw, and the wire form of each as the viewer holds it now. */
 
 import type { ExportLaneWire } from "../generated/api";
-import type { LaneState } from "../playback/contract";
-import { styleOf } from "../playback/laneStyle";
+import type { LaneState } from "../lanes/contract";
+import { styleOf } from "../lanes/laneStyle";
 
 /** Why a lane cannot be drawn yet: its data or catalog is still loading, or failed. */
 type Cold = "loading" | "failed";

@@ -8,11 +8,11 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { AccessContext } from "../access";
+import { AccessContext } from "../client/access";
 import type { ClientMessage, ServerMessage } from "../generated/api";
-import type { LaneState } from "../playback/contract";
-import { LANE_SETTINGS } from "../playback/fakeOpened";
-import type { LaneStatusWire } from "../playback/protocol";
+import type { LaneState } from "../lanes/contract";
+import { LANE_SETTINGS } from "../lanes/fakeOpened";
+import type { LaneStatusWire } from "../stream/protocol";
 import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
 import { ExportDialog } from "./ExportDialog";
 import { ExportJobs } from "./jobs";

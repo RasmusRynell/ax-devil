@@ -3,8 +3,8 @@
 import classic from "../../../assets/catalogs/classic.v4.json?raw";
 import glass from "../../../assets/catalogs/glass.v4.json?raw";
 import standard from "../../../assets/catalogs/standard.v4.json?raw";
-import type { LaneFrame } from "../playback/contract";
-import type { VideoFrame } from "../playback/protocol";
+import type { LaneFrame } from "../lanes/contract";
+import type { VideoFrame } from "../stream/protocol";
 import { type CompiledCatalog } from "../present";
 import { compileCatalog } from "../present/catalog/compile";
 import { syntheticSample } from "../present/fixtures";

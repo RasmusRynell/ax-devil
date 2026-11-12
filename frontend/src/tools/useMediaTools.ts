@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Selection } from "../playback/contract";
+import type { Selection } from "../lanes/contract";
 import { freshEvents, FRESH_LIST, type EventsState, type ListState } from "./listState";
 import type { Place } from "./MediaToolsPanel";
 import { EMPTY, topObject, type PageStack } from "./pageStack";

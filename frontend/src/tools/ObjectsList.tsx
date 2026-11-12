@@ -10,12 +10,12 @@ import {
 import type { FileRowWire, SearchWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { SegmentedControl } from "../kit/Chips";
-import type { LaneFrame } from "../playback/contract";
-import { readyOf } from "../playback/fileRequests";
-import type { FileEvents } from "../playback/fileEvents";
-import type { FileScope } from "../playback/fileScope";
-import type { FrameFields } from "../playback/frameFields";
-import type { AppearanceSource } from "../playback/useAppearance";
+import type { LaneFrame } from "../lanes/contract";
+import { readyOf } from "../inspect/fileRequests";
+import type { FileEvents } from "../inspect/fileEvents";
+import type { FileScope } from "../inspect/fileScope";
+import type { FrameFields } from "../inspect/frameFields";
+import type { AppearanceSource } from "../inspect/useAppearance";
 import type { PlaybackView } from "../playback/view";
 import { matches, missingPaths } from "../search/match";
 import { parseSearch } from "../search/query";
@@ -41,7 +41,7 @@ import { nextSort } from "./table/columns";
 import { Table, type TableMemory } from "./table/Table";
 import { useApplied } from "./useApplied";
 
-/** What the panel reads of a viewer and asks of it: `PlaybackSession` is one. */
+/** What the panel reads of a viewer and asks of it: `PlaybackStream` is one. */
 export interface ObjectSource {
   readonly files: Pick<
     FileScope,

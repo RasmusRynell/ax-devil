@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import type { ErrorWire, HandlersInfo } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Refusal } from "../kit/Refusal";

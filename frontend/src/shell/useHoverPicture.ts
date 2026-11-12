@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { apiFetch } from "../api";
+import { apiFetch } from "../client/api";
 
 /** How long the pointer must rest before the card shows, so sweeping across items shows none. */
 const INTENT_MS = 80;

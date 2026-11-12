@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { DecoderInfo } from "../generated/api";
-import { AccessContext } from "../access";
+import { AccessContext } from "../client/access";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { AddVideoDialog } from "./AddVideoDialog";
 import { decodersFor } from "./OverlayRow";
-import type { WindowBridge } from "../windowBridge";
+import type { WindowBridge } from "../client/windowBridge";
 
 const decoder = (handler: string, ...extensions: string[]): DecoderInfo => ({
   handler,

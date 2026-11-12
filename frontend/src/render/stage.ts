@@ -1,8 +1,8 @@
 /** The GPU side of the render page: the viewer's renderer on an offscreen canvas, and the readback of its pictures. */
 
 import type { OutputWire } from "../generated/api";
-import type { LaneFrame } from "../playback/contract";
-import type { VideoFrame } from "../playback/protocol";
+import type { LaneFrame } from "../lanes/contract";
+import type { VideoFrame } from "../stream/protocol";
 import { VideoRenderer } from "../playback/renderer";
 import { OUTPUT_FIELD, type Output } from "./output";
 import { Readback } from "./readback";

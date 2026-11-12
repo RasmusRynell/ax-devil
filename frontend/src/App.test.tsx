@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { adoptFragment, credential } from "./access";
+import { adoptFragment, credential } from "./client/access";
 import { App } from "./App";
-import { apiFetch } from "./api";
-import { deviceStore } from "./deviceSettings";
-import { DEFAULT_SETTINGS } from "./fakeSettings";
+import { apiFetch } from "./client/api";
+import { deviceStore } from "./client/deviceSettings";
+import { DEFAULT_SETTINGS } from "./client/fakeSettings";
 import type { ErrorWire, SettingsPatch, SettingsState } from "./generated/api";
 import { FakeSocket } from "./session/fakeSession";
 

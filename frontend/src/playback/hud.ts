@@ -1,9 +1,14 @@
 /** The rows of the info HUD: how a frame and the overlay sample drawn on it line up in time, in whole microseconds. */
 
-import type { FrameInfo } from "./clock";
-import type { LaneSettings } from "./contract";
-import type { LaneMatch } from "./laneData";
-import { MATCH_EXACT, MATCH_TOLERATED, type BasisWire, type VideoPtsWire } from "./protocol";
+import type { FrameInfo } from "../stream/clock";
+import type { LaneSettings } from "../lanes/contract";
+import type { LaneMatch } from "../lanes/laneData";
+import {
+  MATCH_EXACT,
+  MATCH_TOLERATED,
+  type BasisWire,
+  type VideoPtsWire,
+} from "../stream/protocol";
 
 /** What the HUD reads of one lane: how its sample was matched to the frame, whether it still waits, and how it matches. */
 export type HudLane = {

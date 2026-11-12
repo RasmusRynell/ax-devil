@@ -17,9 +17,9 @@ import {
   type PageMessage,
   type RenderLaneWire,
 } from "../generated/api";
-import type { LaneFrame } from "../playback/contract";
-import { frameOf } from "../playback/laneStyle";
-import { EnvelopeError, parseEnvelope, type VideoFrame } from "../playback/protocol";
+import type { LaneFrame } from "../lanes/contract";
+import { frameOf } from "../lanes/laneStyle";
+import { EnvelopeError, parseEnvelope, type VideoFrame } from "../stream/protocol";
 import { compileCatalog, readSample, type CompiledCatalog, type SampleView } from "../present";
 import { outputOf, type Output } from "./output";
 

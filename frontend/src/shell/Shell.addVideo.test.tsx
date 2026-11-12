@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { FakeSocket } from "../session/fakeSession";
 import { renderShell } from "./shellHarness";
-import type { WindowBridge } from "../windowBridge";
+import type { WindowBridge } from "../client/windowBridge";
 
 // The added video's viewer is not under test, and needs the playback worker.
 vi.mock("../playback/VideoViewer", () => ({ VideoViewer: () => null }));

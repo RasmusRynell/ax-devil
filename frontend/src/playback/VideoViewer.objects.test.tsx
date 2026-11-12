@@ -1,14 +1,14 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { installFakeFullscreen } from "../fakeFullscreen";
+import { installFakeFullscreen } from "../client/fakeFullscreen";
 import { FakeSocket } from "../session/fakeSession";
 import { scenario } from "../session/fakeScenario";
 import { SessionProvider } from "../session/session";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
 import { focusLane } from "../viewer/laneFocus";
-import type { Picked } from "./contract";
-import type { ClientMessage, LaneInfo } from "./protocol";
+import type { Picked } from "../lanes/contract";
+import type { ClientMessage, LaneInfo } from "../stream/protocol";
 import type { Geometry } from "./renderer";
 import type { VideoCanvas } from "./VideoCanvas";
 import { videoFrame } from "./fakePlayback";

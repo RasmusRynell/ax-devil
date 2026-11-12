@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { WindowBridge } from "../windowBridge";
+import type { WindowBridge } from "../client/windowBridge";
 import { WindowControls } from "./WindowControls";
 
 afterEach(() => {

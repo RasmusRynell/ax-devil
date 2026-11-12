@@ -1,10 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
 import { OPEN_RANGES } from "../present";
-import { catalogDocument, item } from "./fakeData";
-import { LANE_DEFAULTS, LANE_SETTINGS } from "./fakeOpened";
-import { LaneSet } from "./lanes";
-import type { LaneStatusWire } from "./protocol";
+import { catalogDocument, item } from "../stream/fakeData";
+import { LANE_DEFAULTS, LANE_SETTINGS } from "../lanes/fakeOpened";
+import { LaneSet } from "../lanes/lanes";
+import type { LaneStatusWire } from "../stream/protocol";
 import { ViewerData } from "./viewerData";
 
 const READY: LaneStatusWire = {

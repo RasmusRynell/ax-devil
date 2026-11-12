@@ -7,9 +7,9 @@ import type {
   PageMessage,
   RenderLaneWire,
 } from "../generated/api";
-import { catalogDocument, frameMessage, sampleBytes } from "../playback/fakeData";
-import type { LaneFrame } from "../playback/contract";
-import { MATCH_EXACT, MATCH_RETAINED } from "../playback/protocol";
+import { catalogDocument, frameMessage, sampleBytes } from "../stream/fakeData";
+import type { LaneFrame } from "../lanes/contract";
+import { MATCH_EXACT, MATCH_RETAINED } from "../stream/protocol";
 import type { Output } from "./output";
 import { RenderSession, type Stage, type Transport } from "./session";
 

@@ -9,7 +9,7 @@ import {
   useTakesPresenter,
   useView,
 } from "../session/session";
-import type { Viewport } from "./contract";
+import type { Viewport } from "../lanes/contract";
 import type { Geometry } from "./renderer";
 import { FIT, regionOf, viewportOf } from "./viewport";
 

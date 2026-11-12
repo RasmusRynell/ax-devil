@@ -1,13 +1,13 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import type { EventRowWire } from "../generated/api";
-import { found } from "./fakeFileAnswer";
-import { LANE_SETTINGS } from "./fakeOpened";
-import { FRESH_MEMORY } from "./fields";
-import { FileScope } from "./fileScope";
+import { found } from "../inspect/fakeFileAnswer";
+import { LANE_SETTINGS } from "../lanes/fakeOpened";
+import { FRESH_MEMORY } from "../inspect/fields";
+import { FileScope } from "../inspect/fileScope";
 import { Inspector, type Reach } from "./Inspector";
-import { LaneSet } from "./lanes";
-import type { ClientMessage } from "./protocol";
+import { LaneSet } from "../lanes/lanes";
+import type { ClientMessage } from "../stream/protocol";
 
 afterEach(cleanup);
 

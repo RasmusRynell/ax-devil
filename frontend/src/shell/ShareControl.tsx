@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { credential, useAccess } from "../access";
+import { credential, useAccess } from "../client/access";
 import { Icon } from "../kit/Icon";
 import { QUIET } from "../kit/look";
 import { Menu, type MenuEntry } from "../kit/Menu";

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { credential, AccessContext } from "../access";
+import { credential, AccessContext } from "../client/access";
 import { FakeSocket } from "./fakeSession";
 import { SessionProvider } from "./session";
 

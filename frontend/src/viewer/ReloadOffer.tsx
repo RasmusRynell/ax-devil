@@ -1,4 +1,4 @@
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import type { ReloadFailure } from "../generated/api";
 import { Button } from "../kit/Button";
 import { useCan, useCommand } from "../session/session";

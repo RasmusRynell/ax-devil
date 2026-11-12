@@ -1,10 +1,10 @@
-/** What a playback session shows the UI: one immutable snapshot that is replaced only when something in it changed. */
+/** What a playback stream shows the UI: one immutable snapshot that is replaced only when something in it changed. */
 
-import type { FrameInfo, PlaybackClock } from "./clock";
-import type { InspectionView, Selection } from "./contract";
-import type { FrameFailures } from "./failures";
-import type { LaneState } from "./lanes";
-import type { CadenceWire, CatalogInfoWire, ServerMessage, VideoPtsWire } from "./protocol";
+import type { FrameInfo, PlaybackClock } from "../stream/clock";
+import type { InspectionView, Selection } from "../lanes/contract";
+import type { FrameFailures } from "../stream/failures";
+import type { LaneState } from "../lanes/lanes";
+import type { CadenceWire, CatalogInfoWire, ServerMessage, VideoPtsWire } from "../stream/protocol";
 import { videoDetails } from "./videoDetails";
 
 export type PlaybackView = {
@@ -69,7 +69,7 @@ export const INITIAL_VIEW: PlaybackView = {
 const sameShown = (a: FrameInfo | undefined, b: FrameInfo | undefined): boolean =>
   a === b || (a !== undefined && b !== undefined && a.sequenceId === b.sequenceId);
 
-/** Whether two views would draw the same; the session publishes a new one only when they differ. */
+/** Whether two views would draw the same; the stream publishes a new one only when they differ. */
 export const sameView = (a: PlaybackView, b: PlaybackView): boolean =>
   a.status === b.status &&
   a.failure === b.failure &&
@@ -91,7 +91,7 @@ export const sameView = (a: PlaybackView, b: PlaybackView): boolean =>
   a.cached === b.cached &&
   a.videoPts === b.videoPts;
 
-/** What the session knows when it publishes a view. */
+/** What the stream knows when it publishes a view. */
 export type ViewParts = {
   status: PlaybackView["status"];
   failure: PlaybackView["failure"];
@@ -106,7 +106,7 @@ export type ViewParts = {
   cached: PlaybackView["cached"];
 };
 
-/** The view of the session's state now. */
+/** The view of the stream's state now. */
 export function buildView(parts: ViewParts): PlaybackView {
   const { clock, opened, inspection } = parts;
   const shown = clock?.info();

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
-import type { Viewport } from "./contract";
+import type { Viewport } from "../lanes/contract";
 import {
   FIT,
   ZOOM_MAX,

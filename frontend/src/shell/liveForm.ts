@@ -10,7 +10,7 @@ import type {
   NewLiveWire,
 } from "../generated/api";
 import { SETTINGS, type SettingKey } from "../generated/settings";
-import { isReference } from "../secret";
+import { isReference } from "../client/secret";
 import { textOf } from "./SettingField";
 
 /** The overlay modes, in the order the `camera.overlay` setting lists them. */

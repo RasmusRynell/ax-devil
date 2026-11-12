@@ -1,9 +1,9 @@
 /** What the tables benchmark shows: a lane that is ready, a file of made-up objects behind the File scope, and frames of objects. */
 
 import type { FileRowWire, FileSortWire } from "../generated/api";
-import type { LaneFrame } from "../playback/contract";
-import type { FileScope } from "../playback/fileScope";
-import type { LaneStatusWire } from "../playback/protocol";
+import type { LaneFrame } from "../lanes/contract";
+import type { FileScope } from "../inspect/fileScope";
+import type { LaneStatusWire } from "../stream/protocol";
 import { catalogNamed, laneRing } from "./synthetic";
 
 export const RING = 6;

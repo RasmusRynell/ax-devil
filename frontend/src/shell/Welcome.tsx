@@ -1,9 +1,9 @@
-import { command, scopeOf, type Shortcuts } from "../commands";
+import { command, scopeOf, type Shortcuts } from "../client/commands";
 import type { CommandId } from "../generated/settings";
 import { KeyChips } from "../kit/KeyChips";
 import { RowList, type Row } from "../kit/RowList";
 import { useAllowed } from "../session/session";
-import { useSettings } from "../settings";
+import { useSettings } from "../client/settings";
 
 const GROUPS: readonly { heading: string; ids: readonly CommandId[] }[] = [
   { heading: "Open", ids: ["open-workspace", "add-video", "add-live-stream", "add-playlist"] },

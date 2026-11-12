@@ -1,6 +1,6 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from "react";
 import { elideMiddle, GAP, LABEL_CEILING, labelRoom, MARGIN, placeChip } from "./chipPlacement";
-import type { Picked, Selection } from "./contract";
+import type { Picked, Selection } from "../lanes/contract";
 import { strokeWidth, type Outline } from "./outlines";
 import type { CellRect, Geometry } from "./renderer";
 

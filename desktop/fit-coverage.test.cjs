@@ -11,7 +11,7 @@ const src = path.join(__dirname, "..", "frontend", "src");
 const CHECKED = {
   "export/ExportDialog.tsx": "smoke-export.cjs",
   "kit/Gallery.tsx": "smoke-gallery.cjs",
-  "playback/LaneCatalogActions.tsx": "smoke-panels.cjs",
+  "lanes/LaneCatalogActions.tsx": "smoke-panels.cjs",
   "shell/AboutDialog.tsx": "smoke-shell.cjs",
   "shell/AddLiveStreamDialog.tsx": "smoke-live.cjs",
   "shell/AddPlaylistDialog.tsx": "smoke-playlist.cjs",

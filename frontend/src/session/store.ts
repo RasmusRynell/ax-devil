@@ -1,5 +1,5 @@
-import { credential } from "../access";
-import { CommandFailed, CommandRefused } from "../errors";
+import { credential } from "../client/access";
+import { CommandFailed, CommandRefused } from "../client/errors";
 import type {
   CursorOptions,
   CursorPoint,

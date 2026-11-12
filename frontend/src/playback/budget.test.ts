@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
 import { paneBudget } from "./budget";
-import { BUFFER_BUDGET_BYTES } from "./sessionDeps";
+import { BUFFER_BUDGET_BYTES } from "./streamDeps";
 
 describe("a window's frame budget", () => {
   it("is held whole by a lone pane and divided equally, in whole bytes, by more", () => {

@@ -5,37 +5,31 @@
  * session is framework-free; the socket, the display refresh and time are injected, and the UI reads `getSnapshot`.
  */
 
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import type { LiveOpenedWire } from "../generated/api";
-import type { FileScope } from "../playback/fileScope";
-import type { FrameFields } from "../playback/frameFields";
-import type {
-  LaneDisplay,
-  LaneFrame,
-  LaneSettings,
-  Selection,
-  Surface,
-} from "../playback/contract";
-import { sampleBudgetBytes } from "../playback/data/dataWindow";
-import { LaneSet } from "../playback/lanes";
-import type { LaneMatch } from "../playback/laneData";
+import type { FileScope } from "../inspect/fileScope";
+import type { FrameFields } from "../inspect/frameFields";
+import type { LaneDisplay, LaneFrame, LaneSettings, Selection, Surface } from "../lanes/contract";
+import { sampleBudgetBytes } from "../stream/data/dataWindow";
+import { LaneSet } from "../lanes/lanes";
+import type { LaneMatch } from "../lanes/laneData";
 import {
   PLAYBACK_PROTOCOL,
   type Envelope,
   type ServerMessage,
   type VideoFrame,
-} from "../playback/protocol";
-import { BUFFER_BUDGET_BYTES, ENDED, RETRY_MS, type SessionDeps } from "../playback/sessionDeps";
+} from "../stream/protocol";
+import { BUFFER_BUDGET_BYTES, ENDED, RETRY_MS, type StreamDeps } from "../playback/streamDeps";
 import { ViewerData } from "../playback/viewerData";
-import type { Connection, Incoming } from "../playback/wire";
+import type { Connection, Incoming } from "../stream/wire";
 import { EventLog } from "./eventLog";
 import { REST, sameLive, viewOf, type LiveView, type Parts } from "./view";
 
 export type { LiveView } from "./view";
 
-/** What a live session is given: the playback session's way to a socket, the display and time, and its lane hooks. */
+/** What a live session is given: the playback stream's way to a socket, the display and time, and its lane hooks. */
 export type LiveDeps = Pick<
-  SessionDeps,
+  StreamDeps,
   | "ticket"
   | "connect"
   | "frame"

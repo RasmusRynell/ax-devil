@@ -8,7 +8,7 @@ import { SessionStore } from "../session/store";
 import { exportOf } from "../viewer/exportTargets";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { videoFrame } from "./fakePlayback";
-import type { ClientMessage, LaneInfo, ServerMessage } from "./protocol";
+import type { ClientMessage, LaneInfo, ServerMessage } from "../stream/protocol";
 import type { VideoViewerProps } from "./VideoViewer";
 import {
   Viewer,
@@ -22,7 +22,7 @@ import {
   viewsSent,
 } from "./videoViewerHarness";
 
-// The picture needs WebGL; this suite is about the session behind it. The canvas stands in with a one-lane geometry,
+// The picture needs WebGL; this suite is about the stream behind it. The canvas stands in with a one-lane geometry,
 // and shows the zoom it is given; a click on it zooms to 2.
 vi.mock("./VideoCanvas", async () => {
   const { FIT } = await import("./viewport");

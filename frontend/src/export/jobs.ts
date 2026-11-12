@@ -1,4 +1,4 @@
-/** The export job of one playback session: what it asked the backend to write and where the backend says it stands. */
+/** The export job of one playback stream: what it asked the backend to write and where the backend says it stands. */
 
 import type {
   ClientMessage,
@@ -6,9 +6,9 @@ import type {
   ExportLaneWire,
   ServerMessage,
 } from "../generated/api";
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 
-/** What an export asks of the backend; the job number is the session's to give. */
+/** What an export asks of the backend; the job number is the stream's to give. */
 type ExportRequest = {
   lanes: readonly ExportLaneWire[];
   first: number;
@@ -20,7 +20,7 @@ type ExportRequest = {
 /** How far an export got, in frames. */
 type Frames = { done: number; total: number };
 
-/** Where the session's export stands. A finished export stays until `dismiss`, with how far it got. */
+/** Where the stream's export stands. A finished export stays until `dismiss`, with how far it got. */
 export type ExportStatus =
   | { phase: "idle" }
   | ({ phase: "running"; cancelling: boolean } & Frames)

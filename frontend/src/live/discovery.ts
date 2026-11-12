@@ -4,8 +4,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ask, type Answer } from "../ask";
-import { reasonOf } from "../errors";
+import { ask, type Answer } from "../client/ask";
+import { reasonOf } from "../client/errors";
 import type {
   ErrorCode,
   ErrorWire,

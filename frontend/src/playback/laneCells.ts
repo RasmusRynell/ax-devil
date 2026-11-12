@@ -1,7 +1,7 @@
 /** Where the lanes of a picture go: the grid they tile. Shared by the viewer and the export page. */
 
 import type { Hidden } from "../viewer/hidden";
-import type { LaneState } from "./lanes";
+import type { LaneState } from "../lanes/lanes";
 import type { LaneCell } from "./renderer";
 
 /** The indices of the lanes the user has not hidden. */

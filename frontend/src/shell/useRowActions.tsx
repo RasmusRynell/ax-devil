@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { reasonOf } from "../errors";
+import { reasonOf } from "../client/errors";
 import type { MenuEntry } from "../kit/Menu";
 import { useStreamStatuses, type StreamStatus } from "../live/streamState";
 import { useCan, useCommand, useDoc, useView } from "../session/session";

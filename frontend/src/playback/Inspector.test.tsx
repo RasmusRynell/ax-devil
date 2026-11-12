@@ -1,14 +1,14 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { act, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { InspectionView, Summary } from "./contract";
-import { found } from "./fakeFileAnswer";
-import { LANE_SETTINGS } from "./fakeOpened";
-import { FRESH_MEMORY } from "./fields";
-import { FileScope } from "./fileScope";
+import type { InspectionView, Summary } from "../lanes/contract";
+import { found } from "../inspect/fakeFileAnswer";
+import { LANE_SETTINGS } from "../lanes/fakeOpened";
+import { FRESH_MEMORY } from "../inspect/fields";
+import { FileScope } from "../inspect/fileScope";
 import { Inspector, type Reach } from "./Inspector";
-import { LaneSet } from "./lanes";
-import type { ClientMessage, FieldWire, LaneStatusWire } from "./protocol";
+import { LaneSet } from "../lanes/lanes";
+import type { ClientMessage, FieldWire, LaneStatusWire } from "../stream/protocol";
 
 afterEach(() => {
   cleanup();
