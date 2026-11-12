@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import type { WindowBridge } from "../windowBridge";
+import type { WindowBridge } from "../client/windowBridge";
 import { useTitleDrag } from "./useTitleDrag";
 
 function Title() {

@@ -6,7 +6,7 @@ import {
   type MouseEvent,
   type PointerEvent,
 } from "react";
-import { useWindowMaximized } from "../windowBridge";
+import { useWindowMaximized } from "../client/windowBridge";
 
 const titleTarget = (target: EventTarget) =>
   target instanceof Element
