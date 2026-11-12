@@ -50,6 +50,34 @@ void test("saved bounds are used only when they overlap a display", () => {
   assert.deepEqual(windowBounds({ ...saved, x: 2500 }, areas), { width: 1280, height: 800 });
   assert.deepEqual(windowBounds({ ...saved, width: 0 }, areas), { width: 1280, height: 800 });
   assert.deepEqual(windowBounds(undefined, areas), { width: 1280, height: 800 });
+  // Electron work areas are already in DIP, including displays with different scale factors.
+  for (const [name, displays, spanning, expected] of [
+    [
+      "adjacent",
+      [...areas, { x: 1920, y: 0, width: 1920, height: 1080 }],
+      { x: 1500, y: 100, width: 900, height: 600 },
+    ],
+    [
+      "stacked",
+      [...areas, { x: 0, y: 1080, width: 1920, height: 1080 }],
+      { x: 100, y: 900, width: 900, height: 600 },
+    ],
+    [
+      "mixed scale",
+      [
+        { ...areas[0], scaleFactor: 1 },
+        { x: 1920, y: 0, width: 1280, height: 720, scaleFactor: 2 },
+      ],
+      { x: 1500, y: 100, width: 1500, height: 600 },
+    ],
+    [
+      "gap",
+      [...areas, { x: 2020, y: 0, width: 1920, height: 1080 }],
+      { x: 1500, y: 100, width: 900, height: 600 },
+      { x: 1020, y: 100, width: 900, height: 600 },
+    ],
+  ])
+    assert.deepEqual(windowBounds(spanning, displays), expected ?? spanning, name);
   // The title bar is visible, but the window is larger than the display: it is shrunk and moved onto it.
   assert.deepEqual(windowBounds({ x: 100, y: 50, width: 4000, height: 3000 }, areas), {
     x: 0,
@@ -79,7 +107,7 @@ void test("bounds with the title bar off screen are moved into the display they 
   const right = [{ x: 0, y: 0, width: 1280, height: 720 }];
   assert.deepEqual(windowBounds({ x: -1500, y: 50, width: 1400, height: 600 }, right), {
     width: 1280,
-    height: 800,
+    height: 720,
   });
   assert.deepEqual(windowBounds({ x: -1000, y: 50, width: 1400, height: 600 }, right), {
     x: 0,

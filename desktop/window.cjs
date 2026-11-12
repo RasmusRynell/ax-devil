@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const { reserved } = require("./generated/api.json");
+const { restoreDrag, supportsRestoreDrag } = require("./restore-drag.cjs");
 const { windowBounds } = require("./window-state.cjs");
 
 // Video files the Add Video dialog offers; the backend's intake takes any path, the viewer judges the media.
@@ -68,6 +69,11 @@ async function openWindow(
     bounds = windowBounds(undefined, []),
   },
 ) {
+  const manualRestore = supportsRestoreDrag(
+    process.platform,
+    app.commandLine?.getSwitchValue("ozone-platform"),
+    process.env,
+  );
   const window = new BrowserWindow({
     title: "ax-devil",
     ...bounds,
@@ -86,13 +92,14 @@ async function openWindow(
       backgroundThrottling: !process.argv.includes("--smoke-test"),
       preload: path.join(__dirname, "preload.cjs"),
       additionalArguments: [
+        ...(manualRestore ? ["--ax-devil-restore-drag"] : []),
         ...(restartable ? [RESTARTABLE_ARGUMENT] : []),
         ...(remote ? [REMOTE_ARGUMENT] : []),
       ],
     },
   });
   const contents = window.webContents;
-  trusted.set(contents, { origin, remote });
+  trusted.set(contents, { origin, remote, manualRestore });
   const sendMaximized = () => contents.send("window:maximized", window.isMaximized());
   window.on("maximize", sendMaximized);
   window.on("unmaximize", sendMaximized);
@@ -182,6 +189,9 @@ function installIpc({ connect, disconnect, restart, device }) {
     });
   const handle = (channel, act) =>
     ipcMain.handle(channel, (event, ...args) => act(sender(event), ...args));
+  handle("window:restore-drag", ({ window, manualRestore }, phase, height) => {
+    if (manualRestore) restoreDrag(window, phase, height);
+  });
   on("window:minimize", ({ window }) => window.minimize());
   on("window:toggle-maximize", ({ window }) =>
     window.isMaximized() ? window.unmaximize() : window.maximize(),

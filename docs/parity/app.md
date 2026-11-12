@@ -26,7 +26,7 @@ Row format: [parity](../parity.md). Deviations: [app deviations](app-deviations.
 | AP-02 | Restart from inside the app | M | done | `shell/Shell.test.tsx`, `desktop/args.test.cjs` | A setting that needs a restart offers to relaunch the desktop app on its own backend; other windows are told |
 | AP-03 | `clear-cache` | S | done | `src/disk_cache.rs`, `src/cli/clear_cache.rs` | `--type main/all`; lists, asks, removes; only ax-devil's own cache files |
 | AP-04 | About dialog | S | done | `shell/Shell.test.tsx` |  |
-| AP-05 | Custom window frame: in-page title bar with window controls | S | done | `shell/WindowControls.test.tsx` | Frameless; dragging and maximize on a real window manager are untested |
+| AP-05 | Custom window frame: in-page title bar with window controls | S | done | `shell/WindowControls.test.tsx`, `desktop/smoke-{native-window,restored-bounds}.cjs` | CHR-007: native drag and all eight resizes on private Openbox; X11 restore-drag follows the reference's threshold, placement and manual fallback; CHR-008 keeps restored controls on screen |
 | AP-06 | Open logs folder / copy diagnostics (new) | S | done | `shell/Shell.test.tsx` | In About |
 
 ## Sharing and remote use (new)

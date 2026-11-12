@@ -3,12 +3,18 @@
 # session, and with --display a private X display of its own. Fails if the user's own ax-devil files changed.
 set -euo pipefail
 display=0
+manager=0
+if [[ ${1:-} == --window-manager ]]; then
+  display=1
+  manager=1
+  shift
+fi
 if [[ ${1:-} == --display ]]; then
   display=1
   shift
 fi
 if (($# == 0)); then
-  echo "usage: scripts/isolated [--display] COMMAND [ARGS...]" >&2
+  echo "usage: scripts/isolated [--display|--window-manager] COMMAND [ARGS...]" >&2
   exit 2
 fi
 if ((display)) && ! command -v xvfb-run >/dev/null; then
@@ -53,12 +59,18 @@ printf '{"version": 1, "settings": {"scan.on_startup": false}}\n' >"$scratch/con
 before="$(fingerprint)"
 export HOME="$scratch/home" XDG_CONFIG_HOME="$scratch/config" XDG_DATA_HOME="$scratch/data"
 export XDG_CACHE_HOME="$scratch/cache" XDG_STATE_HOME="$scratch/state" XDG_RUNTIME_DIR="$scratch/runtime"
-unset DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS
+unset DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS AX_DEVIL_PRIVATE_X11
 # Shells hosted in Electron apps export this, which would start Electron as plain Node.
 unset ELECTRON_RUN_AS_NODE
 
 status=0
 if ((display)); then
+  if ((manager)); then
+    for tool in openbox python3; do
+      command -v "$tool" >/dev/null || { echo "$tool is required for native window tests; install $tool." >&2; exit 1; }
+    done
+    set -- env AX_DEVIL_PRIVATE_X11=1 python3 "$(dirname "$0")/private-x11.py" managed "$@"
+  fi
   xvfb-run -a -s '-screen 0 1280x1000x24' "$@" || status=$?
 else
   "$@" || status=$?

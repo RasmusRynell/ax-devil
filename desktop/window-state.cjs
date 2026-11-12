@@ -14,19 +14,26 @@ function overlap(bounds, area) {
   return across > 0 && down > 0 ? across * down : 0;
 }
 
-/**
- * Whether the window's title-bar band (a 100x40 strip at the top, 80 px in from the left, clamped to the window's
- * width) lies wholly inside `area`: the frameless window's drag region and controls are there.
+/** Whether the desktop's work-area union covers the saved rectangle, including monitor seams but not gaps.
+ * Electron supplies these coordinates in DIP; applying display scale factors again would distort the union.
  */
-function titleBarInside(bounds, area) {
-  const width = Math.min(100, bounds.width);
-  const x = bounds.x + Math.min(80, bounds.width - width);
-  return (
-    x >= area.x &&
-    x + width <= area.x + area.width &&
-    bounds.y >= area.y &&
-    bounds.y + 40 <= area.y + area.height
-  );
+function fullyVisible(bounds, areas) {
+  const right = bounds.x + bounds.width;
+  const bottom = bounds.y + bounds.height;
+  const edges = [...new Set([bounds.x, right, ...areas.flatMap((a) => [a.x, a.x + a.width])])]
+    .filter((x) => x >= bounds.x && x <= right)
+    .sort((a, b) => a - b);
+  return edges.slice(1).every((x, index) => {
+    const strips = areas
+      .filter((a) => a.x <= edges[index] && a.x + a.width >= x)
+      .sort((a, b) => a.y - b.y);
+    let covered = bounds.y;
+    for (const strip of strips) {
+      if (strip.y > covered) break;
+      covered = Math.max(covered, strip.y + strip.height);
+    }
+    return covered >= bottom;
+  });
 }
 
 /** `bounds` moved into `area`, and shrunk to fit it when larger. */
@@ -41,12 +48,16 @@ function clampInto(bounds, area) {
   };
 }
 
-/**
- * The window options for a saved state: its bounds when the title bar is wholly on one of the `areas` (the displays' work
- * areas) and they fit it, else the bounds moved into the display they overlap most, else the default size, which Electron
- * centers. Anything that is not a state with whole-number bounds counts as nothing saved.
+/** Preserve fully visible saved bounds; recover unreachable bounds onto the best-overlapping display.
+ * Missing or invalid bounds use a screen-bounded default size, which Electron centers.
  */
 function windowBounds(saved, areas) {
+  const defaults = areas[0]
+    ? {
+        width: Math.min(DEFAULT_SIZE.width, areas[0].width),
+        height: Math.min(DEFAULT_SIZE.height, areas[0].height),
+      }
+    : { ...DEFAULT_SIZE };
   const fields = ["x", "y", "width", "height"];
   if (
     !saved ||
@@ -54,18 +65,14 @@ function windowBounds(saved, areas) {
     saved.width <= 0 ||
     saved.height <= 0
   )
-    return { ...DEFAULT_SIZE };
+    return defaults;
   const bounds = { x: saved.x, y: saved.y, width: saved.width, height: saved.height };
-  const holding = areas.find((area) => titleBarInside(bounds, area));
-  if (holding)
-    return bounds.width <= holding.width && bounds.height <= holding.height
-      ? bounds
-      : clampInto(bounds, holding);
+  if (fullyVisible(bounds, areas)) return bounds;
   const best = areas.reduce(
     (most, area) => (overlap(bounds, area) > overlap(bounds, most) ? area : most),
     areas[0],
   );
-  return best && overlap(bounds, best) > 0 ? clampInto(bounds, best) : { ...DEFAULT_SIZE };
+  return best && overlap(bounds, best) > 0 ? clampInto(bounds, best) : defaults;
 }
 
 /** The state saved in `file`, or undefined when there is none or it cannot be read. */
@@ -89,4 +96,4 @@ function writeWindow(file, state) {
   }
 }
 
-module.exports = { readWindow, windowBounds, writeWindow };
+module.exports = { clampInto, readWindow, windowBounds, writeWindow };
