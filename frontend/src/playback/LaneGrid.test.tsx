@@ -7,7 +7,7 @@ import { LANE_SETTINGS } from "../lanes/fakeOpened";
 import { LaneGrid } from "./LaneGrid";
 import { columnsFor, layoutLanes } from "./laneCells";
 import type { LaneState } from "../lanes/lanes";
-import type { PlaybackSession } from "./session";
+import type { PlaybackStream } from "./stream";
 import type { PlaybackView } from "./view";
 
 // The picture needs WebGL; the cells are what the grid hands it.
@@ -93,7 +93,7 @@ function mount(
     render(
       <FakeSettings>
         <LaneGrid
-          session={session as unknown as PlaybackSession}
+          session={session as unknown as PlaybackStream}
           view={view}
           name="clip"
           title={title}

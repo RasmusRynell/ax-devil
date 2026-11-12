@@ -19,7 +19,7 @@ import {
   type ServerMessage,
   type VideoFrame,
 } from "../stream/protocol";
-import { BUFFER_BUDGET_BYTES, ENDED, RETRY_MS, type SessionDeps } from "../playback/sessionDeps";
+import { BUFFER_BUDGET_BYTES, ENDED, RETRY_MS, type StreamDeps } from "../playback/streamDeps";
 import { ViewerData } from "../playback/viewerData";
 import type { Connection, Incoming } from "../stream/wire";
 import { EventLog } from "./eventLog";
@@ -27,9 +27,9 @@ import { REST, sameLive, viewOf, type LiveView, type Parts } from "./view";
 
 export type { LiveView } from "./view";
 
-/** What a live session is given: the playback session's way to a socket, the display and time, and its lane hooks. */
+/** What a live session is given: the playback stream's way to a socket, the display and time, and its lane hooks. */
 export type LiveDeps = Pick<
-  SessionDeps,
+  StreamDeps,
   | "ticket"
   | "connect"
   | "frame"

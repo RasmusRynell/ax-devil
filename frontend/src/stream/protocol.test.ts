@@ -223,7 +223,7 @@ describe("what the socket delivers", () => {
     });
   });
 
-  it("reports a message that breaks the protocol, so the session can end", () => {
+  it("reports a message that breaks the protocol, so the stream can end", () => {
     expect(decode("not json")?.type).toBe("malformed");
     expect(decode(new ArrayBuffer(40))?.type).toBe("malformed");
     expect(decode(mapBytes({ first: 255, cells: [0, 0] }))?.type).toBe("malformed");

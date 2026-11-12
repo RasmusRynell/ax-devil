@@ -1,4 +1,4 @@
-/** What a playback session is given, and what it reports of the clock. */
+/** What a playback stream is given, and what it reports of the clock. */
 
 import type { LaneSettings } from "../lanes/contract";
 import type { Saved } from "../lanes/lanes";
@@ -8,7 +8,7 @@ import type { Connect } from "../stream/wire";
 /** What one window may hold of decoded frames, shared by its panes (see `budget.ts`); the most one viewer ever holds. */
 export const BUFFER_BUDGET_BYTES = 512 * 1024 * 1024;
 
-export interface SessionDeps {
+export interface StreamDeps {
   /** A ticket for one socket: the first message of every connection spends one. Rejects when it cannot get one. */
   ticket: () => Promise<string>;
   connect: Connect;
@@ -27,7 +27,7 @@ export interface SessionDeps {
   lanes?: readonly LaneSettings[];
   /** Plays from the first frame once it is shown. For an ordinary open only: a resumed or followed one stays as it was. */
   autoplay?: boolean;
-  /** Where an earlier session left off and the speed it ran at: this one opens there, paused, at that speed. A missing frame opens at the start. */
+  /** Where an earlier stream left off and the speed it ran at: this one opens there, paused, at that speed. A missing frame opens at the start. */
   resume?: Partial<ResumeState>;
   /** Told the policy of a lane, by its slot, after the viewer changed it: the workspace keeps it with the recipe. */
   onPolicy?: (slot: string, policy: LanePolicyWire) => void;
@@ -38,7 +38,7 @@ export interface SessionDeps {
 /** What the viewer asked the clock to do: the position it is on and whether it runs, at what speed. */
 export type PlaybackIntent = { frame: number; playing: boolean; speed: number };
 
-/** What carries a video's viewing from one session to the next, across a reconnection or a viewer shown again. */
+/** What carries a video's viewing from one stream to the next, across a reconnection or a viewer shown again. */
 export type ResumeState = { frame: number; speed: number };
 
 /** Waits between reconnection attempts; the last one repeats. */

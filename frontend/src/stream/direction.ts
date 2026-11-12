@@ -2,7 +2,7 @@
 
 import type { Want } from "./protocol";
 
-/** The frame half of a `Want`: the data window is sized by the session, which knows the lanes. */
+/** The frame half of a `Want`: the data window is sized by the stream, which knows the lanes. */
 export type FrameWant = Omit<Want, "data_ahead" | "data_behind">;
 
 /** Share of the window ahead of the playhead. */

@@ -11,8 +11,8 @@ import type { LaneMatch } from "./laneData";
 import type { VideoFrame } from "../stream/protocol";
 
 /**
- * What the session hands the display for one lane of one frame: the held Sample Item and everything the presenter
- * needs to turn it into quads. The session owns the values; the presenter caches by the revisions inside.
+ * What the stream hands the display for one lane of one frame: the held Sample Item and everything the presenter
+ * needs to turn it into quads. The stream owns the values; the presenter caches by the revisions inside.
  */
 export interface LaneFrame {
   /** The viewer's source id of the lane's file, with the revision the held sample belongs to. */
@@ -100,12 +100,12 @@ export type LaneState = {
   pending: boolean;
 };
 
-/** How the UI changes a lane; `PlaybackSession` implements it (replacing `setLaneView` and `setLaneTargets`). */
+/** How the UI changes a lane; `PlaybackStream` implements it (replacing `setLaneView` and `setLaneTargets`). */
 export interface LaneControl {
   setLane(lane: number, change: Partial<LaneSettings>): void;
 }
 
-/** What the lane grid and its canvas ask of a viewer's session: a playback session and a live session both implement it. */
+/** What the lane grid and its canvas ask of a viewer's session: a playback stream and a live session both implement it. */
 export interface LaneDisplay extends LaneControl {
   /** Gives every other lane of the viewer the settings of `lane`, but its visibility. */
   applyToAll(lane: number): void;

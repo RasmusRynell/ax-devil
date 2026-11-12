@@ -12,7 +12,7 @@ import { VideoViewer, type VideoViewerProps } from "./VideoViewer";
 import type { Connect, Incoming } from "../stream/wire";
 
 // What the video viewer suites share. Each suite mocks "./VideoCanvas" itself (the picture needs WebGL; these suites
-// are about the session behind it) and calls installViewerHarness() once at its top level.
+// are about the stream behind it) and calls installViewerHarness() once at its top level.
 
 let frames: FrameRequestCallback[] = [];
 /** Runs the animation frames the viewer has asked for. */

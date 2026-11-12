@@ -5,13 +5,13 @@ import { Menu, type MenuEntry } from "../kit/Menu";
 import { Popover } from "../kit/Popover";
 import { useScrub } from "./scrub";
 import { seekBand } from "./seekBand";
-import type { PlaybackSession } from "./session";
+import type { PlaybackStream } from "./stream";
 import { timecode } from "./timecode";
 import type { PlaybackView } from "./view";
 
-/** What the transport asks of the session. */
+/** What the transport asks of the stream. */
 export type Controls = Pick<
-  PlaybackSession,
+  PlaybackStream,
   "togglePlay" | "step" | "seek" | "setSpeed" | "frameTime"
 >;
 
@@ -28,7 +28,7 @@ const PRESET_ENTRIES: readonly MenuEntry[] = PRESETS.map((speed) => ({
   label: `${speed}×`,
 }));
 
-/** A speed of any value, for the one the presets lack; Enter sets it, and the session keeps it within its range. */
+/** A speed of any value, for the one the presets lack; Enter sets it, and the stream keeps it within its range. */
 function CustomSpeed({ speed, onSet }: { speed: number; onSet: (speed: number) => void }) {
   const [text, setText] = useState(String(speed));
   return (

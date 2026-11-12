@@ -22,7 +22,7 @@ import {
   viewsSent,
 } from "./videoViewerHarness";
 
-// The picture needs WebGL; this suite is about the session behind it. The canvas stands in with a one-lane geometry,
+// The picture needs WebGL; this suite is about the stream behind it. The canvas stands in with a one-lane geometry,
 // and shows the zoom it is given; a click on it zooms to 2.
 vi.mock("./VideoCanvas", async () => {
   const { FIT } = await import("./viewport");
@@ -123,8 +123,8 @@ describe("video viewer", () => {
     expect(room.presenter.viewers[1]?.clock).toMatchObject({ playing: true });
   });
 
-  describe("when the session resumes", () => {
-    /** Opens the viewer, then drops the session's socket and lets it reconnect, with tickets refused or not. */
+  describe("when the stream resumes", () => {
+    /** Opens the viewer, then drops the stream's socket and lets it reconnect, with tickets refused or not. */
     async function resume(refused = false) {
       const sent: ClientMessage[] = [];
       render(

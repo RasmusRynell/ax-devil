@@ -33,13 +33,13 @@ import { useLaneFullscreen } from "./laneFullscreen";
 import { ObjectLayer, type ObjectLayerHandle } from "./ObjectLayer";
 import { Opening } from "./PlaybackStatus";
 import type { Geometry } from "./renderer";
-import type { PlaybackSession } from "./session";
+import type { PlaybackStream } from "./stream";
 import { Transport } from "./Transport";
 import { FIT, ZOOM_STEP } from "./viewport";
 
-/** One entry's pane once its session exists: the lanes, transport and tools while it is ready, else why not. */
+/** One entry's pane once its stream exists: the lanes, transport and tools while it is ready, else why not. */
 export function Playback({
-  session,
+  stream,
   viewer,
   item,
   name,
@@ -54,7 +54,7 @@ export function Playback({
   inspector,
   onInspector,
 }: {
-  session: PlaybackSession;
+  stream: PlaybackStream;
   /** The id of the pane's viewer, which its export is offered under. */
   viewer: number;
   item: string;
@@ -72,7 +72,7 @@ export function Playback({
   inspector: InspectorMemory;
   onInspector: (memory: InspectorMemory) => void;
 }) {
-  const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const view = useSyncExternalStore(stream.subscribe, stream.getSnapshot);
   const { shortcuts } = useSettings();
   const { objectDetails, laneNames } = useOverlays();
   const allowed = useAllowed();
@@ -84,7 +84,7 @@ export function Playback({
   const [waiting, setWaiting] = useState(false);
   const [tools, setTools] = useState(false);
   // The media tools' pages, lists and width, kept while they are closed; the selected object is the page on top.
-  const { pages, outlined, setOutlined, navigate, panel } = useMediaTools(session, objectDetails);
+  const { pages, outlined, setOutlined, navigate, panel } = useMediaTools(stream, objectDetails);
   // One switch for every lane; it lives here so it stays across entries.
   const [info, setInfo] = useState(false);
   useChromeVisibility(pane);
@@ -117,7 +117,7 @@ export function Playback({
     ),
   );
   // The selected object's page is the one the media tools show, so its fields are asked for only while they are open.
-  useEffect(() => session.showInspector(tools), [session, tools]);
+  useEffect(() => stream.showInspector(tools), [stream, tools]);
   const zoom = useCallback(
     (factor: number) => {
       const next = geometry.current?.zoomAt(shownViewport.current, factor);
@@ -142,7 +142,7 @@ export function Playback({
   // An export covers the lanes the action is for; while a catalog of one is loading it only says so and starts nothing.
   const exportLane = useCallback(
     (lane: number | null) => {
-      const current = session.getSnapshot();
+      const current = stream.getSnapshot();
       if (current.status !== "ready") return;
       const covered = choicesOf(current.lanes).filter((c) => lane === null || c.lane === lane);
       if (covered.length === 0) return;
@@ -150,10 +150,10 @@ export function Playback({
         setWaiting(true);
         return;
       }
-      session.pause();
+      stream.pause();
       setExporting({ lane });
     },
-    [session],
+    [stream],
   );
   const ready = view.status === "ready";
   useEffect(
@@ -161,28 +161,28 @@ export function Playback({
     [ready, viewer, item, entry, exportLane],
   );
   useHeaderDetails(view.details);
-  const addBookmark = useAddBookmark(session, item, entry);
-  useSeekRequest(session, view.status, entry);
+  const addBookmark = useAddBookmark(stream, item, entry);
+  useSeekRequest(stream, view.status, entry);
   const actions = useViewerActions(
     useMemo(
       () => ({
         "zoom-in": () => zoom(ZOOM_STEP),
         "zoom-out": () => zoom(1 / ZOOM_STEP),
         "zoom-reset": () => onViewport?.(FIT),
-        "play-pause": () => session.togglePlay(),
-        "step-forward": () => session.step(1),
-        "step-back": () => session.step(-1),
-        "step-forward-10": () => session.step(10),
-        "step-back-10": () => session.step(-10),
-        "speed-up": () => session.stepSpeed(1),
-        "speed-down": () => session.stepSpeed(-1),
+        "play-pause": () => stream.togglePlay(),
+        "step-forward": () => stream.step(1),
+        "step-back": () => stream.step(-1),
+        "step-forward-10": () => stream.step(10),
+        "step-back-10": () => stream.step(-10),
+        "speed-up": () => stream.stepSpeed(1),
+        "speed-down": () => stream.stepSpeed(-1),
         "media-tools": () => setTools((open) => !open),
         "info-overlay": () => setInfo((shown) => !shown),
         "lane-fullscreen": fullscreen.toggle,
         "export-video": () => exportLane(null),
         "add-bookmark": addBookmark,
       }),
-      [session, zoom, onViewport, fullscreen.toggle, exportLane, addBookmark],
+      [stream, zoom, onViewport, fullscreen.toggle, exportLane, addBookmark],
     ),
   );
   return (
@@ -223,7 +223,7 @@ export function Playback({
               }}
             >
               <LaneGrid
-                session={session}
+                session={stream}
                 view={view}
                 name={name}
                 title={title}
@@ -270,13 +270,13 @@ export function Playback({
             )}
             {/* With every lane hidden there is nothing to play: no transport, so no pick or press outlives the lanes. */}
             {!allHidden(view.lanes, shown) && (
-              <Transport controls={session} view={view} disabled={!canChange} />
+              <Transport controls={stream} view={view} disabled={!canChange} />
             )}
           </div>
           {tools && (
             <MediaToolsPanel
               {...panel}
-              source={session}
+              source={stream}
               view={view}
               canSeek={canChange}
               selectable={objectDetails}
@@ -293,7 +293,7 @@ export function Playback({
       {exporting && (
         <ExportDialog
           only={exporting.lane ?? undefined}
-          jobs={session.exports}
+          jobs={stream.exports}
           view={view}
           name={name}
           onClose={() => setExporting(null)}

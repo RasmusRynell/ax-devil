@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { Picked, Viewport } from "../lanes/contract";
-import type { PlaybackSession, Surface } from "./session";
+import type { PlaybackStream, Surface } from "./stream";
 import type { VideoFrame } from "../stream/protocol";
 import { VideoCanvas } from "./VideoCanvas";
 import { FIT, ZOOM_STEP } from "./viewport";
@@ -54,7 +54,7 @@ describe("video canvas", () => {
     let surface: Surface | null = null;
     const session = {
       setSurface: (next: Surface | null) => (surface = next),
-    } as unknown as PlaybackSession;
+    } as unknown as PlaybackStream;
     const view = render(<VideoCanvas session={session} label="a.mp4" anchor="frame:a" />);
     const anchor = () => view.container.querySelector<HTMLElement>('[data-cursor-id="frame:a"]');
     expect(anchor()).toBeNull();
@@ -71,7 +71,7 @@ describe("video canvas", () => {
     let surface: Surface | null = null;
     const session = {
       setSurface: (next: Surface | null) => (surface = next),
-    } as unknown as PlaybackSession;
+    } as unknown as PlaybackStream;
     const cells = [
       { lane: 0, rect: { x: 0, y: 0, width: 300, height: 100 } },
       { lane: 2, rect: { x: 300, y: 0, width: 100, height: 100 } },
@@ -100,7 +100,7 @@ describe("video canvas", () => {
     let surface: Surface | null = null;
     const session = {
       setSurface: (next: Surface | null) => (surface = next),
-    } as unknown as PlaybackSession;
+    } as unknown as PlaybackStream;
     const cells = [{ lane: 0, rect: { x: 0, y: 0, width: 400, height: 200 } }];
     const view = render(
       <VideoCanvas
@@ -125,7 +125,7 @@ describe("video canvas", () => {
   });
 
   describe("pointer", () => {
-    const session = { setSurface: () => {} } as unknown as PlaybackSession;
+    const session = { setSurface: () => {} } as unknown as PlaybackStream;
     const picked = (entity: string): Picked => ({
       lane: 0,
       source: 3,

@@ -2,8 +2,8 @@
  * The playback socket's thread. It owns the WebSocket, parses the head of every message, and hands frames, the
  * timeline, Sample Items and Frame Maps to the main thread by transferring the received buffer, so the browser's one
  * copy per message is the only one. A frame sent as a JPEG is decoded to RGBA here first, in the order the `Inbox`
- * keeps. The main thread's rendering, clock and typing never queue behind receiving; the rules of the session live in
- * session.ts.
+ * keeps. The main thread's rendering, clock and typing never queue behind receiving; the rules of the stream live in
+ * playback/stream.ts.
  */
 
 import { decodeJpeg } from "./jpeg";

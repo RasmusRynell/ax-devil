@@ -21,8 +21,8 @@ import { Playback } from "./PlaybackPane";
 import { Status } from "./PlaybackStatus";
 import { leave, take } from "./reloadHandoff";
 import type { PreparedEntry } from "./nextEntry";
-import { PlaybackSession } from "./session";
-import type { PlaybackIntent, ResumeState } from "./sessionDeps";
+import { PlaybackStream } from "./stream";
+import type { PlaybackIntent, ResumeState } from "./streamDeps";
 import { useFileScopeOwner } from "../inspect/useFileScopeOwner";
 import { useSharedViewport } from "./sharedViewport";
 import type { Connect } from "../stream/wire";
@@ -86,9 +86,9 @@ export function VideoViewer({
   const clock = useServerClock();
   const presenter = usePresenterChange();
   const takesPresenter = useTakesPresenter();
-  // The session and Presenter View revision this window last took the clock from.
-  const adopted = useRef<{ session: PlaybackSession; rev: number } | undefined>(undefined);
-  const [session, setSession] = useState<PlaybackSession | null>(null);
+  // The stream and Presenter View revision this window last took the clock from.
+  const adopted = useRef<{ stream: PlaybackStream; rev: number } | undefined>(undefined);
+  const [stream, setStream] = useState<PlaybackStream | null>(null);
   // How the pictures are zoomed belongs to the viewer, so it stays across entries and reconnections; the Presenter View
   // shares it.
   const { viewport, onViewport, onDrawn } = useSharedViewport(viewer);
@@ -99,21 +99,21 @@ export function VideoViewer({
   const { values } = useSettings();
   // The lane settings of the entry that closed, which the next entry's lanes start from.
   const priorLanes = useRef<readonly LaneSettings[]>([]);
-  // The effect that creates the session reads these as they are then, and must not restart when they change.
+  // The effect that creates the stream reads these as they are then, and must not restart when they change.
   const latest = useRef({ intent, canChange, following, clock, onLaneMatching });
   latest.current = { intent, canChange, following, clock, onLaneMatching };
   const defaultCatalog = useRef(values["overlays.default_catalog"] as string);
   defaultCatalog.current = values["overlays.default_catalog"] as string;
   const saved = useRef(savedDefaults(values));
   saved.current = savedDefaults(values);
-  // Where the entry was left, for the session that replaces the one that closed on the same entry. The published intent
+  // Where the entry was left, for the stream that replaces the one that closed on the same entry. The published intent
   // still names the last anchor when the replacement starts, so reading it there would reopen at the frame playback
   // began from. Another entry starts over: only the speed goes with the viewer.
   const left = useRef<{ entry: string; state: ResumeState } | undefined>(undefined);
-  // The stream whose autoplay a session replacement interrupted before anything was shown: the replacement plays.
+  // The key of the entry whose autoplay a replaced stream lost before anything was shown: the replacement plays.
   const interrupted = useRef<string | undefined>(undefined);
 
-  // Whether this viewer is going away, as against starting a session over. Declared before the effect below, whose
+  // Whether this viewer is going away, as against starting a stream over. Declared before the effect below, whose
   // cleanup reads it, so it is set first when the viewer unmounts.
   const going = useRef(false);
   useEffect(() => {
@@ -151,7 +151,7 @@ export function VideoViewer({
       ? undefined
       : take(viewer, content.id, content.generation, entry.id);
     const start = handed ?? {
-      // Frame 0 of a replaced session that showed nothing is no position to come back to.
+      // Frame 0 of a replaced stream that showed nothing is no position to come back to.
       frame: retried ? undefined : (carried?.frame ?? anchor?.frame),
       speed: heldSpeed.current ?? carried?.speed ?? (anchor && anchor.speedCenti / 100),
     };
@@ -159,7 +159,7 @@ export function VideoViewer({
     // the Guests keep following: it picks the clock up where it is by now, as a following window does.
     const running =
       !handed && !carried && !latest.current.following && anchor?.playing ? anchor : undefined;
-    const created = new PlaybackSession({
+    const created = new PlaybackStream({
       ticket,
       connect,
       resume: start,
@@ -185,9 +185,9 @@ export function VideoViewer({
     });
     created.start();
     if (running) created.follow(running, () => latest.current.clock.nowUs() ?? running.atUs);
-    setSession(created);
+    setStream(created);
     return () => {
-      // A session that replaces this one on the same entry opens where it was left, paused.
+      // A stream that replaces this one on the same entry opens where it was left, paused.
       const { frame, speed, playing } = created.resumeState();
       if (created.autoplayPending) interrupted.current = streamKey;
       const lanes = created.laneSettings();
@@ -214,32 +214,32 @@ export function VideoViewer({
 
   // The share of the window's frame memory follows the panes that are open.
   const budget = usePaneBudget();
-  useEffect(() => session?.setBudget(budget), [session, budget]);
+  useEffect(() => stream?.setBudget(budget), [stream, budget]);
 
   // The backend readies the entry that comes next while this one plays, when its settings allow.
-  useEffect(() => session?.next.ask(next ?? null), [session, next]);
+  useEffect(() => stream?.next.ask(next ?? null), [stream, next]);
 
-  useFileScopeOwner(session, following);
+  useFileScopeOwner(stream, following);
   useEffect(() => {
-    if (session && following && intent) session.follow(intent, () => clock.nowUs() ?? intent.atUs);
-  }, [session, following, intent, clock]);
+    if (stream && following && intent) stream.follow(intent, () => clock.nowUs() ?? intent.atUs);
+  }, [stream, following, intent, clock]);
   // Every Owner seat shows the one Presenter View, so a change another Owner seat made is this window's too, until the
   // user acts here. The server says who made each change; this window's own come back as its own and are not applied.
   // The window's first look at a viewer in its Session adopts the view whoever made it, and a change of its own that
   // the backend has not settled yet is never overwritten.
   useEffect(() => {
-    if (!session || !ownerSeat) return;
+    if (!stream || !ownerSeat) return;
     const takes = takesPresenter(viewer, presenter.byOther);
     const last = adopted.current;
-    if (!intent || (last?.session === session && last.rev === presenter.rev)) return;
-    adopted.current = { session, rev: presenter.rev };
-    if (takes) session.follow(intent, () => clock.nowUs() ?? intent.atUs, true);
-  }, [session, ownerSeat, intent, clock, viewer, takesPresenter, presenter.rev, presenter.byOther]);
+    if (!intent || (last?.stream === stream && last.rev === presenter.rev)) return;
+    adopted.current = { stream, rev: presenter.rev };
+    if (takes) stream.follow(intent, () => clock.nowUs() ?? intent.atUs, true);
+  }, [stream, ownerSeat, intent, clock, viewer, takesPresenter, presenter.rev, presenter.byOther]);
 
   return (
-    session && (
+    stream && (
       <Playback
-        session={session}
+        stream={stream}
         viewer={viewer}
         item={item}
         name={entry.label}

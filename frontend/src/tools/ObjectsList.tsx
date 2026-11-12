@@ -41,7 +41,7 @@ import { nextSort } from "./table/columns";
 import { Table, type TableMemory } from "./table/Table";
 import { useApplied } from "./useApplied";
 
-/** What the panel reads of a viewer and asks of it: `PlaybackSession` is one. */
+/** What the panel reads of a viewer and asks of it: `PlaybackStream` is one. */
 export interface ObjectSource {
   readonly files: Pick<
     FileScope,

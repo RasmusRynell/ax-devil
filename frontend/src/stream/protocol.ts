@@ -146,7 +146,7 @@ export type Envelope =
 /** What a binary message holds: an envelope, or a frame still to decode. */
 export type Parsed = Envelope | { kind: "jpeg"; frame: JpegFrame };
 
-/** A binary message that breaks the envelope format. The session ends: the two sides disagree on the protocol. */
+/** A binary message that breaks the envelope format. The stream ends: the two sides disagree on the protocol. */
 export class EnvelopeError extends Error {
   constructor(reason: string) {
     super(reason);

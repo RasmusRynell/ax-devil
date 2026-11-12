@@ -1,4 +1,4 @@
-/** The export job of one playback session: what it asked the backend to write and where the backend says it stands. */
+/** The export job of one playback stream: what it asked the backend to write and where the backend says it stands. */
 
 import type {
   ClientMessage,

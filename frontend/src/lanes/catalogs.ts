@@ -1,4 +1,4 @@
-/** The catalogs a session has asked the backend for, compiled once per id and shared by every lane that uses them. */
+/** The catalogs a stream has asked the backend for, compiled once per id and shared by every lane that uses them. */
 
 import { compileCatalog, locate, type CompiledCatalog, type Diagnostic } from "../present";
 import type { CatalogInfoWire } from "../stream/protocol";
@@ -49,7 +49,7 @@ export class Catalogs {
     return this.#compiled.get(id);
   }
 
-  /** The catalog `id`, asking for it first when this session has not. */
+  /** The catalog `id`, asking for it first when this stream has not. */
   get(id: string): CatalogEntry {
     let held = this.#held.get(id);
     if (!held) {

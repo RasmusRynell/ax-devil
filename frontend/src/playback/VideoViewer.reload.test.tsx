@@ -17,7 +17,7 @@ import {
   viewsSent,
 } from "./videoViewerHarness";
 
-// The picture needs WebGL; this suite is about the session behind it.
+// The picture needs WebGL; this suite is about the stream behind it.
 vi.mock("./VideoCanvas", () => ({ VideoCanvas: () => null }));
 
 installViewerHarness();

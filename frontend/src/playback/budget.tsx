@@ -1,7 +1,7 @@
 /** The frame memory of a window, shared equally by its panes: the equal-share rule the backend keeps for its cache. */
 
 import { createContext, useContext, type ReactNode } from "react";
-import { BUFFER_BUDGET_BYTES } from "./sessionDeps";
+import { BUFFER_BUDGET_BYTES } from "./streamDeps";
 
 /** What each of `panes` panes may hold of decoded frames: the window's budget in equal parts, whole bytes. */
 export const paneBudget = (panes: number): number =>

@@ -21,7 +21,7 @@ const view = (change: Partial<PlaybackView> = {}): PlaybackView => ({
   ...change,
 });
 
-/** `paused`: a seek moves the playhead at once, in the same update, as the session does when paused. */
+/** `paused`: a seek moves the playhead at once, in the same update, as the stream does when paused. */
 function setup(change: Partial<PlaybackView> = {}, paused = false) {
   const controls = {
     togglePlay: vi.fn(),

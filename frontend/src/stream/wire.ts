@@ -1,4 +1,4 @@
-/** What the playback socket delivers to the session, parsed where it was received. */
+/** What the playback socket delivers to the stream, parsed where it was received. */
 
 import {
   EnvelopeError,
@@ -13,12 +13,12 @@ import type { Window } from "./FrameBuffer";
 export type Incoming =
   | { type: "message"; message: ServerMessage }
   | { type: "envelope"; envelope: Envelope }
-  /** A message that breaks the protocol; the session ends. */
+  /** A message that breaks the protocol; the stream ends. */
   | { type: "malformed"; reason: string }
   /** The socket closed, however it ended; `code` is its close code, 1006 when it dropped without one. */
   | { type: "closed"; code: number };
 
-/** What one socket message holds: what the session handles, or a JPEG frame the socket's thread decodes first. */
+/** What one socket message holds: what the stream handles, or a JPEG frame the socket's thread decodes first. */
 export type Received = Incoming | { type: "jpeg"; frame: JpegFrame };
 
 /** One socket to the backend. Messages sent before it is open are held until it is. */
@@ -33,7 +33,7 @@ export type Connect = (onIncoming: (incoming: Incoming) => void) => Connection;
 /**
  * What the socket's thread received and has not yet handed on, in order, decoding one JPEG frame at a time. A live
  * stream shows only its newest frame, so a frame still waiting is dropped when a newer one arrives. An offline frame
- * is kept while it is inside the window of the newest `Want`, the rule the session's `FrameBuffer` applies too, so a
+ * is kept while it is inside the window of the newest `Want`, the rule the stream's `FrameBuffer` applies too, so a
  * seek never waits behind decoding frames it would throw away. Once the socket closes, waiting frames are dropped:
  * they were for a stream that is over.
  */
@@ -81,7 +81,7 @@ export class Inbox {
   }
 }
 
-/** Turns one received socket message into what the session handles; `null` for kinds this client ignores. */
+/** Turns one received socket message into what the stream handles; `null` for kinds this client ignores. */
 export function decode(data: string | ArrayBuffer): Received | null {
   try {
     if (typeof data === "string")

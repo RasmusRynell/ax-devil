@@ -1,11 +1,11 @@
 import { CommandRefused } from "../client/errors";
 import type { ClientMessage } from "../stream/protocol";
-import { RETRY_MS, type SessionDeps } from "./sessionDeps";
+import { RETRY_MS, type StreamDeps } from "./streamDeps";
 import type { Connection, Incoming } from "../stream/wire";
 
 type Open = Extract<ClientMessage, { type: "Open" }>;
 
-/** What a `Link` tells the session. */
+/** What a `Link` tells the stream. */
 export interface LinkHandlers {
   /** The Open to send on a new connection, without its ticket. */
   open: () => Omit<Open, "ticket">;
@@ -18,7 +18,7 @@ export interface LinkHandlers {
 
 /** One viewer's socket to the backend: the ticket each connection spends, the Open it starts with, and the retries. */
 export class Link {
-  readonly #deps: Pick<SessionDeps, "ticket" | "connect" | "after">;
+  readonly #deps: Pick<StreamDeps, "ticket" | "connect" | "after">;
   readonly #handlers: LinkHandlers;
   #connection: Connection | undefined;
   /** Names this connection, so a late message of an earlier one is ignored. */
@@ -27,7 +27,7 @@ export class Link {
   #cancelRetry: (() => void) | undefined;
   #closed = false;
 
-  constructor(deps: Pick<SessionDeps, "ticket" | "connect" | "after">, handlers: LinkHandlers) {
+  constructor(deps: Pick<StreamDeps, "ticket" | "connect" | "after">, handlers: LinkHandlers) {
     this.#deps = deps;
     this.#handlers = handlers;
   }
