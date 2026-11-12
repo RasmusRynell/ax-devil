@@ -51,7 +51,14 @@ export function browserBacking(
   const read = (): Record<string, unknown> => {
     try {
       // The old shared entry is read-only fallback. A per-key null tombstone makes resets authoritative over it.
-      const legacy: unknown = JSON.parse(context.localStorage.getItem(KEY) ?? "{}");
+      const legacyText = context.localStorage.getItem(KEY);
+      let legacy: unknown;
+      try {
+        legacy = JSON.parse(legacyText ?? "{}");
+      } catch {
+        // Invalid legacy JSON must not hide independent per-key saves.
+        legacy = {};
+      }
       const kept =
         typeof legacy === "object" && legacy !== null && !Array.isArray(legacy)
           ? ({ ...legacy } as Record<string, unknown>)

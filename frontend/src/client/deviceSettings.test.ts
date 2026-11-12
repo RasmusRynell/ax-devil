@@ -94,6 +94,24 @@ describe("device settings", () => {
     expect(write).not.toHaveBeenCalled();
   });
 
+  it("reads a saved choice after reload despite malformed legacy JSON", () => {
+    const data = new Map([["ax-devil.device", "{broken"]]);
+    const context = {
+      localStorage: {
+        getItem: (key: string) => data.get(key) ?? null,
+        setItem: (key: string, value: string) => data.set(key, value),
+      } as unknown as Storage,
+      addEventListener: window.addEventListener.bind(window),
+      removeEventListener: window.removeEventListener.bind(window),
+    };
+    const store = createDeviceStore(browserBacking(context));
+    store.set("ui.theme", "dark");
+    expect(store.readSaved()).toEqual({ "ui.theme": "dark" });
+    const reloaded = createDeviceStore(browserBacking(context));
+    expect(reloaded.read()).toEqual({ "ui.theme": "dark" });
+    expect(data.get("ax-devil.device")).toBe("{broken");
+  });
+
   it("keeps two successive ephemeral choices when storage is blocked", () => {
     const blocked = {
       getItem: () => {
