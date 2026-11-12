@@ -13,6 +13,7 @@ import { settingsPatch, useSettings } from "../client/settings";
 import { literalSecret, PlainTextNote, SettingField, type Row } from "./SettingField";
 import { Refusal } from "../kit/Refusal";
 import { ShortcutsDialog } from "./ShortcutsDialog";
+import { numericInput } from "./numericInput";
 import { useSaveDialog } from "./useSaveDialog";
 
 /** Every setting that has a page. */
@@ -49,7 +50,20 @@ export function SettingsDialog({
     .filter((decoder) => decoder.live)
     .map((decoder) => [decoder.handler, decoder.display_name] as const);
   const ok = async () => {
-    const outcome = await submit(settingsPatch(base, draft, opened));
+    const normalized = { ...draft };
+    for (const row of shown) {
+      const value = draft[row.key];
+      if (
+        value === base[row.key] ||
+        typeof value !== "string" ||
+        row.secret ||
+        (row.full_access && !fullAccess)
+      )
+        continue;
+      if (row.kind.type === "whole" || row.kind.type === "auto_or_whole")
+        normalized[row.key] = numericInput(value, row.kind.type);
+    }
+    const outcome = await submit(settingsPatch(base, normalized, opened));
     if (outcome.kind === "refused") {
       const at = shown.find((row) => row.key === outcome.refusal.location);
       if (at?.page) setPage(at.page);

@@ -2,7 +2,7 @@
 //! decoders in the registry, and each resolver becomes a `playlist` subcommand whose arguments come from its settings
 //! schema.
 //!
-//! Parsing stays pure: it returns what the user asked for, and `run` decides what to start.
+//! Parsing checks local file paths before returning what the user asked for; `run` decides what to start.
 
 use super::{Cli, Command, Global, OverlayOption, describe};
 use api_types::handlers::{PluginSource, PluginStatus, PluginsInfo};
@@ -32,22 +32,41 @@ where
     I::Item: Into<OsString> + Clone,
 {
     let matches = command(handlers).try_get_matches_from(args)?;
+    let mut global = Global::from_arg_matches(&matches)?;
+    if let Some((name, local)) = matches.subcommand() {
+        let config = local.get_one::<std::path::PathBuf>("local_config").cloned();
+        global.config = if matches!(name, "clear-cache" | "catalog") {
+            config
+        } else {
+            config.or(global.config)
+        };
+    }
     if let Some(("playlist", playlist)) = matches.subcommand() {
         // The derive knows no resolver, so it cannot read this subcommand; the options every command takes it can.
         return Ok(Cli {
-            global: Global::from_arg_matches(&matches)?,
+            global,
             command: Some(playlist_command_of(handlers, playlist)?),
         });
     }
     let cli = Cli::from_arg_matches(&matches)?;
     let mut cli = cli;
+    cli.global = global;
     if let Some(Command::Local {
+        video,
         overlay,
         handler_type,
         overlay_option,
         ..
     }) = &mut cli.command
     {
+        for path in std::iter::once(&*video).chain(overlay.iter()) {
+            if !path.is_file() {
+                return Err(usage_error(
+                    ErrorKind::InvalidValue,
+                    format!("{}: expected an existing file", path.display()),
+                ));
+            }
+        }
         if !handler_type.is_empty() && handler_type.len() != overlay.len() {
             return Err(usage_error(
                 ErrorKind::WrongNumberOfValues,
@@ -209,6 +228,17 @@ fn command(handlers: &Handlers) -> clap::Command {
             })
         })
         .subcommand(playlist_command(handlers))
+        .mut_subcommands(|command| {
+            command.arg(
+                Arg::new("local_config")
+                    .long("config")
+                    .global(true)
+                    .value_name("PATH")
+                    .value_parser(clap::value_parser!(std::path::PathBuf))
+                    .value_hint(ValueHint::FilePath)
+                    .help("Use this settings file"),
+            )
+        })
 }
 
 fn playlist_command(handlers: &Handlers) -> clap::Command {

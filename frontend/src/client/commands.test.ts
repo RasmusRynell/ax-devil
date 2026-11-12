@@ -23,10 +23,36 @@ describe("menu tips", () => {
   it("tips the overlay toggles with the description their settings show", () => {
     const description = (key: string) => SETTINGS.find((row) => row.key === key)?.description;
     const view = entries("View", ["lane-names", "object-details"]);
-    expect(view).toMatchObject([
+    expect(view.filter((entry) => entry.kind === "check")).toMatchObject([
       { id: "lane-names", tip: description("overlays.lane_names") },
       { id: "object-details", tip: description("overlays.object_details") },
     ]);
     expect(view.every((entry) => entry.kind !== "action" || !entry.tip)).toBe(true);
   });
+});
+
+it("keeps unavailable viewer commands visible and disables them until a permitted target offers them", () => {
+  const view = entries("View", []);
+  expect(view).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: "zoom-in", disabled: true }),
+      expect.objectContaining({ id: "add-bookmark", disabled: true }),
+      expect.objectContaining({ id: "export-video", disabled: true }),
+      expect.objectContaining({
+        label: "Playback",
+        kind: "submenu",
+        items: expect.arrayContaining([
+          expect.objectContaining({ id: "play-pause", disabled: true }),
+        ]),
+      }),
+    ]),
+  );
+  expect(entries("View", ["zoom-in"])).toContainEqual(
+    expect.objectContaining({ id: "zoom-in", disabled: false }),
+  );
+  expect(
+    menusFor({ ...allowed, view: false }, new Set(["zoom-in"]), none).find(
+      (menu) => menu.label === "View",
+    )?.entries,
+  ).toContainEqual(expect.objectContaining({ id: "zoom-in", disabled: true }));
 });

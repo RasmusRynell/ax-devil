@@ -1,3 +1,5 @@
+mod file;
+
 use super::*;
 use migrate::Migration;
 use serde_json::json;
@@ -245,11 +247,6 @@ fn a_file_that_cannot_be_trusted_stops_loading_naming_the_file_and_key_and_is_le
             "camera.overlay",
         ),
         (
-            "bad shortcut key",
-            r#"{"version": 1, "shortcuts": {"exit": "Ctrl+"}}"#,
-            "shortcuts.exit",
-        ),
-        (
             "duplicate shortcut",
             r#"{"version": 1, "shortcuts": {"exit": "Ctrl+J", "about": "ctrl+j"}}"#,
             "already used by",
@@ -407,14 +404,20 @@ fn saving_replaces_a_linked_settings_file_with_a_private_file_and_leaves_the_tar
     let target = folder.path().join("elsewhere.json");
     let original = r#"{"version": 1, "settings": {"camera.overlay": "rtsp"}}"#;
     fs::write(&target, original).unwrap();
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
     fs::create_dir(path.parent().unwrap()).unwrap();
     std::os::unix::fs::symlink(&target, &path).unwrap();
+    std::os::unix::fs::symlink(&target, path.with_file_name("settings.json.partial")).unwrap();
 
     let settings = Settings::load(&path).unwrap();
     assert_eq!(settings.state().values()["camera.overlay"], "rtsp");
     settings.patch(&change("mqtt")).unwrap();
 
     assert_eq!(fs::read_to_string(&target).unwrap(), original);
+    assert_eq!(
+        fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
     assert!(!fs::symlink_metadata(&path).unwrap().is_symlink());
     assert_eq!(read(&path)["settings"]["camera.overlay"], "mqtt");
     let mode = fs::metadata(&path).unwrap().permissions().mode();
@@ -425,6 +428,10 @@ fn saving_replaces_a_linked_settings_file_with_a_private_file_and_leaves_the_tar
         .unwrap()
         .patch(&change("mqtt"))
         .unwrap();
+    assert_eq!(
+        fs::metadata(&private).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
     let mode = fs::metadata(private.parent().unwrap())
         .unwrap()
         .permissions()

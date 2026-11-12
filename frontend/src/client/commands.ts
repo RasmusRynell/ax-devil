@@ -65,12 +65,13 @@ const SCOPES: Record<CommandId, Scope> = {
 
 type Layout =
   | { kind: "separator" }
-  | { kind: "action" | "check"; id: CommandId }
+  | { kind: "action" | "check"; id: CommandId; viewer?: boolean }
   | { kind: "recents" }
   | { kind: "submenu"; label: string; items: readonly Layout[] };
 
 const SEPARATOR: Layout = { kind: "separator" };
 const action = (id: CommandId): Layout => ({ kind: "action", id });
+const viewer = (id: CommandId): Layout => ({ kind: "action", id, viewer: true });
 const check = (id: CommandId): Layout => ({ kind: "check", id });
 const submenu = (label: string, items: readonly Layout[]): Layout => ({
   kind: "submenu",
@@ -103,32 +104,32 @@ export const MENUS: readonly { label: string; items: readonly Layout[] }[] = [
     label: "View",
     items: [
       check("fullscreen"),
-      action("lane-fullscreen"),
-      action("media-tools"),
+      viewer("lane-fullscreen"),
+      viewer("media-tools"),
       check("sidebar"),
       SEPARATOR,
-      action("zoom-in"),
-      action("zoom-out"),
-      action("zoom-reset"),
+      viewer("zoom-in"),
+      viewer("zoom-out"),
+      viewer("zoom-reset"),
       SEPARATOR,
       submenu("Playback", [
-        action("play-pause"),
+        viewer("play-pause"),
         SEPARATOR,
-        action("step-forward"),
-        action("step-back"),
-        action("step-forward-10"),
-        action("step-back-10"),
+        viewer("step-forward"),
+        viewer("step-back"),
+        viewer("step-forward-10"),
+        viewer("step-back-10"),
         SEPARATOR,
-        action("speed-up"),
-        action("speed-down"),
+        viewer("speed-up"),
+        viewer("speed-down"),
       ]),
       SEPARATOR,
       check("lane-names"),
       check("object-details"),
-      action("info-overlay"),
+      viewer("info-overlay"),
       SEPARATOR,
-      action("add-bookmark"),
-      action("export-video"),
+      viewer("add-bookmark"),
+      viewer("export-video"),
       SEPARATOR,
       action("plugins"),
     ],
@@ -159,8 +160,8 @@ function tidy(entries: readonly MenuEntry[]): MenuEntry[] {
 }
 
 /**
- * The menus as this window shows them: only the `wired` commands (those that do something today), each with its
- * label and its key in `shortcuts`, and disabled outside the `allowed` scopes. A menu left with nothing drops out.
+ * The menus as this window shows them: wired app commands and implemented viewer commands, each with its label
+ * and key. Viewer commands without a target stay visible but disabled, as do commands outside allowed scopes.
  * Open Recent lists `recents` and comes with Open Workspace.
  */
 export function menusFor(
@@ -196,7 +197,7 @@ export function menusFor(
             },
           ];
         }
-        if (!wired.has(item.id)) return [];
+        if (!wired.has(item.id) && !item.viewer) return [];
         return [
           {
             kind: item.kind,
@@ -204,7 +205,7 @@ export function menusFor(
             label: command(item.id).label,
             tip: command(item.id).description ?? undefined,
             shortcut: shortcuts[item.id] ?? undefined,
-            disabled: !allowed[SCOPES[item.id]],
+            disabled: !wired.has(item.id) || !allowed[SCOPES[item.id]],
           },
         ];
       }),

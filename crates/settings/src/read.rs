@@ -6,6 +6,33 @@ use serde_json::Value;
 use std::{collections::BTreeMap, path::PathBuf};
 
 impl State {
+    /// Non-secret keys whose raw saved value differs from the effective preference. A client can use these names
+    /// when deciding whether to send an explicit repair write; loading alone leaves the raw document unchanged.
+    pub fn recovered(&self) -> Vec<String> {
+        let raw = self.document.get("settings").and_then(Value::as_object);
+        self.rows()
+            .filter(|row| !row.secret)
+            .filter(|row| {
+                raw.and_then(|raw| raw.get(row.key))
+                    .is_some_and(|value| self.values.get(row.key) != Some(value))
+            })
+            .map(|row| row.key.to_owned())
+            .collect()
+    }
+
+    /// Commands whose saved override was recovered; only ids are exposed, never the malformed raw values.
+    pub fn recovered_shortcuts(&self) -> Vec<String> {
+        let raw = self.document.get("shortcuts").and_then(Value::as_object);
+        self.shortcuts()
+            .into_iter()
+            .filter(|(id, key)| {
+                raw.and_then(|raw| raw.get(*id))
+                    .is_some_and(|value| *value != serde_json::json!(key))
+            })
+            .map(|(id, _)| id.to_owned())
+            .collect()
+    }
+
     /// What each non-secret setting that holds a `$NAME` reference gives as it is used, by dotted key, for
     /// a form that starts from the value rather than the reference. Not logged: nothing is used yet.
     pub fn references(&self) -> BTreeMap<String, Value> {

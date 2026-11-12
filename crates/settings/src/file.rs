@@ -111,9 +111,16 @@ pub(crate) fn write(path: &Path, version: u64, document: &Map<String, Value>) ->
 /// never leaves half a file. A missing folder is created readable by the user only, because the file may hold
 /// credentials.
 pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    stage(path, bytes)?
-        .persist(path)
-        .map_err(|error| error.error)?;
+    let staged = stage(path, bytes)?;
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() => {
+            staged.as_file().set_permissions(metadata.permissions())?
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    staged.persist(path).map_err(|error| error.error)?;
     Ok(())
 }
 

@@ -295,6 +295,8 @@ fn snapshot(
     SettingsState {
         revision: state.revision(),
         values: state.values(),
+        recovered: Some(state.recovered()).filter(|keys| !keys.is_empty()),
+        recovered_shortcuts: Some(state.recovered_shortcuts()).filter(|keys| !keys.is_empty()),
         // What a reference gives is the server's environment: only Full access is told.
         resolved: principal
             .full_access()
