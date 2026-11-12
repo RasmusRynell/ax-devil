@@ -27,13 +27,19 @@ mod conformance;
 use crate::{
     AppState,
     access::{self, Who},
+    rejected,
 };
 use axum::{
     Router,
-    middleware::from_fn_with_state,
+    body::Body,
+    extract::Request,
+    http::{StatusCode, header},
+    middleware::{Next, from_fn, from_fn_with_state},
+    response::{IntoResponse, Response},
     routing::{MethodFilter, MethodRouter, on},
 };
 use foundation::CancelToken;
+use futures_util::StreamExt;
 use std::sync::Arc;
 
 /// Cancels the blocking work of a request or socket when its future is dropped, as the server does when the client
@@ -300,6 +306,67 @@ pub(crate) const ROUTES: &[Route] = &[
     },
 ];
 
+/// The sockets' paths: their failures are upgrade refusals no page reads as JSON.
+const SOCKETS: [&str; 2] = ["/api/session", "/api/playback"];
+
+/// Answers an extractor's plain-text rejection (a body that is not the route's JSON, a missing content type, a bad path
+/// or query) as an `ErrorWire` under the same status, so a JSON route fails in one shape. The text is axum's own and
+/// names only what the caller sent. Left as they are: responses that are not plain text (images, the scan stream,
+/// bodiless 404 and 405), the sockets' upgrade refusals and any 429, which a handler words itself.
+async fn wire_rejections(request: Request, next: Next) -> Response {
+    let path = request.uri().path().to_owned();
+    let response = next.run(request).await;
+    let status = response.status();
+    let plain = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|kind| kind.to_str().ok())
+        .is_some_and(|kind| kind.starts_with("text/plain"));
+    let rejection = (status.is_client_error() || status.is_server_error())
+        && status != StatusCode::TOO_MANY_REQUESTS;
+    if !plain || !rejection || !path.starts_with("/api/") || SOCKETS.contains(&path.as_str()) {
+        return response;
+    }
+    let text = head_of(response.into_body()).await;
+    let reason = if text.is_empty() {
+        "the request was not accepted".to_owned()
+    } else {
+        text
+    };
+    rejected(status, reason).into_response()
+}
+
+/// How many bytes of a rejection's text an `ErrorWire` carries: serde's message can quote a whole value the caller sent.
+const REASON_MOST: usize = 1024;
+
+/// The start of `body` as text, at most [`REASON_MOST`] bytes of it, with an ellipsis when more followed. Only the
+/// bytes kept are copied and nothing is read once the budget is spent and one more byte has shown there is more; a
+/// character cut in two is left out whole.
+async fn head_of(body: Body) -> String {
+    let mut stream = body.into_data_stream();
+    let mut read = Vec::new();
+    let mut cut = false;
+    while let Some(Ok(chunk)) = stream.next().await {
+        let room = REASON_MOST - read.len();
+        read.extend_from_slice(&chunk[..chunk.len().min(room)]);
+        if chunk.len() > room {
+            cut = true;
+            break;
+        }
+    }
+    let mut text = match std::str::from_utf8(&read) {
+        Ok(text) => text.to_owned(),
+        Err(error) if cut && error.error_len().is_none() => {
+            String::from_utf8_lossy(&read[..error.valid_up_to()]).into_owned()
+        }
+        Err(_) => String::from_utf8_lossy(&read).into_owned(),
+    };
+    if cut {
+        text.push('\u{2026}');
+    }
+    text
+}
+
 /// The routes `listener` serves, and in release builds the embedded frontend for every other GET.
 pub(crate) fn mount(listener: Listener, state: AppState) -> Router {
     let mut router = Router::new();
@@ -315,5 +382,43 @@ pub(crate) fn mount(listener: Listener, state: AppState) -> Router {
     {
         router = router.fallback_service(axum::routing::get(crate::asset));
     }
-    router.with_state(state)
+    router.with_state(state).layer(from_fn(wire_rejections))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Body, REASON_MOST, head_of};
+    use futures_util::stream;
+    use std::convert::Infallible;
+
+    async fn head(chunks: &[&[u8]]) -> String {
+        let chunks: Vec<Result<Vec<u8>, Infallible>> =
+            chunks.iter().map(|chunk| Ok(chunk.to_vec())).collect();
+        head_of(Body::from_stream(stream::iter(chunks))).await
+    }
+
+    #[tokio::test]
+    async fn a_rejection_keeps_its_first_bytes_and_an_ellipsis_only_when_more_followed() {
+        let full = "a".repeat(REASON_MOST);
+        let (head_part, rest) = full.as_bytes().split_at(1000);
+        // Exactly the budget, in one chunk or several, even with an empty one after: nothing was lost.
+        assert_eq!(head(&[full.as_bytes()]).await, full);
+        assert_eq!(head(&[head_part, rest, b""]).await, full);
+        // One byte more, wherever the chunk boundary falls, or a far longer one: cut, and no more is kept.
+        let cut = format!("{full}\u{2026}");
+        assert_eq!(head(&[full.as_bytes(), b"b"]).await, cut);
+        assert_eq!(
+            head(&[head_part, b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]).await,
+            cut
+        );
+        assert_eq!(head(&["a".repeat(5000).as_bytes()]).await, cut);
+        // A character straddling the cutoff is dropped whole, not left as a replacement.
+        let straddling = format!("{}\u{e9}", "a".repeat(REASON_MOST - 1));
+        assert_eq!(
+            head(&[straddling.as_bytes()]).await,
+            format!("{}\u{2026}", "a".repeat(REASON_MOST - 1))
+        );
+        // Nothing to read is nothing.
+        assert_eq!(head(&[]).await, "");
+    }
 }

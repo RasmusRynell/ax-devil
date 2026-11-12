@@ -5,7 +5,7 @@ import { App } from "./App";
 import { apiFetch } from "./api";
 import { deviceStore } from "./deviceSettings";
 import { DEFAULT_SETTINGS } from "./fakeSettings";
-import type { SettingsPatch, SettingsState } from "./generated/api";
+import type { ErrorWire, SettingsPatch, SettingsState } from "./generated/api";
 import { FakeSocket } from "./session/fakeSession";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
@@ -30,7 +30,7 @@ const info = (access = { owner: true, fullAccess: true }) => ({
 /** A backend with the given settings; a PATCH changes the keys it names, as the real one does, or is refused with `refuse`. */
 function backend(
   settings = DEFAULT_SETTINGS,
-  refuse?: { reason: string; location: string },
+  refuse?: ErrorWire,
   access?: { owner: boolean; fullAccess: boolean },
 ) {
   let current = settings;
@@ -77,7 +77,11 @@ describe("app shell", () => {
           : {
               ok: false,
               status: 500,
-              json: async () => ({ reason: "settings file unreadable", location: "" }),
+              json: async () => ({
+                code: "Internal",
+                params: {},
+                reason: "settings file unreadable",
+              }),
             },
       ),
     );
@@ -104,7 +108,12 @@ describe("app shell", () => {
   });
 
   it("keeps the dialog open, says why at the value the backend refused and changes nothing on the device", async () => {
-    backend(DEFAULT_SETTINGS, { reason: "no such folder", location: "storage.cache_dir" });
+    backend(DEFAULT_SETTINGS, {
+      code: "InvalidRequest",
+      params: {},
+      reason: "no such folder",
+      location: "storage.cache_dir",
+    });
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
     fireEvent.change(await screen.findByLabelText("Theme"), { target: { value: "light" } });

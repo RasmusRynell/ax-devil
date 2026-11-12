@@ -1,9 +1,8 @@
 //! Who is asking and what they may do: principals, the gate of each route, the guard that keeps other websites off the Local
 //! listener, the headers every response carries, and the limits on open sockets.
 
-use api_types::ApiError;
+use crate::failure;
 use axum::{
-    Json,
     extract::{FromRef, FromRequestParts, Request, State},
     http::{
         HeaderMap, HeaderName, HeaderValue, StatusCode, header, request::Parts, uri::Authority,
@@ -219,14 +218,7 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
 }
 
 fn refuse(status: StatusCode, reason: &str, location: &str) -> Response {
-    (
-        status,
-        Json(ApiError {
-            reason: reason.to_owned(),
-            location: location.to_owned(),
-        }),
-    )
-        .into_response()
+    failure(status, location, reason.to_owned()).into_response()
 }
 
 /// How many sockets one server keeps open, in total and per peer address.

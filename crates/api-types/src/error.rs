@@ -1,6 +1,7 @@
 //! Errors on the wire. [`project`] is the only place a [`UserError`] becomes wire data, so what an audience may
 //! learn from a failure is decided once.
 
+use crate::live::LiveReason;
 use foundation::{ErrorCode, Location, UserError};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -24,6 +25,10 @@ pub struct ErrorParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub item: Option<String>,
+    /// Why a camera did not answer, for `CameraFailed`; the client words it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub camera: Option<LiveReason>,
 }
 
 /// A failure as the wire carries it: the code and its parameters for everyone, and for an audience with host
@@ -63,7 +68,7 @@ pub fn project(error: &UserError, audience: Audience) -> ErrorWire {
     };
     ErrorWire {
         code: error.code,
-        params: ErrorParams { item },
+        params: ErrorParams { item, camera: None },
         reason,
         location,
     }

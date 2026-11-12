@@ -175,15 +175,6 @@ pub struct SettingsPatch {
     pub shortcuts_reset: Option<Vec<String>>,
 }
 
-/// What a failed request returns: the reason, shown where the user acted, and what it is about.
-#[derive(Serialize, TS)]
-pub struct ApiError {
-    /// What is wrong, in words for the user.
-    pub reason: String,
-    /// The setting key (`camera.host`), `shortcuts.<command id>`, or file the reason is about.
-    pub location: String,
-}
-
 /// Visits every type this crate sends to the frontend, for `export-types`.
 pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<AppInfo>();
@@ -193,7 +184,6 @@ pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<SecretState>();
     types.visit::<LoginView>();
     types.visit::<LoginEdit>();
-    types.visit::<ApiError>();
     bookmarks::visit_api_types(types);
     catalogs::visit_api_types(types);
     content::visit_api_types(types);

@@ -1,30 +1,32 @@
 import { createContext, useContext, useEffect, useLayoutEffect, type ReactNode } from "react";
 import { useAccess } from "./access";
+import { ask } from "./ask";
 import { deviceStore, useDeviceValues, type DeviceValue } from "./deviceSettings";
-import type { ApiError, LoginEdit, SettingsPatch, SettingsState } from "./generated/api";
-import { fetchJson, refusalOf, useResource } from "./resource";
+import { reasonOf } from "./errors";
+import type { ErrorWire, LoginEdit, SettingsPatch, SettingsState } from "./generated/api";
+import { refusalOf, useResource } from "./resource";
 import { COMMANDS, SETTINGS, type CommandId, type SettingKey } from "./generated/settings";
 import { type Login, secretStateOf } from "./secret";
 
 /**
- * Every way to store settings resolves to the refusal (its `location` is a setting key or `shortcuts.<id>`, empty when
+ * Every way to store settings resolves to the refusal (its `location` is a setting key or `shortcuts.<id>`, absent when
  * the backend could not be reached), else null. Only the keys named are written; any other keeps the value it has
  * now, whoever wrote it.
  */
 export interface SettingsApi extends SettingsState {
   /** Stores one patch: several settings and shortcuts at once, as one write that is refused or taken whole. */
-  apply: (patch: SettingsPatch) => Promise<ApiError | null>;
+  apply: (patch: SettingsPatch) => Promise<ErrorWire | null>;
   /** Sets one setting; logins carry the passwords typed since, which the backend does not tell. */
   set: <K extends SettingKey>(
     key: K,
     value: SettingsState["values"][K] | Login[],
-  ) => Promise<ApiError | null>;
+  ) => Promise<ErrorWire | null>;
   /** Puts one setting back to its default. */
-  reset: (key: SettingKey) => Promise<ApiError | null>;
+  reset: (key: SettingKey) => Promise<ErrorWire | null>;
   /** Binds a command to *key*, or unbinds it with null. */
-  setShortcut: (id: CommandId, key: string | null) => Promise<ApiError | null>;
+  setShortcut: (id: CommandId, key: string | null) => Promise<ErrorWire | null>;
   /** Puts a command back to its own key. */
-  resetShortcut: (id: CommandId) => Promise<ApiError | null>;
+  resetShortcut: (id: CommandId) => Promise<ErrorWire | null>;
 }
 
 /** The single-key ways to store, over `apply`. */
@@ -183,32 +185,25 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   if (owner && !remote) {
     return settings.error ? (
-      <p role="alert">ax-devil cannot read its settings: {refusalOf(settings.error).reason}</p>
+      <p role="alert">ax-devil cannot read its settings: {reasonOf(refusalOf(settings.error))}</p>
     ) : (
       <main aria-busy="true" />
     );
   }
 
-  const apply = async (patch: SettingsPatch) => {
+  const apply = async (patch: SettingsPatch): Promise<ErrorWire | null> => {
     const { device: mine, server } = splitPatch(patch);
-    try {
-      if (!isEmpty(server)) {
-        if (!owner) return { reason: "Only the Owner can change this", location: "" };
-        settings.apply(
-          await fetchJson<SettingsState>("/api/settings", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(server),
-          }),
-        );
-      }
-      // After the backend took its part, so a refused save changes nothing here either.
-      for (const [key, value] of mine.set) deviceStore.set(key as SettingKey, value as DeviceValue);
-      for (const key of mine.reset) deviceStore.reset(key as SettingKey);
-      return null;
-    } catch (error) {
-      return refusalOf(error);
+    if (!isEmpty(server)) {
+      if (!owner)
+        return { code: "Forbidden", params: {}, reason: "Only the Owner can change this" };
+      const answer = await ask<SettingsState>("/api/settings", { method: "PATCH", json: server });
+      if (!answer.ok) return answer.error;
+      settings.apply(answer.value);
     }
+    // After the backend took its part, so a refused save changes nothing here either.
+    for (const [key, value] of mine.set) deviceStore.set(key as SettingKey, value as DeviceValue);
+    for (const key of mine.reset) deviceStore.reset(key as SettingKey);
+    return null;
   };
   const shortcuts = remote?.shortcuts ?? STANDARD_SHORTCUTS;
   return (

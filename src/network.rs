@@ -358,7 +358,7 @@ pub fn request_from_settings(
         None => (range_setting.as_deref().unwrap_or_default(), "scan.range"),
     };
     let targets = Targets::parse(text).map_err(|error| {
-        UserError::new(ErrorCode::WorkspaceInvalid, error.detail().to_owned())
+        UserError::new(ErrorCode::InvalidRequest, error.detail().to_owned())
             .at(Location::field(field))
     })?;
     let signs_in = sign_in.unwrap_or_else(|| {

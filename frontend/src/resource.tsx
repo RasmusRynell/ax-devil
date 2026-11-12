@@ -8,8 +8,8 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { apiFetch } from "./api";
-import type { ApiError, Topic } from "./generated/api";
+import { ask } from "./ask";
+import type { ErrorWire, Topic } from "./generated/api";
 
 /** How long a failed read waits before it is tried again, one entry per retry. */
 const RETRY_MS = [1000, 2000, 4000];
@@ -64,26 +64,25 @@ export function useNoticeSink(): ((topic: Topic, revision: number, fresh: boolea
 
 const never = () => () => {};
 
-/** Why a request failed: the backend's refusal, else the error's own message. */
-export const refusalOf = (error: unknown): ApiError =>
-  typeof error === "object" && error !== null && "reason" in error
-    ? (error as ApiError)
-    : { reason: error instanceof Error ? error.message : String(error), location: "" };
+/** Why a read failed: the `ErrorWire` a reader throws, else the error's own message as an `Internal` one. */
+export const refusalOf = (error: unknown): ErrorWire =>
+  typeof error === "object" && error !== null && "code" in error
+    ? (error as ErrorWire)
+    : {
+        code: "Internal",
+        params: {},
+        reason: error instanceof Error ? error.message : String(error),
+      };
 
-/** Asks the backend and reads the JSON answer; a failure throws the backend's refusal, or one naming the status. */
-export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await apiFetch(path, init);
-  if (!response.ok) {
-    const error = (await response.json().catch(() => null)) as ApiError | null;
-    throw error ?? { reason: `the backend answered ${response.status}`, location: "" };
-  }
-  return (await response.json()) as T;
+/** Asks the backend and reads the answer; a failure is thrown as the `ErrorWire` the backend sent. */
+async function readJson<T>(path: string, signal: AbortSignal): Promise<T> {
+  const answer = await ask<T>(path, { signal });
+  if (answer.ok) return answer.value;
+  throw answer.error;
 }
 
-const readJson = <T,>(path: string, signal: AbortSignal) => fetchJson<T>(path, { signal });
-
 interface Options<T> {
-  /** Reads the answer at `path`; the default is `fetchJson`. */
+  /** Reads the answer at `path`; the default is `ask`, which throws the backend's `ErrorWire`. */
   read?: (path: string, signal: AbortSignal) => Promise<T>;
   /**
    * The revision a value already reflects, for an answer that carries its own (of one topic): a notice of that

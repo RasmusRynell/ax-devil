@@ -1,6 +1,7 @@
 import { AccessContext } from "./access";
 import type { AppInfo } from "./generated/api";
 import { PathPickerProvider } from "./pickPath";
+import { reasonOf } from "./errors";
 import { ChangesProvider, refusalOf, useResource } from "./resource";
 import { SessionProvider } from "./session/session";
 import { SettingsProvider } from "./settings";
@@ -28,7 +29,7 @@ function Backend() {
   return (
     <main aria-busy={error === undefined} className="flex h-screen items-center justify-center">
       {error !== undefined && (
-        <p role="alert">ax-devil cannot reach its backend: {refusalOf(error).reason}</p>
+        <p role="alert">ax-devil cannot reach its backend: {reasonOf(refusalOf(error))}</p>
       )}
     </main>
   );

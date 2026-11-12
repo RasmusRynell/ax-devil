@@ -3,9 +3,9 @@
 
 use super::{
     glance::{jpeg, stream_picture},
-    handlers::{Refusal, refuse},
+    handlers::refuse,
 };
-use crate::{AppState, thumbnails::Answer, video_sources::input_of};
+use crate::{AppState, Failure, thumbnails::Answer, video_sources::input_of};
 use axum::{
     extract::{Query, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
@@ -24,7 +24,7 @@ pub(super) struct Params {
     entry: ContentId,
 }
 
-fn not_found() -> Refusal {
+fn not_found() -> Failure {
     refuse(
         StatusCode::NOT_FOUND,
         &UserError::new(ErrorCode::ContentNotFound, "No such entry"),
@@ -37,7 +37,7 @@ pub(super) async fn get(
     State(state): State<AppState>,
     Query(params): Query<Params>,
     headers: HeaderMap,
-) -> Result<Response, Refusal> {
+) -> Result<Response, Failure> {
     let session = params
         .session
         .parse::<SessionId>()

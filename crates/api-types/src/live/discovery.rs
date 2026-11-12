@@ -1,8 +1,7 @@
 //! What the live form asks a camera and the network scan answers: the connection a question is about, the sizes,
-//! sources and topics a camera offers, why a question failed, and the cameras the scan found.
+//! sources and topics a camera offers, and the cameras the scan found.
 
-use super::{LiveReason, WireSecret};
-use crate::ErrorWire;
+use super::WireSecret;
 use foundation::ItemId;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -169,23 +168,6 @@ pub enum SourcesAnswer {
     DataHub(LiveTopics),
 }
 
-/// Why a question to a camera got no answer: the body of a failed `POST /api/live/resolutions` or
-/// `POST /api/live/sources`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(tag = "problem")]
-pub enum LiveProblem {
-    /// The connection cannot be used as entered (status 422); `error.location` names the field.
-    Invalid {
-        /// What to fix.
-        error: ErrorWire,
-    },
-    /// The camera did not answer, or answered no (status 502).
-    Camera {
-        /// Why, as a code the client words.
-        reason: LiveReason,
-    },
-}
-
 /// The body of `POST /api/network/scan`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(default)]
@@ -236,7 +218,6 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<SourcesRequest>();
     types.visit::<LiveTopics>();
     types.visit::<SourcesAnswer>();
-    types.visit::<LiveProblem>();
     types.visit::<ScanRequestWire>();
     types.visit::<ScanStarted>();
     types.visit::<NetworkSnapshot>();

@@ -1,10 +1,7 @@
 //! The scan a resolver's form asks for.
 
-use super::{
-    CancelOnDrop,
-    handlers::{Refusal, refuse},
-};
-use crate::AppState;
+use super::{CancelOnDrop, handlers::refuse};
+use crate::{AppState, Failure};
 use api_types::handlers::{ChoiceInfo, ScanRequest};
 use axum::{
     Json,
@@ -80,7 +77,7 @@ pub(crate) async fn scan(
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(request): Json<ScanRequest>,
-) -> Result<Json<Vec<ChoiceInfo>>, Refusal> {
+) -> Result<Json<Vec<ChoiceInfo>>, Failure> {
     let handlers = state.plugins.handlers();
     let Some(resolver) = handlers.resolver(&id).cloned() else {
         return Err(refuse(

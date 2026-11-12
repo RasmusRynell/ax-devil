@@ -1,8 +1,8 @@
 //! Routes for the decoders and playlist resolvers the app knows and the plugins that provide them.
 
-use crate::AppState;
+use crate::{AppState, Failure};
 use api_types::{
-    Audience, ErrorWire,
+    Audience,
     handlers::{
         DecoderInfo, FieldInfo, FieldKindWire, HandlersInfo, PluginSource, PluginStatus,
         PluginsInfo, ResolverInfo, ScanCountInfo,
@@ -13,11 +13,9 @@ use foundation::UserError;
 use handler_api::{FieldKind, Form};
 use std::collections::HashMap;
 
-/// A refused request: the status and the error as the host sees it. Both routes need the `Files` grant, so the
-/// caller may read the host's paths and reasons.
-pub(super) type Refusal = (StatusCode, Json<ErrorWire>);
-
-pub(super) fn refuse(status: StatusCode, error: &UserError) -> Refusal {
+/// A refused request: the status and `error` as the host sees it. The routes that use it need the `Files` grant, so
+/// the caller may read the host's paths and reasons.
+pub(super) fn refuse(status: StatusCode, error: &UserError) -> Failure {
     (status, Json(api_types::project(error, Audience::HOST)))
 }
 

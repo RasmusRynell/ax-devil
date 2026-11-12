@@ -3,6 +3,7 @@ import { useAccess } from "../access";
 import { scopeOf } from "../commands";
 import type { SidebarView, WorkspaceCommand } from "../generated/api";
 import { COMMANDS } from "../generated/settings";
+import { reasonOf } from "../errors";
 import { Button } from "../kit/Button";
 import { ChoiceDialog } from "../kit/ChoiceDialog";
 import type { MenuCommand } from "../kit/Menu";
@@ -151,7 +152,7 @@ export function Shell({ version }: { version: string }) {
                   refusal &&
                   setRefused({
                     title: "Settings",
-                    message: `Could not save this preference: ${refusal.reason}`,
+                    message: `Could not save this preference: ${reasonOf(refusal)}`,
                   }),
               );
           },

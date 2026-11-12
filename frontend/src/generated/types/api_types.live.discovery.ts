@@ -1,7 +1,5 @@
 // Generated from api_types::live::discovery by make; do not edit.
 
-import type { ErrorWire } from "./api_types.error";
-import type { LiveReason } from "./api_types.live";
 import type { WireSecret } from "./api_types.live.new_live";
 import type { LiveProtocol } from "./workspace.live";
 
@@ -53,20 +51,6 @@ head: number,
  * The sizes, in the camera's order; none when the head's list holds no valid size.
  */
 resolutions: Array<LiveResolution>, };
-
-/**
- * Why a question to a camera got no answer: the body of a failed `POST /api/live/resolutions` or
- * `POST /api/live/sources`.
- */
-export type LiveProblem = { "problem": "Invalid", 
-/**
- * What to fix.
- */
-error: ErrorWire, } | { "problem": "Camera", 
-/**
- * Why, as a code the client words.
- */
-reason: LiveReason, };
 
 /**
  * A stream size a camera offers.

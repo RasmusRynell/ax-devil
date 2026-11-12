@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
+import type { ErrorWire } from "../generated/api";
 import { QuickSetupDialog } from "./QuickSetupDialog";
 import { textOf } from "./SettingField";
 
@@ -22,7 +23,7 @@ const firstRun = {
 
 function open(
   state: typeof firstRun,
-  save: (change: unknown) => Promise<null | { reason: string; location: string }>,
+  save: (change: unknown) => Promise<ErrorWire | null>,
   { onClose = () => {}, onNotice = () => {} } = {},
 ) {
   render(
@@ -71,7 +72,11 @@ describe("quick setup dialog", () => {
   });
 
   it("says why a refused write was refused, closes, and takes the preview back", async () => {
-    const save = vi.fn(async () => ({ reason: "disk full", location: "" }));
+    const save = vi.fn(async (): Promise<ErrorWire> => ({
+      code: "Internal",
+      params: {},
+      reason: "disk full",
+    }));
     const onClose = vi.fn();
     const onNotice = vi.fn();
     // What the provider shows for the stored settings.

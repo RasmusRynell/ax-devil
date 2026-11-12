@@ -1,8 +1,8 @@
 //! Routes that copy and delete the user's catalogs. The catalog folder belongs to this machine, so only its own
 //! listener serves them (see the route table); the list reaches viewers on the playback socket.
 
-use super::handlers::{Refusal, refuse};
-use crate::AppState;
+use super::handlers::refuse;
+use crate::{AppState, Failure};
 use api_types::catalogs::{
     CopiedCatalog, CopyCatalogRequest, DeleteCatalogRequest, ReloadCatalogRequest,
 };
@@ -34,7 +34,7 @@ pub(crate) fn default_refusal(
 }
 
 /// The id a request names, or a refusal that says it names no catalog.
-fn parse(id: &str) -> Result<CatalogId, Refusal> {
+fn parse(id: &str) -> Result<CatalogId, Failure> {
     CatalogId::parse(id).ok_or_else(|| {
         refuse(
             StatusCode::BAD_REQUEST,
@@ -46,7 +46,7 @@ fn parse(id: &str) -> Result<CatalogId, Refusal> {
 /// Runs work on the catalog folder on a blocking thread and maps a failure to the status that tells its cause.
 async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, UserError> + Send + 'static,
-) -> Result<T, Refusal> {
+) -> Result<T, Failure> {
     let answer = tokio::task::spawn_blocking(work)
         .await
         .unwrap_or_else(|error| {
@@ -70,7 +70,7 @@ async fn blocking<T: Send + 'static>(
 pub(crate) async fn copy(
     State(state): State<AppState>,
     Json(request): Json<CopyCatalogRequest>,
-) -> Result<Json<CopiedCatalog>, Refusal> {
+) -> Result<Json<CopiedCatalog>, Failure> {
     let source = parse(&request.source)?;
     let library = state.catalogs;
     let id = blocking(move || library.copy_at(&source, request.revision, &request.name)).await?;
@@ -81,7 +81,7 @@ pub(crate) async fn copy(
 pub(crate) async fn reload(
     State(state): State<AppState>,
     Json(request): Json<ReloadCatalogRequest>,
-) -> Result<StatusCode, Refusal> {
+) -> Result<StatusCode, Failure> {
     let id = parse(&request.id)?;
     let library = state.catalogs;
     blocking(move || {
@@ -96,7 +96,7 @@ pub(crate) async fn reload(
 pub(crate) async fn delete(
     State(state): State<AppState>,
     Json(request): Json<DeleteCatalogRequest>,
-) -> Result<StatusCode, Refusal> {
+) -> Result<StatusCode, Failure> {
     let id = parse(&request.id)?;
     let (library, settings) = (state.catalogs, state.settings);
     blocking(move || {

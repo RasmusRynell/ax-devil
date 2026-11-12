@@ -62,7 +62,8 @@ beforeEach(() => {
       if (url === "/api/network/scan" && scanReplies.length > 0)
         return scanReplies.shift() as Promise<Response>;
       if (url === "/api/network/scan" && holdScan) await holdScan;
-      if (url === "/api/network/scan" && refuseScan) return new Response("{}", { status: 422 });
+      if (url === "/api/network/scan" && refuseScan)
+        return new Response('{"code":"InvalidRequest"}', { status: 422 });
       if (url === "/api/live/check" && loginRefused)
         return new Response(JSON.stringify(found("10.0.0.2", { state: "Refused" })));
       if (url === "/api/network/scan") return new Response(JSON.stringify({ scan: startedScan }));

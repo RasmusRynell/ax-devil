@@ -109,8 +109,9 @@ describe("lane menu", () => {
       expect(use.disabled).toBe(true);
       cleanup();
       setup({ settings: { ...LANE_SETTINGS, catalog: "built-in:tracking" } }, READY, async () => ({
+        code: "Internal",
+        params: {},
         reason: "no room",
-        location: "",
       }));
       fireEvent.click(screen.getByRole("button", { name: "Use as default" }));
       await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("no room"));

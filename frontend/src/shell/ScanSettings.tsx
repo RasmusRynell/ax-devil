@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAccess } from "../access";
+import { reasonOf } from "../errors";
 import type { NetworkSnapshot } from "../generated/api";
 import { type SettingKey } from "../generated/settings";
 import { Button } from "../kit/Button";
@@ -54,7 +55,7 @@ export function ScanSettings({
 
   /** Saves one setting; resolves to why the backend refused it, else `null`. */
   const store = (key: SettingKey, value: Value) =>
-    set(key, value).then((refusal) => refusal?.reason ?? null);
+    set(key, value).then((refusal) => (refusal ? reasonOf(refusal) : null));
 
   const ready = connected && !scanning;
   const scan = () => {

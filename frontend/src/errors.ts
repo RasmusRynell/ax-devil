@@ -25,6 +25,9 @@ export const ERRORS: Record<ErrorCode, string> = {
   WorkspaceInUse: "The workspace is open in another window.",
   WorkspaceExists: "That file already exists.",
   SaveFailed: "The workspace could not be saved.",
+  InvalidRequest: "The request is not valid.",
+  Forbidden: "You are not allowed to do that.",
+  CameraFailed: "The camera did not answer.",
   Internal: "The backend failed.",
 };
 

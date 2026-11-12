@@ -146,7 +146,7 @@ function PlaylistForm({
       // A cancelled resolve adds nothing, even when its answer was already on its way.
       if (controller.signal.aborted) return;
       if (!resolved.ok) {
-        setRefused({ reason: reasonOf(resolved.refusal), stamp });
+        setRefused({ reason: reasonOf(resolved.error), stamp });
         setResolving(false);
         return;
       }

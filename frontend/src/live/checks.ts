@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { apiFetch } from "../api";
+import { ask } from "../ask";
 import type { NetworkRow } from "../generated/api";
 import type { Camera } from "./cameras";
 
@@ -14,18 +14,11 @@ export type Checks = ReadonlyMap<string, NetworkRow>;
 
 const NONE: Checks = new Map();
 
-async function ask(item: string): Promise<NetworkRow | null> {
-  try {
-    const response = await apiFetch("/api/live/check", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ item }),
-    });
-    return response.status === 200 ? ((await response.json()) as NetworkRow) : null;
-  } catch {
-    return null;
-  }
-}
+/** The row of the stream's check; none when the backend sent no content or refused. */
+const check = (item: string): Promise<NetworkRow | null> =>
+  ask<NetworkRow | undefined>("/api/live/check", { json: { item } }).then(
+    (answer) => (answer.ok && answer.value) || null,
+  );
 
 /**
  * Checks each resolved stream of `cameras` that has a recipe (so its seat may), when `enabled`: again when it is
@@ -51,7 +44,7 @@ export function useLoginChecks(cameras: readonly Camera[], enabled: boolean, sca
       const key = `${stream.generation}:${stream.open}:${scan}`;
       if (asked.current.get(stream.id) === key) continue;
       asked.current.set(stream.id, key);
-      void ask(stream.id).then((row) => {
+      void check(stream.id).then((row) => {
         // An answer to a question since asked again is out of date.
         if (asked.current.get(stream.id) !== key) return;
         setChecks((now) => {

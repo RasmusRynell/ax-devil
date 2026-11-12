@@ -1,7 +1,8 @@
 import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 import { useAccess } from "./access";
-import { apiFetch } from "./api";
-import type { ErrorWire, FolderListing, PathExists } from "./generated/api";
+import { ask } from "./ask";
+import { reasonOf } from "./errors";
+import type { FolderListing, PathExists } from "./generated/api";
 import { FolderProblem, PathPicker, type CheckExists } from "./kit/PathPicker";
 import { SUFFIX } from "./recents";
 import { type WindowBridge } from "./windowBridge";
@@ -62,18 +63,16 @@ export const exportFile = (name: string, extension: "mp4" | "png" | "csv"): Path
 /** Lists a folder of the backend's machine, or where to start when `path` is absent. */
 async function listFolder(path: string | undefined, signal: AbortSignal): Promise<FolderListing> {
   const query = path === undefined ? "" : `?path=${encodeURIComponent(path)}`;
-  const response = await apiFetch(`/api/files/folder${query}`, { signal });
-  if (response.ok) return (await response.json()) as FolderListing;
-  const wire = (await response.json().catch(() => null)) as ErrorWire | null;
-  throw new FolderProblem(wire?.reason ?? "Cannot open that folder", response.status === 400);
+  const answer = await ask<FolderListing>(`/api/files/folder${query}`, { signal });
+  if (answer.ok) return answer.value;
+  throw new FolderProblem(reasonOf(answer.error), answer.error.code === "InvalidPath");
 }
 
 /** Whether the backend's machine has anything at `path`, hidden files and other-case names included. */
 const pathExists: CheckExists = async (path) => {
-  const response = await apiFetch(`/api/files/exists?path=${encodeURIComponent(path)}`);
-  if (response.ok) return ((await response.json()) as PathExists).exists;
-  const wire = (await response.json().catch(() => null)) as ErrorWire | null;
-  throw new Error(wire?.reason ?? "Cannot check that file");
+  const answer = await ask<PathExists>(`/api/files/exists?path=${encodeURIComponent(path)}`);
+  if (answer.ok) return answer.value.exists;
+  throw new Error(reasonOf(answer.error));
 };
 
 /** Resolves to the absolute path chosen on the backend's machine; null when cancelled. */

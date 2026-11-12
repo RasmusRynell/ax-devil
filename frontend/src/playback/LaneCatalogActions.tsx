@@ -11,7 +11,7 @@ import type {
 import { Button } from "../kit/Button";
 import { ChoiceDialog } from "../kit/ChoiceDialog";
 import { TextField } from "../kit/Fields";
-import { ask } from "../resolvers/handlers";
+import { ask } from "../ask";
 import { useSettings } from "../settings";
 import { Refusal } from "../kit/Refusal";
 import type { LaneSettings } from "./lanes";
@@ -21,16 +21,6 @@ export const DEFAULT_CATALOG = "overlays.default_catalog";
 
 /** What a user catalog's id starts with. */
 export const USER_PREFIX = "user:";
-
-const post = <T,>(
-  url: string,
-  body: CopyCatalogRequest | DeleteCatalogRequest | ReloadCatalogRequest,
-) =>
-  ask<T>(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
 
 /** What the buttons above already made the menu: the field and a refusal wrap inside it, since the menu opens placed for that width. */
 const BESIDE = "w-0 min-w-full";
@@ -132,7 +122,7 @@ export function LaneCatalogActions({
   });
 
   const setDefault = (id: string) =>
-    set(DEFAULT_CATALOG, id).then((refused) => setRefusal(refused?.reason ?? null));
+    set(DEFAULT_CATALOG, id).then((refused) => setRefusal(refused ? reasonOf(refused) : null));
 
   const finish = (failed: string | undefined, what: string) => {
     refocus.current = true;
@@ -142,12 +132,13 @@ export function LaneCatalogActions({
 
   // The backend reads the file again first (an edit the folder polls cannot see is read now), then the lane asks for
   // the document anew.
-  const reread = (ask: () => void) => {
+  const reread = (refresh: () => void) => {
     setRefusal(null);
-    void post<undefined>("/api/catalogs/reload", { id: catalog }).then((answer) => {
-      ask();
+    const request: ReloadCatalogRequest = { id: catalog };
+    void ask<undefined>("/api/catalogs/reload", { json: request }).then((answer) => {
+      refresh();
       if (!answer.ok && mayChange)
-        setRefusal(`Could not reload the catalog: ${reasonOf(answer.refusal)}`);
+        setRefusal(`Could not reload the catalog: ${reasonOf(answer.error)}`);
     });
   };
 
@@ -157,13 +148,10 @@ export function LaneCatalogActions({
     setBusy(true);
     setRefusal(null);
     const asked = selection.current;
-    void post<CopiedCatalog>("/api/catalogs/copy", {
-      source: catalog,
-      revision,
-      name: naming.trim(),
-    }).then((answer) => {
+    const request: CopyCatalogRequest = { source: catalog, revision, name: naming.trim() };
+    void ask<CopiedCatalog>("/api/catalogs/copy", { json: request }).then((answer) => {
       if (asked !== selection.current) return;
-      if (!answer.ok) return finish(reasonOf(answer.refusal), "create");
+      if (!answer.ok) return finish(reasonOf(answer.error), "create");
       setArriving(answer.value.id);
     });
   };
@@ -174,8 +162,9 @@ export function LaneCatalogActions({
     setBusy(true);
     setRefusal(null);
     const asked = selection.current;
-    void post<undefined>("/api/catalogs/delete", { id: catalog }).then((answer) => {
-      if (!answer.ok) return finish(reasonOf(answer.refusal), "delete");
+    const request: DeleteCatalogRequest = { id: catalog };
+    void ask<undefined>("/api/catalogs/delete", { json: request }).then((answer) => {
+      if (!answer.ok) return finish(reasonOf(answer.error), "delete");
       // The default goes back to Standard, which the backend lists first; this lane follows the new default unless
       // its selector moved on meanwhile.
       if (asked === selection.current) {

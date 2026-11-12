@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { apiFetch } from "../api";
+import { ask } from "../ask";
 import type { ExpansionsRequest, LiveExpansions } from "../generated/api";
 
 /** How long the hosts stay as typed before they are asked about. */
@@ -53,15 +53,10 @@ export function useExpansions(
       broker_host: brokerHost.trim() || undefined,
     };
     const wait = setTimeout(() => {
-      apiFetch("/api/live/expansions", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-        signal: request.signal,
-      })
-        .then((response) => (response.ok ? response.json() : null))
-        .then((answer: LiveExpansions | null) => setShown(answer))
-        .catch(() => undefined);
+      ask<LiveExpansions>("/api/live/expansions", { json: body, signal: request.signal }).then(
+        (answer) => setShown(answer.ok ? answer.value : null),
+        () => undefined, // aborted: the form moved on
+      );
     }, DEBOUNCE_MS);
     return () => {
       clearTimeout(wait);

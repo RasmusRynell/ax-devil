@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { apiFetch } from "../api";
+import { ask } from "../ask";
 import type { FileCheck } from "../generated/api";
 
 /** How long the paths stay as typed before the backend is asked about them. */
@@ -15,14 +15,10 @@ export async function checkFiles(
   paths: readonly string[],
   signal?: AbortSignal,
 ): Promise<ReadonlyMap<string, string>> {
-  const checks = await apiFetch("/api/files/check", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ paths }),
-    signal,
-  })
-    .then((response) => (response.ok ? (response.json() as Promise<FileCheck[]>) : []))
-    .catch((): FileCheck[] => []);
+  const answer = await ask<FileCheck[]>("/api/files/check", { json: { paths }, signal }).catch(
+    () => null,
+  );
+  const checks = answer?.ok ? answer.value : [];
   return new Map(checks.flatMap((check) => (check.problem ? [[check.path, check.problem]] : [])));
 }
 

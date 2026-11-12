@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "../api";
 import type { NetworkRow, NetworkSignIn, NetworkSnapshot, ScanStarted } from "../generated/api";
 import type { Tone } from "../kit/look";
-import { ask, send } from "./send";
+import { ask } from "../ask";
+import { reasonOf } from "../errors";
 
 const RETRY_MS = 2000;
 
@@ -158,18 +159,12 @@ export type ScanProblem = { text: "Invalid IP range" | "Scan failed"; reason: st
  * the started scan's number, which its snapshots carry, else to why it was refused.
  */
 export async function rescan(range?: string, signIn?: boolean): Promise<number | ScanProblem> {
-  const answer = await ask("/api/network/scan", { range, sign_in: signIn });
-  if (!(answer instanceof Response))
-    return {
-      text: answer.status === 422 ? "Invalid IP range" : "Scan failed",
-      reason: answer.reason,
-    };
-  try {
-    return ((await answer.json()) as ScanStarted).scan;
-  } catch {
-    return { text: "Scan failed", reason: "the backend's answer could not be read" };
-  }
+  const answer = await ask<ScanStarted>("/api/network/scan", {
+    json: { range, sign_in: signIn },
+  });
+  if (answer.ok) return answer.value.scan;
+  return {
+    text: answer.error.code === "InvalidRequest" ? "Invalid IP range" : "Scan failed",
+    reason: reasonOf(answer.error),
+  };
 }
-
-/** Stops the running scan, keeping what it found. */
-export const cancelScan = (): Promise<string | null> => send("/api/network/cancel");

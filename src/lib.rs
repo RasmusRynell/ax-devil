@@ -24,7 +24,8 @@ pub mod video_sources;
 
 use access::{Admission, Limits, Policy, Principal, bearer};
 use api_types::{
-    ApiError, AppInfo, SHELL_API, SettingsFile, SettingsPatch, SettingsState, api_version,
+    AppInfo, Audience, ErrorWire, SHELL_API, SettingsFile, SettingsPatch, SettingsState,
+    api_version, project,
 };
 use axum::{
     Json, Router,
@@ -38,6 +39,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use catalogs::Library;
+use foundation::{ErrorCode, Location, UserError};
 use overlays::OverlayService;
 use routes::Listener;
 use scene_store::TrackRegistry;
@@ -346,7 +348,7 @@ pub(crate) async fn patch_settings(
         ..
     }): State<AppState>,
     Json(body): Json<SettingsPatch>,
-) -> Result<Json<SettingsState>, (StatusCode, Json<ApiError>)> {
+) -> Result<Json<SettingsState>, Failure> {
     let patch = settings::Patch {
         set: body.set.unwrap_or_default(),
         reset: body.reset.unwrap_or_default().into_iter().collect(),
@@ -452,18 +454,35 @@ fn refuse_unscannable_range(
         })
 }
 
-pub(crate) fn failure(
-    status: StatusCode,
-    location: &str,
-    reason: String,
-) -> (StatusCode, Json<ApiError>) {
-    (
+/// A failed request: the status and the error as the host sees it. Every route that fails answers this shape.
+pub(crate) type Failure = (StatusCode, Json<ErrorWire>);
+
+/// The failure `error` under `status`, as the host sees it.
+fn failed(status: StatusCode, error: UserError) -> Failure {
+    (status, Json(project(&error, Audience::HOST)))
+}
+
+/// The code of a failure by its status: a refused caller is `Forbidden`, any other client fault `InvalidRequest`, and
+/// the rest `Internal`.
+fn code_of(status: StatusCode) -> ErrorCode {
+    match status {
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => ErrorCode::Forbidden,
+        status if status.is_client_error() => ErrorCode::InvalidRequest,
+        _ => ErrorCode::Internal,
+    }
+}
+
+/// The failure `reason` about `location`, a setting key or a field.
+pub(crate) fn failure(status: StatusCode, location: &str, reason: String) -> Failure {
+    failed(
         status,
-        Json(ApiError {
-            reason,
-            location: location.to_owned(),
-        }),
+        UserError::new(code_of(status), reason).at(Location::field(location)),
     )
+}
+
+/// The failure `reason` about no particular field.
+pub(crate) fn rejected(status: StatusCode, reason: String) -> Failure {
+    failed(status, UserError::new(code_of(status), reason))
 }
 
 pub(crate) async fn info(principal: Principal) -> Json<AppInfo> {

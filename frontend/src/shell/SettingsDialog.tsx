@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import { useAccess } from "../access";
+import { reasonOf } from "../errors";
 import { SETTINGS } from "../generated/settings";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
@@ -113,7 +114,7 @@ export function SettingsDialog({
                         />
                       </fieldset>
                       {warning && <PlainTextNote id={note} reference={row.env} />}
-                      {refusal?.location === row.key && <Refusal reason={refusal.reason} />}
+                      {refusal?.location === row.key && <Refusal reason={reasonOf(refusal)} />}
                     </div>
                   );
                 })}
@@ -146,7 +147,7 @@ export function SettingsDialog({
             </Button>
           )}
         </div>
-        {refusal && !refusedRow && <Refusal reason={refusal.reason} />}
+        {refusal && !refusedRow && <Refusal reason={reasonOf(refusal)} />}
       </Dialog>
       {/* A sibling, not a child: a dialog's form cannot hold another form. */}
       {editingShortcuts && <ShortcutsDialog onClose={() => setEditingShortcuts(false)} />}

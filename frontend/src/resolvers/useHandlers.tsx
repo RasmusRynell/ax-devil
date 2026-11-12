@@ -19,7 +19,7 @@ export function useHandlers(): {
     fetchHandlers(request.signal).then(
       (answer) => {
         if (answer.ok) setHandlers(answer.value);
-        else setFailure(answer.refusal);
+        else setFailure(answer.error);
       },
       () => undefined, // aborted: the dialog closed
     );

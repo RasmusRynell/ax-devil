@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useAccess } from "../access";
 import { chooseFolder, usePickPath } from "../pickPath";
+import { ask } from "../ask";
 import { reasonOf } from "../errors";
 import { useResource } from "../resource";
 import type {
@@ -18,7 +19,6 @@ import { BrowseButton, Button } from "../kit/Button";
 import { Chip } from "../kit/Chips";
 import { TextField } from "../kit/Fields";
 import { SectionCaption, type CaptionMark } from "../kit/SectionCaption";
-import { ask, type Answer } from "../resolvers/handlers";
 import { Refusal } from "../kit/Refusal";
 import { failedIn, reportFailedPlugins } from "./failed";
 
@@ -54,22 +54,6 @@ const nameOf = ({ source, status }: PluginInfo) =>
   status.state === "loaded"
     ? status.name
     : lastPart(source.kind === "installed" ? source.folder : "");
-
-const post = <T,>(
-  url: string,
-  body: InstallRequest | RemoveRequest | UpdateRequest,
-): Promise<Answer<T>> =>
-  ask<T>(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-/** Lists the plugins; a refusal is thrown as the failure the view shows. */
-const readPlugins = (path: string, signal: AbortSignal): Promise<PluginsInfo> =>
-  ask<PluginsInfo>(path, { signal }).then((answer) =>
-    answer.ok ? answer.value : Promise.reject(answer.refusal),
-  );
 
 /** A plugin's handlers by kind, then the file extensions its decoders read, then the ones it lists that are not used. */
 function Handlers({
@@ -155,12 +139,7 @@ function Row({
 /** The sidebar's Plugins view: the plugins that failed, are installed and ship with the app, and installing, updating and removing. */
 export function PluginsView() {
   // `apply` shows a change's answer instead of any read still pending.
-  const {
-    value: info,
-    error,
-    apply,
-    reload,
-  } = useResource("plugins", "/api/plugins", { read: readPlugins });
+  const { value: info, error, apply, reload } = useResource<PluginsInfo>("plugins", "/api/plugins");
   const failure = error ? reasonOf(error as ErrorWire) : null;
   useEffect(() => {
     if (info) reportFailedPlugins(failedIn(info));
@@ -177,12 +156,12 @@ export function PluginsView() {
     setBusy(true);
     setRefused(null);
     try {
-      const answer = await post<PluginsInfo>(url, body);
+      const answer = await ask<PluginsInfo>(url, { json: body });
       if (answer.ok) {
         apply(answer.value);
         return true;
       }
-      setRefused(reasonOf(answer.refusal));
+      setRefused(reasonOf(answer.error));
       // What it refused may be stale, such as a plugin another window already removed.
       reload();
     } catch (error) {
