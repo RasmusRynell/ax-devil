@@ -1,78 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vite-plus/test";
-import { compileFilter } from "../present";
 import { fullSample } from "../present/fixtures";
-import type { LaneFrame } from "../lanes/contract";
+import { compileFilter } from "../present";
+import { SELECTION, withCar, withoutCar, frame, CLASS, found, setup } from "./inspectionTestRig";
 import { Inspections } from "./inspection";
-import type { ClientMessage, FieldWire, InspectionWire, ServerMessage } from "../stream/protocol";
-
-const SELECTION = { lane: 0, source: 0, entity: "7" };
-const withCar = fullSample([
-  {
-    id: "7",
-    class: "car",
-    score: 0.82,
-    confidence: 0.9,
-    motion: "moving",
-    mask: [0b01],
-    box: [0.1, 0.1, 0.3, 0.3],
-  },
-  { id: "9", class: "human", box: [0.5, 0.5, 0.6, 0.7] },
-]);
-const withoutCar = fullSample([{ id: "9", class: "human", box: [0.5, 0.5, 0.6, 0.7] }]);
-
-/** A displayed sample. */
-const frame = (
-  sample: number,
-  columns = withCar,
-  dataRevision = 1,
-  source = 0,
-  style: Partial<LaneFrame> = {},
-): LaneFrame =>
-  ({
-    source,
-    dataRevision,
-    sample,
-    columns,
-    styleRevision: 0,
-    classMask: { enabled: new Uint32Array(1), options: 0 },
-    filter: null,
-    ...style,
-  }) as LaneFrame;
-
-const CLASS: FieldWire = {
-  group: "classification",
-  path: ["class"],
-  value: { kind: "text", value: "car" },
-};
-const found = (...fields: FieldWire[]): InspectionWire => ({
-  state: "Found",
-  fields,
-  truncated: false,
-});
-const reply = (
-  sample: number,
-  inspection: InspectionWire,
-  dataRevision = 1,
-): Extract<ServerMessage, { type: "Inspected" }> => ({
-  type: "Inspected",
-  source: 0,
-  data_revision: dataRevision,
-  sample,
-  entity: "7",
-  inspection,
-});
-
-function setup() {
-  const sent: ClientMessage[] = [];
-  const time = { now: 0 };
-  const inspections = new Inspections(
-    (message) => sent.push(message),
-    () => time.now,
-  );
-  const samples = () => sent.flatMap((m) => (m.type === "Inspect" ? [m.sample] : []));
-  return { inspections, sent, samples, time };
-}
 
 describe("inspections", () => {
   it("follows a playing video's draws at most ten times a second, and catches up when asked or on an action", () => {
@@ -103,7 +34,7 @@ describe("inspections", () => {
   });
 
   it("does not let a reply advance the view to a draw skipped while playing", () => {
-    const { inspections, samples, time } = setup();
+    const { inspections, samples, time, reply } = setup();
     inspections.follow([frame(1)]);
     inspections.select(SELECTION);
     time.now = 1000;
@@ -149,11 +80,18 @@ describe("inspections", () => {
   });
 
   it("shows the summary of the shown sample at once and the fields when the reply comes", () => {
-    const { inspections, sent } = setup();
+    const { inspections, sent, reply } = setup();
     inspections.follow([frame(3)]);
     expect(inspections.select(SELECTION)).toBe(true);
     expect(sent).toEqual([
-      { type: "Inspect", source: 0, data_revision: 1, sample: 3, entity: "7" },
+      {
+        type: "Inspect",
+        request: expect.any(Number),
+        source: 0,
+        data_revision: 1,
+        sample: 3,
+        entity: "7",
+      },
     ]);
     expect(inspections.view).toMatchObject({
       state: "loading",
@@ -177,7 +115,7 @@ describe("inspections", () => {
   });
 
   it("asks for each newly shown sample at once, so a reply that never comes holds nothing up", () => {
-    const { inspections, samples } = setup();
+    const { inspections, samples, reply } = setup();
     inspections.follow([frame(1)]);
     inspections.select(SELECTION);
     inspections.follow([frame(2)]);
@@ -196,7 +134,7 @@ describe("inspections", () => {
   });
 
   it("never shows another sample's summary or fields while the shown sample's reply is out", () => {
-    const { inspections } = setup();
+    const { inspections, reply } = setup();
     const faster = fullSample([{ id: "7", class: "car", score: 0.5 }]);
     inspections.follow([frame(1)]);
     inspections.select(SELECTION);
@@ -231,7 +169,7 @@ describe("inspections", () => {
   });
 
   it("keeps the current field window and asks again after leaving it", () => {
-    const { inspections, samples } = setup();
+    const { inspections, samples, reply } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
     for (let sample = 0; sample < 17; sample++) {
@@ -248,7 +186,7 @@ describe("inspections", () => {
   });
 
   it("ignores a reply of a data revision the source has left", () => {
-    const { inspections, sent } = setup();
+    const { inspections, sent, reply } = setup();
     const revisions = () => sent.flatMap((m) => (m.type === "Inspect" ? [m.data_revision] : []));
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
@@ -261,7 +199,7 @@ describe("inspections", () => {
   });
 
   it("keeps the selection when a frame has no such object, and finds the object again", () => {
-    const { inspections, samples, sent } = setup();
+    const { inspections, samples, sent, reply } = setup();
     inspections.follow([frame(0, withoutCar)]);
     inspections.select(SELECTION);
     expect(inspections.view).toEqual({
@@ -292,7 +230,7 @@ describe("inspections", () => {
   });
 
   it("says filtered, and keeps the selection and the class, while the lane's toggles or filter hide the object", () => {
-    const { inspections, samples, sent } = setup();
+    const { inspections, samples, sent, reply } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
     inspections.receive(reply(0, found(CLASS)));
@@ -316,7 +254,7 @@ describe("inspections", () => {
   });
 
   it("says unavailable for a sample the backend will not answer for, and asks again only when it is shown anew", () => {
-    const { inspections, samples } = setup();
+    const { inspections, samples, reply } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
     inspections.receive(reply(0, { state: "Unavailable" }));
@@ -332,7 +270,7 @@ describe("inspections", () => {
   });
 
   it("asks again for a sample whose reply was dropped, when it is shown again or has waited too long", () => {
-    const { inspections, samples } = setup();
+    const { inspections, samples, reply } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
     inspections.follow([frame(1, withoutCar)]);
@@ -346,7 +284,7 @@ describe("inspections", () => {
   });
 
   it("keeps nothing of another source's object that has the same id", () => {
-    const { inspections, sent } = setup();
+    const { inspections, sent, reply } = setup();
     inspections.follow([frame(0), frame(0, withCar, 1, 1)]);
     inspections.select(SELECTION);
     inspections.receive(reply(0, found(CLASS)));
@@ -357,7 +295,12 @@ describe("inspections", () => {
       fields: [],
     });
     const asked = sent.at(-1);
-    expect(asked).toMatchObject({ type: "Inspect", source: 1, entity: "7" });
+    expect(asked).toMatchObject({
+      type: "Inspect",
+      request: expect.any(Number),
+      source: 1,
+      entity: "7",
+    });
     inspections.receive(reply(0, found({ ...CLASS, value: { kind: "text", value: "bus" } })));
     expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
     inspections.receive({ ...reply(0, { state: "Unavailable" }), source: 1 });
@@ -372,7 +315,7 @@ describe("inspections", () => {
   });
 
   it("asks again on a new connection, once its data has a frame drawn", () => {
-    const { inspections, samples } = setup();
+    const { inspections, samples, reply } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
     inspections.reconnect();
@@ -400,7 +343,7 @@ describe("inspections", () => {
   });
 
   it("clears the selection", () => {
-    const { inspections } = setup();
+    const { inspections, reply } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
     inspections.receive(reply(0, found(CLASS)));
@@ -414,7 +357,7 @@ describe("inspections", () => {
 });
 
 it("replaces field pages and copies complete Unicode text while a superseded reply waits for release", async () => {
-  const { inspections, sent } = setup();
+  const { inspections, sent, reply } = setup();
   const writeText = vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal("navigator", { clipboard: { writeText } });
   try {
@@ -506,7 +449,7 @@ it("cancels a copy on hide, lane change, explicit cancellation and reconnect", (
       if (view.state === "ready") view.access?.cancel();
     },
   ]) {
-    const { inspections, sent } = setup();
+    const { inspections, sent, reply } = setup();
     inspections.follow([frame(0), frame(0)]);
     inspections.select(SELECTION);
     inspections.receive(

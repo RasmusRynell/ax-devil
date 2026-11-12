@@ -220,6 +220,7 @@ impl<I: Incoming> Live<'_, I> {
                 Ok(())
             }
             Some(Ok(ClientMessage::Inspect {
+                request,
                 source,
                 data_revision,
                 sample,
@@ -227,7 +228,7 @@ impl<I: Incoming> Live<'_, I> {
             })) => {
                 let target = self.viewer.inspect_target(source, data_revision, sample);
                 self.inspections
-                    .ask_target(source, data_revision, sample, entity, target);
+                    .ask_target(request, source, data_revision, sample, entity, target);
                 Ok(())
             }
             Some(Ok(ClientMessage::InspectRelease)) => {
@@ -244,14 +245,21 @@ impl<I: Incoming> Live<'_, I> {
                 Ok(())
             }
             Some(Ok(ClientMessage::InspectFields {
+                request,
                 source,
                 data_revision,
                 sample,
                 paths,
             })) => {
                 let target = self.viewer.inspect_target(source, data_revision, sample);
-                self.inspections
-                    .ask_fields_target(source, data_revision, sample, paths, target);
+                self.inspections.ask_fields_target(
+                    request,
+                    source,
+                    data_revision,
+                    sample,
+                    paths,
+                    target,
+                );
                 Ok(())
             }
             Some(Ok(

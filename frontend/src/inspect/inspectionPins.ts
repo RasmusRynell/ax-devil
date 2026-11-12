@@ -1,11 +1,11 @@
 import { MAX_INSPECTION_PINS } from "../generated/api";
-import { fieldKey, type FieldId } from "./fields";
-import type { FieldWire } from "./protocol";
+import { fieldKey, type FieldId, type PinField } from "./fields";
+import type { FieldWire } from "../stream/protocol";
 
 /** Pinned identities and current-sample previews. Request ordering belongs solely to Inspections. */
 export class InspectionPins {
   ids: readonly FieldId[] = [];
-  fields: readonly (FieldWire | null | undefined)[] = [];
+  fields: readonly PinField[] = [];
   next: number | null = null;
   /** Replaces the requested identities, discarding all values until this sample is resolved. */
   set(ids: readonly FieldId[]): boolean {
@@ -22,6 +22,15 @@ export class InspectionPins {
   clear(): void {
     this.fields = this.ids.map(() => undefined);
     this.next = this.ids.length ? 0 : null;
+  }
+  /** A cancelled reply may already have advanced the server cursor; resume only by restarting at zero. */
+  restart(): void {
+    this.next = this.ids.length ? 0 : null;
+  }
+  /** Stops a refused attempt without labelling unresolved fields absent. */
+  refuse(): void {
+    this.fields = this.fields.map((field) => (field === undefined ? "unavailable" : field));
+    this.next = null;
   }
   /** Accepts only an owner-ordered reply; undefined is pending, null is confirmed absent. */
   accept(fields: readonly (readonly [number, FieldWire])[], next: number | null): void {

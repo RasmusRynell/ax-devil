@@ -51,7 +51,7 @@ export class Inspections {
   readonly #cache = new Map<string, InspectionWire>();
   /** The request out for the shown sample, and the draw it was sent at. */
   #wanted: string | null = null;
-  #inflight: { key: string; at: number } | null = null;
+  #inflight: { key: string; at: number; request: number } | null = null;
   /** The sample, as held by these columns, the backend said it would not answer for. */
   #refused: { key: string; columns: unknown } | null = null;
   /** Draws so far, which time how long a request has been out. */
@@ -210,7 +210,13 @@ export class Inspections {
   /** The backend's answer to a request for fields. */
   receive(message: Reply): boolean {
     const key = keyOf(message.source, message.data_revision, message.sample, message.entity);
-    if (key !== this.#wanted || !this.#capActive || !this.#visible) return false;
+    if (
+      message.request !== this.#inflight?.request ||
+      key !== this.#wanted ||
+      !this.#capActive ||
+      !this.#visible
+    )
+      return false;
     if (key === this.#inflight?.key) this.#inflight = null;
     if (message.data_revision === this.#revisions.get(message.source)) {
       if (message.inspection.state === "Unavailable") {
@@ -263,6 +269,7 @@ export class Inspections {
   }
 
   #cancelRead(): void {
+    if (this.#pending?.field === "pins") this.#pins.restart();
     this.#serial++;
     if (this.#writingCopy) this.#writingCopy.value = "";
     this.#writingCopy = null;
@@ -301,7 +308,9 @@ export class Inspections {
     if (field !== null && field !== "raw" && field !== "pins") {
       const cut = [
         ...reply.fields,
-        ...this.#pins.fields.filter((field): field is FieldWire => field != null),
+        ...this.#pins.fields.filter(
+          (field): field is FieldWire => field != null && typeof field !== "string",
+        ),
       ]
         .map((entry) => (path ? entry.path_cut : entry.cut))
         .find((cut) => cut?.[0] === field);
@@ -333,7 +342,8 @@ export class Inspections {
       pending?.field === "pins" &&
       new TextEncoder().encode(JSON.stringify(this.#pins.wanted())).length > 60 * 1024
     ) {
-      this.#pins.next = null;
+      this.#pins.refuse();
+      this.#pending = null;
       this.#cancelRead();
       this.#error = "Pinned fields exceed the inspection request budget";
       this.#notify();
@@ -365,6 +375,10 @@ export class Inspections {
       return false;
     const result = message.result;
     if (result.state === "Refused") {
+      if (pending.field === "pins") {
+        this.#pins.refuse();
+        this.#pending = null;
+      }
       this.#cancelRead();
       this.#error = result.reason;
     } else if (result.state === "Pins" && pending.field === "pins") {
@@ -463,9 +477,10 @@ export class Inspections {
     if (refused?.key === key && refused.columns === frame.columns) return;
     if (this.#inflight?.key === key && !this.#overdue()) return;
     this.#capActive = true;
-    this.#inflight = { key, at: this.#draws };
+    this.#inflight = { key, at: this.#draws, request: ++this.#serial };
     this.#send({
       type: "Inspect",
+      request: this.#inflight.request,
       source: frame.source,
       data_revision: frame.dataRevision,
       sample: frame.sample,

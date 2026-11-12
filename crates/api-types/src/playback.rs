@@ -117,6 +117,8 @@ pub enum ClientMessage {
     /// Asks for every field of one object of a Sample Item the viewer holds; the answer is `Inspected`. A newer
     /// request replaces one not started yet.
     Inspect {
+        /// Client request generation, echoed unchanged in the reply.
+        request: u32,
         /// The viewer's source id, `LaneInfo::source`.
         source: u16,
         /// The source revision the sample belongs to.
@@ -133,6 +135,8 @@ pub enum ClientMessage {
     InspectRelease,
     /// Queries selected paths across objects.
     InspectFields {
+        /// Client request generation, echoed unchanged in the reply.
+        request: u32,
         /// The viewer's source id, `LaneInfo::source`.
         source: u16,
         /// The source revision the sample belongs to.
@@ -296,6 +300,8 @@ pub enum ServerMessage {
     },
     /// The answer to an `Inspect` request.
     Inspected {
+        /// Client request generation, echoed unchanged in the reply.
+        request: u32,
         /// The requested source.
         source: u16,
         /// The requested revision.
@@ -316,6 +322,8 @@ pub enum ServerMessage {
     },
     /// The selected fields across objects.
     InspectedFields {
+        /// Client request generation, echoed unchanged in the reply.
+        request: u32,
         /// The requested source.
         source: u16,
         /// The requested revision.

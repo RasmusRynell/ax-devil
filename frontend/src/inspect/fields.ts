@@ -18,6 +18,9 @@ export type FieldId = {
   readonly path: readonly string[];
 };
 
+/** One current pin: a value, confirmed absence, pending, or an unavailable scan. */
+export type PinField = FieldWire | null | undefined | "unavailable";
+
 /** What the inspector keeps across the objects a viewer shows: the pinned fields in pin order, and the folded groups. */
 export interface InspectorMemory {
   pins: readonly FieldId[];
@@ -65,7 +68,14 @@ export type Line =
       /** What reported the field, which tells apart fields of one path, such as a pinned one and its namesake. */
       origin?: FieldWire["origin"];
     }
-  | { kind: "unavailable"; key: string; id: FieldId; label: string; pending?: boolean };
+  | {
+      kind: "unavailable";
+      key: string;
+      id: FieldId;
+      label: string;
+      pending?: boolean;
+      failed?: boolean;
+    };
 
 /** The object's id, the row that leads the list. */
 const idLine = (entity: string): Line => ({
@@ -180,7 +190,7 @@ export function inspectorLines(
   pins: readonly FieldId[],
   folded: ReadonlySet<FieldGroupWire>,
   entity: string,
-  pinFields?: readonly (FieldWire | null | undefined)[],
+  pinFields?: readonly PinField[],
 ): { pinned: Line[]; lines: Line[] } {
   const first = new Map<string, FieldWire>();
   for (const field of fields) {
@@ -191,7 +201,7 @@ export function inspectorLines(
     const key = fieldKey(id);
     const label = fieldLabel(id);
     const found = pinFields ? pinFields[index] : first.get(key);
-    return found
+    return found && typeof found !== "string"
       ? {
           kind: "field",
           key,
@@ -211,6 +221,7 @@ export function inspectorLines(
           id,
           label,
           pending: pinFields !== undefined && found === undefined,
+          failed: found === "unavailable",
         };
   });
   const groups = GROUPS.flatMap(([group, heading]): Line[] => {

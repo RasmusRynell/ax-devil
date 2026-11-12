@@ -1,9 +1,9 @@
 import { expect, it, vi } from "vite-plus/test";
 import { fullSample } from "../present/fixtures";
 import { inspectorLines } from "./fields";
-import type { LaneFrame } from "./contract";
+import type { LaneFrame } from "../lanes/contract";
 import { Inspections } from "./inspection";
-import type { ClientMessage, FieldWire, ServerMessage } from "./protocol";
+import type { ClientMessage, FieldWire, ServerMessage } from "../stream/protocol";
 
 it("resolves a page-two pin on page one and afresh on each sample, including whole-value copy", async () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
@@ -32,6 +32,7 @@ it("resolves a page-two pin on page one and afresh on each sample, including who
     const initial = (sample: number) =>
       owner.receive({
         type: "Inspected",
+        request: sent.filter((message) => message.type === "Inspect").at(-1)?.request ?? -1,
         source: 0,
         data_revision: 1,
         sample,

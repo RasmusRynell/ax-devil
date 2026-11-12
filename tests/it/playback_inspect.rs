@@ -62,6 +62,7 @@ async fn inspect(
 ) -> InspectionWire {
     viewer
         .send(&ClientMessage::Inspect {
+            request: 0,
             source,
             data_revision,
             sample,
@@ -70,6 +71,7 @@ async fn inspect(
         .await;
     loop {
         if let Event::Message(ServerMessage::Inspected {
+            request: 0,
             source: s,
             data_revision: r,
             sample: n,

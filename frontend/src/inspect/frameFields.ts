@@ -66,10 +66,15 @@ export class FrameFields {
   readonly #answers = new Map<string, LeavesView>();
   readonly #after: (callback: () => void, ms: number) => () => void;
   /** The request out, with the columns of the sample it was made for. */
-  #asked: { key: string; columns: unknown; message: ClientMessage } | null = null;
+  #asked: {
+    key: string;
+    columns: unknown;
+    message: Extract<ClientMessage, { type: "InspectFields" }>;
+  } | null = null;
   /** Cancels the timer that sends the request out again. */
   #cancel: (() => void) | null = null;
   #retries = 0;
+  #serial = 0;
   /** A sample the backend does not answer for: asked again only when the viewer holds it anew. */
   #refused: { key: string; columns: unknown } | null = null;
 
@@ -91,7 +96,7 @@ export class FrameFields {
     this.#listeners.add(listener);
     return () => {
       this.#listeners.delete(listener);
-      if (this.#listeners.size === 0) this.#unwatch();
+      if (this.#listeners.size === 0) this.#forget();
     };
   };
 
@@ -117,8 +122,9 @@ export class FrameFields {
     if (this.#answers.has(key)) return;
     if (this.#refused?.key === key && this.#refused.columns === columns) return;
     if (this.#asked?.key === key) return;
-    const message: ClientMessage = {
-      type: "InspectFields",
+    const message = {
+      type: "InspectFields" as const,
+      request: ++this.#serial,
       source,
       data_revision: dataRevision,
       sample,
@@ -149,6 +155,7 @@ export class FrameFields {
       this.#cancel = null;
       if (!this.#asked) return;
       this.#retries++;
+      this.#asked.message = { ...this.#asked.message, request: ++this.#serial };
       this.#send(this.#asked.message);
       this.#watch();
     }, RETRY_MS);
@@ -158,7 +165,8 @@ export class FrameFields {
   receive(reply: Reply): void {
     const key = keyOf(reply.source, reply.data_revision, reply.sample, reply.paths);
     const asked = this.#asked?.key === key ? this.#asked : null;
-    if (asked) this.#forget();
+    if (!asked || asked.message.request !== reply.request) return;
+    this.#forget();
     const { objects } = reply;
     if (objects === null) {
       if (asked) this.#refused = { key, columns: asked.columns };

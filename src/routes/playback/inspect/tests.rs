@@ -118,7 +118,7 @@ async fn a_held_sample_is_found_or_absent_and_anything_else_is_unavailable_witho
     let item = held.iter().find(|item| item.sample == 10).unwrap();
     let mut inspections = Inspections::default();
 
-    inspections.ask(&viewer, 0, revision, 10, "2".into());
+    inspections.ask(&viewer, 0, 0, revision, 10, "2".into());
     let (message, frames) = answer(&mut inspections).await;
     let ServerMessage::Inspected {
         source,
@@ -126,6 +126,7 @@ async fn a_held_sample_is_found_or_absent_and_anything_else_is_unavailable_witho
         sample,
         entity,
         inspection,
+        ..
     } = message
     else {
         panic!("an Inspected message");
@@ -160,7 +161,7 @@ async fn a_held_sample_is_found_or_absent_and_anything_else_is_unavailable_witho
     let groups: Vec<_> = fields.iter().map(|field| field.group as u8).collect();
     assert!(groups.is_sorted(), "in display order");
 
-    inspections.ask(&viewer, 0, revision, 10, "nobody".into());
+    inspections.ask(&viewer, 0, 0, revision, 10, "nobody".into());
     let (message, frames) = answer(&mut inspections).await;
     assert_eq!(verdict(message), InspectionWire::Absent);
     assert_eq!(frames, Some(item.frame..=item.frame));
@@ -172,7 +173,7 @@ async fn a_held_sample_is_found_or_absent_and_anything_else_is_unavailable_witho
         (0, revision, 10, "x".repeat(MAX_ENTITY_BYTES + 1)),
     ];
     for (source, data_revision, sample, entity) in unavailable {
-        inspections.ask(&viewer, source, data_revision, sample, entity);
+        inspections.ask(&viewer, 0, source, data_revision, sample, entity);
         let (message, frames) = answer(&mut inspections).await;
         assert_eq!(verdict(message), InspectionWire::Unavailable);
         assert_eq!(frames, None, "it says nothing about a sample");
@@ -194,7 +195,7 @@ async fn a_search_of_the_fields_is_answered_for_every_object_and_only_for_a_held
     };
 
     // A path names a key by its trailing parts, in any case.
-    inspections.ask_fields(&viewer, 0, revision, 10, vec!["Frame_Number".into()]);
+    inspections.ask_fields(&viewer, 0, 0, revision, 10, vec!["Frame_Number".into()]);
     let (message, frames) = answer(&mut inspections).await;
     assert_eq!(frames, Some(item.frame..=item.frame));
     let found = objects(message).expect("a held sample");
@@ -217,8 +218,8 @@ async fn a_search_of_the_fields_is_answered_for_every_object_and_only_for_a_held
     );
 
     // Asking for an object's fields does not replace a search of them: both are answered.
-    inspections.ask_fields(&viewer, 0, revision, 10, vec!["no_such_field".into()]);
-    inspections.ask(&viewer, 0, revision, 10, "1".into());
+    inspections.ask_fields(&viewer, 0, 0, revision, 10, vec!["no_such_field".into()]);
+    inspections.ask(&viewer, 0, 0, revision, 10, "1".into());
     let mut kinds = Vec::new();
     for _ in 0..2 {
         match answer(&mut inspections).await.0 {
@@ -239,7 +240,7 @@ async fn a_search_of_the_fields_is_answered_for_every_object_and_only_for_a_held
         (0, revision, 10, vec!["x".repeat(MAX_PATH_BYTES + 1)]),
     ];
     for (source, data_revision, sample, paths) in unanswerable {
-        inspections.ask_fields(&viewer, source, data_revision, sample, paths);
+        inspections.ask_fields(&viewer, 0, source, data_revision, sample, paths);
         let (message, frames) = answer(&mut inspections).await;
         assert_eq!(objects(message), None);
         assert_eq!(frames, None, "it says nothing about a sample");
@@ -254,7 +255,7 @@ async fn the_newest_request_replaces_one_that_has_not_started_and_only_one_runs_
     let mut inspections = Inspections::default();
 
     for entity in ["1", "nobody", "2"] {
-        inspections.ask(&viewer, 0, revision, 10, entity.into());
+        inspections.ask(&viewer, 0, 0, revision, 10, entity.into());
     }
 
     let mut answered = Vec::new();
@@ -293,7 +294,7 @@ async fn a_follower_is_not_sent_what_a_presenter_who_moved_on_no_longer_shows() 
     let gate = Gate::new(authority, || 0);
     gate.open(timeline());
 
-    inspections.ask(&viewer, 0, revision, 10, "1".into());
+    inspections.ask(&viewer, 0, 0, revision, 10, "1".into());
     let (_, near) = answer(&mut inspections).await;
     assert!(
         gate.admits(near.as_ref().unwrap()),
@@ -301,7 +302,7 @@ async fn a_follower_is_not_sent_what_a_presenter_who_moved_on_no_longer_shows() 
     );
 
     // Sample 40 was evicted when the window moved: the viewer no longer holds it, so there is nothing to say.
-    inspections.ask(&viewer, 0, revision, 40, "1".into());
+    inspections.ask(&viewer, 0, 0, revision, 40, "1".into());
     let (message, far) = answer(&mut inspections).await;
     assert_eq!(verdict(message), InspectionWire::Unavailable);
     assert!(far.is_none_or(|frames| !gate.admits(&frames)));
@@ -313,7 +314,7 @@ async fn a_cursor_cannot_cross_sockets_or_outlast_its_held_sample() {
     let (mut viewer, revision) = viewer(folder.path()).await;
     hold(&mut viewer, 10).await;
     let mut inspections = Inspections::default();
-    inspections.ask(&viewer, 0, revision, 10, "2".into());
+    inspections.ask(&viewer, 0, 0, revision, 10, "2".into());
     let (message, _) = answer(&mut inspections).await;
     let InspectionWire::Found {
         continuation: Some(cursor),
@@ -371,7 +372,7 @@ async fn a_cursor_cannot_cross_sockets_or_outlast_its_held_sample() {
             ..
         }
     ));
-    inspections.ask(&viewer, 0, revision, 10, "2".into());
+    inspections.ask(&viewer, 0, 0, revision, 10, "2".into());
     let InspectionWire::Found {
         continuation: Some(cursor),
         ..

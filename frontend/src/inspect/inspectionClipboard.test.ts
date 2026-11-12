@@ -1,11 +1,11 @@
 import { expect, it, vi } from "vite-plus/test";
 import { act, waitFor } from "@testing-library/react";
 import { fullSample } from "../present/fixtures";
-import type { LaneFrame } from "./contract";
+import type { LaneFrame } from "../lanes/contract";
 import { Inspections } from "./inspection";
-import { LaneSet } from "./lanes";
-import { ViewerData } from "./viewerData";
-import type { ClientMessage } from "./protocol";
+import { LaneSet } from "../lanes/lanes";
+import { ViewerData } from "../playback/viewerData";
+import type { ClientMessage } from "../stream/protocol";
 
 it("discards a clipboard retry as soon as the sample changes, before the playing view catches up", async () => {
   const writeText = vi.fn().mockRejectedValue(new Error("Clipboard unavailable"));
@@ -50,6 +50,7 @@ function startCopy(owner: Inspections, sent: ClientMessage[], wholeRaw?: string)
   owner.select({ lane: 0, source: 0, entity: "7" });
   owner.receive({
     type: "Inspected",
+    request: sent.filter((message) => message.type === "Inspect").at(-1)?.request ?? -1,
     source: 0,
     data_revision: 1,
     sample: 0,

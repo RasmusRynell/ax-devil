@@ -184,7 +184,7 @@ export type InspectionView =
       summary: Summary;
       fields: readonly FieldWire[];
       /** Pin-order current values; undefined is loading, null is absent. */
-      pins?: readonly (FieldWire | null | undefined)[];
+      pins?: readonly import("../inspect/fields").PinField[];
       truncated: boolean;
       access?: InspectionAccess;
       /** A safe refusal before field preparation. */

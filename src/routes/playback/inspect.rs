@@ -10,18 +10,20 @@
 use super::{Outgoing, text};
 use api_types::{
     inspect::{
-        FieldWire, InspectionContinuation, InspectionRead, InspectionReadResult, InspectionWire,
-        ItemWire, ObjectItemsWire,
+        InspectionContinuation, InspectionRead, InspectionReadResult, InspectionWire, ItemWire,
+        ObjectItemsWire,
     },
     playback::ServerMessage,
 };
 use overlays::ViewerOverlays;
 use scene::{
     Scene,
-    inspection::{Budget, InspectionField, query_leaves},
+    inspection::{Budget, query_leaves},
 };
 use scene_store::{TrackRead, TrackSnapshot};
 mod pins;
+mod wire;
+use wire::page_field;
 mod position;
 use position::{Position, PositionRef, remember};
 use std::sync::{Arc, Mutex};
@@ -67,6 +69,7 @@ impl Ask {
 /// What a request asked for.
 #[derive(Clone)]
 struct Request {
+    generation: u32,
     source: u16,
     data_revision: u32,
     sample: u32,
@@ -154,18 +157,20 @@ impl Inspections {
     pub(super) fn ask(
         &mut self,
         overlays: &ViewerOverlays,
+        generation: u32,
         source: u16,
         data_revision: u32,
         sample: u32,
         entity: String,
     ) {
         let target = overlays.inspect_target(source, data_revision, u64::from(sample));
-        self.ask_target(source, data_revision, sample, entity, target);
+        self.ask_target(generation, source, data_revision, sample, entity, target);
     }
 
     /// Takes a request whose sample the caller already found, the way [`ask`](Self::ask) does.
     pub(super) fn ask_target(
         &mut self,
+        generation: u32,
         source: u16,
         data_revision: u32,
         sample: u32,
@@ -190,6 +195,7 @@ impl Inspections {
         ));
         let ask = Ask::Object(entity, token, position);
         let request = Request {
+            generation,
             source,
             data_revision,
             sample,
@@ -223,6 +229,7 @@ impl Inspections {
             .as_ref()
             .map_or_else(String::new, |cursor| cursor.4.clone());
         let request = Request {
+            generation: read.request,
             source,
             data_revision,
             sample,
@@ -248,18 +255,20 @@ impl Inspections {
     pub(super) fn ask_fields(
         &mut self,
         overlays: &ViewerOverlays,
+        generation: u32,
         source: u16,
         data_revision: u32,
         sample: u32,
         paths: Vec<String>,
     ) {
         let target = overlays.inspect_target(source, data_revision, u64::from(sample));
-        self.ask_fields_target(source, data_revision, sample, paths, target);
+        self.ask_fields_target(generation, source, data_revision, sample, paths, target);
     }
 
     /// Takes a request whose sample the caller already found, the way [`ask_fields`](Self::ask_fields) does.
     pub(super) fn ask_fields_target(
         &mut self,
+        generation: u32,
         source: u16,
         data_revision: u32,
         sample: u32,
@@ -270,6 +279,7 @@ impl Inspections {
             return;
         }
         let request = Request {
+            generation,
             source,
             data_revision,
             sample,
@@ -349,6 +359,7 @@ fn unavailable(request: &Request) -> Outgoing {
 /// The message for `request`, answered from `scene`, or `Unavailable` when there is none.
 fn reply(request: &Request, scene: Option<&Scene>) -> ServerMessage {
     let Request {
+        generation,
         source,
         data_revision,
         sample,
@@ -357,6 +368,7 @@ fn reply(request: &Request, scene: Option<&Scene>) -> ServerMessage {
     let (source, data_revision, sample) = (*source, *data_revision, *sample);
     match ask {
         Ask::Object(entity, token, position) => ServerMessage::Inspected {
+            request: *generation,
             source,
             data_revision,
             sample,
@@ -370,6 +382,7 @@ fn reply(request: &Request, scene: Option<&Scene>) -> ServerMessage {
             result: continued_at(scene, entity, read, position),
         },
         Ask::Paths(paths) => ServerMessage::InspectedFields {
+            request: *generation,
             source,
             data_revision,
             sample,
@@ -439,18 +452,6 @@ fn inspection_at(
             InspectionWire::Absent
         }
     }
-}
-
-fn page_field(item: scene::inspection::PageField) -> FieldWire {
-    let mut wire = field(item.field);
-    wire.identity = item.identity;
-    wire.cut = item
-        .cut
-        .map(|(ordinal, bytes)| [ordinal as u64, bytes as u64]);
-    wire.path_cut = item
-        .path_cut
-        .map(|(ordinal, bytes)| [ordinal as u64, bytes as u64]);
-    wire
 }
 
 #[cfg(test)]
@@ -567,21 +568,6 @@ fn leaves(scene: &Scene, paths: &[String]) -> Option<Vec<ObjectItemsWire>> {
         }
     }
     Some(objects)
-}
-
-fn field(field: InspectionField) -> FieldWire {
-    FieldWire {
-        identity: None,
-        cut: None,
-        path_cut: None,
-        group: field.group,
-        origin: field.origin,
-        path: field.path,
-        value: field.value,
-        rgb: field.color.map(|color| [color.r, color.g, color.b]),
-        text: field.text,
-        fraction: field.fraction,
-    }
 }
 
 #[cfg(test)]

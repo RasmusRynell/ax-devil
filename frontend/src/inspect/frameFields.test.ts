@@ -13,16 +13,27 @@ const frame = (sample: number, columns: unknown = {}) =>
   ({ source: 0, dataRevision: 1, sample, columns }) as unknown as LaneFrame;
 
 const answer = (
+  sent: readonly ClientMessage[],
   sample: number,
   objects: Extract<ServerMessage, { type: "InspectedFields" }>["objects"],
-): Extract<ServerMessage, { type: "InspectedFields" }> => ({
-  type: "InspectedFields",
-  source: 0,
-  data_revision: 1,
-  sample,
-  paths: ["id"],
-  objects,
-});
+): Extract<ServerMessage, { type: "InspectedFields" }> => {
+  const asked = sent
+    .filter(
+      (message): message is Extract<ClientMessage, { type: "InspectFields" }> =>
+        message.type === "InspectFields" && message.sample === sample,
+    )
+    .at(-1);
+  if (!asked) throw Error("search request");
+  return {
+    type: "InspectedFields",
+    request: asked.request,
+    source: 0,
+    data_revision: 1,
+    sample,
+    paths: ["id"],
+    objects,
+  };
+};
 
 describe("the leaves of a frame's objects", () => {
   it("are asked once per sample and read for exactly that sample, with integers exact", () => {
@@ -36,7 +47,7 @@ describe("the leaves of a frame's objects", () => {
     expect(fields.view(frame(1), paths).state).toBe("pending");
 
     fields.receive(
-      answer(1, [
+      answer(sent, 1, [
         {
           entity: "7",
           items: [
@@ -57,7 +68,7 @@ describe("the leaves of a frame's objects", () => {
     fields.ask(frame(2), paths);
     expect(sent).toHaveLength(2);
     expect(fields.view(frame(2), paths).state).toBe("pending");
-    fields.receive(answer(1, []));
+    fields.receive(answer(sent, 1, []));
     expect(fields.view(frame(2), paths).state).toBe("pending");
   });
 
@@ -67,7 +78,7 @@ describe("the leaves of a frame's objects", () => {
     const held = {};
 
     fields.ask(frame(1, held), ["id"]);
-    fields.receive(answer(1, null));
+    fields.receive(answer(sent, 1, null));
     expect(fields.view(frame(1, held), ["id"]).state).toBe("unavailable");
     fields.ask(frame(1, held), ["id"]);
     expect(sent).toHaveLength(1);
@@ -75,7 +86,7 @@ describe("the leaves of a frame's objects", () => {
     expect(sent).toHaveLength(2);
   });
 
-  it("are asked again when a list opens after an answer was dropped", () => {
+  it("are asked afresh when a list reopens, ignoring a held refusal from its previous request", async () => {
     const sent: ClientMessage[] = [];
     const fields = new FrameFields((message) => sent.push(message), after);
     const held = frame(1);
@@ -84,12 +95,23 @@ describe("the leaves of a frame's objects", () => {
     fields.ask(held, ["id"]);
     fields.ask(held, ["id"]);
     expect(sent).toHaveLength(1);
+    let release!: () => void;
+    const heldReply = answer(sent, 1, null);
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const late = waiting.then(() => fields.receive(heldReply));
     close();
 
     // The list opens again on the same sample, and nothing else asks.
     fields.subscribe(() => {});
     fields.ask(held, ["id"]);
     expect(sent).toHaveLength(2);
+    release();
+    await late;
+    expect(fields.view(held, ["id"]).state).toBe("pending");
+    fields.receive(answer(sent, 1, []));
+    expect(fields.view(held, ["id"]).state).toBe("ready");
   });
 
   it("are sent again while a list listens and the answer is dropped, a few times, and not once answered", () => {
@@ -107,7 +129,7 @@ describe("the leaves of a frame's objects", () => {
     expect(sent).toHaveLength(4);
 
     fields.ask(frame(2), ["id"]);
-    fields.receive(answer(2, []));
+    fields.receive(answer(sent, 2, []));
     vi.advanceTimersByTime(60_000);
     expect(sent).toHaveLength(5);
 

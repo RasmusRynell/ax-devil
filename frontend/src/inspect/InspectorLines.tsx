@@ -26,6 +26,7 @@ import {
   rawJson,
   togglePin,
   type InspectorMemory,
+  type PinField,
   type Line,
 } from "./fields";
 import type { FieldGroupWire, FieldWire } from "../stream/protocol";
@@ -50,6 +51,7 @@ interface FieldProps {
   copied: boolean;
   missing: boolean;
   pending?: boolean;
+  failed?: boolean;
   /** The colour a colour field's value is the score of. */
   rgb?: readonly [number, number, number];
   /** How much of a bar the value fills, 0 to 1; no bar when absent. */
@@ -112,6 +114,7 @@ const FieldLine = memo(function FieldLine({
   copied,
   missing,
   pending,
+  failed,
   rgb,
   fraction,
   elide,
@@ -154,7 +157,7 @@ const FieldLine = memo(function FieldLine({
       </span>
       {missing ? (
         <span className="col-span-2 truncate text-muted italic">
-          {pending ? "Loading…" : "Not present"}
+          {pending ? "Loading…" : failed ? "Unavailable" : "Not present"}
         </span>
       ) : (
         <>
@@ -324,6 +327,7 @@ function rows(
         copied={found && copied.is(ids[first + i] ?? "")}
         missing={!found}
         pending={line.kind === "unavailable" && line.pending}
+        failed={line.kind === "unavailable" && line.failed}
       />
     );
   });
@@ -346,7 +350,7 @@ export function InspectorLines({
   onCopyStart,
 }: {
   fields: readonly FieldWire[];
-  pinFields?: readonly (FieldWire | null | undefined)[];
+  pinFields?: readonly PinField[];
   onCopyRaw?: () => void;
   onCopyLarge?: (ordinal: number, path?: boolean) => void;
   onCopyStart?: () => void;

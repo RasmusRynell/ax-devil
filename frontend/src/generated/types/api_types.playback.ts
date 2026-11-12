@@ -58,6 +58,10 @@ lanes: Array<string>, } | { "type": "Catalog",
  */
 id: string, } | { "type": "Inspect", 
 /**
+ * Client request generation, echoed unchanged in the reply.
+ */
+request: number, 
+/**
  * The viewer's source id, `LaneInfo::source`.
  */
 source: number, 
@@ -73,6 +77,10 @@ sample: number,
  * The object's id; at most 1024 bytes.
  */
 entity: string, } | { "type": "InspectContinue" } & InspectionRead | { "type": "InspectRelease" } | { "type": "InspectFields", 
+/**
+ * Client request generation, echoed unchanged in the reply.
+ */
+request: number, 
 /**
  * The viewer's source id, `LaneInfo::source`.
  */
@@ -273,6 +281,10 @@ problem: string | null, } | { "type": "Catalogs",
  */
 catalogs: Array<CatalogInfoWire>, } | { "type": "Inspected", 
 /**
+ * Client request generation, echoed unchanged in the reply.
+ */
+request: number, 
+/**
  * The requested source.
  */
 source: number, 
@@ -300,6 +312,10 @@ request: number,
  * Bounded result, under the same frame authority as inspection.
  */
 result: InspectionReadResult, } | { "type": "InspectedFields", 
+/**
+ * Client request generation, echoed unchanged in the reply.
+ */
+request: number, 
 /**
  * The requested source.
  */

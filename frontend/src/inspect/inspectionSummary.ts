@@ -1,6 +1,6 @@
 import { MOTION_STATES } from "../present/columns";
 import { maskKeeps } from "../present/filter/filter";
-import type { InspectionView, LaneFrame, Summary } from "./contract";
+import type { InspectionView, LaneFrame, Summary } from "../lanes/contract";
 
 const encoder = new TextEncoder();
 

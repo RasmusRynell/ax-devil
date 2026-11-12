@@ -222,7 +222,7 @@ export class PlaybackStream implements LaneControl {
   }
 
   /** Updates visibility and the pins resolved by the inspection owner. */
-  showInspector(shown: boolean, pins?: readonly import("./fields").FieldId[]): void {
+  showInspector(shown: boolean, pins?: readonly import("../inspect/fields").FieldId[]): void {
     const changed = this.#data.inspections.setVisible(shown);
     if ((pins ? this.#data.inspections.setPins(pins) : false) || changed) this.#publish();
   }

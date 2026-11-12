@@ -34,7 +34,7 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
         let allowed = allowed.clone();
         Arc::new(move || allowed.load(Ordering::SeqCst))
     });
-    inspections.ask(&viewer, 0, revision, 10, "cvat_track_7".into());
+    inspections.ask(&viewer, 0, 0, revision, 10, "cvat_track_7".into());
     let InspectionWire::Found {
         continuation: Some(cursor),
         fields,
@@ -175,12 +175,12 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
         "a pinned value remains copyable outside the visible page"
     );
     allowed.store(false, Ordering::SeqCst);
-    inspections.ask(&viewer, 0, revision, 10, "cvat_track_7".into());
+    inspections.ask(&viewer, 0, 0, revision, 10, "cvat_track_7".into());
     assert!(
         inspections.objects.running.is_none(),
         "denied initial inspection starts no work"
     );
-    inspections.ask_fields(&viewer, 0, revision, 10, vec!["raw.frame_number".into()]);
+    inspections.ask_fields(&viewer, 0, 0, revision, 10, vec!["raw.frame_number".into()]);
     assert!(
         inspections.searches.running.is_none(),
         "denied query starts no work"
@@ -284,6 +284,7 @@ async fn a_blocking_inspection_finishing_after_permission_withdrawal_is_not_deli
     let mut inspections = Inspections::new(gate.inspection_permission());
     inspections.ask_target(
         0,
+        0,
         revision,
         10,
         "2".into(),
@@ -306,4 +307,54 @@ async fn a_blocking_inspection_finishing_after_permission_withdrawal_is_not_deli
     drop(outbox);
     writer.await.unwrap();
     assert!(delivered.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_released_held_read_echoes_its_generation_without_releasing_its_replacement() {
+    let folder = tempfile::tempdir().unwrap();
+    let (mut viewer, revision) = viewer(folder.path()).await;
+    hold(&mut viewer, 10).await;
+    let (input, snapshot, frame) = viewer.inspect_target(0, revision, 10).unwrap();
+    let (release, waiting) = std::sync::mpsc::channel();
+    let track = Arc::new(HeldRead {
+        inner: input.clone(),
+        started: tokio::sync::Notify::new(),
+        release: Mutex::new(waiting),
+    });
+    let mut inspections = Inspections::default();
+    inspections.ask_target(
+        101,
+        0,
+        revision,
+        10,
+        "2".into(),
+        Some((track.clone(), snapshot.clone(), frame)),
+    );
+    track.started.notified().await;
+    inspections.release();
+    inspections.ask_target(
+        102,
+        0,
+        revision,
+        10,
+        "2".into(),
+        Some((input, snapshot, frame)),
+    );
+    release.send(()).unwrap();
+    assert!(matches!(
+        answer(&mut inspections).await.0,
+        ServerMessage::Inspected {
+            request: 101,
+            inspection: InspectionWire::Unavailable,
+            ..
+        }
+    ));
+    assert!(matches!(
+        answer(&mut inspections).await.0,
+        ServerMessage::Inspected {
+            request: 102,
+            inspection: InspectionWire::Found { .. },
+            ..
+        }
+    ));
 }

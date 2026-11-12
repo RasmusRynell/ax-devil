@@ -148,11 +148,11 @@ fn a_new_live_stream_arrives_with_what_the_user_entered_and_its_password_never_p
 
 #[test]
 fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
-    let inspect =
-        json!({"type": "Inspect", "source": 1, "data_revision": 2, "sample": 3, "entity": "7"});
+    let inspect = json!({"type": "Inspect", "request": 0, "source": 1, "data_revision": 2, "sample": 3, "entity": "7"});
     assert_eq!(
         serde_json::from_value::<ClientMessage>(inspect).unwrap(),
         ClientMessage::Inspect {
+            request: 0,
             source: 1,
             data_revision: 2,
             sample: 3,
@@ -160,6 +160,7 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
         }
     );
     let found = ServerMessage::Inspected {
+        request: 0,
         source: 1,
         data_revision: 2,
         sample: 3,
@@ -198,7 +199,7 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
     assert_eq!(
         serde_json::to_value(&found).unwrap(),
         json!({
-            "type": "Inspected", "source": 1, "data_revision": 2, "sample": 3, "entity": "7",
+            "type": "Inspected", "request": 0, "source": 1, "data_revision": 2, "sample": 3, "entity": "7",
             "inspection": {"state": "Found", "truncated": false, "fields": [
                 {"group": "debug", "origin": "source", "path": ["tags", "0"], "value": {"kind": "text", "value": "x"}},
                 {"group": "classification", "path": ["class"], "value": {"kind": "null"}}
@@ -206,11 +207,12 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
         })
     );
     let search = json!({
-        "type": "InspectFields", "source": 1, "data_revision": 2, "sample": 3, "paths": ["debug.id"]
+        "type": "InspectFields", "request": 0, "source": 1, "data_revision": 2, "sample": 3, "paths": ["debug.id"]
     });
     assert_eq!(
         serde_json::from_value::<ClientMessage>(search).unwrap(),
         ClientMessage::InspectFields {
+            request: 0,
             source: 1,
             data_revision: 2,
             sample: 3,
@@ -218,6 +220,7 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
         }
     );
     let leaves = ServerMessage::InspectedFields {
+        request: 0,
         source: 1,
         data_revision: 2,
         sample: 3,
@@ -233,7 +236,7 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
     assert_eq!(
         serde_json::to_value(&leaves).unwrap(),
         json!({
-            "type": "InspectedFields", "source": 1, "data_revision": 2, "sample": 3, "paths": ["debug.id"],
+            "type": "InspectedFields", "request": 0, "source": 1, "data_revision": 2, "sample": 3, "paths": ["debug.id"],
             "objects": [{"entity": "7", "items": [
                 {"key": "debug.id", "value": {"kind": "int", "value": "9223372036854775807"}}
             ]}]

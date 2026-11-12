@@ -251,13 +251,20 @@ impl<I: Incoming> Playing<'_, I> {
                 Ok(())
             }
             Some(Ok(ClientMessage::Inspect {
+                request,
                 source,
                 data_revision,
                 sample,
                 entity,
             })) => {
-                self.inspections
-                    .ask(self.lanes.overlays(), source, data_revision, sample, entity);
+                self.inspections.ask(
+                    self.lanes.overlays(),
+                    request,
+                    source,
+                    data_revision,
+                    sample,
+                    entity,
+                );
                 Ok(())
             }
             Some(Ok(ClientMessage::InspectRelease)) => {
@@ -276,6 +283,7 @@ impl<I: Incoming> Playing<'_, I> {
                 Ok(())
             }
             Some(Ok(ClientMessage::InspectFields {
+                request,
                 source,
                 data_revision,
                 sample,
@@ -283,6 +291,7 @@ impl<I: Incoming> Playing<'_, I> {
             })) => {
                 self.inspections.ask_fields(
                     self.lanes.overlays(),
+                    request,
                     source,
                     data_revision,
                     sample,

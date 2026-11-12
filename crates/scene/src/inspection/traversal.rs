@@ -1,4 +1,4 @@
-//! Per-capability preparation: only a bounded permutation of classification indices is retained.
+//! Per-capability classification order and bounded colour-list recognition.
 use super::{Entity, FieldChunk, FieldPage};
 use std::cmp::Ordering;
 
@@ -52,6 +52,8 @@ impl Traversal {
         items: &[crate::Value],
         work: &mut usize,
     ) -> Option<bool> {
+        // The scan shares its page work budget. Playback runs it on a blocking worker; socket capability
+        // release never takes this separate shape-cache lock.
         self.shapes
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
