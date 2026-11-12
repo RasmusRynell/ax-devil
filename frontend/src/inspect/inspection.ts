@@ -37,7 +37,7 @@ export class Inspections {
   #copy: { value: string; received: number; total: number } | null = null;
   #error: string | null = null;
   #copied = false;
-  #capActive = false;
+  #cap: Extract<ClientMessage, { type: "InspectRelease" }> | null = null;
   #writing = false;
   #writingCopy: { value: string } | null = null;
   readonly #send: (message: ClientMessage) => void;
@@ -213,7 +213,7 @@ export class Inspections {
     if (
       message.request !== this.#inflight?.request ||
       key !== this.#wanted ||
-      !this.#capActive ||
+      !this.#cap ||
       !this.#visible
     )
       return false;
@@ -223,6 +223,8 @@ export class Inspections {
         this.#abandon();
         this.#refused = { key, columns: this.#sampleAt().columns };
       } else {
+        if (message.inspection.state === "Found" && message.inspection.continuation)
+          this.#cap = { type: "InspectRelease", token: message.inspection.continuation.token };
         if (message.inspection.state === "Refused") this.#abandon();
         this.#remember(key, message.inspection);
       }
@@ -259,8 +261,8 @@ export class Inspections {
   }
 
   #abandon(): void {
-    if (this.#capActive) this.#send({ type: "InspectRelease" });
-    this.#capActive = false;
+    if (this.#cap) this.#send(this.#cap);
+    this.#cap = null;
     this.#cancelRead();
     this.#cache.clear();
     this.#pins.clear();
@@ -300,11 +302,6 @@ export class Inspections {
     )
       return;
     if (field !== "pins") this.#cancelRead();
-    if (field !== null && this.#writing) {
-      this.#error = "Clipboard is busy";
-      this.#notify();
-      return;
-    }
     if (field !== null && field !== "raw" && field !== "pins") {
       const cut = [
         ...reply.fields,
@@ -476,8 +473,8 @@ export class Inspections {
     if (!this.#visible || this.#awaiting || this.#cache.has(key)) return;
     if (refused?.key === key && refused.columns === frame.columns) return;
     if (this.#inflight?.key === key && !this.#overdue()) return;
-    this.#capActive = true;
     this.#inflight = { key, at: this.#draws, request: ++this.#serial };
+    this.#cap = { type: "InspectRelease", request: this.#inflight.request };
     this.#send({
       type: "Inspect",
       request: this.#inflight.request,

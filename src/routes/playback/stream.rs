@@ -267,8 +267,8 @@ impl<I: Incoming> Playing<'_, I> {
                 );
                 Ok(())
             }
-            Some(Ok(ClientMessage::InspectRelease)) => {
-                self.inspections.release();
+            Some(Ok(ClientMessage::InspectRelease(identity))) => {
+                self.inspections.release_read(&identity);
                 Ok(())
             }
             Some(Ok(ClientMessage::InspectContinue(read))) => {

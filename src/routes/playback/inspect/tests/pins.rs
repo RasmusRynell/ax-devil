@@ -295,6 +295,11 @@ async fn rejected_tokens_leave_the_current_capability_usable_through_viewer_reso
         panic!("capability A");
     };
     owner.ask(&viewer, 2, 0, revision, 10, "cvat_track_7".into());
+    // A pre-token cancellation of A arrives after B has started but before its first reply.
+    release_message(
+        &mut owner,
+        serde_json::json!({"type": "InspectRelease", "request": 1}),
+    );
     let InspectionWire::Found {
         continuation: Some(b),
         fields,
@@ -314,6 +319,10 @@ async fn rejected_tokens_leave_the_current_capability_usable_through_viewer_reso
         offset: b.next.unwrap(),
     };
     for token in [a.token, "not-a-capability".into()] {
+        release_message(
+            &mut owner,
+            serde_json::json!({"type": "InspectRelease", "token": token}),
+        );
         assert_expired(
             resolve_read(
                 &mut owner,
@@ -331,7 +340,7 @@ async fn rejected_tokens_leave_the_current_capability_usable_through_viewer_reso
             resolve_read(&mut owner, &viewer, read.clone()).await,
             InspectionReadResult::Page { .. }
         ),
-        "capability B still pages after rejected tokens"
+        "capability B still pages after stale releases and rejected tokens"
     );
     let pin = InspectionRead {
         offset: 0,
@@ -391,6 +400,10 @@ async fn rejected_tokens_leave_the_current_capability_usable_through_viewer_reso
     owner.continue_read(pin, |s, r, n| viewer.inspect_target(s, r, u64::from(n)));
     assert!(owner.cursor.is_none(), "permission refusal releases B");
     allowed.store(true, Ordering::SeqCst);
+    release_message(
+        &mut owner,
+        serde_json::json!({"type": "InspectRelease", "token": b.token}),
+    );
     assert_expired(resolve_read(&mut owner, &viewer, read.clone()).await);
     assert!(
         owner.cursor.is_none(),
@@ -423,6 +436,43 @@ async fn rejected_tokens_leave_the_current_capability_usable_through_viewer_reso
         owner.cursor.is_none(),
         "a matching token expires when its held sample is gone"
     );
+    owner.ask(&viewer, 5, 0, revision, 40, "cvat_track_7".into());
+    let InspectionWire::Found {
+        continuation: Some(d),
+        ..
+    } = verdict(answer(&mut owner).await.0)
+    else {
+        panic!("fresh capability D");
+    };
+    release_message(
+        &mut owner,
+        serde_json::json!({"type": "InspectRelease", "token": d.token}),
+    );
+    assert!(
+        owner.cursor.is_none(),
+        "matching token releases the current capability"
+    );
+    owner.ask(&viewer, 6, 0, revision, 40, "cvat_track_7".into());
+    release_message(
+        &mut owner,
+        serde_json::json!({"type": "InspectRelease", "request": 6}),
+    );
+    assert!(
+        matches!(
+            verdict(answer(&mut owner).await.0),
+            InspectionWire::Unavailable
+        ),
+        "a matching pre-token cancellation releases the running read"
+    );
+}
+
+fn release_message(owner: &mut Inspections, message: serde_json::Value) {
+    let api_types::playback::ClientMessage::InspectRelease(identity) =
+        serde_json::from_value(message).expect("release wire identity")
+    else {
+        panic!("release message");
+    };
+    owner.release_read(&identity);
 }
 
 async fn resolve_read(

@@ -149,6 +149,19 @@ next: number | null, } | { "state": "Refused",
 reason: string, };
 
 /**
+ * The inspection to release: its capability, or its initial request before the capability arrived.
+ */
+export type InspectionRelease = { 
+/**
+ * Capability returned by the first inspection reply.
+ */
+token: string, } | { 
+/**
+ * Generation of the initial `Inspect`, not a continuation's correlation number.
+ */
+request: number, };
+
+/**
  * What the backend knows of one object of one sample.
  */
 export type InspectionWire = { "state": "Found", 

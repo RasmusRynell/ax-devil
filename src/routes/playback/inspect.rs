@@ -16,6 +16,7 @@ use scene::{
     inspection::{Budget, query_leaves},
 };
 use scene_store::{TrackRead, TrackSnapshot};
+mod identity;
 mod pins;
 mod wire;
 use wire::page_field;
@@ -127,7 +128,7 @@ pub(super) struct Inspections {
     permission: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     objects: Queue,
     searches: Queue,
-    cursor: Option<(String, u16, u32, u32, String, PositionRef)>,
+    cursor: Option<(String, u16, u32, u32, String, PositionRef, u32)>,
     refused: Option<Outgoing>,
 }
 
@@ -194,6 +195,7 @@ impl Inspections {
             sample,
             entity.clone(),
             position.clone(),
+            generation,
         ));
         let ask = Ask::Object(entity, token, position);
         let request = Request {
@@ -207,16 +209,10 @@ impl Inspections {
     }
 
     /// Releases this socket's capability, including its permutation and page addresses.
-    pub(super) fn release(&mut self) {
+    fn release(&mut self) {
         if let Some(cursor) = self.cursor.take() {
             position::invalidate(&cursor.5);
         }
-    }
-
-    /// Identifies the target only for this socket's current capability. The caller rechecks its held sample.
-    fn continuation_target(&self, token: &str) -> Option<(u16, u32, u32)> {
-        let (held, source, revision, sample, _, _) = self.cursor.as_ref()?;
-        (token == held).then_some((*source, *revision, *sample))
     }
 
     /// Resolves a continuation through this socket's capability and its viewer's currently held samples.

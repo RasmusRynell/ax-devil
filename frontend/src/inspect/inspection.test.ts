@@ -212,7 +212,10 @@ describe("inspections", () => {
     inspections.follow([frame(1)]);
     expect(inspections.view).toMatchObject({ state: "loading", selection: SELECTION });
     inspections.receive(reply(1, { state: "Absent" }));
-    expect(sent.at(-1)).toEqual({ type: "InspectRelease" });
+    expect(sent.at(-1)).toEqual({
+      type: "InspectRelease",
+      request: sent.filter((message) => message.type === "Inspect").at(-1)?.request,
+    });
     expect(inspections.view).toMatchObject({ state: "absent", reason: "gone" });
     inspections.follow([frame(2)]);
     inspections.receive(reply(2, found(CLASS)));
@@ -220,12 +223,18 @@ describe("inspections", () => {
     inspections.follow([frame(2)], false);
     expect(sent).toHaveLength(count);
     inspections.follow([undefined]);
-    expect(sent.at(-1)).toEqual({ type: "InspectRelease" });
+    expect(sent.at(-1)).toEqual({
+      type: "InspectRelease",
+      request: sent.filter((message) => message.type === "Inspect").at(-1)?.request,
+    });
     inspections.follow([frame(3)]);
     expect(inspections.view.state).toBe("loading");
     inspections.receive(reply(3, found(CLASS)));
     inspections.follow([frame(4, withoutCar)]);
-    expect(sent.at(-1)).toEqual({ type: "InspectRelease" });
+    expect(sent.at(-1)).toEqual({
+      type: "InspectRelease",
+      request: sent.filter((message) => message.type === "Inspect").at(-1)?.request,
+    });
     expect(inspections.view).toMatchObject({ state: "absent", last: { className: "car" } });
   });
 
@@ -236,7 +245,10 @@ describe("inspections", () => {
     inspections.receive(reply(0, found(CLASS)));
     const off = { classMask: { enabled: new Uint32Array([0b10]), options: 2 }, styleRevision: 1 };
     expect(inspections.follow([frame(0, withCar, 1, 0, off)])).toBe(true);
-    expect(sent.at(-1)).toEqual({ type: "InspectRelease" });
+    expect(sent.at(-1)).toEqual({
+      type: "InspectRelease",
+      request: sent.filter((message) => message.type === "Inspect").at(-1)?.request,
+    });
     expect(inspections.view).toMatchObject({
       state: "absent",
       selection: SELECTION,

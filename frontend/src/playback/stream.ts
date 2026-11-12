@@ -1,7 +1,4 @@
-/**
- * A viewer's playback. Playback never waits for lane data; seeking waits briefly. Time, display refresh and socket
- * are injected; the UI reads `getSnapshot`.
- */
+/** A viewer's playback: injected time, refresh and socket. Playback never waits for lane data; seeking waits briefly. */
 
 import type { ErrorWire } from "../generated/api";
 import { reasonOf } from "../client/errors";

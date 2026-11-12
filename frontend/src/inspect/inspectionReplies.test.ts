@@ -32,6 +32,7 @@ it("drops a released first read when the Inspector reappears on the same paused 
     });
     const late = held.then(() => owner.receive(earlier));
     owner.setVisible(false);
+    expect(sent.at(-1)).toEqual({ type: "InspectRelease", request: earlier.request });
     owner.setVisible(true);
     expect(sent.at(-1)).toMatchObject({ type: "Inspect", request: expect.any(Number) });
     release();
@@ -57,6 +58,8 @@ it("drops a released first read when the Inspector reappears on the same paused 
       result: chunk,
     });
     await waitFor(() => expect(writeText).toHaveBeenCalledExactlyOnceWith("{}"));
+    owner.setVisible(false);
+    expect(sent.at(-1)).toEqual({ type: "InspectRelease", token: initial.continuation.token });
   } finally {
     vi.unstubAllGlobals();
   }

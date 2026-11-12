@@ -231,8 +231,8 @@ impl<I: Incoming> Live<'_, I> {
                     .ask_target(request, source, data_revision, sample, entity, target);
                 Ok(())
             }
-            Some(Ok(ClientMessage::InspectRelease)) => {
-                self.inspections.release();
+            Some(Ok(ClientMessage::InspectRelease(identity))) => {
+                self.inspections.release_read(&identity);
                 Ok(())
             }
             Some(Ok(ClientMessage::InspectContinue(read))) => {

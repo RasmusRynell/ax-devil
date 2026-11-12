@@ -92,6 +92,7 @@ pub enum InspectionWire {
 pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<InspectionContinuation>();
     types.visit::<InspectionRead>();
+    types.visit::<InspectionRelease>();
     types.visit::<InspectionPin>();
     types.visit::<InspectionReadResult>();
     types.visit::<FieldWire>();
@@ -107,6 +108,22 @@ pub struct InspectionContinuation {
     pub token: String,
     /// Next field ordinal, absent on the final page.
     pub next: Option<u32>,
+}
+
+/// The inspection to release: its capability, or its initial request before the capability arrived.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(untagged)]
+pub enum InspectionRelease {
+    /// Release only this socket's matching capability.
+    Token {
+        /// Capability returned by the first inspection reply.
+        token: String,
+    },
+    /// Cancel only the matching initial request, including while its read is running.
+    Request {
+        /// Generation of the initial `Inspect`, not a continuation's correlation number.
+        request: u32,
+    },
 }
 
 /// One page or text chunk requested through the playback socket.

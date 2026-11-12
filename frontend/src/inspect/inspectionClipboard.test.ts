@@ -114,7 +114,7 @@ it("closing the real viewer invalidates a pending clipboard write before its ref
     startCopy(data.inspections, sent);
     expect(writeText).toHaveBeenCalledTimes(2);
     data.close();
-    expect(sent.at(-1)).toEqual({ type: "InspectRelease" });
+    expect(sent.at(-1)).toEqual({ type: "InspectRelease", token: "held-sample" });
     await act(async () => release());
     expect(fallback).not.toHaveBeenCalled();
     expect(data.inspections.view).toEqual({ state: "none" });
