@@ -60,10 +60,7 @@ fn login(login: &Login) -> CameraLogin {
 
 /// The camera of `resolved` whose requests and connection attempts take at most `timeout`, or why it cannot be
 /// addressed.
-pub(crate) fn camera_of(
-    resolved: &ResolvedCamera,
-    timeout: Duration,
-) -> Result<Camera, CameraError> {
+pub fn camera_of(resolved: &ResolvedCamera, timeout: Duration) -> Result<Camera, CameraError> {
     let mut camera = Camera::new(Host::parse(&resolved.host)?);
     camera.timeout = timeout;
     camera.web = Web {

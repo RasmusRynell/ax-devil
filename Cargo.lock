@@ -149,6 +149,7 @@ dependencies = [
  "futures-util",
  "handler-api",
  "handlers",
+ "live",
  "logging",
  "media",
  "mime_guess",
@@ -1377,6 +1378,30 @@ name = "litemap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
+
+[[package]]
+name = "live"
+version = "0.1.0"
+dependencies = [
+ "api-types",
+ "bytes",
+ "camera",
+ "foundation",
+ "futures-util",
+ "handler-api",
+ "handlers",
+ "media",
+ "overlay-sync",
+ "overlays",
+ "playback",
+ "scene",
+ "scene-store",
+ "settings",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "workspace",
+]
 
 [[package]]
 name = "lock_api"

@@ -9,7 +9,7 @@ use overlays::NONE_CELL;
 use tokio::time::timeout;
 
 use super::{Update, delivering, frame, lost, luma, rig, update};
-use crate::live_sources::fake::{content, doc, rtsp, unit};
+use crate::fake::{content, doc, rtsp, unit};
 
 #[tokio::test]
 async fn events_go_on_arriving_while_a_viewer_is_paused_and_while_every_viewer_is() {

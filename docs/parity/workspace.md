@@ -36,12 +36,12 @@ Row format: [parity](../parity.md). Deviations: [workspace deviations](workspace
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| LV-01 | RTSP video with one overlay: embedded ONVIF metadata, MQTT or DataHub | M | done | `camera/tests/it/{rtsp,mqtt,datahub}.rs`, `src/live_sources` | |
-| LV-02 | Per-feed status: connected, reconnecting, error, stalled; Retry | M | done | `src/live_sources`, `live/{words,session}.test.ts` | |
-| LV-03 | Pause keeps the connection; stop is terminal | M | done | `src/live_sources`, `live/session.test.ts` | |
-| LV-04 | Capture-time synchronization of frames and overlays | M | done | `overlay-sync`, `src/live_sources` | |
+| LV-01 | RTSP video with one overlay: embedded ONVIF metadata, MQTT or DataHub | M | done | `camera/tests/it/{rtsp,mqtt,datahub}.rs`, `crates/live` | |
+| LV-02 | Per-feed status: connected, reconnecting, error, stalled; Retry | M | done | `crates/live`, `live/{words,session}.test.ts` | |
+| LV-03 | Pause keeps the connection; stop is terminal | M | done | `crates/live`, `live/session.test.ts` | |
+| LV-04 | Capture-time synchronization of frames and overlays | M | done | `overlay-sync`, `crates/live` | |
 | LV-05 | Network scan with optional sign-in; add found camera | M | done | `camera/tests/it/scan.rs`, `shell/LiveView.test.tsx` | |
 | LV-06 | Streams start only on explicit action | M | done | `crates/workspace/src/store` tests, `sessions` streams, `shell/LiveView.test.tsx` | |
 | LV-07 | Live Events list keeps recording while hidden; no seekable history | M | done | `live/session.test.ts` | |
-| LV-08 | Temporary device configuration (MQTT analytics publisher) removed on stop and quit | M | done | `camera/tests/it/mqtt.rs`, `src/live_sources` | |
+| LV-08 | Temporary device configuration (MQTT analytics publisher) removed on stop and quit | M | done | `camera/tests/it/mqtt.rs`, `crates/live` | |
 | LV-09 | RTSP through the camera's web API (HTTP tunnel); a custom stream URL as typed | S | done | `camera/tests/it/tunnel.rs`, `workspace` live tests, `shell/liveForm.test.ts` | Untested on a camera |

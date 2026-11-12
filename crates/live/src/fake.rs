@@ -40,19 +40,23 @@ use super::{
 
 /// What a test pushes into one RTSP connection and reads of it.
 pub struct VideoWire {
+    /// Access units the connection delivers.
     pub units: mpsc::Sender<AccessUnit>,
+    /// Metadata documents the connection delivers, when it has any.
     pub docs: Option<mpsc::Sender<Feed<MetadataDoc>>>,
+    /// The connection's status.
     pub status: watch::Sender<Status>,
-    pub closed: Arc<AtomicBool>,
+    pub(crate) closed: Arc<AtomicBool>,
     /// Set when closing the connection has begun, which [`FakeConnector::hold_closing`] can keep from finishing.
-    pub closing: Arc<AtomicBool>,
+    pub(crate) closing: Arc<AtomicBool>,
 }
 
 /// What a test pushes into one MQTT or DataHub connection and reads of it.
-pub struct MessageWire {
-    pub messages: mpsc::Sender<Feed<Message>>,
-    pub status: watch::Sender<Status>,
-    pub closed: Arc<AtomicBool>,
+pub(crate) struct MessageWire {
+    #[cfg_attr(not(test), allow(dead_code, reason = "read by this crate's own tests"))]
+    pub(crate) messages: mpsc::Sender<Feed<Message>>,
+    pub(crate) status: watch::Sender<Status>,
+    pub(crate) closed: Arc<AtomicBool>,
 }
 
 #[derive(Default)]
@@ -75,7 +79,8 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 impl FakeConnector {
     /// Keeps the closing of RTSP connections from finishing (or lets it).
-    pub fn hold_closing(&self, held: bool) {
+    #[cfg(test)]
+    pub(crate) fn hold_closing(&self, held: bool) {
         self.0.closing_held.send_replace(held);
     }
 
@@ -85,7 +90,8 @@ impl FakeConnector {
     }
 
     /// The MQTT and DataHub connections opened so far that were not refused.
-    pub fn messages(&self) -> Vec<Arc<MessageWire>> {
+    #[cfg(test)]
+    pub(crate) fn messages(&self) -> Vec<Arc<MessageWire>> {
         lock(&self.0.messages).clone()
     }
 
@@ -251,7 +257,8 @@ impl UnitDecoder for FakeCodec {
 }
 
 /// A video unit of connection `epoch` that cannot be decoded, captured at `capture_us` microseconds.
-pub fn damaged(epoch: u32, capture_us: i64) -> AccessUnit {
+#[cfg(test)]
+pub(crate) fn damaged(epoch: u32, capture_us: i64) -> AccessUnit {
     AccessUnit {
         data: Bytes::new(),
         ..unit(epoch, Some(capture_us), 0)
@@ -259,7 +266,8 @@ pub fn damaged(epoch: u32, capture_us: i64) -> AccessUnit {
 }
 
 /// Like [`unit`], but its picture comes out of the decoder with the next unit, under its own id.
-pub fn held_back(epoch: u32, capture_us: i64, luma: u8) -> AccessUnit {
+#[cfg(test)]
+pub(crate) fn held_back(epoch: u32, capture_us: i64, luma: u8) -> AccessUnit {
     AccessUnit {
         data: Bytes::from(vec![luma, 0]),
         ..unit(epoch, Some(capture_us), luma)
@@ -289,12 +297,14 @@ pub struct Hold {
 
 impl Hold {
     /// Makes the decoder wait before its next record.
-    pub fn close(&self) {
+    #[cfg(test)]
+    pub(crate) fn close(&self) {
         *lock(&self.closed) = true;
     }
 
     /// Lets the decoder go on.
-    pub fn open(&self) {
+    #[cfg(test)]
+    pub(crate) fn open(&self) {
         *lock(&self.closed) = false;
         self.changed.notify_all();
     }
@@ -334,10 +344,10 @@ pub struct TestDecoder(pub Arc<Hold>);
 
 impl TestDecoder {
     /// The id the handler registers under.
-    pub const ID: &'static str = "LIVE_TEST";
+    pub(crate) const ID: &'static str = "LIVE_TEST";
 
     /// The one class filter the decoder offers, which a viewer is told of.
-    pub fn filter() -> FilterPolicy {
+    pub(crate) fn filter() -> FilterPolicy {
         FilterPolicy {
             name: "",
             options: vec![FilterOption {
@@ -420,6 +430,7 @@ pub fn doc(epoch: u32, text: &str) -> Feed<MetadataDoc> {
     })
 }
 
+/// A live stream of `host` with `overlay`, a login and a fresh item id.
 pub fn content(host: &str, overlay: LiveOverlay) -> LiveVideoContent {
     let item = foundation::ItemId::generate();
     LiveVideoContent {
@@ -445,13 +456,15 @@ pub fn content(host: &str, overlay: LiveOverlay) -> LiveVideoContent {
     }
 }
 
+/// An overlay carried in the RTSP stream, decoded by the test decoder.
 pub fn rtsp() -> LiveOverlay {
     LiveOverlay::Rtsp {
         handler: TestDecoder::ID.into(),
     }
 }
 
-pub fn mqtt(source_key: &str) -> LiveOverlay {
+#[cfg(test)]
+pub(crate) fn mqtt(source_key: &str) -> LiveOverlay {
     LiveOverlay::Mqtt {
         handler: TestDecoder::ID.into(),
         broker_host: "broker".into(),

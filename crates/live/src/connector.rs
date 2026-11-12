@@ -2,7 +2,7 @@
 //! its video into pictures. The real one is `real.rs`; tests use `fake.rs`.
 //!
 //! A [`Transport`] is one connection as the camera crate hands it out: its channels, its status and the future that
-//! closes it. Camera types stay inside `live_sources`; what reaches the rest of the app is wire types.
+//! closes it. Camera types stay inside this crate; what reaches the rest of the app is wire types.
 
 use std::{future::Future, pin::Pin};
 

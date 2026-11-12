@@ -4,7 +4,7 @@
 //! clients follow it. Only a caller who may use this machine's resources (an Owner) can start or watch one.
 
 use super::handlers::refuse;
-use crate::{AppState, access::Principal, failure, network::request_from_settings};
+use crate::{AppState, access::Principal, failure};
 use api_types::live::{NetworkSnapshot, ScanRequestWire, ScanStarted};
 use axum::{
     Json,
@@ -13,8 +13,8 @@ use axum::{
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
-use camera::ScanLoad;
 use futures_util::stream::unfold;
+use live::{ScanLoad, network::request_from_settings};
 use std::convert::Infallible;
 
 /// Starts a scan of the range, ending the one that is running; its cameras start from none. Answers with the scan's
@@ -109,10 +109,7 @@ pub(super) async fn snapshots(State(state): State<AppState>) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        network::Network,
-        test_support::{TestApp, json},
-    };
+    use crate::test_support::{TestApp, json};
     use api_types::live::{NetworkSignIn, NetworkSnapshot};
     use axum::{
         body::Body,
@@ -120,6 +117,7 @@ mod tests {
     };
     use camera::{Found, Identity, Scheme, SignIn, Web};
     use futures_util::StreamExt;
+    use live::network::Network;
     use std::{
         net::Ipv4Addr,
         sync::{Arc, Mutex},

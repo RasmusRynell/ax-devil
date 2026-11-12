@@ -19,7 +19,7 @@ use tokio::time::timeout;
 use workspace::LiveOverlay;
 
 use super::{frame, luma, rig};
-use crate::live_sources::{
+use crate::{
     bridge::{Doc, Waiting, sessions},
     fake::{content, unit},
     overlay::{Arrival, Effects, Intake, QUEUE},

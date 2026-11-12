@@ -1,12 +1,12 @@
 //! The sidebar's questions about a camera: a picture for a hover card, whether the login saved with a stream gets in,
-//! and what the references of the Add Live Stream form show. They are adapters over [`crate::glance`] and the
+//! and what the references of the Add Live Stream form show. They are adapters over [`live::glance`] and the
 //! reference rules of the `workspace` crate.
 //!
 //! A stream's own login goes only to a host the user started: a viewer was opened for it. Anything else is answered
 //! as unknown without a request, so opening a workspace file sends nothing. A found camera's picture uses the scan login the scan
 //! already signed in with. Nothing here returns or logs a login.
 
-use crate::{AppState, glance::SNAPSHOT_TIMEOUT, live_sources::camera_of, session::live::defaults};
+use crate::{AppState, session::live::defaults};
 use api_types::live::{ExpansionsRequest, LiveCheckRequest, LiveExpansions, NetworkSignIn};
 use axum::{
     Json,
@@ -15,7 +15,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use bytes::Bytes;
-use camera::{Camera, Head, Host, Scheme, Web};
+use live::{Camera, Head, Host, Scheme, Web, camera_of, glance::SNAPSHOT_TIMEOUT};
 use sessions::session::HeldItem;
 use std::net::Ipv4Addr;
 use workspace::{

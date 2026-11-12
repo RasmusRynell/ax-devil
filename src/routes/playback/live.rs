@@ -16,10 +16,7 @@ use super::{
     next_client, stopped, text,
     wire::Wire,
 };
-use crate::{
-    AppState,
-    live_sources::{LiveViewer, Shown, Update},
-};
+use crate::AppState;
 use api_types::{
     Audience,
     live::{LiveEventWire, LiveEventsWire, LiveGapWire, LiveOpenedWire, LiveSampleEventsWire},
@@ -31,6 +28,7 @@ use api_types::{
 use axum::extract::ws::Message;
 use catalogs::Library;
 use foundation::{ErrorCode, UserError};
+use live::{LiveViewer, Shown, Update};
 use overlay_sync::MatchPolicy;
 use overlays::{LaneReady, LaneStatus, LiveEvents};
 use sessions::{SessionId, session::StreamLease};
