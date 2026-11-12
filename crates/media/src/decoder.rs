@@ -43,6 +43,8 @@ pub struct Decoder {
     index: Arc<FrameIndex>,
     reader: Reader,
     codec: decoder::Video,
+    /// The caller's share of the decode-thread budget, also used when reopening.
+    threads: usize,
     converter: Converter,
     position: Option<u64>,
     feed: Feed,
@@ -102,6 +104,7 @@ impl Decoder {
             index,
             reader,
             codec,
+            threads,
             converter: Converter::default(),
             position: Some(0),
             feed: Feed::Reading,
@@ -134,6 +137,20 @@ impl Decoder {
             .ok()
             .and_then(|_| self.index.pts(keyframe))
             .ok_or_else(|| self.error(format!("Frame {keyframe} is not a keyframe")))?;
+        // A timestamp seek cannot distinguish the first two frames when they share PTS.
+        if keyframe == 0 && self.index.pts(1) == Some(pts) {
+            *self = Self::open(
+                &VideoInput::File(self.path.clone()),
+                Arc::clone(&self.index),
+                self.threads,
+                self.cancel.clone(),
+            )
+            .map_err(|error| match error {
+                Interrupt::Failed(error) => error,
+                Interrupt::Cancelled => self.error("Opening the video was cancelled".into()),
+            })?;
+            return Ok(());
+        }
         self.reader
             .seek(keyframe, pts)
             .map_err(|e| self.error(format!("The video cannot seek to frame {keyframe}: {e}")))?;
@@ -188,8 +205,9 @@ impl Decoder {
             let mut frame = Video::empty();
             match self.codec.receive_frame(&mut frame) {
                 Ok(()) => {
-                    if let Some(sequence_id) =
-                        frame.pts().and_then(|pts| self.index.sequence_id(pts))
+                    if let Some(sequence_id) = frame
+                        .pts()
+                        .and_then(|pts| self.index.sequence_id(pts, self.position.unwrap_or(0)))
                     {
                         return Some((sequence_id, frame));
                     }
@@ -297,5 +315,31 @@ impl Decoder {
 
     fn error(&self, reason: String) -> UserError {
         source::error(ErrorCode::DecodeFailed, reason, &self.path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reopening_an_ambiguous_first_frame_preserves_the_decoder_allocation() {
+        let input = VideoInput::File(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../fixtures/video/duplicate_pts.mkv"),
+        );
+        let cancel = CancelToken::new();
+        let index =
+            Arc::new(FrameIndex::load_or_build(&input, None, &cancel, &mut |_| {}).unwrap());
+        assert_eq!(index.pts(0), index.pts(1));
+        let mut decoder = Decoder::open(&input, index, 3, cancel).unwrap();
+        let before = decoder.codec.threading();
+        assert_eq!(before.count, 3);
+        decoder.next_frame().unwrap().unwrap();
+        decoder.seek_to_keyframe(0).unwrap();
+        let after = decoder.codec.threading();
+        assert_eq!(after.count, before.count);
+        assert_eq!(after.kind, before.kind);
+        assert_eq!(decoder.next_frame().unwrap().unwrap().id().sequence_id, 0);
     }
 }

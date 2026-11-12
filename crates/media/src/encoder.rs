@@ -168,6 +168,16 @@ impl Encoder {
         let (width, height) = self.size;
         match &mut self.sink {
             Sink::Mp4(mp4) => {
+                if mp4.last_pts.is_some_and(|last| pts_us <= last) {
+                    return Err(fail(format!(
+                        "Export frame timestamps must increase (timestamp {pts_us} µs)"
+                    )));
+                }
+                if dur_us <= 0 {
+                    return Err(fail(format!(
+                        "Export frame duration must be positive (timestamp {pts_us} µs, duration {dur_us} µs)"
+                    )));
+                }
                 let Picture::I420 {
                     y,
                     u,
@@ -360,9 +370,6 @@ impl Mp4 {
         pts_us: i64,
         dur_us: i64,
     ) -> Result<(), Error> {
-        if dur_us <= 0 || self.last_pts.is_some_and(|last| pts_us <= last) {
-            return Err(Error::InvalidData);
-        }
         let mut picture =
             frame::Video::new(Pixel::YUV420P, self.encoder.width(), self.encoder.height());
         for (index, (source, stride, width, height)) in planes.into_iter().enumerate() {

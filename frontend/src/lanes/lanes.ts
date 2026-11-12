@@ -252,7 +252,7 @@ export class LaneSet {
   }
 
   /** A problem the backend reported for the lane. */
-  setProblem(lane: number, problem: string): boolean {
+  setProblem(lane: number, problem: string | undefined): boolean {
     return this.#replace(lane, (state) => ({ ...state, problem }));
   }
 
@@ -260,6 +260,15 @@ export class LaneSet {
   setCatalogProblem(lane: number, catalogProblem: string | undefined): boolean {
     return this.#replace(lane, (state) =>
       state.catalogProblem === catalogProblem ? state : { ...state, catalogProblem },
+    );
+  }
+
+  /** The catalog action owner's current refusal; backend lane errors are independent. */
+  setCatalogActionProblem(lane: number, catalogActionProblem: string | undefined): boolean {
+    return this.#replace(lane, (state) =>
+      state.catalogActionProblem === catalogActionProblem
+        ? state
+        : { ...state, catalogActionProblem },
     );
   }
 
@@ -316,12 +325,15 @@ export class LaneSet {
   }
 
   /** Gives every other lane with a source the settings of `from` but its visibility; the policies to send. */
-  copyFrom(from: number): ClientMessage[] {
+  copyFrom(from: number, expected?: readonly LaneSettings[]): ClientMessage[] {
     const state = this.#states[from];
     if (!state) return [];
     const { visible: _visible, ...copied } = state.settings;
     return this.#states.flatMap((other, lane) => {
-      const message = lane === from || other.source === null ? undefined : this.set(lane, copied);
+      const message =
+        lane === from || other.source === null || (expected && expected[lane] !== other.settings)
+          ? undefined
+          : this.set(lane, copied);
       return message ? [message] : [];
     });
   }

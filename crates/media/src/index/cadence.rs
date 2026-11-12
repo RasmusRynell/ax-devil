@@ -18,7 +18,7 @@ pub struct Cadence {
 }
 
 impl Cadence {
-    /// The cadence of frames with timestamps `pts` (strictly increasing, in `time_base` seconds per tick); `None`
+    /// The cadence of frames with timestamps `pts` (nondecreasing, in `time_base` seconds per tick); `None`
     /// for fewer than two frames.
     pub(super) fn of_pts(pts: &[i64], time_base: (i32, i32)) -> Option<Self> {
         // Period, then how often it occurs and where it first occurred.

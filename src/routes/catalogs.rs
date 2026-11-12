@@ -4,7 +4,7 @@
 use super::handlers::refuse;
 use crate::{AppState, Failure};
 use api_types::catalogs::{
-    CopiedCatalog, CopyCatalogRequest, DeleteCatalogRequest, ReloadCatalogRequest,
+    CopiedCatalog, CopyCatalogRequest, DeleteCatalogRequest, FreshCatalog, ReloadCatalogRequest,
 };
 use axum::{Json, extract::State, http::StatusCode};
 use catalogs::{CatalogId, DEFAULT_SETTING, Library};
@@ -17,6 +17,7 @@ pub(crate) fn default_refusal(
     library: &Library,
     stored: Option<&serde_json::Value>,
     values: &std::collections::BTreeMap<String, serde_json::Value>,
+    revision: Option<u32>,
 ) -> Option<String> {
     let named = values
         .get(DEFAULT_SETTING)?
@@ -26,6 +27,14 @@ pub(crate) fn default_refusal(
         return None;
     }
     let id = CatalogId::parse(named);
+    if let Some(id) = &id {
+        library.reread(id);
+        if revision != Some(library.document(id).revision()) {
+            return Some(
+                "The catalog changed; reload and validate it before saving the default".into(),
+            );
+        }
+    }
     let usable = library
         .documents()
         .iter()
@@ -81,15 +90,23 @@ pub(crate) async fn copy(
 pub(crate) async fn reload(
     State(state): State<AppState>,
     Json(request): Json<ReloadCatalogRequest>,
-) -> Result<StatusCode, Failure> {
+) -> Result<Json<FreshCatalog>, Failure> {
     let id = parse(&request.id)?;
     let library = state.catalogs;
     blocking(move || {
         library.reread(&id);
-        Ok(())
+        match library.document(&id) {
+            catalogs::Served::Document { revision, text } => Ok(Json(FreshCatalog {
+                revision,
+                document: text.to_string(),
+            })),
+            _ => Err(UserError::new(
+                ErrorCode::CatalogInvalid,
+                "The catalog cannot be read",
+            )),
+        }
     })
-    .await?;
-    Ok(StatusCode::NO_CONTENT)
+    .await
 }
 
 /// Deletes a user's catalog. When it is the stored default for new lanes, the default goes back to Standard.
@@ -146,7 +163,7 @@ mod tests {
                 .uri("/api/settings")
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({ "set": { "overlays.default_catalog": id } }).to_string(),
+                    json!({ "set": { "overlays.default_catalog": id }, "catalogRevision": test.catalogs().document(&catalogs::CatalogId::parse(id).unwrap()).revision() }).to_string(),
                 ))
                 .unwrap();
             assert_eq!(test.send(patch).await.0, StatusCode::OK);
@@ -159,7 +176,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_default_that_names_no_listed_catalog_is_refused_and_nothing_is_stored() {
+    async fn an_unlisted_or_changed_default_is_refused_and_nothing_is_stored() {
         let test = TestApp::with_catalog_folder();
         let patch = Request::builder()
             .method("PATCH")
@@ -171,6 +188,37 @@ mod tests {
             .unwrap();
         assert_eq!(test.send(patch).await.0, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(default_catalog(&test, None).await, "");
+
+        let id = test
+            .catalogs()
+            .copy(&catalogs::CatalogId::BuiltIn("standard"), "Mine")
+            .unwrap();
+        let settings = json!({"set": {"overlays.default_catalog": id.to_string()}, "catalogRevision": test.catalogs().document(&id).revision()});
+        std::fs::write(test._folder.path().join("catalogs/mine.json"), "{}").unwrap();
+        let put = Request::builder()
+            .method("PATCH")
+            .uri("/api/settings")
+            .header("content-type", "application/json")
+            .body(Body::from(settings.to_string()))
+            .unwrap();
+        let (status, body) = test.send(put).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(json(&body)["code"], "InvalidRequest");
+        assert_eq!(json(&body)["location"], "overlays.default_catalog");
+        assert_eq!(
+            json(&body)["reason"],
+            "The catalog changed; reload and validate it before saving the default"
+        );
+        assert_eq!(default_catalog(&test, None).await, "");
+        let (status, body) = test
+            .send(post(
+                "/api/catalogs/reload",
+                json!({ "id": "user:gone.json" }),
+            ))
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(json(&body)["code"], "CatalogInvalid");
+        assert_eq!(json(&body)["reason"], "The catalog cannot be read");
     }
 
     #[tokio::test]

@@ -137,3 +137,38 @@ fn a_png_still_has_the_pixels_it_was_given() {
         );
     }
 }
+
+#[test]
+fn invalid_export_timing_explains_the_frame_and_cleans_up_the_partial_file() {
+    for (pts, duration, reason) in [
+        (0, 1_000, "Export frame timestamps must increase"),
+        (1_000, 0, "Export frame duration must be positive"),
+    ] {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("out.mp4");
+        let mut encoder = Encoder::create(
+            &path,
+            EncodeFormat::Mp4 {
+                quality: Quality::Balanced,
+            },
+            WIDTH,
+            HEIGHT,
+            None,
+        )
+        .unwrap();
+        let (y, u, v) = flat(0);
+        let picture = || Picture::I420 {
+            y: &y,
+            u: &u,
+            v: &v,
+            y_stride: WIDTH as usize + 8,
+            c_stride: WIDTH as usize / 2 + 4,
+        };
+        encoder.write(picture(), 0, 1_000).unwrap();
+        let error = encoder.write(picture(), pts, duration).unwrap_err();
+        assert!(error.reason.contains(reason), "{}", error.reason);
+        assert!(error.reason.contains(&format!("timestamp {pts} µs")));
+        drop(encoder);
+        assert_eq!(std::fs::read_dir(folder.path()).unwrap().count(), 0);
+    }
+}

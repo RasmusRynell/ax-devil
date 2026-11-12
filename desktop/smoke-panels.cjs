@@ -1,11 +1,12 @@
 // The smoke test's panels over the viewer, at the smallest window and 200% text size, in both themes: the page of a
 // selected object in the media tools and a lane's settings menu in each of its tabs. Each must fit without anything clipped or sticking
 // out, and a screenshot of each lands in the screenshots folder.
+const { BrowserWindow } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { delay, frames, moveTo, page, setView } = require("./smoke-kit.cjs");
+const { delay, frames, moveTo, page, setView, settled, until } = require("./smoke-kit.cjs");
 
 const THEMES = ["light", "dark"];
 
@@ -188,14 +189,37 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
   // Copy the lane's catalog from its Look page, then delete the copy: the name field and the confirmation fit, the
   // dialog survives Escape and a press on it without the menu closing under it, and the lane ends where it began.
   const press = async (selector, text) => {
-    const at = await js(`(() => {
+    window.focus();
+    await until(() => window.isFocused(), "the panel window to have native focus");
+    await wait("document.hasFocus()");
+    const at = await settled(
+      window,
+      `(() => {
       const button = [...document.querySelectorAll(${JSON.stringify(`${selector} button`)})].find((b) => b.textContent === ${JSON.stringify(text)});
       button.scrollIntoView({ block: 'nearest' });
       const r = button.getBoundingClientRect();
       return [r.left + r.width / 2, r.top + r.height / 2];
-    })()`);
+    })()`,
+    );
     await moveTo(window, ...at);
     for (const type of ["mouseDown", "mouseUp"]) click(type, at);
+  };
+  const pressAfterBlur = async (selector, text) => {
+    // Windows can retain native focus after blur() when no other window takes it. Transfer focus between
+    // our own windows, just as the multi-window smoke scenarios do, and keep both focus assertions.
+    const other = new BrowserWindow({ width: 200, height: 100, show: false });
+    try {
+      await other.loadURL("about:blank");
+      other.show();
+      await until(
+        () => other.isFocused() && !window.isFocused(),
+        `the ${text} probe to transfer native focus to another window`,
+      );
+      await wait("!document.hasFocus()");
+      await press(selector, text);
+    } finally {
+      other.destroy();
+    }
   };
   const catalog = `document.querySelector(${JSON.stringify(`${menu} select`)}).value`;
   await js(
@@ -273,9 +297,37 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
     "The lane menu stays open after the delete",
   );
 
-  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
-  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+  await wait(`!${disabled("Apply to all lanes")}`);
+  // An action-only transport refusal uses the lane's standard notice presentation and can be dismissed.
+  await js(`(() => {
+    const real = window.fetch;
+    window.fetch = (url, init) => {
+      if (url !== '/api/catalogs/reload') return real(url, init);
+      window.fetch = real;
+      return Promise.resolve(new Response(JSON.stringify({ code: 'CatalogInvalid', params: {}, reason: 'Reload refused' }), { status: 400 }));
+    };
+  })()`);
+  await pressAfterBlur(menu, "Apply to all lanes");
   await wait(`!document.querySelector(${JSON.stringify(menu)})`);
+  await wait(`document.querySelector('[aria-label="GT: warnings"]')`);
+  await js(`document.querySelector('[aria-label="GT: warnings"]').click()`);
+  const warnings = '[role=dialog][aria-label="GT: warnings"]';
+  await wait(
+    `document.querySelector(${JSON.stringify(warnings)}).textContent.includes('Reload refused')`,
+  );
+  for (const theme of THEMES) {
+    await setTheme(theme);
+    await fits(warnings, `The Apply refusal must fit at 200% zoom, ${theme}`);
+    await frames({ js });
+    await shoot(`catalog-apply-refused-${theme}-200.png`);
+  }
   await setView(window, [1100, 720], 1);
+  for (const theme of THEMES) {
+    await setTheme(theme);
+    await frames({ js });
+    await shoot(`catalog-apply-refused-${theme}.png`);
+  }
+  await pressAfterBlur(warnings, "Dismiss Apply error");
+  await wait(`!document.querySelector('[aria-label="GT: warnings"]')`);
   await js("document.querySelector('[aria-label=Workspace]').click()");
 };

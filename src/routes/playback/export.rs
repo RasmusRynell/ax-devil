@@ -243,6 +243,7 @@ fn refuse(reason: impl Into<String>) -> UserError {
 
 #[cfg(test)]
 mod tests {
+    mod http_catalog;
     use super::*;
 
     #[test]

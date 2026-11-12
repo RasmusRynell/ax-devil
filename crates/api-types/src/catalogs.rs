@@ -50,6 +50,15 @@ pub struct ReloadCatalogRequest {
     pub id: String,
 }
 
+/// A freshly read catalog for action-time compilation.
+#[derive(Serialize, Deserialize, TS)]
+pub struct FreshCatalog {
+    /// The revision to carry into persistence.
+    pub revision: u32,
+    /// The current document.
+    pub document: String,
+}
+
 /// Visits the types this module sends to the frontend.
 pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<CatalogInfoWire>();
@@ -57,4 +66,5 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<CopiedCatalog>();
     types.visit::<DeleteCatalogRequest>();
     types.visit::<ReloadCatalogRequest>();
+    types.visit::<FreshCatalog>();
 }

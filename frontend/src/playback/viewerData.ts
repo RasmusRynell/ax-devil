@@ -1,5 +1,7 @@
 /** What a viewer holds of its lanes' data: Sample Items, Frame Maps and catalogs, and what each lane draws from them. */
 
+import { refusalOf } from "../client/resource";
+import { reasonOf } from "../client/errors";
 import { Catalogs } from "../lanes/catalogs";
 import { FileScope } from "../inspect/fileScope";
 import { FrameMaps } from "../stream/data/FrameMaps";
@@ -28,6 +30,7 @@ type Opened = Extract<ServerMessage, { type: "Opened" }>;
 const NOT_READY = -1;
 
 export class ViewerData {
+  #applyRequest = 0;
   readonly #lanes: LaneSet;
   readonly #send: (message: ClientMessage) => void;
   readonly #after: (callback: () => void, ms: number) => () => void;
@@ -73,6 +76,30 @@ export class ViewerData {
     this.inspections = new Inspections(send);
     this.fields = new FrameFields(send, after);
     this.next = new NextEntry(send);
+  }
+
+  /** Validates before copying; newer choices survive the pending read. Watchers use the shared compiled document. */
+  async applyToAll(lane: number, reread: boolean): Promise<ClientMessage[]> {
+    const before = this.#lanes.states.map((state) => state.settings);
+    const source = before[lane];
+    if (!source) return [];
+    const request = ++this.#applyRequest;
+    const current = () =>
+      request === this.#applyRequest && this.#lanes.states[lane]?.settings === source;
+    try {
+      if (reread) {
+        if (!(await this.catalogs.validate(source.catalog, current))) return [];
+      }
+      if (!current()) return [];
+      const held = this.catalogs.get(source.catalog);
+      if (held.state !== "ready" || !held.catalog || held.problem) return [];
+      this.#laneCatalogs.dismissAction(lane);
+      return this.#lanes.copyFrom(lane, before);
+    } catch (error) {
+      if (request === this.#applyRequest && this.#lanes.states[lane]?.settings === source)
+        this.#laneCatalogs.refuseApply(lane, source.catalog, reasonOf(refusalOf(error)));
+      return [];
+    }
   }
 
   get draw(): LaneData | undefined {
@@ -156,6 +183,9 @@ export class ViewerData {
 
   /** Drops everything held but the compiled catalogs. */
   close(): void {
+    this.#applyRequest++;
+    this.#laneCatalogs.clearActions();
+    this.#lanes.states.forEach((_, lane) => this.#lanes.setCatalogActionProblem(lane, undefined));
     this.#maps = undefined;
     this.#draw = undefined;
     this.#waiting = [];
@@ -178,6 +208,8 @@ export class ViewerData {
     prior: readonly LaneSettings[] | undefined,
     saved?: Saved,
   ): void {
+    this.#applyRequest++;
+    this.#laneCatalogs.clearActions();
     const before = this.#lanes.states;
     const defaults = startWith(opened.lane_defaults, opened.catalogs, personal, saved);
     this.#lanes.open(opened.lanes, defaults, prior).forEach(this.#send);
@@ -289,6 +321,12 @@ export class ViewerData {
     });
   }
 
+  /** Dismisses an Apply refusal without touching backend errors. */
+  dismissCatalogAction(lane: number): void {
+    this.#laneCatalogs.dismissAction(lane);
+    this.#lanes.setCatalogActionProblem(lane, undefined);
+  }
+
   /** Asks the backend for the catalog `lane` chose again; what it answers is compiled anew. */
   reloadCatalog(lane: number): void {
     this.catalogs.reload(this.#lanes.states[lane].settings.catalog);
@@ -305,6 +343,10 @@ export class ViewerData {
       }
       const { catalog, problem } = this.#laneCatalogs.resolve(lane, state.settings.catalog);
       this.#lanes.setCatalogProblem(lane, problem);
+      this.#lanes.setCatalogActionProblem(
+        lane,
+        this.#laneCatalogs.actionProblem(lane, state.settings.catalog),
+      );
       const held = this.#lanes.states[lane].look;
       const same = held?.themes === catalog?.themes && held?.features === catalog?.features;
       if (!same)

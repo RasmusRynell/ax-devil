@@ -183,10 +183,7 @@ export class PlaybackStream implements LaneControl {
     if (shown) this.#draw(shown.sequenceId);
   }
 
-  /**
-   * Changes a lane's settings. What the backend selects by (sync, sticky, visibility) sends a new Lane Policy and
-   * blanks the lane until its new Frame Maps arrive; the rest applies to held samples at once.
-   */
+  /** Changes matching through LanePolicy; applies style to held samples immediately. */
   setLane(lane: number, change: Partial<LaneSettings>): void {
     const message = this.#lanes.set(lane, change);
     if (message) this.#link.send(message);
@@ -195,11 +192,17 @@ export class PlaybackStream implements LaneControl {
     this.#changed();
   }
 
-  /** Gives every other lane of this viewer the settings of `lane`, but its visibility. */
-  applyToAll(lane: number): void {
-    this.#lanes.copyFrom(lane).forEach((message) => this.#link.send(message));
+  /** Applies a validated lane to the others. */
+  async applyToAll(lane: number, reread = true): Promise<void> {
+    (await this.#data.applyToAll(lane, reread)).forEach((message) => this.#link.send(message));
     this.#data.refresh();
     this.represent();
+    this.#changed();
+  }
+
+  /** Dismisses the lane's Apply refusal. */
+  dismissCatalogAction(lane: number): void {
+    this.#data.dismissCatalogAction(lane);
     this.#changed();
   }
 
@@ -208,7 +211,7 @@ export class PlaybackStream implements LaneControl {
     this.#data.reloadCatalog(lane);
   }
 
-  /** The settings of every lane by position, which the next entry's lanes start from. */
+  /** Seeds for the next entry's lanes, by position. */
   laneSettings(): readonly LaneSettings[] {
     return this.#lanes.states.map((lane) => lane.settings);
   }

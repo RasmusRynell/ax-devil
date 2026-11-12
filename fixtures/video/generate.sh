@@ -89,3 +89,5 @@ for colour in red green; do
     -c:v libx264 -profile:v baseline -x264-params keyint=1 -f h264 "rtsp-$colour.h264"
 done
 ffmpeg "${GLOBAL[@]}" -f lavfi -i color=c=blue:s=160x96 -frames:v 1 rtsp-snapshot.jpg
+# Distinct luma-coded images in pairs sharing PTS, including the first pair.
+ffmpeg -y -hide_banner -loglevel error -f lavfi -i "nullsrc=s=32x32:r=10,geq=lum='7*N':cb=128:cr=128,setpts=floor(N/2)/(10*TB)" -frames:v 8 -fps_mode passthrough -c:v ffv1 -g 1 duplicate_pts.mkv

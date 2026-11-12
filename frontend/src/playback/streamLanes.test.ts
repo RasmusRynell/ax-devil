@@ -1,10 +1,12 @@
 // @vitest-environment node
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { SampleView } from "../present";
 import { catalogDocument, EMPTY, NONE } from "../stream/fakeData";
 import { LANE_SETTINGS } from "../lanes/fakeOpened";
 import { flush, opened, setup, type OpenedMessage } from "./fakePlayback";
 import type { ClientMessage, LaneInfo, LaneStatusWire } from "../stream/protocol";
+
+afterEach(() => vi.unstubAllGlobals());
 
 const READY: LaneStatusWire = {
   status: "Ready",
@@ -125,7 +127,7 @@ describe("lanes", () => {
     ]);
   });
 
-  it("recompiles a pushed catalog, keeps the last good one while a push fails, and takes a restarted backend's lower revision", async () => {
+  it("recompiles pushed catalogs and keeps the last good one until a failed push is repaired", async () => {
     const { stream, server, drawn } = await shown();
     const name = () => drawn.at(-1)?.lanes[0]?.catalog.name;
     const problem = () => stream.getSnapshot().lanes[0].catalogProblem;
@@ -135,9 +137,9 @@ describe("lanes", () => {
     server.catalog("built-in:standard", '{"schema": 4}', 3);
     expect(name()).toBe("Classic");
     expect(problem()).toMatch(/\(\d+:\d+\)/);
-    server.catalog("built-in:standard", catalogDocument(), 1);
+    server.catalog("built-in:standard", catalogDocument(), 4);
     expect([name(), problem()]).toEqual(["Standard", undefined]);
-    server.catalog("built-in:standard", null, 0);
+    server.catalog("built-in:standard", null, 5);
     expect([name(), problem()]).toEqual(["Standard", "There is no catalog built-in:standard"]);
   });
 
@@ -183,20 +185,6 @@ describe("lanes", () => {
     seeded.server.say(withNight);
     expect(seeded.stream.laneSettings()).toEqual([seed, { ...LANE_SETTINGS, catalog: night.id }]);
     expect(policies(seeded.sent)[0]).toMatchObject({ lane: 0, policy: { tolerance_ms: null } });
-  });
-
-  it("gives the other lanes a lane's settings but its visibility, as one policy each", async () => {
-    const { stream, server, sent } = await setup();
-    server.open(10, TWO_LANES);
-    stream.setLane(1, { visible: false });
-    stream.setLane(0, { sticky: { enabled: true, timeout_ms: 500, opacity: 0.5 }, theme: "dusk" });
-    const before = policies(sent).length;
-    stream.applyToAll(0);
-    expect(policies(sent).slice(before)).toMatchObject([
-      { lane: 1, subscribed: false, policy: { sticky: { enabled: true, timeout_ms: 500 } } },
-    ]);
-    expect(stream.laneSettings()[1]).toMatchObject({ theme: "dusk", visible: false });
-    expect(stream.getSnapshot().lanes[1].settings.sticky.opacity).toBe(0.5);
   });
 
   it("selects an object of the shown sample, asks the backend for its fields, and clears the selection", async () => {

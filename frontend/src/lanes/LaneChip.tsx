@@ -1,39 +1,13 @@
 import type { CadenceWire } from "../stream/protocol";
-import { reasonOf } from "../client/errors";
+import { Button } from "../kit/Button";
 import { Icon } from "../kit/Icon";
-import { NoticeList, noticeOf, type Notice } from "../kit/NoticeList";
+import { NoticeList } from "../kit/NoticeList";
 import { Popover } from "../kit/Popover";
+import { laneNotices } from "./laneNotices";
 import { LaneMenu } from "./LaneMenu";
 import { alignmentTone } from "./LaneMenuTiming";
 import type { LaneSettings, LaneState } from "./lanes";
 import type { CatalogInfoWire } from "../stream/protocol";
-
-/** What the lane has to report: why it failed or stopped reading, why its last change was not applied, and what its file warned of. */
-export function laneNotices(lane: LaneState): Notice[] {
-  const { status } = lane;
-  const notices: Notice[] = [];
-  if (status !== "plain" && status.status === "Failed")
-    notices.push({
-      problem: reasonOf(status),
-      reasons: status.location === undefined ? undefined : [status.location],
-    });
-  if (lane.problem) notices.push({ problem: lane.problem });
-  if (lane.catalogProblem)
-    notices.push({
-      problem: "The chosen catalog cannot be used",
-      reasons: lane.catalogProblem.split("\n"),
-    });
-  if (status !== "plain" && status.status === "Ready") {
-    if (status.ingest.state === "Incomplete")
-      notices.push({
-        problem: reasonOf(status.ingest),
-        consequence: "The overlay ends where reading stopped.",
-        reasons: status.ingest.location === undefined ? undefined : [status.ingest.location],
-      });
-    notices.push(...status.warnings.map(noticeOf));
-  }
-  return notices;
-}
 
 /** What the lane's chip says while the backend parses its overlay file: the lane's place among the lanes when there are several. */
 export function parsingMessage(
@@ -71,6 +45,7 @@ export function LaneChip({
   onHide,
   onApplyAll,
   onReload,
+  onDismissCatalogAction,
   onExport,
   hideName = false,
   live = false,
@@ -84,6 +59,8 @@ export function LaneChip({
   onHide?: () => void;
   onApplyAll?: () => void;
   onReload?: () => void;
+  /** Dismisses the action-only Apply refusal. */
+  onDismissCatalogAction?: () => void;
   /** Adds Export video to the menu; see `LaneMenu`. */
   onExport?: { run: () => void; waits: boolean };
   hideName?: boolean;
@@ -133,7 +110,14 @@ export function LaneChip({
             }
             className="size-row justify-center"
           >
-            <NoticeList notices={notices} />
+            <div className="flex flex-col items-start gap-m">
+              <NoticeList notices={notices} />
+              {lane.catalogActionProblem && onDismissCatalogAction && (
+                <Button size="small" onClick={onDismissCatalogAction}>
+                  Dismiss Apply error
+                </Button>
+              )}
+            </div>
           </Popover>
         )}
         {lane.source !== null && (

@@ -273,11 +273,12 @@ pub enum ServerMessage {
         /// What went wrong, in words for the user.
         reason: String,
     },
-    /// The answer to a `Catalog` request.
+    /// A catalog reply or update, in feed order. Availability may be withdrawn and later restored without changing
+    /// the document revision; zero with no document or problem withdraws availability, even after a positive revision.
     Catalog {
         /// The requested id.
         id: String,
-        /// Counts the document's changes; 0 when there is no such catalog.
+        /// Counts document changes; 0 when unavailable to this viewer. Availability is ordered by the feed, not this number.
         revision: u32,
         /// The catalog document, or `null` when no such catalog exists or it cannot be served.
         document: Option<String>,

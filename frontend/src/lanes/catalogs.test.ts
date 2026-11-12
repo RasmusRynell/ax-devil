@@ -1,7 +1,11 @@
 // @vitest-environment node
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import feed from "../../../fixtures/catalogs/lend-feed.json";
+import { LaneCatalogs } from "./laneCatalog";
 import { Catalogs } from "./catalogs";
 import { catalogDocument } from "../stream/fakeData";
+
+afterEach(() => vi.unstubAllGlobals());
 
 function held() {
   const asked: string[] = [];
@@ -22,17 +26,100 @@ describe("catalogs", () => {
     expect(catalogs.receive("built-in:standard", 1, catalogDocument(), null)).toBe(false);
   });
 
-  it("takes any revision that differs, a lower one too, as a restarted backend counts from the start", () => {
+  it("reconciles deferred reloads and pushes without rolling back a connection or a newer action", async () => {
+    vi.stubGlobal("window", { sessionStorage: { getItem: () => null } });
+    for (const httpFirst of [false, true]) {
+      const { catalogs } = held();
+      const id = "user:a.json";
+      catalogs.get(id);
+      catalogs.receive(id, 1, catalogDocument());
+      let reply!: (response: Response) => void;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          () =>
+            new Promise<Response>((resolve) => {
+              reply = resolve;
+            }),
+        ),
+      );
+      const pending = catalogs.validate(id, () => true);
+      if (httpFirst) {
+        reply(Response.json({ revision: 2, document: catalogDocument("tracking") }));
+        expect(await pending).toBe(true);
+        catalogs.receive(id, 3, BROKEN);
+      } else {
+        const rejected = expect(pending).rejects.toThrow();
+        catalogs.receive(id, 3, BROKEN);
+        reply(Response.json({ revision: 2, document: catalogDocument("tracking") }));
+        await rejected;
+      }
+      expect(catalogs.get(id)).toMatchObject({ problem: expect.any(String) });
+      expect(catalogs.compiledRevision(id)).toBe(1);
+      // A superseded action cannot even install a newer valid document.
+      const superseded = catalogs.validate(id, () => false);
+      reply(Response.json({ revision: 5, document: catalogDocument() }));
+      expect(await superseded).toBe(false);
+      expect(catalogs.get(id)).toMatchObject({ problem: expect.any(String) });
+      const newerValid = catalogs.validate(id, () => true);
+      catalogs.receive(id, 7, catalogDocument("classic"));
+      reply(Response.json({ revision: 6, document: catalogDocument("tracking") }));
+      expect(await newerValid).toBe(true);
+      expect(catalogs.get(id)).toMatchObject({ catalog: { name: "Classic" } });
+      // Reopening admits lower revisions, but invalidates old HTTP replies.
+      const oldConnection = catalogs.validate(id, () => true);
+      catalogs.open([]);
+      catalogs.receive(id, 1, catalogDocument("classic"));
+      reply(Response.json({ revision: 6, document: catalogDocument() }));
+      expect(await oldConnection).toBe(false);
+      expect(catalogs.get(id)).toMatchObject({ catalog: { name: "Classic" } });
+      const validation = catalogs.validate(id, () => true);
+      reply(Response.json({ revision: 8, document: catalogDocument("tracking") }));
+      expect(await validation).toBe(true);
+      expect(catalogs.compiledRevision(id)).toBe(1);
+      // Identical text/revision from the feed must still promote the compile: it is now retained for export.
+      catalogs.receive(id, 8, catalogDocument("tracking"));
+      expect(catalogs.compiledRevision(id)).toBe(8);
+      expect(catalogs.get(id)).toMatchObject({ catalog: { name: "Tracking" } });
+    }
+  });
+
+  it("retains the drawing but reports withdrawal after the last Owner lend, then accepts restoration", async () => {
+    vi.stubGlobal("window", { sessionStorage: { getItem: () => null } });
     const { catalogs } = held();
-    catalogs.get("user:a.json");
-    catalogs.receive("user:a.json", 7, catalogDocument("standard"), null);
-    const first = catalogs.get("user:a.json");
-    expect(catalogs.receive("user:a.json", 8, catalogDocument("classic"), null)).toBe(true);
-    const second = catalogs.get("user:a.json");
-    expect(second).not.toBe(first);
-    expect(catalogs.receive("user:a.json", 2, catalogDocument("standard"), null)).toBe(true);
-    // The restarted backend reached the revision it had, with other text.
-    expect(catalogs.receive("user:a.json", 2, catalogDocument("tracking"), null)).toBe(true);
+    const lanes = new LaneCatalogs(catalogs, () => "built-in:standard");
+    const id = feed.initial.id;
+    catalogs.get(id);
+    const receive = (reply: typeof feed.initial | typeof feed.withdrawn) =>
+      catalogs.receive(reply.id, reply.revision, reply.document, reply.problem);
+    receive(feed.initial);
+    const drawing = lanes.resolve(0, id).catalog;
+    expect(drawing).toBeDefined();
+    receive(feed.oneOwner);
+    expect(lanes.resolve(0, id).problem).toBeUndefined();
+    let reply!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      () =>
+        new Promise<Response>((resolve) => {
+          reply = resolve;
+        }),
+    );
+    const pending = catalogs.validate(id, () => true);
+    const rejected = expect(pending).rejects.toThrow(`There is no catalog ${id}`);
+    receive(feed.withdrawn);
+    expect(lanes.resolve(0, id)).toEqual({
+      catalog: drawing,
+      pending: false,
+      problem: `There is no catalog ${id}`,
+    });
+    // A pre-withdrawal HTTP reply cannot restore availability.
+    reply(Response.json(feed.initial));
+    await rejected;
+    expect(lanes.resolve(0, id).problem).toBe(`There is no catalog ${id}`);
+    receive(feed.restored);
+    expect(lanes.resolve(0, id).problem).toBeUndefined();
+    expect(catalogs.compiledRevision(id)).toBe(feed.initial.revision);
   });
 
   it("keeps the last compile and says why when a newer document fails, has gone or cannot be served", () => {

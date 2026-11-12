@@ -108,6 +108,10 @@ log?: string, };
  */
 export type SettingsPatch = { 
 /**
+ * The freshly compiled revision when changing the default catalog.
+ */
+catalogRevision?: number, 
+/**
  * The settings to set by dotted key.
  */
 set?: Partial<Record<SettingKey, string | boolean | number | Array<LoginEdit> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<"score" | "confidence", { min: number | null; max: number | null }>; expression: string }>>, 

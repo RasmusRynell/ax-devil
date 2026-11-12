@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { SettingsState } from "../generated/api";
 import { COMMANDS } from "../generated/settings";
-import { DEFAULT_VALUES, SettingsContext, through, type SettingsApi } from "./settings";
+import { DEFAULT_VALUES, SettingsScope, through, type SettingsApi } from "./settings";
 
 /** The state of a backend with no changes: every default, every command on its default key. */
 export const DEFAULT_SETTINGS: SettingsState = {
@@ -23,8 +23,8 @@ export function FakeSettings({
   children: ReactNode;
 }) {
   return (
-    <SettingsContext.Provider value={{ ...state, savedValues: state.values, ...through(apply) }}>
+    <SettingsScope value={{ ...state, savedValues: state.values, ...through(apply) }}>
       {children}
-    </SettingsContext.Provider>
+    </SettingsScope>
   );
 }

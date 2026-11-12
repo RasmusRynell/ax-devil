@@ -19,6 +19,10 @@ export type LaneCatalog = {
 export class LaneCatalogs {
   readonly #catalogs: Catalogs;
   readonly #fallback: () => string;
+  readonly #actions = new Map<
+    number,
+    { chosen: string; catalog?: CompiledCatalog; problem: string }
+  >();
   readonly #drawn = new Map<number, CompiledCatalog>();
 
   /** `fallback` gives the id of the built-in default catalog. */
@@ -42,8 +46,48 @@ export class LaneCatalogs {
     return { catalog: fallback.catalog, pending: false, problem };
   }
 
+  /** Records an Apply refusal only when the catalog does not already own its cause. */
+  refuseApply(lane: number, chosen: string, problem: string): void {
+    const entry = this.#catalogs.get(chosen);
+    if (entry.state === "ready" && entry.problem) {
+      this.#actions.delete(lane);
+      return;
+    }
+    this.#actions.set(lane, {
+      chosen,
+      catalog: entry.state === "ready" ? entry.catalog : undefined,
+      problem,
+    });
+  }
+
+  /** An action-only failure lasts until selection changes, a successful compile, or dismissal. */
+  actionProblem(lane: number, chosen: string): string | undefined {
+    const action = this.#actions.get(lane);
+    if (!action) return undefined;
+    const entry = this.#catalogs.get(chosen);
+    if (
+      chosen !== action.chosen ||
+      (entry.state === "ready" && (entry.problem || entry.catalog !== action.catalog))
+    ) {
+      this.#actions.delete(lane);
+      return undefined;
+    }
+    return action.problem;
+  }
+
+  /** Dismisses the lane's Apply refusal without changing its catalog or backend problem. */
+  dismissAction(lane: number): void {
+    this.#actions.delete(lane);
+  }
+
+  /** A viewer was replaced or closed: no old action refusal belongs to its lanes. */
+  clearActions(): void {
+    this.#actions.clear();
+  }
+
   /** Lets go of what `lane` drew, as when the lane is not the same lane any more. */
   forget(lane: number): void {
     this.#drawn.delete(lane);
+    this.#actions.delete(lane);
   }
 }

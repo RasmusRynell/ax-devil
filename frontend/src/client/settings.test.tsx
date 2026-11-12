@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { AccessContext } from "./access";
 import { DEFAULT_SETTINGS } from "./fakeSettings";
 import { ChangesProvider, useNoticeSink } from "./resource";
+import type { SettingsPatch } from "../generated/api";
 import { deviceStore } from "./deviceSettings";
 import { SettingsProvider, useSettings } from "./settings";
 
@@ -39,7 +40,175 @@ function TextSize() {
   return <button onClick={() => void set("ui.text_size", "large")}>Larger text</button>;
 }
 
+function DefaultChoice({ id, validate }: { id: string; validate: () => Promise<number> }) {
+  const { saveCatalogDefault } = useSettings();
+  return <button onClick={() => void saveCatalogDefault(id, validate)}>{id}</button>;
+}
+
+function Timing() {
+  const { set, values } = useSettings();
+  return (
+    <>
+      <button onClick={() => void set("overlays.default_sync", { tolerance_ms: 80 })}>
+        Save timing
+      </button>
+      <output>
+        {JSON.stringify([values["overlays.default_catalog"], values["overlays.default_sync"]])}
+      </output>
+    </>
+  );
+}
+
 describe("settings", () => {
+  it("keeps a pending timing save and the newest catalog default across detached menus and delayed replies", async () => {
+    let finishA!: (revision: number) => void;
+    let finishB!: (revision: number) => void;
+    const a = new Promise<number>((resolve) => {
+      finishA = resolve;
+    });
+    const b = new Promise<number>((resolve) => {
+      finishB = resolve;
+    });
+    let releaseTiming!: () => void;
+    const timingReply = new Promise<void>((resolve) => {
+      releaseTiming = resolve;
+    });
+    let stored = DEFAULT_SETTINGS;
+    const writes: SettingsPatch[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method) {
+          expect(init.method).toBe("PATCH");
+          const patch = JSON.parse(init.body as string) as SettingsPatch;
+          writes.push(patch);
+          stored = {
+            ...stored,
+            revision: stored.revision + 1,
+            values: { ...stored.values, ...patch.set } as typeof stored.values,
+          };
+        }
+        // Commit the first write but hold its old response until the second has been submitted.
+        const answer = stored;
+        if (writes.length === 1) await timingReply;
+        return { ok: true, json: async () => answer };
+      }),
+    );
+    const menu = (showA: boolean) => (
+      <AccessContext value={{ owner: true, fullAccess: false }}>
+        <ChangesProvider>
+          <SettingsProvider>
+            {showA && <DefaultChoice id="user:a.json" validate={() => a} />}
+            <DefaultChoice id="user:b.json" validate={() => b} />
+            <Timing />
+          </SettingsProvider>
+        </ChangesProvider>
+      </AccessContext>
+    );
+    const { rerender } = render(menu(true));
+    fireEvent.click(await screen.findByRole("button", { name: "user:a.json" }));
+    rerender(menu(false));
+    fireEvent.click(screen.getByRole("button", { name: "user:b.json" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save timing" }));
+    await act(async () => {
+      finishB(2);
+    });
+    expect(writes).toEqual([
+      { set: { "overlays.default_sync": { tolerance_ms: 80 } } },
+      { set: { "overlays.default_catalog": "user:b.json" }, catalogRevision: 2 },
+    ]);
+    await act(async () => {
+      releaseTiming();
+      finishA(1);
+    });
+    expect(writes).toHaveLength(2);
+    expect(stored.values).toMatchObject({
+      "overlays.default_catalog": "user:b.json",
+      "overlays.default_sync": { tolerance_ms: 80 },
+    });
+    expect(screen.getByRole("status").textContent).toBe('["user:b.json",{"tolerance_ms":80}]');
+  });
+
+  it.each([true, false])(
+    "orders a held default PATCH against a Changed read (notice first: %s)",
+    async (noticeFirst) => {
+      const initial = { ...DEFAULT_SETTINGS, revision: 1 };
+      const saved = {
+        ...initial,
+        revision: 2,
+        values: { ...initial.values, "overlays.default_catalog": "user:a.json" },
+      };
+      const external = {
+        ...saved,
+        revision: 3,
+        values: { ...saved.values, "overlays.default_catalog": "user:b.json" },
+      };
+      let releaseSave!: () => void;
+      const save = new Promise<void>((resolve) => {
+        releaseSave = resolve;
+      });
+      const reads: (() => void)[] = [];
+      let read = false;
+      let changed!: NonNullable<ReturnType<typeof useNoticeSink>>;
+      function Notices() {
+        changed = useNoticeSink()!;
+        return null;
+      }
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init?: RequestInit) => {
+          if (init?.method) {
+            expect(JSON.parse(init.body as string)).toEqual({
+              set: { "overlays.default_catalog": "user:a.json" },
+              catalogRevision: 1,
+            });
+            await save;
+            return Response.json(saved);
+          }
+          if (!read) {
+            read = true;
+            return Response.json(initial);
+          }
+          // Every subsequent read is held, so a compensating read cannot hide an accepted stale PATCH reply.
+          return new Promise<Response>((resolve) =>
+            reads.push(() => resolve(Response.json(external))),
+          );
+        }),
+      );
+      render(
+        <AccessContext value={{ owner: true, fullAccess: false }}>
+          <ChangesProvider>
+            <SettingsProvider>
+              <Notices />
+              <DefaultChoice id="user:a.json" validate={() => Promise.resolve(1)} />
+              <Timing />
+            </SettingsProvider>
+          </ChangesProvider>
+        </AccessContext>,
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "user:a.json" }));
+      await act(async () => {});
+      if (!noticeFirst)
+        await act(async () => {
+          releaseSave();
+        });
+      await act(async () => {
+        changed("settings", 3, false);
+      });
+      expect(reads).toHaveLength(1);
+      await act(async () => {
+        reads[0]();
+      });
+      expect(screen.getByRole("status").textContent).toContain("user:b.json");
+      if (noticeFirst)
+        await act(async () => {
+          releaseSave();
+        });
+      expect(screen.getByRole("status").textContent).toContain("user:b.json");
+      expect(reads).toHaveLength(1);
+    },
+  );
+
   it("stores a Device setting on the device, applies it and sends no request, even for a Guest", async () => {
     const fetched = vi.fn();
     vi.stubGlobal("fetch", fetched);

@@ -57,6 +57,19 @@ export type DeleteCatalogRequest = {
 id: string, };
 
 /**
+ * A freshly read catalog for action-time compilation.
+ */
+export type FreshCatalog = { 
+/**
+ * The revision to carry into persistence.
+ */
+revision: number, 
+/**
+ * The current document.
+ */
+document: string, };
+
+/**
  * A request to read a catalog file again.
  */
 export type ReloadCatalogRequest = { 

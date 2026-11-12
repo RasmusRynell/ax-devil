@@ -81,30 +81,6 @@ fn packets_without_unique_timestamps_cannot_be_indexed_without_decoding() {
 }
 
 #[test]
-fn two_frames_sharing_a_timestamp_make_the_index_unusable_with_a_reason() {
-    let stored = |pts: Vec<i64>| Stored {
-        scan: ScanKind::Decode,
-        fingerprint: Fingerprint {
-            device: 0,
-            inode: 0,
-            size: 0,
-            mtime_ns: 0,
-            ctime_ns: 0,
-            sample: 0,
-        },
-        stream: 0,
-        time_base: (1, 1000),
-        first_pts: pts[0],
-        last_duration: 0,
-        pts,
-        keyframes: vec![0],
-    };
-    assert!(times_of(&stored(vec![5, 15, 25])).is_ok());
-    let reason = times_of(&stored(vec![5, 15, 15, 25])).expect_err("a duplicate");
-    assert!(reason.contains("frames 1 and 2"), "{reason}");
-}
-
-#[test]
 fn a_last_frame_lasts_the_containers_duration_else_one_declared_frame_period_else_the_previous_gap()
 {
     let index_of = |name: &str| {

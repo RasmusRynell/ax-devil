@@ -92,6 +92,8 @@ export type LaneState = {
   problem?: string;
   /** Why the lane's catalog is not the chosen one. */
   catalogProblem?: string;
+  /** A refused Apply action, distinct from the catalog's compilation or availability failure. */
+  catalogActionProblem?: string;
   /** What the catalog the lane draws with offers; absent while the lane has none. */
   look?: CatalogLook;
   /** The revision of the document the lane's chosen catalog last compiled from; absent until one did. */
@@ -108,9 +110,11 @@ export interface LaneControl {
 /** What the lane grid and its canvas ask of a viewer's stream: a playback stream and a live session both implement it. */
 export interface LaneDisplay extends LaneControl {
   /** Gives every other lane of the viewer the settings of `lane`, but its visibility. */
-  applyToAll(lane: number): void;
+  applyToAll(lane: number, reread: boolean): void | Promise<void>;
   /** Asks the backend for the catalog `lane` chose again and compiles what it answers. */
   reloadCatalog(lane: number): void;
+  /** Dismisses this lane's Apply refusal. */
+  dismissCatalogAction(lane: number): void;
   /** How `lane` matched a sample to the frame on screen. */
   matched(lane: number): LaneMatch | null;
   /** Sets where frames are drawn; `null` stops drawing. */

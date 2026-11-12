@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { freshCatalog } from "./freshCatalog";
 import { useAccess } from "../client/access";
 import { reasonOf } from "../client/errors";
 import type {
@@ -11,6 +12,7 @@ import type {
 import { Button } from "../kit/Button";
 import { ChoiceDialog } from "../kit/ChoiceDialog";
 import { TextField } from "../kit/Fields";
+import { refusalOf } from "../client/resource";
 import { ask } from "../client/ask";
 import { useSettings } from "../client/settings";
 import { Refusal } from "../kit/Refusal";
@@ -57,7 +59,7 @@ export function LaneCatalogActions({
   /** Asks the backend for the catalog again; without it there is no Reload. */
   onReload?: () => void;
 }) {
-  const { values, set } = useSettings();
+  const { values, saveCatalogDefault } = useSettings();
   const mayChange = useAccess().owner;
   const [naming, setNaming] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -69,6 +71,9 @@ export function LaneCatalogActions({
   const row = useRef<HTMLDivElement>(null);
   // Bumped when the lane's selector moves on: a copy asked before that no longer decides what the lane shows.
   const selection = useRef(0);
+  const reloadRequest = useRef(0);
+  const currentDefault = useRef(defaultId);
+  currentDefault.current = defaultId;
   // What had focus (the name field, the dialog) is gone when the question is answered: the buttons take it back, so
   // the menu around them still gets Escape and Tab.
   const refocus = useRef(false);
@@ -90,6 +95,9 @@ export function LaneCatalogActions({
     setNaming(null);
     setArriving(null);
     setBusy(false);
+    return () => {
+      selection.current += 1;
+    };
   }, [catalog]);
 
   // Switching to a copy the picker cannot name yet would show it as missing: wait for the listing, but not for ever.
@@ -121,8 +129,21 @@ export function LaneCatalogActions({
     row.current.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
   });
 
-  const setDefault = (id: string) =>
-    set(DEFAULT_CATALOG, id).then((refused) => setRefusal(refused ? reasonOf(refused) : null));
+  const setDefault = async (id: string) => {
+    setBusy(true);
+    const asked = selection.current;
+    try {
+      const refused = await saveCatalogDefault(id, () =>
+        mayChange ? freshCatalog(id) : Promise.resolve(revision),
+      );
+      if (asked !== selection.current) return;
+      setRefusal(refused ? reasonOf(refused) : null);
+    } catch (error) {
+      if (asked === selection.current) setRefusal(reasonOf(refusalOf(error)));
+    } finally {
+      if (asked === selection.current) setBusy(false);
+    }
+  };
 
   const finish = (failed: string | undefined, what: string) => {
     refocus.current = true;
@@ -134,8 +155,11 @@ export function LaneCatalogActions({
   // the document anew.
   const reread = (refresh: () => void) => {
     setRefusal(null);
-    const request: ReloadCatalogRequest = { id: catalog };
-    void ask<undefined>("/api/catalogs/reload", { json: request }).then((answer) => {
+    const asked = selection.current;
+    const request = ++reloadRequest.current;
+    const body: ReloadCatalogRequest = { id: catalog };
+    void ask<undefined>("/api/catalogs/reload", { json: body }).then((answer) => {
+      if (asked !== selection.current || request !== reloadRequest.current) return;
       refresh();
       if (!answer.ok && mayChange)
         setRefusal(`Could not reload the catalog: ${reasonOf(answer.error)}`);
@@ -164,12 +188,16 @@ export function LaneCatalogActions({
     const asked = selection.current;
     const request: DeleteCatalogRequest = { id: catalog };
     void ask<undefined>("/api/catalogs/delete", { json: request }).then((answer) => {
-      if (!answer.ok) return finish(reasonOf(answer.error), "delete");
+      if (!answer.ok) {
+        if (asked === selection.current) finish(reasonOf(answer.error), "delete");
+        return;
+      }
       // The default goes back to Standard, which the backend lists first; this lane follows the new default unless
       // its selector moved on meanwhile.
       if (asked === selection.current) {
         change.current({
-          catalog: defaultId === catalog ? (catalogs[0]?.id ?? "") : defaultId,
+          catalog:
+            currentDefault.current === catalog ? (catalogs[0]?.id ?? "") : currentDefault.current,
           theme: null,
         });
         refocus.current = true;
@@ -183,7 +211,7 @@ export function LaneCatalogActions({
       {naming === null && (
         <div ref={row} className="flex flex-wrap items-start gap-s">
           <Button
-            disabled={revision === undefined || savedAsDefault}
+            disabled={revision === undefined || savedAsDefault || busy}
             onClick={() => void setDefault(catalog)}
           >
             Use as default

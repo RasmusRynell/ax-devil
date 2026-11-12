@@ -221,6 +221,7 @@ it.each(["submission order", "reverse order", "first refused"])(
 
 async function dismissRefusal() {
   await screen.findByText("Could not save these choices: disk full");
+  await screen.findByRole("dialog");
   expect(screen.getAllByRole("dialog")).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: "OK" }));
   expect(screen.queryByRole("dialog")).toBeNull();

@@ -145,8 +145,8 @@ pub enum TimelineError {
     Empty,
     /// The first frame is not at time 0, or the first keyframe is not frame 0.
     FirstNotZero,
-    /// A time, or a keyframe, is not greater than the one before it. Carries the sequence id of the offending frame,
-    /// or the offending keyframe's own value.
+    /// A time decreases, or a keyframe is not greater than the one before it. Carries the offending frame's
+    /// sequence id, or the offending keyframe's own value.
     NotIncreasing {
         /// The offending frame or keyframe.
         sequence_id: u64,
@@ -158,7 +158,7 @@ pub enum TimelineError {
     },
 }
 
-/// Presentation times by sequence id: non-empty, `times[0] == 0`, strictly increasing. Cheap to clone.
+/// Presentation times by sequence id: non-empty, `times[0] == 0`, nondecreasing. Cheap to clone.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Timeline {
     times: Arc<[MediaTime]>,
@@ -173,7 +173,7 @@ impl Timeline {
         if *first != MediaTime::ZERO {
             return Err(TimelineError::FirstNotZero);
         }
-        if let Some(index) = times.windows(2).position(|pair| pair[1] <= pair[0]) {
+        if let Some(index) = times.windows(2).position(|pair| pair[1] < pair[0]) {
             return Err(TimelineError::NotIncreasing {
                 sequence_id: index as u64 + 1,
             });
@@ -420,15 +420,11 @@ mod tests {
     }
 
     #[test]
-    fn timeline_rejects_times_that_are_not_a_strictly_increasing_run_from_zero() {
+    fn timeline_rejects_times_that_are_not_a_nondecreasing_run_from_zero() {
         let cases = [
             (vec![], TimelineError::Empty),
             (vec![5, 10], TimelineError::FirstNotZero),
             (vec![-1, 0], TimelineError::FirstNotZero),
-            (
-                vec![0, 10, 10],
-                TimelineError::NotIncreasing { sequence_id: 2 },
-            ),
             (
                 vec![0, 10, 20, 5],
                 TimelineError::NotIncreasing { sequence_id: 3 },

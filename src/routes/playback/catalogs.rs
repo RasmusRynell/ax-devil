@@ -210,38 +210,6 @@ mod tests {
     use super::*;
     use axum::extract::ws::Message;
 
-    /// The id of the catalog the next message answers.
-    async fn answered(feed: &mut CatalogFeed) -> String {
-        let Message::Text(message) = feed.next().await.message else {
-            panic!("a catalog is a text message");
-        };
-        let ServerMessage::Catalog { id, .. } = serde_json::from_str(message.as_str()).unwrap()
-        else {
-            panic!("expected a catalog");
-        };
-        id
-    }
-
-    #[tokio::test]
-    async fn asking_for_a_65th_catalog_is_answered_and_drops_the_one_asked_for_longest_ago() {
-        let mut feed =
-            CatalogFeed::new(&Library::built_in(), Audience::HOST, SessionId::generate());
-        for number in 0..MAX_ASKED {
-            feed.ask(format!("user:{number}.json"));
-            answered(&mut feed).await;
-        }
-        feed.ask("user:0.json".into());
-        answered(&mut feed).await;
-
-        feed.ask("user:new.json".into());
-
-        assert_eq!(answered(&mut feed).await, "user:new.json");
-        let held: Vec<&str> = feed.asked.iter().map(|(id, _)| id.as_str()).collect();
-        assert_eq!(held.len(), MAX_ASKED);
-        assert!(held.contains(&"user:0.json") && held.contains(&"user:new.json"));
-        assert!(!held.contains(&"user:1.json"));
-    }
-
     #[test]
     fn reloading_one_catalog_many_times_keeps_the_others_documents_for_export() {
         let mut feed =
@@ -254,6 +222,113 @@ mod tests {
 
         assert!(feed.kept("user:a.json", 1).is_some());
         assert!(feed.kept("user:b.json", 2 * MAX_KEPT as u32).is_some());
-        assert_eq!(feed.kept.len(), MAX_KEPT);
+        assert_eq!(feed.kept.len(), 16);
+    }
+
+    /// Records real feed replies, including the revision-zero withdrawal, for the frontend's ordering regression.
+    #[tokio::test]
+    async fn last_owner_lend_withdraws_and_restores_the_catalog_frontend_fixture() {
+        use std::{fs, path::Path};
+        let folder = tempfile::tempdir().unwrap();
+        let document =
+            r#"{"schema":4,"name":"Shared","description":"","vars":{},"rules":[],"layers":[]}"#;
+        fs::write(folder.path().join("shared.json"), document).unwrap();
+        // Load the selected document first: directory iteration order must not choose its recorded revision.
+        let library = Library::with_folder(folder.path().to_path_buf());
+        for number in 0..64 {
+            fs::write(folder.path().join(format!("{number}.json")), document).unwrap();
+            library.reread(&CatalogId::User(format!("{number}.json")));
+        }
+        let session = SessionId::generate();
+        let mut first = CatalogFeed::new(&library, Audience::HOST, session);
+        let mut second = CatalogFeed::new(&library, Audience::HOST, session);
+        let mut guest = CatalogFeed::new(
+            &library,
+            Audience {
+                host_details: false,
+            },
+            session,
+        );
+        let id = "user:shared.json";
+        first.ask(id.into());
+        second.ask(id.into());
+        guest.ask(id.into());
+        let initial = next_catalog(&mut guest).await;
+        // Each Owner seat has its own feed; exhausting one cannot withdraw the other seat's lend.
+        for number in 0..63 {
+            first.ask(format!("user:{number}.json"));
+        }
+        // The original plus 63 distinct catalogs fit; the 65th subscription evicts the oldest lend.
+        guest.ask(id.into());
+        assert_eq!(next_catalog(&mut guest).await, initial);
+        first.ask("user:63.json".into());
+        guest.ask(id.into());
+        let one_owner = next_catalog(&mut guest).await;
+        assert_eq!(initial, one_owner);
+        for number in 0..63 {
+            second.ask(format!("user:{number}.json"));
+        }
+        guest.ask(id.into());
+        assert_eq!(
+            next_catalog(&mut guest).await,
+            initial,
+            "64 subscriptions retain the original"
+        );
+        second.ask("user:63.json".into());
+        assert!(matches!(
+            library.shared_document(&session.to_string(), &CatalogId::User("shared.json".into())),
+            Served::Missing { revision: 0 }
+        ));
+        // Only the oldest lend was released: all 64 more recently requested catalogs remain shared.
+        for number in 0..64 {
+            assert!(matches!(
+                library.shared_document(
+                    &session.to_string(),
+                    &CatalogId::User(format!("{number}.json"))
+                ),
+                Served::Document { .. }
+            ));
+        }
+        let withdrawn = next_catalog(&mut guest).await;
+        assert_eq!(withdrawn["revision"], 0);
+        assert!(withdrawn["document"].is_null());
+        // Re-lending unchanged text restores the same document revision, not a fabricated higher one.
+        second.ask(id.into());
+        let restored = next_catalog(&mut guest).await;
+        assert_eq!(initial, restored);
+        let mut recorded = serde_json::json!({"initial": initial, "oneOwner": one_owner,
+            "withdrawn": withdrawn, "restored": restored});
+        // Library revisions use a process-wide clock shared with other tests. Canonicalize only its offset;
+        // preserve zero withdrawals and every relative revision from the real feed.
+        let offset = recorded["initial"]["revision"].as_u64().unwrap() - 1;
+        for reply in recorded.as_object_mut().unwrap().values_mut() {
+            let revision = reply["revision"].as_u64().unwrap();
+            if revision > 0 {
+                reply["revision"] = (revision - offset).into();
+            }
+        }
+        crate::test_support::fixtures::check(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures"),
+            "catalogs",
+            &std::collections::BTreeMap::from([(
+                "lend-feed.json".into(),
+                format!("{}\n", serde_json::to_string_pretty(&recorded).unwrap()),
+            )]),
+        );
+    }
+
+    async fn next_catalog(feed: &mut CatalogFeed) -> serde_json::Value {
+        loop {
+            let outgoing = tokio::time::timeout(std::time::Duration::from_secs(2), feed.next())
+                .await
+                .unwrap();
+            let Message::Text(message) = outgoing.message else {
+                panic!("expected text");
+            };
+            let value: serde_json::Value = serde_json::from_str(message.as_str()).unwrap();
+            if value["type"] == "Catalog" {
+                return value;
+            }
+        }
     }
 }

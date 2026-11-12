@@ -192,10 +192,18 @@ export class LiveSession implements LaneDisplay {
   }
 
   /** Gives every other lane of this viewer the settings of `lane`, but its visibility. */
-  applyToAll(lane: number): void {
-    this.#lanes.copyFrom(lane).forEach((message) => this.#connection?.send(message));
+  async applyToAll(lane: number, reread = true): Promise<void> {
+    (await this.#data.applyToAll(lane, reread)).forEach((message) =>
+      this.#connection?.send(message),
+    );
     this.#data.refresh();
     this.represent();
+    this.#publish();
+  }
+
+  /** Dismisses the lane's Apply refusal. */
+  dismissCatalogAction(lane: number): void {
+    this.#data.dismissCatalogAction(lane);
     this.#publish();
   }
 

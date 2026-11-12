@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { AccessContext } from "../client/access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import type { CatalogInfoWire } from "../generated/api";
+import catalogDocument from "../../../assets/catalogs/standard.v4.json?raw";
 import { LaneCatalogActions } from "./LaneCatalogActions";
 
 afterEach(() => {
@@ -120,12 +121,34 @@ describe("catalog copy and delete", () => {
     expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
   });
 
-  it("makes the backend read the file again, then asks for the document anew", async () => {
-    const calls = routes({ ok: true });
-    const { onReload } = setup("user:night.json", "built-in:standard");
+  it("reloads only the current selection and ignores superseded reload failures", async () => {
+    const replies: ((response: Response) => void)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>((resolve) => replies.push(resolve))),
+    );
+    const { onReload, moveTo } = setup("user:night.json", "built-in:standard");
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
-    await waitFor(() => expect(onReload).toHaveBeenCalledOnce());
-    expect(calls).toEqual([["/api/catalogs/reload", { id: "user:night.json" }]]);
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await act(async () => {
+      replies[1](Response.json({ revision: 2, document: catalogDocument }));
+    });
+    await act(async () => {
+      replies[0](
+        Response.json(
+          { code: "CatalogInvalid", params: {}, reason: "old failure" },
+          { status: 400 },
+        ),
+      );
+    });
+    expect(onReload).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    moveTo("built-in:tracking");
+    await act(async () => {
+      replies[2](Response.json({ revision: 2, document: catalogDocument }));
+    });
+    expect(onReload).toHaveBeenCalledOnce();
   });
 
   it("says why a copy was refused and keeps the name for another try", async () => {
@@ -234,7 +257,16 @@ describe("catalog copy and delete", () => {
     expect(refused.onChange).not.toHaveBeenCalled();
   });
 
-  it("lets Standard be saved as the default while the stored one names a catalog that is gone", () => {
+  it("shows a reload ErrorWire's specific refusal when making a default and stores nothing", async () => {
+    routes({ ok: false, reason: "The catalog cannot be read" });
+    const { save } = setup("user:night.json", "built-in:standard");
+    fireEvent.click(screen.getByRole("button", { name: "Use as default" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("The catalog cannot be read");
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("lets Standard be saved as the default while the stored one names a catalog that is gone", async () => {
+    routes({ ok: true, body: { revision: 1, document: catalogDocument } });
     const { save } = setup(
       "built-in:standard",
       "built-in:standard",
@@ -242,6 +274,10 @@ describe("catalog copy and delete", () => {
       "user:gone.json",
     );
     fireEvent.click(screen.getByRole("button", { name: "Use as default" }));
-    expect(save).toHaveBeenCalledWith({ set: { "overlays.default_catalog": "built-in:standard" } });
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save).toHaveBeenCalledWith({
+      catalogRevision: 1,
+      set: { "overlays.default_catalog": "built-in:standard" },
+    });
   });
 });
