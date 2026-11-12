@@ -272,14 +272,12 @@ impl<I: Incoming> Playing<'_, I> {
                 Ok(())
             }
             Some(Ok(ClientMessage::InspectContinue(read))) => {
-                let target = self.inspections.continuation_target(&read.token).and_then(
-                    |(source, revision, sample)| {
+                self.inspections
+                    .continue_read(read, |source, revision, sample| {
                         self.lanes
                             .overlays()
                             .inspect_target(source, revision, u64::from(sample))
-                    },
-                );
-                self.inspections.continue_target(read, target);
+                    });
                 Ok(())
             }
             Some(Ok(ClientMessage::InspectFields {

@@ -1,11 +1,6 @@
-//! Answers to `Inspect` and `InspectFields`: every field of one object of a sample the viewer holds, and the leaves of
-//! all its objects at the paths a search names.
-//!
-//! A request is answered only from a sample the viewer's overlays count as held under the revision it names
-//! (`ViewerOverlays::inspect_target`), and the answer is gated by the frame that sample ranks by, like the sample
-//! itself: a follower whose presenter moved on is not sent what it may no longer see. What cannot be answered is
-//! `Unavailable` (`objects: null` for a search), which discloses nothing and goes ungated. Work is bounded: one scene
-//! is read at a time per kind of request and the newest request replaces one of its kind that has not started.
+//! Inspection of held samples, under the requesting socket's permission and frame authority.
+//! One Scene read runs per request kind; the newest pending read replaces its predecessor.
+//! Invalid tokens receive a bounded refusal without replacing valid work or changing a capability.
 
 use super::{Outgoing, text};
 use api_types::{
@@ -100,7 +95,7 @@ impl Queue {
         self.start();
     }
 
-    /// The next answer; waits while no request is running.
+    /// The next answer or token refusal; waits while there is neither.
     async fn next(&mut self) -> Outgoing {
         let Some((request, running)) = self.running.as_mut() else {
             return std::future::pending().await;
@@ -133,6 +128,7 @@ pub(super) struct Inspections {
     objects: Queue,
     searches: Queue,
     cursor: Option<(String, u16, u32, u32, String, PositionRef)>,
+    refused: Option<Outgoing>,
 }
 
 impl Inspections {
@@ -143,6 +139,7 @@ impl Inspections {
             objects: Queue::default(),
             searches: Queue::default(),
             cursor: None,
+            refused: None,
         }
     }
 
@@ -217,13 +214,25 @@ impl Inspections {
     }
 
     /// Identifies the target only for this socket's current capability. The caller rechecks its held sample.
-    pub(super) fn continuation_target(&self, token: &str) -> Option<(u16, u32, u32)> {
+    fn continuation_target(&self, token: &str) -> Option<(u16, u32, u32)> {
         let (held, source, revision, sample, _, _) = self.cursor.as_ref()?;
         (token == held).then_some((*source, *revision, *sample))
     }
 
+    /// Resolves a continuation through this socket's capability and its viewer's currently held samples.
+    pub(super) fn continue_read(
+        &mut self,
+        read: InspectionRead,
+        resolve: impl FnOnce(u16, u32, u32) -> Option<Target>,
+    ) {
+        let target = self
+            .continuation_target(&read.token)
+            .and_then(|(s, r, n)| resolve(s, r, n));
+        self.continue_target(read, target);
+    }
+
     /// Queues a continuation under freshly checked sample authority.
-    pub(super) fn continue_target(&mut self, read: InspectionRead, target: Option<Target>) {
+    fn continue_target(&mut self, read: InspectionRead, target: Option<Target>) {
         if !self.admit() {
             return;
         }
@@ -247,13 +256,16 @@ impl Inspections {
                     .unwrap_or_default(),
             ),
         };
+        if valid.is_none() {
+            self.refused = Some(unavailable(&request));
+            return;
+        }
         if target.is_none()
             && let Some(cursor) = self.cursor.take()
         {
             position::invalidate(&cursor.5);
         }
-        self.objects
-            .ask(request, target.filter(|_| valid.is_some()));
+        self.objects.ask(request, target);
     }
 
     /// Takes a request for the leaves of every object at `paths`, replacing one that has not started.
@@ -293,8 +305,11 @@ impl Inspections {
         self.searches.ask(request, target);
     }
 
-    /// The next answer; waits while no request is running.
+    /// The next answer or token refusal; waits while there is neither.
     pub(super) async fn next(&mut self) -> Outgoing {
+        if let Some(refused) = self.refused.take() {
+            return refused;
+        }
         tokio::select! {
             message = self.objects.next() => message,
             message = self.searches.next() => message,

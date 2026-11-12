@@ -1,4 +1,4 @@
-//! A resolved off-page pin stays copyable while an interrupted scan starts over.
+//! Pins and token-bound copy actions through production CVAT inputs.
 use super::*;
 use api_types::inspect::InspectionPin;
 
@@ -275,4 +275,173 @@ async fn pin_viewer() -> (tempfile::TempDir, ViewerOverlays, u32) {
     .await;
     hold(&mut viewer, 10).await;
     (folder, viewer, revision)
+}
+
+#[tokio::test]
+async fn rejected_tokens_leave_the_current_capability_usable_through_viewer_resolution() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let (_folder, mut viewer, revision) = pin_viewer().await;
+    let allowed = Arc::new(AtomicBool::new(true));
+    let mut owner = Inspections::new({
+        let allowed = allowed.clone();
+        Arc::new(move || allowed.load(Ordering::SeqCst))
+    });
+    owner.ask(&viewer, 1, 0, revision, 10, "cvat_track_7".into());
+    let InspectionWire::Found {
+        continuation: Some(a),
+        ..
+    } = verdict(answer(&mut owner).await.0)
+    else {
+        panic!("capability A");
+    };
+    owner.ask(&viewer, 2, 0, revision, 10, "cvat_track_7".into());
+    let InspectionWire::Found {
+        continuation: Some(b),
+        fields,
+        ..
+    } = verdict(answer(&mut owner).await.0)
+    else {
+        panic!("capability B");
+    };
+    let ordinal = fields.iter().find_map(|field| field.cut).unwrap()[0] as u32;
+    let read = InspectionRead {
+        token: b.token.clone(),
+        request: 3,
+        pins: None,
+        field: None,
+        raw: None,
+        path: false,
+        offset: b.next.unwrap(),
+    };
+    for token in [a.token, "not-a-capability".into()] {
+        assert_expired(
+            resolve_read(
+                &mut owner,
+                &viewer,
+                InspectionRead {
+                    token,
+                    ..read.clone()
+                },
+            )
+            .await,
+        );
+    }
+    assert!(
+        matches!(
+            resolve_read(&mut owner, &viewer, read.clone()).await,
+            InspectionReadResult::Page { .. }
+        ),
+        "capability B still pages after rejected tokens"
+    );
+    let pin = InspectionRead {
+        offset: 0,
+        pins: Some(vec![InspectionPin {
+            group: FieldGroup::Debug,
+            identity: None,
+            path: ["cvat", "shape", "extra", "field00000"]
+                .map(String::from)
+                .into(),
+        }]),
+        ..read.clone()
+    };
+    let InspectionReadResult::Pins { fields, next } =
+        resolve_read(&mut owner, &viewer, pin.clone()).await
+    else {
+        panic!("B still resolves pins");
+    };
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].1.cut, Some([u64::from(ordinal), 128 * 1024]));
+    assert_eq!(next, None);
+    // The copied field is off the current page; its pin address must survive too.
+    for offset in [0, 65_536] {
+        let InspectionReadResult::Chunk { text, total, next } = resolve_read(
+            &mut owner,
+            &viewer,
+            InspectionRead {
+                offset,
+                field: Some(ordinal),
+                ..read.clone()
+            },
+        )
+        .await
+        else {
+            panic!("B still copies");
+        };
+        assert_eq!(text, "x".repeat(65_536));
+        assert_eq!(total, 128 * 1024);
+        assert_eq!(next, if offset == 0 { Some(65_536) } else { None });
+    }
+    assert!(
+        matches!(
+            resolve_read(
+                &mut owner,
+                &viewer,
+                InspectionRead {
+                    offset: 0,
+                    raw: Some(true),
+                    ..read.clone()
+                }
+            )
+            .await,
+            InspectionReadResult::Chunk { .. }
+        ),
+        "B still copies Raw"
+    );
+    allowed.store(false, Ordering::SeqCst);
+    owner.continue_read(pin, |s, r, n| viewer.inspect_target(s, r, u64::from(n)));
+    assert!(owner.cursor.is_none(), "permission refusal releases B");
+    allowed.store(true, Ordering::SeqCst);
+    assert_expired(resolve_read(&mut owner, &viewer, read.clone()).await);
+    assert!(
+        owner.cursor.is_none(),
+        "a late B request cannot recreate a released capability"
+    );
+    owner.ask(&viewer, 4, 0, revision, 10, "cvat_track_7".into());
+    let InspectionWire::Found {
+        continuation: Some(c),
+        ..
+    } = verdict(answer(&mut owner).await.0)
+    else {
+        panic!("fresh capability C");
+    };
+    assert_expired(resolve_read(&mut owner, &viewer, read.clone()).await);
+    let current = InspectionRead {
+        token: c.token,
+        offset: 0,
+        ..read
+    };
+    assert!(
+        matches!(
+            resolve_read(&mut owner, &viewer, current.clone()).await,
+            InspectionReadResult::Page { .. }
+        ),
+        "a late B request cannot invalidate C"
+    );
+    hold(&mut viewer, 40).await;
+    assert_expired(resolve_read(&mut owner, &viewer, current).await);
+    assert!(
+        owner.cursor.is_none(),
+        "a matching token expires when its held sample is gone"
+    );
+}
+
+async fn resolve_read(
+    owner: &mut Inspections,
+    viewer: &ViewerOverlays,
+    read: InspectionRead,
+) -> InspectionReadResult {
+    // This is the production target-resolution entry used by both socket handlers, not a supplied Target.
+    owner.continue_read(read, |s, r, n| viewer.inspect_target(s, r, u64::from(n)));
+    let (message, frames) = answer(owner).await;
+    let ServerMessage::InspectContinued { result, .. } = message else {
+        panic!("continuation reply");
+    };
+    if matches!(result, InspectionReadResult::Refused { .. }) {
+        assert_eq!(frames, None);
+    }
+    result
+}
+fn assert_expired(result: InspectionReadResult) {
+    assert!(matches!(result, InspectionReadResult::Refused { reason }
+        if reason == "Inspection expired; select the object again"));
 }
