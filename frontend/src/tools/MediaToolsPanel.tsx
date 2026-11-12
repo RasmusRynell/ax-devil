@@ -325,7 +325,7 @@ export function MediaToolsPanel({
             lane={lane}
             state={events}
             onState={onEvents}
-            mark={marked}
+            mark={pages.mark?.kind === "event" ? pages.mark.event : null}
             open={open("events")}
             onOpen={openEvent}
             header={header}

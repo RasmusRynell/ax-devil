@@ -1,3 +1,4 @@
+import { answersEvent, sameEventIdentity } from "../inspect/fileEvents";
 import { useEffect, useSyncExternalStore } from "react";
 import type { ObjectSource } from "./ObjectsList";
 import { itemOf, type EventItem } from "./eventItem";
@@ -8,7 +9,7 @@ const noSubscribe = () => () => {};
 /** Replaces every occurrence of one event, including the list mark; absent events leave the stack. */
 function mapped(pages: PageStack, previous: EventItem, next: EventItem | null): PageStack {
   const map = (key: PageKey): PageKey | null =>
-    key.kind === "event" && key.event.id === previous.id && key.event.revision === previous.revision
+    key.kind === "event" && sameEventIdentity(key.event, previous)
       ? next && { kind: "event", event: next }
       : key;
   return {
@@ -55,7 +56,7 @@ export function useEventNavigation(
       source.files.events.want(lane, null);
       return;
     }
-    const found = held?.event === target.id && held.revision === revision ? held : null;
+    const found = answersEvent(held, target, revision) ? held : null;
     if (
       found &&
       (!found.detail ||

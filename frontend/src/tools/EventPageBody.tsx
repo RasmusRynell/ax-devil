@@ -1,3 +1,4 @@
+import { answersEvent } from "../inspect/fileEvents";
 import { useMemo, useSyncExternalStore } from "react";
 import type { EventLog } from "../live/eventLog";
 import { frameObjects, drawnIds } from "./objects";
@@ -41,7 +42,7 @@ export function EventPageBody({
     events.eventUnavailable(lane),
   );
   const timeOf = (at: number) => source.frameTime(at);
-  const found = held?.event === item.id ? held : null;
+  const found = answersEvent(held, item, events.revision(lane)) ? held : null;
   const row = found?.detail?.row;
   // The file was replaced by one without this event, or with another at its place.
   const gone = found !== null && !row;

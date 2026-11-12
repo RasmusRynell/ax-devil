@@ -1,3 +1,4 @@
+import { sameEventIdentity } from "../inspect/fileEvents";
 import {
   useCallback,
   useEffect,
@@ -53,7 +54,7 @@ export function EventsList({
   state: EventsState;
   onState: (state: EventsState) => void;
   /** The event whose row is marked: the one a page was last opened from. */
-  mark: number | null;
+  mark: EventItem | null;
   open: Open | null;
   onOpen: (event: EventItem) => void;
   header: ReactNode;
@@ -65,7 +66,9 @@ export function EventsList({
   const searchBar = useRef<{ focus(): void }>(null);
   const { wire } = useMemo(() => parseSearch(text), [text]);
   const listed = useSyncExternalStore(source.files.subscribe, () => events.view(lane));
-  const { page, unavailable } = listed;
+  const { page: loaded, unavailable } = listed;
+  const currentRevision = events.revision(lane);
+  const page = loaded?.revision === currentRevision ? loaded : null;
   const frame = view.shown?.sequenceId;
   const items = useMemo(
     () => page?.rows.map((row) => itemOf(row, (at) => source.frameTime(at), page.revision)) ?? [],
@@ -74,9 +77,15 @@ export function EventsList({
     [page, source, view.frameCount],
   );
 
+  const selected =
+    mark !== null && items.some((item) => sameEventIdentity(item, mark)) ? String(mark.id) : null;
+
   // The rows around an open page's event are the ones asked for, so that the page can step to its neighbours.
   const from = open?.from ?? null;
-  const eventId = from === null ? null : Number(from);
+  const eventId =
+    from !== null && mark !== null && mark.revision === currentRevision && String(mark.id) === from
+      ? mark.id
+      : null;
   const { row, near } = eventRow(eventId, page, anchor);
   const wanted = near === null ? offset : Math.max(0, Math.floor(near / STEP) * STEP - STEP);
   useEffect(() => {
@@ -107,7 +116,7 @@ export function EventsList({
 
   const onRange = useCallback((start: number) => setOffset(Math.floor(start / STEP) * STEP), []);
   const steps = useMemo<Steps>(() => {
-    if (from === null || !page) return NO_STEPS;
+    if (from === null || !page || selected === null) return NO_STEPS;
     const rows = {
       keys: page.rows.map((event) => String(event.event)),
       offset: page.offset,
@@ -119,7 +128,7 @@ export function EventsList({
       return event ? ({ kind: "event", event } as const) : null;
     };
     return { previous: at(-1), next: at(1) };
-  }, [from, page, items]);
+  }, [from, page, items, selected]);
 
   const total = page?.total ?? 0;
   const matched = page?.matched ?? 0;
@@ -195,7 +204,7 @@ export function EventsList({
         rowAt={(index) => (page ? items[index - page.offset] : undefined)}
         keyOf={(event) => String(event.id)}
         indexOf={(key) => eventRow(Number(key), page, null).row ?? -1}
-        selected={mark === null ? null : String(mark)}
+        selected={selected}
         sort={{ key: "time", descending: false }}
         onSort={() => undefined}
         dimmed={(event) => frame !== undefined && event.frame > frame}

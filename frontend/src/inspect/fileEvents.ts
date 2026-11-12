@@ -41,8 +41,45 @@ export type EventsPage = {
 /** What a lane's Events list shows now. */
 export type EventsView = FileView<EventsPage>;
 
+/** The navigation identity a detail request was made for, independent of reused file indices. */
+export type EventIdentity = {
+  id: number;
+  anchor?: EventRowWire["anchor"];
+  frame: number;
+  revision?: number;
+};
+
+/** Whether two references name the same event at the same place in the same history revision. */
+export function sameEventIdentity(left: EventIdentity, right: EventIdentity): boolean {
+  return (
+    left.id === right.id &&
+    left.frame === right.frame &&
+    left.revision === right.revision &&
+    (left.anchor === right.anchor ||
+      (left.anchor !== undefined &&
+        right.anchor !== undefined &&
+        left.anchor.every((byte, index) => byte === right.anchor?.[index])))
+  );
+}
+
+/** An answer belongs only to the navigation identity it was requested for, in the expected current revision. */
+export function answersEvent(
+  view: EventView | null,
+  identity: EventIdentity,
+  revision: number,
+): view is EventView {
+  return (
+    view !== null &&
+    view.identity !== null &&
+    view.revision === revision &&
+    sameEventIdentity(view.identity, identity)
+  );
+}
+
 /** One event of a lane, as the backend answered it; `detail` is `null` when the file has no such event. */
 export type EventView = {
+  /** Original anchor, frame and revision sent with the request, including on a FindEvent answer. */
+  identity: EventIdentity | null;
   event: number;
   /** The data revision it was read under. */
   revision: number;
@@ -111,7 +148,14 @@ const EVENT: FileRequestSpec<"Event", Event, Basis, EventView> = {
         }
       : { type: "Event", lane, request, event, bins },
   page: (body, wanted, revision) =>
-    body.event === wanted.event ? { event: wanted.event, revision, detail: body.detail } : null,
+    body.event === wanted.event
+      ? {
+          event: wanted.event,
+          revision,
+          detail: body.detail,
+          identity: wanted.previous ? { id: wanted.event, ...wanted.previous } : null,
+        }
+      : null,
 };
 
 export class FileEvents {
