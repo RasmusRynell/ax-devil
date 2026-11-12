@@ -72,11 +72,11 @@ contextBridge.exposeInMainWorld("axDevilWindow", {
   // shows (one already running, say), which a restart would leave as it was.
   ...(restartable && { restart: () => ipcRenderer.send("app:restart") }),
   // The settings of this device, one file for the app whichever server the window shows: every value now, read before
-  // the page paints.
+  // the page paints. The owner returns its last persisted values and sequence atomically from memory.
   deviceValues: () => ipcRenderer.sendSync("device:values"),
-  // Stores one device setting, or removes it with null.
-  setDeviceValue: (key, value) => ipcRenderer.send("device:set", key, value),
-  // Reports every value after another window changed one; returns the way to stop listening.
+  // Stores a batch asynchronously; resolves only after persistence or returns its refusal.
+  setDeviceValues: (changes, batch) => ipcRenderer.invoke("device:set", changes, batch),
+  // Announces every persisted snapshot, this window included; returns the way to stop listening.
   onDeviceValuesChange: (listener) => {
     const changed = (_event, values) => listener(values);
     ipcRenderer.on("device:changed", changed);

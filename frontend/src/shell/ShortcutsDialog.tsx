@@ -11,6 +11,7 @@ import { QUIET } from "../kit/look";
 import { SectionCaption } from "../kit/SectionCaption";
 import { shortcutOf } from "../kit/shortcut";
 import { shortcutsPatch, useSettings } from "../client/settings";
+import { useRepairIntent } from "./useRepairIntent";
 import { useSaveDialog } from "./useSaveDialog";
 
 /** Why a row's key was not taken, and, when another command holds it, the way to take it from that command. */
@@ -37,10 +38,11 @@ const labelOf = (id: CommandId) => COMMANDS.find((command) => command.id === id)
  * be dismissed while that write is pending, so whatever is open beneath never acts on shortcuts the write is replacing.
  */
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
-  const { shortcuts } = useSettings();
+  const { shortcuts, recoveredShortcuts } = useSettings();
   // What the dialog opened with: only the commands changed from it are sent.
   const [base] = useState(shortcuts);
   const [draft, setDraft] = useState<Shortcuts>(base);
+  const repair = useRepairIntent(recoveredShortcuts);
   const [recording, setRecording] = useState<CommandId | null>(null);
   const [note, setNote] = useState<Note | null>(null);
   // What the one polite live region says: recording started, a key set, cleared or reset.
@@ -77,6 +79,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
       });
     else {
       setNote(null);
+      repair.edit(id);
       setDraft({ ...draft, [id]: key });
       const verb = reset ? "reset to" : "set to";
       setAnnouncement(
@@ -88,6 +91,8 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   };
   /** Binds `key` to `id` and unbinds the command that held it. */
   const reassign = (id: CommandId, { owner, key }: NonNullable<Note["takeFrom"]>) => {
+    repair.edit(owner);
+    repair.edit(id);
     setDraft({ ...draft, [owner]: null, [id]: key });
     setNote(null);
     setAnnouncement(`${labelOf(id)} set to ${key}, taken from ${labelOf(owner)}`);
@@ -105,6 +110,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const resetAll = () => {
     setRecording(null);
     setNote(null);
+    for (const { id } of COMMANDS) repair.edit(id);
     setDraft(Object.fromEntries(COMMANDS.map(({ id, key }) => [id, key])) as Shortcuts);
     setAnnouncement("All shortcuts reset to defaults");
   };
@@ -113,7 +119,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   return (
     <Dialog
       title="Keyboard Shortcuts"
-      onOk={() => void submit(shortcutsPatch(base, draft))}
+      onOk={() => void submit(shortcutsPatch(base, draft, repair.keys()))}
       onCancel={() => {
         if (!saving) onClose();
       }}
@@ -171,14 +177,14 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
                         <IconButton
                           icon="rotate-ccw"
                           label={`Reset ${label}`}
-                          disabled={draft[id] === standard}
+                          disabled={draft[id] === standard && !repair.repairable.has(id)}
                           onClick={() => assign(id, standard, true)}
                           className="rounded-control"
                         />
                         <IconButton
                           icon="x"
                           label={`Clear ${label}`}
-                          disabled={draft[id] === null}
+                          disabled={draft[id] === null && !repair.repairable.has(id)}
                           onClick={() => assign(id, null)}
                           className="rounded-control"
                         />

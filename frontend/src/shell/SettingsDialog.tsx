@@ -14,6 +14,7 @@ import { literalSecret, PlainTextNote, SettingField, type Row } from "./SettingF
 import { Refusal } from "../kit/Refusal";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { numericInput } from "./numericInput";
+import { useRepairIntent } from "./useRepairIntent";
 import { useSaveDialog } from "./useSaveDialog";
 
 /** Every setting that has a page. */
@@ -32,7 +33,7 @@ export function SettingsDialog({
   onClose: () => void;
   onRestartNeeded: () => void;
 }) {
-  const { values, savedValues, file } = useSettings();
+  const { values, savedValues, file, recovered } = useSettings();
   // A page that holds only a join link has only the Device settings.
   const { owner, fullAccess } = useAccess();
   const shown = PAGED.filter((row) => owner || row.scope === "device");
@@ -41,6 +42,7 @@ export function SettingsDialog({
   const [base] = useState(savedValues);
   const [opened] = useState(values);
   const [draft, setDraft] = useState(opened);
+  const repair = useRepairIntent(recovered);
   const [page, setPage] = useState(pages[0] ?? "");
   const [editingShortcuts, setEditingShortcuts] = useState(false);
   const { saving, refusal, submit } = useSaveDialog(onClose);
@@ -63,7 +65,7 @@ export function SettingsDialog({
       if (row.kind.type === "whole" || row.kind.type === "auto_or_whole")
         normalized[row.key] = numericInput(value, row.kind.type);
     }
-    const outcome = await submit(settingsPatch(base, normalized, opened));
+    const outcome = await submit(settingsPatch(base, normalized, opened, repair.keys()));
     if (outcome.kind === "refused") {
       const at = shown.find((row) => row.key === outcome.refusal.location);
       if (at?.page) setPage(at.page);
@@ -114,7 +116,10 @@ export function SettingsDialog({
                           value={draft[row.key]}
                           describedBy={warning ? note : undefined}
                           decoders={decoders}
-                          onChange={(value) => setDraft({ ...draft, [row.key]: value })}
+                          onChange={(value) => {
+                            repair.edit(row.key);
+                            setDraft({ ...draft, [row.key]: value });
+                          }}
                           label={
                             <span className="flex items-center gap-s">
                               {row.label}

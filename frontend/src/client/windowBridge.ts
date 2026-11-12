@@ -1,3 +1,15 @@
+/** The last persisted Device batch, read atomically from the shell cache before paint. */
+export interface DeviceSnapshot {
+  batch?: string;
+  values: Record<string, unknown>;
+  sequence: number;
+}
+/** The outcome of one admitted Device batch; replies do not publish saved values. */
+export interface DeviceReply {
+  sequence: number | null;
+  reason: string | null;
+}
+
 import { useEffect, useState } from "react";
 
 /**
@@ -50,12 +62,15 @@ export interface WindowBridge {
   openLogs?: (file: string) => Promise<void>;
   /** Closes the app and starts it again. Absent when the app did not start its backend. */
   restart?(): void;
-  /** Every setting this device keeps, one file whichever server the window shows; read before the page paints. */
-  deviceValues?(): Record<string, unknown>;
-  /** Stores one device setting, or removes it with null. */
-  setDeviceValue?(key: string, value: string | boolean | number | null): void;
-  /** Reports every device setting after another window changed one; returns the way to stop listening. */
-  onDeviceValuesChange?(listener: (values: Record<string, unknown>) => void): () => void;
+  /** The last persisted values and sequence in one cache-only snapshot, read before the page paints. */
+  deviceValues?(): DeviceSnapshot;
+  /** Stores one Device batch; the reply reports its sequence and failure, but never publishes values. */
+  setDeviceValues?(
+    changes: Record<string, string | boolean | null>,
+    batch: string,
+  ): Promise<DeviceReply>;
+  /** Announces every persisted snapshot to this document, including its own writes; returns the way to stop listening. */
+  onDeviceValuesChange?(listener: (snapshot: DeviceSnapshot) => void): () => void;
   /** The page zoom factor (1 is 100%), read when asked. */
   zoomFactor?(): number;
 }

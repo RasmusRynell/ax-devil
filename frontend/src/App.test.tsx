@@ -1,3 +1,4 @@
+import { browserBacking } from "./client/deviceSettings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { adoptFragment, credential } from "./client/access";
@@ -10,11 +11,11 @@ import { FakeSocket } from "./session/fakeSession";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.unstubAllGlobals();
   window.sessionStorage.clear();
-  deviceStore.reset("ui.theme");
+  await deviceStore.reset("ui.theme");
   window.localStorage.clear();
   window.history.replaceState(null, "", "/");
   FakeSocket.reset();
@@ -54,7 +55,7 @@ function backend(
 describe("app shell", () => {
   it("shows the app, themed from this device's settings", async () => {
     backend();
-    deviceStore.set("ui.theme", "dark");
+    await deviceStore.set("ui.theme", "dark");
     render(<App />);
     expect(await screen.findByRole("heading", { name: "ax-devil" })).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -102,7 +103,7 @@ describe("app shell", () => {
     expect(JSON.parse(patch?.[1]?.body as string)).toEqual({
       set: { "storage.cache_dir": "/var/cache" },
     });
-    expect(JSON.parse(window.localStorage.getItem("ax-devil.device") ?? "{}")).toEqual({
+    expect(browserBacking().read()).toEqual({
       "ui.theme": "light",
     });
   });

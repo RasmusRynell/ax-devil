@@ -12,6 +12,7 @@ import {
   deviceStore,
   useDeviceValues,
   useSavedDeviceValues,
+  useRecoveredDeviceKeys,
   type DeviceValue,
 } from "./deviceSettings";
 import { reasonOf } from "./errors";
@@ -80,10 +81,12 @@ export function settingsPatch(
   base: SettingsState["values"],
   draft: SettingsState["values"],
   shown = base,
+  repairs: readonly SettingKey[] = [],
 ) {
   const set: Record<string, unknown> = {};
   for (const key of Object.keys(draft) as SettingKey[])
-    if (!same(base[key], draft[key]) || !same(shown[key], draft[key])) set[key] = draft[key];
+    if (!same(base[key], draft[key]) || !same(shown[key], draft[key]) || repairs.includes(key))
+      set[key] = draft[key];
   return (Object.keys(set).length ? { set } : {}) as SettingsPatch;
 }
 
@@ -91,11 +94,12 @@ export function settingsPatch(
 export function shortcutsPatch(
   base: SettingsState["shortcuts"],
   draft: SettingsState["shortcuts"],
+  repairs: readonly CommandId[] = [],
 ) {
   const shortcutsSet: Record<string, string | null> = {};
   const shortcutsReset: CommandId[] = [];
   for (const { id, key } of COMMANDS) {
-    if (base[id] === draft[id]) continue;
+    if (base[id] === draft[id] && !repairs.includes(id)) continue;
     if (draft[id] === key) shortcutsReset.push(id);
     else shortcutsSet[id] = draft[id];
   }
@@ -197,6 +201,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const { owner } = useAccess();
   const device = useDeviceValues();
   const savedDevice = useSavedDeviceValues();
+  const recoveredDevice = useRecoveredDeviceKeys();
   const settings = useResource<SettingsState>("settings", owner ? "/api/settings" : null, {
     revisionOf: (state) => state.revision,
   });
@@ -211,6 +216,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const remote = settings.value ?? null;
   const values = { ...DEFAULT_VALUES, ...remote?.values, ...device };
   useAppearance(values["ui.theme"] as string, values["ui.text_size"] as string);
+
+  if (deviceStore.problem())
+    return <p role="alert">ax-devil cannot read its settings: {deviceStore.problem()}</p>;
 
   if (owner && !remote) {
     return settings.error ? (
@@ -231,7 +239,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       settings.apply(answer.value);
     }
     // After the backend took its part, so a refused save changes nothing here either.
-    commitDevice();
+    const failure = await commitDevice();
+    if (failure)
+      return {
+        code: "Internal",
+        params: {},
+        reason: `${isEmpty(server) ? "" : "Server settings were saved. "}Device settings were not saved: ${failure.keys.join(", ")}. ${failure.reason}`,
+      };
     return null;
   };
   const shortcuts = remote?.shortcuts ?? STANDARD_SHORTCUTS;
@@ -242,6 +256,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         values,
         savedValues: { ...DEFAULT_VALUES, ...remote?.values, ...savedDevice },
         resolved: remote?.resolved,
+        recovered: [...(remote?.recovered ?? []), ...recoveredDevice],
+        recoveredShortcuts: remote?.recoveredShortcuts,
         file: remote?.file,
         shortcuts,
         ...through(apply),

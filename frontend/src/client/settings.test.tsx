@@ -5,15 +5,18 @@ import { AccessContext } from "./access";
 import { DEFAULT_SETTINGS } from "./fakeSettings";
 import { ChangesProvider, useNoticeSink } from "./resource";
 import type { SettingsPatch } from "../generated/api";
-import { deviceStore } from "./deviceSettings";
+import { browserBacking, deviceStore } from "./deviceSettings";
 import { SettingsProvider, useSettings } from "./settings";
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
-  deviceStore.reset("ui.theme");
-  deviceStore.reset("ui.text_size");
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  await deviceStore.reset("ui.theme");
+  await deviceStore.reset("ui.text_size");
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  window.dispatchEvent(new StorageEvent("storage", { key: null }));
 });
 
 function Catalog() {
@@ -219,11 +222,11 @@ describe("settings", () => {
     );
     fireEvent.click(await screen.findByRole("button", { name: "Larger text" }));
     await waitFor(() => expect(document.documentElement.dataset.textSize).toBe("large"));
-    expect(JSON.parse(window.localStorage.getItem("ax-devil.device") ?? "{}")).toEqual({
+    expect(browserBacking().read()).toEqual({
       "ui.text_size": "large",
     });
     expect(fetched).not.toHaveBeenCalled();
-    deviceStore.reset("ui.text_size");
+    await deviceStore.reset("ui.text_size");
   });
 
   it("gives a Guest the default of every Personal setting, refuses its change and drops the old copy", async () => {
@@ -366,3 +369,16 @@ it.each(["before reply", "after reply"])(
     ]);
   },
 );
+
+it("blocks settings startup for an incompatible Device snapshot", () => {
+  vi.spyOn(deviceStore, "problem").mockReturnValue(
+    "Incompatible desktop shell: update and restart the desktop app.",
+  );
+  render(
+    <SettingsProvider>
+      <p>Settings opened</p>
+    </SettingsProvider>,
+  );
+  expect(screen.getByRole("alert").textContent).toContain("Incompatible desktop shell");
+  expect(screen.queryByText("Settings opened")).toBeNull();
+});

@@ -1,43 +1,92 @@
 // The settings that belong to this device (see docs/architecture/access.md): one file for the whole app, whichever
 // server a window shows. A missing or unreadable file holds nothing, so the page uses its defaults.
-const fs = require("node:fs");
-const path = require("node:path");
+const { readJson, writeJsonAsync } = require("./atomic-json.cjs");
 
 /** Whether `value` is something a setting holds: text, a flag or a number. */
 const plain = (value) => ["string", "boolean", "number"].includes(typeof value);
 
+const DEVICE_DRAIN_MS = 2000;
+
 /**
- * The device settings kept in `file`, read once. `read()` answers a copy of every value; `set(key, value)` stores one
- * and `set(key, null)` removes it, writing the file whole or not at all; a failed write is reported to the console and
- * leaves the values in memory.
+ * Device settings read once. Writes are serialized and reject on failure; memory changes only after the
+ * file was replaced. Raw values survive unrelated edits, including values the frontend cannot currently interpret.
  */
 function createDeviceValues(file) {
   let values = {};
   try {
-    const kept = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (kept && typeof kept === "object" && !Array.isArray(kept))
-      values = Object.fromEntries(Object.entries(kept).filter(([, value]) => plain(value)));
+    const kept = readJson(file);
+    if (kept && typeof kept === "object" && !Array.isArray(kept)) values = kept;
   } catch {
     // Nothing usable was kept.
   }
+  let sequence = 0;
+  let admitted = 0;
+  const listeners = new Set();
+  const abort = new AbortController();
+  let expire;
+  const expired = new Promise((_, reject) => {
+    expire = reject;
+  });
+  void expired.catch(() => {});
+  let closed;
+  const snapshot = () => ({ values: { ...values }, sequence });
+  let pending = Promise.resolve();
+  let closing = false;
   return {
-    read: () => ({ ...values }),
-    set(key, value) {
-      if (typeof key !== "string" || (value !== null && !plain(value))) return false;
-      values = { ...values };
-      if (value === null) delete values[key];
-      else values[key] = value;
-      const partial = `${file}.partial`;
-      try {
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(partial, JSON.stringify(values));
-        fs.renameSync(partial, file);
-      } catch (error) {
-        console.error(`Could not save the device settings: ${error.message}`);
-      }
-      return true;
+    read: snapshot,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    write(changes, batch) {
+      if (closing) return Promise.reject(new Error("Device settings are closing"));
+      if (
+        !changes ||
+        typeof changes !== "object" ||
+        Array.isArray(changes) ||
+        Object.values(changes).some((value) => value !== null && !plain(value))
+      )
+        return Promise.reject(new Error("Invalid Device settings"));
+      const patch = { ...changes };
+      const mine = ++admitted;
+      const save = pending.then(async () => {
+        abort.signal.throwIfAborted();
+        const next = { ...values };
+        for (const [key, value] of Object.entries(patch)) {
+          if (value === null) delete next[key];
+          else next[key] = value;
+        }
+        await writeJsonAsync(file, next, abort.signal);
+        abort.signal.throwIfAborted();
+        values = next;
+        sequence = mine;
+        for (const listener of listeners) listener({ ...snapshot(), ...(batch && { batch }) });
+        return mine;
+      });
+      pending = save.catch(() => {});
+      return Promise.race([save, expired]).catch((error) => {
+        throw Object.assign(new Error(error.message), { sequence: mine });
+      });
+    },
+    // Quit stops admission and drains admitted writes, even if their window has already closed.
+    close() {
+      if (closed) return closed;
+      closing = true;
+      closed = new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          const error = new Error("Device shutdown deadline expired");
+          abort.abort(error);
+          expire(error);
+          resolve();
+        }, DEVICE_DRAIN_MS);
+        void pending.then(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+      return closed;
     },
   };
 }
 
-module.exports = { createDeviceValues };
+module.exports = { createDeviceValues, DEVICE_DRAIN_MS };

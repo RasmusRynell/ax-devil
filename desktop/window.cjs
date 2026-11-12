@@ -1,6 +1,7 @@
 // Windows and the IPC they may use. A window trusts exactly one origin, fixed when it is created: the page there
 // may use the shell's IPC, navigation to any other origin is blocked, and new windows are denied. The one link a page
 // may open is the project's, in the default browser.
+const { installDeviceIpc } = require("./device-ipc.cjs");
 const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -203,19 +204,12 @@ function installIpc({ connect, disconnect, restart, device }) {
     if (!remote) restart();
   });
   // This device's settings are one file whichever server a window shows; a change reaches the other windows.
-  ipcMain.on("device:values", (event) => {
-    try {
-      sender(event);
-      event.returnValue = device.read();
-    } catch {
-      event.returnValue = {};
-    }
-  });
-  on("device:set", ({ window }, key, value) => {
-    if (!device.set(key, value)) return;
-    for (const other of BrowserWindow.getAllWindows())
-      if (other !== window && trusted.has(other.webContents))
-        other.webContents.send("device:changed", device.read());
+  installDeviceIpc({
+    ipcMain,
+    device,
+    sender,
+    windows: () =>
+      BrowserWindow.getAllWindows().filter((window) => trusted.has(window.webContents)),
   });
   handle("window:is-maximized", ({ window }) => window.isMaximized());
   handle("window:is-fullscreen", ({ window }) => window.isFullScreen());

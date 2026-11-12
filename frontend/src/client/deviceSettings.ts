@@ -1,27 +1,35 @@
 import { useSyncExternalStore } from "react";
 import { SETTINGS, type SettingKey } from "../generated/settings";
-import type { WindowBridge } from "./windowBridge";
+import type { DeviceSnapshot, WindowBridge } from "./windowBridge";
+import {
+  admit,
+  changedKeys,
+  preview,
+  receive,
+  settle,
+  stamp,
+  type DeviceState,
+  type DeviceUpdate,
+  type DeviceValue,
+} from "./deviceState";
+export type { DeviceValue } from "./deviceState";
 
-/** A value a Device setting holds. */
-export type DeviceValue = string | boolean;
 /** The Device settings that differ from their default. */
 export type DeviceValues = Partial<Record<SettingKey, DeviceValue>>;
-
-/** Where Device values are kept: the desktop shell's file for this device, or this browser's storage. */
+/** A Device persistence failure, naming only the keys that still need saving. */
+export interface DeviceFailure {
+  keys: SettingKey[];
+  reason: string;
+}
+type Changes = Partial<Record<SettingKey, DeviceValue | null>>;
 interface Backing {
-  /** Every stored value, as stored. */
+  problem?: string;
   read(): Record<string, unknown>;
-  /** Stores one value, or removes it with null; never throws. */
-  write(key: string, value: DeviceValue | null): void;
-  /** Calls `listener` with every value after another window or tab changed one. */
-  subscribe(listener: (values: Record<string, unknown>) => void): () => void;
+  subscribe(listener: (update: DeviceUpdate) => void): () => void;
+  write(changes: Changes): Promise<DeviceFailure | null>;
 }
 
 const DEVICE_ROWS = SETTINGS.filter((row) => row.scope === "device");
-const DEVICE_DEFAULTS = new Map<SettingKey, unknown>(
-  DEVICE_ROWS.map((row) => [row.key, "default" in row.kind ? row.kind.default : undefined]),
-);
-
 /** Whether *value* is something *row* can hold. */
 function holds(row: (typeof DEVICE_ROWS)[number], value: unknown) {
   const { kind } = row;
@@ -42,110 +50,152 @@ function valid(stored: Record<string, unknown>): DeviceValues {
 
 const KEY = "ax-devil.device";
 
-/** This browser's storage, one key; a blocked or full storage keeps nothing and never throws. */
-function browserBacking(): Backing {
-  const read = (): Record<string, unknown> => {
+/** Independent browser keys; failed writes remain local unsaved choices in the store. */
+export function browserBacking(
+  context: Pick<Window, "localStorage" | "addEventListener" | "removeEventListener"> = window,
+): Backing {
+  let current: Record<string, unknown> = {};
+  const listeners = new Set<(update: DeviceUpdate) => void>();
+  const emit = (foreign: readonly SettingKey[]) => {
+    for (const listener of listeners) listener({ values: current, foreign });
+  };
+  const refresh = () => {
     try {
-      const kept: unknown = JSON.parse(window.localStorage.getItem(KEY) ?? "{}");
-      return typeof kept === "object" && kept !== null ? (kept as Record<string, unknown>) : {};
+      const legacyText = context.localStorage.getItem(KEY);
+      let legacy: unknown;
+      try {
+        legacy = JSON.parse(legacyText ?? "{}");
+      } catch {
+        legacy = {};
+      }
+      const kept =
+        typeof legacy === "object" && legacy !== null && !Array.isArray(legacy)
+          ? ({ ...legacy } as Record<string, unknown>)
+          : {};
+      for (const { key } of DEVICE_ROWS) {
+        const text = context.localStorage.getItem(`${KEY}.${key}`);
+        if (text === null) continue;
+        try {
+          const value: unknown = JSON.parse(text);
+          if (value === null) delete kept[key];
+          else kept[key] = value;
+        } catch {
+          kept[key] = text;
+        }
+      }
+      const foreign = changedKeys(current, kept);
+      current = kept;
+      if (foreign.length) emit(foreign);
     } catch {
-      return {};
+      /* Storage access is blocked: retain the last observed saved document. */
     }
   };
+  refresh();
   return {
-    read,
-    write(key, value) {
-      const kept = read();
-      if (value === null) delete kept[key];
-      else kept[key] = value;
-      try {
-        window.localStorage.setItem(KEY, JSON.stringify(kept));
-      } catch {
-        // Nothing can be kept: the choice lasts until the page closes.
+    read: () => current,
+    async write(changes) {
+      refresh();
+      const failed: SettingKey[] = [];
+      let reason = "";
+      const next = { ...current };
+      for (const [key, value] of Object.entries(changes)) {
+        try {
+          context.localStorage.setItem(`${KEY}.${key}`, JSON.stringify(value));
+          if (value === null) delete next[key];
+          else next[key] = value;
+        } catch (error) {
+          failed.push(key as SettingKey);
+          reason = error instanceof Error ? error.message : String(error);
+        }
       }
+      current = next;
+      emit([]);
+      // Observe interleaved writes to other independent keys, without reinstalling a saved snapshot.
+      refresh();
+      return failed.length ? { keys: failed, reason } : null;
     },
     subscribe(listener) {
+      listeners.add(listener);
       const changed = (event: StorageEvent) => {
-        if (event.key === KEY || event.key === null) listener(read());
+        if (event.key === KEY || event.key?.startsWith(`${KEY}.`) || event.key === null) refresh();
       };
-      window.addEventListener("storage", changed);
-      return () => window.removeEventListener("storage", changed);
+      context.addEventListener("storage", changed);
+      return () => {
+        listeners.delete(listener);
+        context.removeEventListener("storage", changed);
+      };
     },
   };
 }
 
-/** The Device values of one backing: the only place they are held. */
+/** Device saved values and local intents, with snapshots derived once per state transition. */
 export function createDeviceStore(backing: Backing) {
-  let stored = valid(backing.read());
-  let values = stored;
-  // Save commits follow per-key submission order without invalidating later submissions, while previews, direct writes and incoming broadcasts invalidate pending saves independently.
-  const versions = new Map<SettingKey, number>();
-  const submitted = new Map<SettingKey, number>();
-  const committed = new Map<SettingKey, number>();
+  let state: DeviceState = { raw: backing.read(), local: new Map(), clock: 0, applied: new Map() };
   const listeners = new Set<() => void>();
-  const publish = (key: SettingKey, value: DeviceValue | null, supersedes = true) => {
-    if (supersedes) versions.set(key, (versions.get(key) ?? 0) + 1);
-    values = { ...values };
-    if (value === null) delete values[key];
-    else values[key] = value;
+  const derive = () => {
+    const saved = valid(state.raw);
+    const values = { ...saved };
+    for (const [key, entry] of state.local) {
+      if (entry.value === null) delete values[key];
+      else values[key] = entry.value;
+    }
+    const recovered = DEVICE_ROWS.filter(
+      (row) => row.key in state.raw && !holds(row, state.raw[row.key]),
+    ).map((row) => row.key);
+    return { saved, values, recovered };
+  };
+  let cached = derive();
+  const update = (next: DeviceState) => {
+    state = next;
+    cached = derive();
     listeners.forEach((listener) => listener());
   };
-  const write = (key: SettingKey, value: DeviceValue | null, supersedes = true) => {
-    // Confirming an already stored choice must still replace its runtime preview, without another backing write.
-    const unchanged =
-      value === null
-        ? stored[key] === undefined
-        : value === (stored[key] ?? DEVICE_DEFAULTS.get(key));
-    if (unchanged) {
-      publish(key, stored[key] ?? null, supersedes);
-      return;
-    }
-    stored = { ...stored };
-    if (value === null) delete stored[key];
-    else stored[key] = value;
-    publish(key, value, supersedes);
-    backing.write(key, value);
+  backing.subscribe((incoming) => update(receive(state, incoming)));
+  const prepare = (set: [SettingKey, DeviceValue][], reset: SettingKey[]) => {
+    const changes: [SettingKey, DeviceValue | null][] = [
+      ...set,
+      ...reset.map((key): [SettingKey, null] => [key, null]),
+    ];
+    const [next, stamps] = stamp(state, changes.length);
+    update(next);
+    const choices = changes.map(([key, value], i) => ({ key, value, stamp: stamps[i]! }));
+    return async () => {
+      const [next, surviving] = admit(state, choices);
+      if (!surviving.length) return null;
+      update(next);
+      const patch = Object.fromEntries(surviving.map(({ key, value }) => [key, value]));
+      // Backing boundary: thrown APIs and rejected IPC must settle local intent too.
+      let failure: DeviceFailure | null;
+      try {
+        failure = await backing.write(patch);
+      } catch (error) {
+        failure = {
+          keys: surviving.map(({ key }) => key),
+          reason: error instanceof Error ? error.message : String(error),
+        };
+      }
+      update(settle(state, surviving, failure?.keys ?? []));
+      return failure;
+    };
   };
-  backing.subscribe((incoming) => {
-    const next = valid(incoming);
-    // A broadcast carries the whole file: only keys changed in it supersede a local preview.
-    const previous = stored;
-    stored = next;
-    for (const { key } of DEVICE_ROWS)
-      if (next[key] !== previous[key]) publish(key, next[key] ?? null);
-  });
   return {
-    /** The effective Device values, including unsaved Quick Setup previews. */
-    read: () => values,
-    /** Last confirmed values, excluding previews; backing writes remain best effort. */
-    readSaved: () => stored,
-    /** Previews one choice without writing it. Later choices for this key supersede it. */
-    preview: (key: SettingKey, value: DeviceValue) => publish(key, value),
-    /** Stores one value. */
-    set: (key: SettingKey, value: DeviceValue) => write(key, value),
-    /** Puts one value back to its default. */
-    reset: (key: SettingKey) => write(key, null),
-    /** Captures a pending write; committing it leaves any subsequently changed keys alone. */
-    prepare: (set: [SettingKey, DeviceValue][], reset: SettingKey[]) => {
-      const changes: [SettingKey, DeviceValue | null][] = [
-        ...set,
-        ...reset.map((key): [SettingKey, null] => [key, null]),
-      ];
-      const pending = changes.map(([key, value]) => {
-        const ordinal = (submitted.get(key) ?? 0) + 1;
-        submitted.set(key, ordinal);
-        return { key, value, ordinal, version: versions.get(key) ?? 0 };
-      });
-      return () => {
-        for (const { key, value, version, ordinal } of pending) {
-          if ((versions.get(key) ?? 0) !== version || ordinal <= (committed.get(key) ?? 0))
-            continue;
-          committed.set(key, ordinal);
-          write(key, value, false);
-        }
-      };
-    },
-    /** Calls `listener` after every change, from here or from another window; returns the way to stop. */
+    /** Effective choices, including previews and unsaved admitted choices. */
+    read: () => cached.values,
+    /** An incompatible startup snapshot prevents settings from opening. */
+    problem: () => backing.problem,
+    /** Last persisted values, never local intents. */
+    readSaved: () => cached.saved,
+    /** Invalid raw preference keys. */
+    readRecovered: () => cached.recovered,
+    /** Display a new unsaved preview. */
+    preview: (key: SettingKey, value: DeviceValue) => update(preview(state, key, value)),
+    /** Admit one explicit choice. */
+    set: (key: SettingKey, value: DeviceValue) => prepare([[key, value]], [])(),
+    /** Admit one reset. */
+    reset: (key: SettingKey) => prepare([], [key])(),
+    /** Reserve own-intent ordering without writing or displaying a choice. */
+    prepare,
+    /** Subscribe to derived snapshots. */
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => void listeners.delete(listener);
@@ -153,27 +203,86 @@ export function createDeviceStore(backing: Backing) {
   };
 }
 
-/** The shell's file, through its three bridge functions; the shell and its frontend are versioned together. */
-function shellBacking(bridge: WindowBridge): Backing {
+/** Shell snapshots ordered by the owner; batch identities distinguish own updates. */
+export function shellBacking(
+  bridge: Pick<WindowBridge, "deviceValues" | "setDeviceValues" | "onDeviceValuesChange">,
+): Backing {
+  const validSnapshot = (value: unknown): DeviceSnapshot => {
+    const snapshot = value as DeviceSnapshot | null;
+    if (
+      !snapshot ||
+      !Number.isSafeInteger(snapshot.sequence) ||
+      snapshot.sequence < 0 ||
+      !snapshot.values ||
+      typeof snapshot.values !== "object" ||
+      Array.isArray(snapshot.values)
+    )
+      throw new Error(
+        "Incompatible desktop shell: update and restart the desktop app (Device snapshot interface 10 required).",
+      );
+    return snapshot;
+  };
+  let snapshot: DeviceSnapshot = { values: {}, sequence: 0 };
+  let problem: string | undefined;
+  try {
+    snapshot = validSnapshot(bridge.deviceValues?.());
+  } catch (error) {
+    problem = error instanceof Error ? error.message : String(error);
+  }
+  let nonce: string | undefined;
+  let counter = 0;
+  const mine = new Map<string, () => void>();
   return {
-    read: () => bridge.deviceValues?.() ?? {},
-    write: (key, value) => bridge.setDeviceValue?.(key, value),
-    subscribe: (listener) => bridge.onDeviceValuesChange?.(listener) ?? (() => {}),
+    problem,
+    read: () => snapshot.values,
+    write: async (changes) => {
+      const keys = Object.keys(changes) as SettingKey[];
+      if (problem || !bridge.setDeviceValues)
+        return { keys, reason: problem ?? "This shell does not offer Device persistence" };
+      // getRandomValues is available on plain HTTP too; identity needs uniqueness, not secrecy.
+      nonce ??= Array.from(crypto.getRandomValues(new Uint32Array(4)), (value) =>
+        value.toString(16),
+      ).join("-");
+      const batch = `${nonce}:${++counter}`;
+      let delivered!: () => void;
+      const completion = new Promise<void>((resolve) => {
+        delivered = resolve;
+      });
+      mine.set(batch, delivered);
+      try {
+        const reply = await bridge.setDeviceValues(changes, batch);
+        if (reply.reason) return { keys, reason: reply.reason };
+        if (reply.sequence === null || reply.sequence > snapshot.sequence) await completion;
+        return null;
+      } finally {
+        mine.delete(batch);
+      }
+    },
+    subscribe: (listener) =>
+      bridge.onDeviceValuesChange?.((incoming) => {
+        const next = validSnapshot(incoming);
+        if (next.sequence <= snapshot.sequence) return;
+        const own = next.batch ? mine.get(next.batch) : undefined;
+        const foreign = own ? [] : changedKeys(snapshot.values, next.values);
+        snapshot = next;
+        listener({ values: snapshot.values, foreign });
+        own?.();
+      }) ?? (() => {}),
   };
 }
 
 const bridge = window.axDevilWindow;
-/** This device's settings: the desktop shell's file in the desktop app, browser storage in a browser. */
-export const deviceStore = createDeviceStore(
-  bridge?.deviceValues ? shellBacking(bridge) : browserBacking(),
-);
-
-/** The Device values, and a re-render when they change. */
+/** This device's settings: shell storage in the app, independent browser keys otherwise. */
+export const deviceStore = createDeviceStore(bridge ? shellBacking(bridge) : browserBacking());
+/** Effective Device choices and updates. */
 export function useDeviceValues(): DeviceValues {
   return useSyncExternalStore(deviceStore.subscribe, deviceStore.read);
 }
-
-/** Device values confirmed by a save or broadcast, without unsaved previews. */
+/** Persisted Device choices and updates. */
 export function useSavedDeviceValues(): DeviceValues {
   return useSyncExternalStore(deviceStore.subscribe, deviceStore.readSaved);
+}
+/** Invalid raw Device keys, independent of local choices. */
+export function useRecoveredDeviceKeys(): readonly SettingKey[] {
+  return useSyncExternalStore(deviceStore.subscribe, deviceStore.readRecovered);
 }

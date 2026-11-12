@@ -96,7 +96,8 @@ and the rest of the rules: [invariants](invariants.md).
 - Settings apply on OK. Settings that need a restart carry one shared marker, and saving one offers to restart after
   the exit-time saves. Quick Setup is the one exception.
 - A save names the keys it changes and validates the resulting state; the file is replaced atomically and only then
-  are Owners notified; a failed save changes nothing. Startup storage folders stay active until restart.
+  are Owners notified. Server refusal commits nothing; after acceptance a Device persistence failure names
+  the unsaved Device keys. Saves are not atomic across Server and Device. Startup storage folders stay active until restart.
 - Settings live in one immutable state replaced whole; consumers subscribe to changes, never poll.
 - Each settings row is Device (the screen in front of you), Personal (how my app behaves) or Server (what the server
   works with). Everyone reads and writes Device rows, which live on the device and never reach the server; an Owner

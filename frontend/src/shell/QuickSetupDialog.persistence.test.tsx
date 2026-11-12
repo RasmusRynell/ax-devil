@@ -1,3 +1,4 @@
+import { browserBacking } from "../client/deviceSettings";
 import { useState } from "react";
 import { afterEach, beforeAll, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -103,7 +104,7 @@ it.each(["Done", "Escape", "Settings OK"])(
     await dismissRefusal();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByText("dark/larger/false")).toBeTruthy();
-    expect(window.localStorage.getItem("ax-devil.device")).toBeNull();
+    expect(browserBacking().read()).toEqual({});
 
     // Settings stages edits; Cancel leaves the retained runtime preview and stored values alone.
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
@@ -113,7 +114,7 @@ it.each(["Done", "Escape", "Settings OK"])(
     expect(screen.getByText("dark/larger/false")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(window.localStorage.getItem("ax-devil.device")).toBeNull();
+    expect(browserBacking().read()).toEqual({});
     expect(screen.getByText("dark/larger/false")).toBeTruthy();
 
     refused = false;
@@ -191,7 +192,7 @@ it.each(["submission order", "reverse order", "first refused"])(
         expect(screen.queryByRole("dialog")).toBeNull();
       }
     }
-    expect(window.localStorage.getItem("ax-devil.device")).toBeNull();
+    expect(browserBacking().read()).toEqual({});
     expect(sent).toEqual([
       { set: { "camera.host": "first.example" } },
       { set: { "camera.host": "second.example" } },
@@ -200,20 +201,19 @@ it.each(["submission order", "reverse order", "first refused"])(
       await act(async () => release[1]());
       expect(screen.queryByRole("dialog")).toBeNull();
       expect(screen.getByText("dark/system/true")).toBeTruthy();
-      const saved = window.localStorage.getItem("ax-devil.device");
+      const saved = browserBacking().read();
       await act(async () => release[0]());
-      expect(window.localStorage.getItem("ax-devil.device")).toBe(saved);
+      expect(browserBacking().read()).toEqual(saved);
     } else {
       await act(async () => release[0]());
       expect(screen.getByRole("dialog")).toBeTruthy();
-      if (order === "first refused")
-        expect(window.localStorage.getItem("ax-devil.device")).toBeNull();
+      if (order === "first refused") expect(browserBacking().read()).toEqual({});
       else expect(screen.getByText("light/system/true")).toBeTruthy();
       await act(async () => release[1]());
     }
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByText("dark/system/true")).toBeTruthy();
-    expect(JSON.parse(window.localStorage.getItem("ax-devil.device") ?? "{}")).toEqual({
+    expect(browserBacking().read()).toEqual({
       "ui.theme": "dark",
     });
   },
@@ -280,7 +280,7 @@ it.each([
   await dismissRefusal();
   expect(screen.getByText("dark/larger/false")).toBeTruthy();
   expect(screen.getByText("https")).toBeTruthy();
-  expect(window.localStorage.getItem("ax-devil.device")).toBe(kept);
+  expect(browserBacking().read()).toEqual(JSON.parse(kept ?? "{}"));
 
   if (where.startsWith("Settings")) {
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
@@ -288,7 +288,7 @@ it.each([
     fireEvent.change(screen.getByRole("combobox", { name: "Theme" }), { target: { value: saved } });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByText("dark/larger/false")).toBeTruthy();
-    expect(window.localStorage.getItem("ax-devil.device")).toBe(kept);
+    expect(browserBacking().read()).toEqual(JSON.parse(kept ?? "{}"));
   }
   refused = false;
   fireEvent.click(
@@ -326,8 +326,8 @@ it.each([
   const completed = where === "Quick Setup";
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   await screen.findByText(`${chosen}/system/${completed}`);
-  expect(window.localStorage.getItem("ax-devil.device")).toBe(
-    where === "Reset choices" && saved === "light" ? "{}" : kept,
+  expect(browserBacking().read()).toEqual(
+    where === "Reset choices" ? {} : { "ui.theme": saved, "ui.text_size": "system" },
   );
   expect(patches).toHaveLength(where === "Settings" ? 1 : 2);
   cleanup();
