@@ -164,7 +164,8 @@ async fn watcher_of(backend: &Backend, added: &common::Added) -> (Viewer, Vec<St
         .sessions
         .join(&link, CursorOptions::default())
         .unwrap();
-    let Ok(Reply::Ticket(ticket)) = seat.command(Command::RequestTicket(added.key.clone())) else {
+    let Ok(Reply::Ticket(ticket)) = seat.command(Command::RequestTicket(added.key.clone(), vec![]))
+    else {
         panic!("a watcher may stream what the owner has open");
     };
     opened_with(backend, &ticket.to_string()).await

@@ -109,7 +109,7 @@ impl<C: Clone + Send + 'static> Handle<C> {
     pub fn command(&self, command: Command) -> Result<Reply, Refusal> {
         let fresh = Fresh::now();
         let ticket = Ticket(fresh.secret.clone());
-        let wants_ticket = matches!(command, Command::RequestTicket(_));
+        let wants_ticket = matches!(command, Command::RequestTicket(..));
         let input = Input::Command {
             seat: self.seat,
             lease: self.lease,

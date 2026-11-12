@@ -1,3 +1,4 @@
+import { StreamRequests } from "./streamRequests";
 import { credential } from "../client/access";
 import { CommandFailed, CommandRefused } from "../client/errors";
 import type {
@@ -91,7 +92,10 @@ export class SessionStore {
   #syncId = 0;
   #syncLeft = 0;
   #syncTimer: ReturnType<typeof setTimeout> | undefined;
-  #queued: { send: () => void; reject?: (reason: Error) => void }[] = [];
+  #streams = new StreamRequests(
+    () => this.#state.connection === "online" && this.#state.session !== null,
+    (command) => this.#ask(command),
+  );
   /** The newest name typed and not sent, the timer that sends it, and when a name was last sent. */
   #name: string | null = null;
   #nameTimer: ReturnType<typeof setTimeout> | undefined;
@@ -268,28 +272,14 @@ export class SessionStore {
     this.#name = null;
   }
 
-  /** Releases this seat's viewer, ordered with tickets even while the Session connection is down. */
+  /** Batches release with admission, or cancels a queued offline request for this viewer. */
   releaseStream(viewer: number): void {
-    this.#whenOnline(() => {
-      void this.#ask({ type: "releaseStream", viewer }).catch(() => undefined);
-    });
+    this.#streams.release(viewer);
   }
 
-  /** A ticket for one socket; an online request is sent immediately, in call order with releases. */
+  /** Requests a ticket immediately when online, taking the pending releases with it. */
   requestTicket(key: ContentRef): Promise<string> {
-    return new Promise((resolve, reject) => {
-      this.#whenOnline(() => {
-        void this.#ask({ type: "requestTicket", key }).then((ticket) => {
-          if (ticket === undefined) reject(new Error("The backend sent no ticket."));
-          else resolve(ticket);
-        }, reject);
-      }, reject);
-    });
-  }
-
-  #whenOnline(send: () => void, reject?: (reason: Error) => void): void {
-    if (this.#state.connection === "online" && this.#state.session) send();
-    else this.#queued.push({ send, reject });
+    return this.#streams.request(key);
   }
 
   setCursorOptions(options: CursorOptions): void {
@@ -323,10 +313,7 @@ export class SessionStore {
   #refuse(reason: Error): void {
     const waiting = [...this.#asked.values()];
     this.#asked.clear();
-    this.#queued = this.#queued.filter((queued) => {
-      queued.reject?.(reason);
-      return !queued.reject;
-    });
+    this.#streams.refuse(reason);
     for (const { reject } of waiting) reject(reason);
   }
 
@@ -492,8 +479,7 @@ export class SessionStore {
   }
 
   #flush(): void {
-    if (this.#state.connection === "online" && this.#state.session)
-      for (const { send } of this.#queued.splice(0)) send();
+    this.#streams.flush();
     const pending = this.#pending;
     if (pending && pending.seq > this.#sent) {
       if (this.#connection?.send({ type: "view", seq: pending.seq, view: pending.view }))

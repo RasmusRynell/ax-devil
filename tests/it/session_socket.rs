@@ -226,7 +226,10 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
 
     // It may stream what is open, and the stream ends with the sharing.
     guest
-        .say(command(2, json!({"type": "requestTicket", "key": key})))
+        .say(command(
+            2,
+            json!({"type": "requestTicket", "release": [], "key": key}),
+        ))
         .await;
     let ticket = guest.until("ticket message", of_type("ticket")).await["ticket"].clone();
     let mut playback = Socket::connect(&address, "/api/playback").await;

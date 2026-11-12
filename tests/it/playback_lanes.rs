@@ -382,7 +382,8 @@ async fn a_watcher_learns_that_a_lane_failed_or_warned_but_not_the_hosts_paths_o
         .sessions
         .join(&link, CursorOptions::default())
         .unwrap();
-    let Ok(Reply::Ticket(ticket)) = seat.command(Command::RequestTicket(video.key.clone())) else {
+    let Ok(Reply::Ticket(ticket)) = seat.command(Command::RequestTicket(video.key.clone(), vec![]))
+    else {
         panic!("a watcher may stream what the owner has open");
     };
     let mut watcher = backend.viewer().await;

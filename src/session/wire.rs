@@ -72,7 +72,7 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
         SessionCommand::Follow => Some(Scope::Follow),
         SessionCommand::SetViewport { .. } | SessionCommand::SetOverlay { .. } => Some(Scope::View),
         SessionCommand::Control { .. } => Some(Scope::Control),
-        SessionCommand::RequestTicket { .. } | SessionCommand::ReleaseStream { .. } => None,
+        SessionCommand::RequestTicket { .. } | SessionCommand::ReleaseStreams { .. } => None,
         // New replaces the workspace, which only a seat with the files grant may.
         SessionCommand::Workspace { command } => Some(match command {
             WorkspaceCommand::Keep => Scope::Content,
@@ -159,11 +159,11 @@ pub(super) fn command(
             Request::Session(Command::SetOverlay { overlay, shown }, None)
         }
         SessionCommand::Control { control } => Request::Session(Command::Control(control), None),
-        SessionCommand::ReleaseStream { viewer } => {
-            Request::Session(Command::ReleaseStream(viewer), None)
+        SessionCommand::ReleaseStreams { viewers } => {
+            Request::Session(Command::ReleaseStreams(viewers), None)
         }
-        SessionCommand::RequestTicket { key } => {
-            Request::Session(Command::RequestTicket(key), None)
+        SessionCommand::RequestTicket { key, release } => {
+            Request::Session(Command::RequestTicket(key, release), None)
         }
         SessionCommand::Workspace { command } => Request::Workspace(workspace_command(command)?),
     })

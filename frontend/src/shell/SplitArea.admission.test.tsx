@@ -27,17 +27,42 @@ vi.mock("../playback/VideoCanvas", () => ({
 }));
 installViewerHarness();
 
-it("reopens a preview twice at eight streams even when the old worker never acknowledges close", async () => {
+async function setup() {
   const streams = new Set<number>();
   let requests = 0;
   let refusals = 0;
-  let workers = 0;
+  let commands = 0;
+  let limited = 0;
+  // src/session/reader.rs: ten commands at once, replenished by ten per second.
+  const BURST = 10;
+  const PER_SECOND = 10;
   class AdmissionSocket extends FakeSocket {
+    tokens = BURST;
+    last = performance.now();
     override send(text: string) {
       const message = JSON.parse(text) as SessionClientMessage;
-      if (message.type === "command" && message.cmd.type === "releaseStream")
-        streams.delete(message.cmd.viewer);
+      if (message.type === "hello") streams.clear(); // Welcome rotates the lease, sweeping older grants.
+      if (
+        message.type === "cursorOptions" ||
+        (message.type === "command" && message.cmd.type !== "setViewport")
+      ) {
+        const now = performance.now();
+        this.tokens = Math.min(BURST, this.tokens + ((now - this.last) * PER_SECOND) / 1000);
+        this.last = now;
+        if (this.tokens < 1) {
+          limited++;
+          this.drop(4429);
+          return;
+        }
+        this.tokens--;
+      }
+      if (message.type === "command") {
+        commands++;
+        if (message.cmd.type === "releaseStreams")
+          for (const viewer of message.cmd.viewers) streams.delete(viewer);
+      }
       if (message.type === "command" && message.cmd.type === "requestTicket") {
+        for (const viewer of message.cmd.release) streams.delete(viewer);
         streams.delete(message.cmd.key.viewer);
         requests++;
         if (streams.size === 8) {
@@ -55,7 +80,6 @@ it("reopens a preview twice at eight streams even when the old worker never ackn
     }
   }
   class PlaybackWorker {
-    readonly id = ++workers;
     onmessage: ((event: { data: Incoming }) => void) | null = null;
     terminate() {}
     say(data: Incoming) {
@@ -107,6 +131,26 @@ it("reopens a preview twice at eight streams even when the old worker never ackn
   });
   flushFrames();
   expect(streams.size).toBe(8);
+  return {
+    store,
+    streams,
+    get commands() {
+      return commands;
+    },
+    get requests() {
+      return requests;
+    },
+    get refusals() {
+      return refusals;
+    },
+    get limited() {
+      return limited;
+    },
+  };
+}
+
+it("reopens a preview twice at eight streams even when the old worker never acknowledges close", async () => {
+  const state = await setup();
   const pane = () => screen.getByRole("group", { name: "h.mp4" });
   for (let reopen = 0; reopen < 2; reopen++) {
     fireEvent.contextMenu(pane().querySelector("[draggable]")!);
@@ -115,6 +159,28 @@ it("reopens a preview twice at eight streams even when the old worker never ackn
   await act(async () => {});
   flushFrames();
   expect(within(pane()).getByRole("button", { name: "Pause" })).toBeTruthy();
-  expect([requests, streams.size, refusals]).toEqual([10, 8, 0]);
+  expect([
+    state.requests,
+    state.streams.size,
+    state.refusals,
+    state.commands,
+    state.limited,
+  ]).toEqual([10, 8, 0, 10, 0]);
   expect(screen.queryByRole("alert")).toBeNull();
+}, 5000);
+
+it("reconnects eight viewers ready and paused with eight commands and no command-limit close", async () => {
+  const state = await setup();
+  expect(screen.getAllByRole("button", { name: "Pause" })).toHaveLength(8);
+  vi.useFakeTimers();
+  act(() => FakeSocket.latest.drop());
+  await act(() => vi.advanceTimersByTimeAsync(600));
+  flushFrames();
+  const commands = FakeSocket.latest.received.filter((message) => message.type === "command");
+  expect(commands).toHaveLength(8);
+  expect(commands.every((message) => message.cmd.type === "requestTicket")).toBe(true);
+  expect(state.limited).toBe(0);
+  expect(state.store.getSnapshot().connection).toBe("online");
+  expect(screen.getAllByRole("slider", { name: "Timeline" })).toHaveLength(8);
+  expect(screen.getAllByRole("button", { name: "Play" })).toHaveLength(8);
 }, 5000);

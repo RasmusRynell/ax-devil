@@ -44,7 +44,7 @@ variants! {
     SessionCommand::SetOverlay { .. } => "setOverlay",
     SessionCommand::Control { .. } => "control",
     SessionCommand::RequestTicket { .. } => "requestTicket",
-    SessionCommand::ReleaseStream { .. } => "releaseStream",
+    SessionCommand::ReleaseStreams { .. } => "releaseStreams",
     SessionCommand::Workspace { command: WorkspaceCommand::New } => "workspaceNew",
     SessionCommand::Workspace { command: WorkspaceCommand::Open { .. } } => "workspaceOpen",
     SessionCommand::Workspace { command: WorkspaceCommand::Save { .. } } => "workspaceSave",
@@ -174,9 +174,12 @@ fn cases() -> Vec<(Value, Expect)> {
             json!({ "type": "control", "control": { "type": "stop" } }),
             Converted,
         ),
-        (json!({ "type": "releaseStream", "viewer": 1 }), Converted),
         (
-            json!({ "type": "requestTicket", "key": {
+            json!({ "type": "releaseStreams", "viewers": [1] }),
+            Converted,
+        ),
+        (
+            json!({ "type": "requestTicket", "release": [], "key": {
                 "content": item, "generation": 0, "entry": item, "viewer": 0 } }),
             Converted,
         ),

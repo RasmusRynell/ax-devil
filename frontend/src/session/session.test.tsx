@@ -178,7 +178,7 @@ describe("session", () => {
     expect(screen.getByText("live open editable")).toBeTruthy();
   });
 
-  it("sends an offline release before a later ticket request when its seat returns", async () => {
+  it("cancels only the released viewer's queued request while offline", async () => {
     const store = new SessionStore();
     render(
       <SessionProvider store={store}>
@@ -188,22 +188,20 @@ describe("session", () => {
     await act(async () => {});
     vi.useFakeTimers();
     act(() => FakeSocket.latest.drop());
-    store.releaseStream(8);
     const scene = scenario("one-video");
-    const ticket = store.requestTicket({
-      content: scene.ids.a,
-      entry: scene.ids.a,
-      generation: 10,
-      viewer: 9,
-    });
+    const key = { content: scene.ids.a, entry: scene.ids.a, generation: 10 };
+    const cancelled = store.requestTicket({ ...key, viewer: 8 }).catch((error: unknown) => error);
+    const kept = store.requestTicket({ ...key, viewer: 9 });
+    store.releaseStream(8);
+    expect(await cancelled).toBeInstanceOf(Error);
     await act(() => vi.advanceTimersByTimeAsync(600));
-    await ticket;
+    await kept;
     expect(
       FakeSocket.latest.received
         .filter((message) => message.type === "command")
-        .map((message) => message.cmd.type),
-    ).toEqual(["releaseStream", "requestTicket"]);
-  });
+        .map((message) => message.cmd),
+    ).toEqual([{ type: "requestTicket", key: { ...key, viewer: 9 }, release: [] }]);
+  }, 5000);
 
   it("takes the seat back after a drop, with the rotated token, and sends the change that was on its way again", async () => {
     const room = watch("explore");

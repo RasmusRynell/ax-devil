@@ -115,8 +115,10 @@ pub(super) fn request(
     seat: SeatId,
     lease: Lease,
     key: ContentRef,
+    release: &[ViewerId],
     fresh: &Fresh,
 ) -> Result<(), Refusal> {
+    self::release(next, fx, seat, release)?;
     end(next, fx, seat, key.viewer);
     next.tickets.retain(|ticket| ticket.expires > fresh.now);
     if next.streams_of(seat) >= MAX_STREAMS_PER_SEAT
@@ -148,9 +150,20 @@ fn end(next: &mut SessionState, fx: &mut Effects, seat: SeatId, viewer: ViewerId
     });
 }
 
-/// Releases only this seat's tickets and grant for `viewer`, even after it lost stream rights.
-pub(super) fn release(next: &mut SessionState, fx: &mut Effects, seat: SeatId, viewer: ViewerId) {
-    end(next, fx, seat, viewer);
+/// Releases only this seat's tickets and grants, rejecting a list larger than its pane allowance.
+pub(super) fn release(
+    next: &mut SessionState,
+    fx: &mut Effects,
+    seat: SeatId,
+    viewers: &[ViewerId],
+) -> Result<(), Refusal> {
+    if viewers.len() > MAX_STREAMS_PER_SEAT {
+        return Err(Refusal::Invalid);
+    }
+    for viewer in viewers {
+        end(next, fx, seat, *viewer);
+    }
+    Ok(())
 }
 
 /// Spends `ticket` into a grant, if it is still valid for the seat and stream it was issued for.

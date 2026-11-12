@@ -94,7 +94,7 @@ impl Added {
             entry: entry.clone(),
             ..self.key.clone()
         };
-        match self.owner.command(Command::RequestTicket(key)) {
+        match self.owner.command(Command::RequestTicket(key, vec![])) {
             Ok(Reply::Ticket(ticket)) => ticket.to_string(),
             other => panic!("expected a ticket, got {other:?}"),
         }

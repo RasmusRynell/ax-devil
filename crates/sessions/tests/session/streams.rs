@@ -19,7 +19,10 @@ async fn a_ticket_opens_one_stream_once_and_only_for_the_seat_and_key_it_was_iss
     let rig = Rig::new();
     let (owner, guest) = rig.shared(Access::Watch);
     let (_, key) = rig.open_video(&owner, "a.mp4");
-    let Reply::Ticket(ticket) = guest.command(Command::RequestTicket(key.clone())).unwrap() else {
+    let Reply::Ticket(ticket) = guest
+        .command(Command::RequestTicket(key.clone(), vec![]))
+        .unwrap()
+    else {
         panic!("a ticket");
     };
 
@@ -31,7 +34,10 @@ async fn a_ticket_opens_one_stream_once_and_only_for_the_seat_and_key_it_was_iss
         "single use"
     );
 
-    let Reply::Ticket(late) = guest.command(Command::RequestTicket(key.clone())).unwrap() else {
+    let Reply::Ticket(late) = guest
+        .command(Command::RequestTicket(key.clone(), vec![]))
+        .unwrap()
+    else {
         panic!("a ticket");
     };
     advance(Duration::from_secs(11)).await;
@@ -41,7 +47,10 @@ async fn a_ticket_opens_one_stream_once_and_only_for_the_seat_and_key_it_was_iss
         "expired"
     );
 
-    let Reply::Ticket(bound) = guest.command(Command::RequestTicket(key.clone())).unwrap() else {
+    let Reply::Ticket(bound) = guest
+        .command(Command::RequestTicket(key.clone(), vec![]))
+        .unwrap()
+    else {
         panic!("a ticket");
     };
     let newer = rig.service.resume(guest.resume_token()).unwrap();
@@ -50,7 +59,10 @@ async fn a_ticket_opens_one_stream_once_and_only_for_the_seat_and_key_it_was_iss
         Some(Refusal::BadTicket),
         "bound to the lease it was asked under"
     );
-    let Reply::Ticket(for_key) = newer.command(Command::RequestTicket(key.clone())).unwrap() else {
+    let Reply::Ticket(for_key) = newer
+        .command(Command::RequestTicket(key.clone(), vec![]))
+        .unwrap()
+    else {
         panic!("a ticket");
     };
     let item = *owner.state().doc.workspace.open.iter().next().unwrap();
@@ -148,31 +160,41 @@ async fn releasing_and_replacing_viewers_frees_grants_and_pending_tickets_at_the
             .unwrap()
         })
         .collect();
-    let ticket = |viewer| {
+    let ticket = |viewer, release| {
         let Reply::Ticket(ticket) = owner
-            .command(Command::RequestTicket(ContentRef {
-                viewer: ViewerId(viewer),
-                ..key.clone()
-            }))
+            .command(Command::RequestTicket(
+                ContentRef {
+                    viewer: ViewerId(viewer),
+                    ..key.clone()
+                },
+                release,
+            ))
             .unwrap()
         else {
             panic!("a ticket");
         };
         ticket
     };
-    owner.command(Command::ReleaseStream(ViewerId(8))).unwrap();
-    let cancelled = ticket(9);
-    owner.command(Command::ReleaseStream(ViewerId(9))).unwrap();
-    let last = ticket(10);
+    assert_eq!(
+        owner
+            .command(Command::ReleaseStreams(vec![ViewerId(8); 9]))
+            .err(),
+        Some(Refusal::Invalid)
+    );
+    let cancelled = ticket(9, vec![ViewerId(8)]);
+    owner
+        .command(Command::ReleaseStreams(vec![ViewerId(9)]))
+        .unwrap();
+    let last = ticket(10, vec![]);
     assert_eq!(authority(&leases[7]), Authority::Revoked);
     assert_eq!(
         rig.service.redeem(&cancelled).err(),
         Some(Refusal::BadTicket)
     );
     let last = rig.service.redeem(&last).unwrap();
-    let first = ticket(10);
+    let first = ticket(10, vec![]);
     assert_eq!(authority(&last), Authority::Revoked);
-    let second = ticket(10);
+    let second = ticket(10, vec![]);
     assert_eq!(rig.service.redeem(&first).err(), Some(Refusal::BadTicket));
     assert!(rig.service.redeem(&second).is_ok());
 }

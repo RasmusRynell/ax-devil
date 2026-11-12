@@ -174,7 +174,10 @@ fn samples(world: &World) -> Vec<(Command, Needs)> {
         ),
         (Command::Control(Control::RegenerateLink), Needs::Control),
         (Command::Control(Control::Stop), Needs::Control),
-        (Command::RequestTicket(world.key.clone()), Needs::Stream),
+        (
+            Command::RequestTicket(world.key.clone(), vec![]),
+            Needs::Stream,
+        ),
     ]
 }
 

@@ -49,7 +49,7 @@ async fn ctrl_c_ends_open_viewers_and_the_backend_exits() {
         "viewer": 1,
     });
     session
-        .say(json!({"type": "command", "seq": 1, "cmd": {"type": "requestTicket", "key": key}}))
+        .say(json!({"type": "command", "seq": 1, "cmd": {"type": "requestTicket", "release": [], "key": key}}))
         .await;
     let ticket = session
         .until("ticket message", |message| message["type"] == "ticket")

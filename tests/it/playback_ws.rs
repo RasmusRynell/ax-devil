@@ -189,10 +189,13 @@ async fn two_viewers_of_one_file_share_one_source_until_the_last_leaves() {
     let mut second = backend.viewer().await;
     let Reply::Ticket(ticket) = id
         .owner
-        .command(Command::RequestTicket(ContentRef {
-            viewer: ViewerId(2),
-            ..id.key.clone()
-        }))
+        .command(Command::RequestTicket(
+            ContentRef {
+                viewer: ViewerId(2),
+                ..id.key.clone()
+            },
+            vec![],
+        ))
         .unwrap()
     else {
         panic!("a ticket for the second viewer");
@@ -437,7 +440,8 @@ async fn a_ticket_opens_one_stream_and_a_watchers_stream_ends_when_sharing_stops
         .sessions
         .join(&link, CursorOptions::default())
         .unwrap();
-    let Ok(Reply::Ticket(ticket)) = seat.command(Command::RequestTicket(video.key.clone())) else {
+    let Ok(Reply::Ticket(ticket)) = seat.command(Command::RequestTicket(video.key.clone(), vec![]))
+    else {
         panic!("a watcher may stream what the owner has open");
     };
     let mut watcher = backend.viewer().await;
