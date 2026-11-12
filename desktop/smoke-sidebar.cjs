@@ -1,6 +1,7 @@
 // The smoke test's sidebar scenario: same-named videos get a detail line the search matches, the sidebar's edge drags
 // within its limits, the width survives hiding and showing, and a drag to nothing hides the sidebar. Screenshots in both
 // themes at normal zoom and at 200%.
+const { pressShortcut } = require("./shortcut-input.cjs");
 const { nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -213,9 +214,7 @@ module.exports.run = async ({ window }) => {
       // The tree keeps the row it is on from the click, which it must have drawn before the key.
       await js(`${clips}[0].click()`);
       await frames({ js });
-      await js(
-        `${clips}[0].closest('[role=tree]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))`,
-      );
+      pressShortcut(window, "Delete");
       await wait(`${clips}.length === ${left - 1}`);
     }
   } finally {
