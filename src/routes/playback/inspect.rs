@@ -146,10 +146,15 @@ impl Inspections {
         }
     }
 
-    fn allowed(&self) -> bool {
-        self.permission
+    fn admit(&mut self) -> bool {
+        let allowed = self
+            .permission
             .as_ref()
-            .is_none_or(|permission| permission())
+            .is_none_or(|permission| permission());
+        if !allowed {
+            self.release();
+        }
+        allowed
     }
 
     /// Takes a request for an object's fields, replacing one that has not started. Whether the viewer holds the sample
@@ -177,7 +182,7 @@ impl Inspections {
         entity: String,
         target: Option<Target>,
     ) {
-        if !self.allowed() {
+        if !self.admit() {
             return;
         }
         if let Some(old) = self.cursor.take() {
@@ -219,7 +224,7 @@ impl Inspections {
 
     /// Queues a continuation under freshly checked sample authority.
     pub(super) fn continue_target(&mut self, read: InspectionRead, target: Option<Target>) {
-        if !self.allowed() {
+        if !self.admit() {
             return;
         }
         let valid = self.continuation_target(&read.token);
@@ -275,7 +280,7 @@ impl Inspections {
         paths: Vec<String>,
         target: Option<Target>,
     ) {
-        if !self.allowed() {
+        if !self.admit() {
             return;
         }
         let request = Request {

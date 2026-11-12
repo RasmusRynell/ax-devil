@@ -320,11 +320,11 @@ impl<S: Sink> Walk<'_, S> {
             self.under("end_reason", |walk| walk.text(place, reason));
         }
         if let Some(observation) = observation {
-            if let Some(frame) = observation.time.frame() {
-                self.under("frame_number", |walk| walk.leaf(place, Leaf::Int(frame)));
-            }
             if let Some(time) = observation.time.timestamp() {
                 self.under("timestamp", |walk| walk.leaf(place, datetime_leaf(time)));
+            }
+            if let Some(frame) = observation.time.frame() {
+                self.under("frame_number", |walk| walk.leaf(place, Leaf::Int(frame)));
             }
         }
     }

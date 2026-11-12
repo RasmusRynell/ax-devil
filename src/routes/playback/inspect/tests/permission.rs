@@ -87,7 +87,9 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
     ];
     let mut offset = 0;
     let mut pinned = Vec::new();
+    let mut scan = ScanBudget::new(5_100);
     loop {
+        scan.step();
         inspections.continue_target(
             InspectionRead {
                 pins: Some(wanted.clone()),
@@ -174,22 +176,13 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
         ),
         "a pinned value remains copyable outside the visible page"
     );
+    let retained = inspections.cursor.as_ref().unwrap().5.clone();
     allowed.store(false, Ordering::SeqCst);
-    inspections.ask(&viewer, 0, 0, revision, 10, "cvat_track_7".into());
-    assert!(
-        inspections.objects.running.is_none(),
-        "denied initial inspection starts no work"
-    );
-    inspections.ask_fields(&viewer, 0, 0, revision, 10, vec!["raw.frame_number".into()]);
-    assert!(
-        inspections.searches.running.is_none(),
-        "denied query starts no work"
-    );
     for (field, raw, pins, offset) in [
         (None, None, None, next_page),
         (Some(ordinal), None, None, next_chunk),
         (None, Some(true), None, 0),
-        (None, None, Some(wanted), 0),
+        (None, None, Some(wanted.clone()), 0),
     ] {
         inspections.continue_target(
             InspectionRead {
@@ -208,6 +201,56 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
             "denied pages, value chunks and Raw chunks start no work"
         );
     }
+    inspections.ask(&viewer, 0, 0, revision, 10, "cvat_track_7".into());
+    assert!(
+        inspections.objects.running.is_none(),
+        "denied initial inspection starts no work"
+    );
+    inspections.ask_fields(&viewer, 0, 0, revision, 10, vec!["raw.frame_number".into()]);
+    assert!(
+        inspections.searches.running.is_none(),
+        "denied query starts no work"
+    );
+
+    allowed.store(true, Ordering::SeqCst);
+    inspections.continue_target(
+        InspectionRead {
+            pins: Some(wanted),
+            request: 5,
+            token: cursor.token,
+            field: None,
+            raw: None,
+            path: false,
+            offset: 0,
+        },
+        viewer.inspect_target(0, revision, 10),
+    );
+    let (message, frames) = answer(&mut inspections).await;
+    assert!(
+        matches!(message, ServerMessage::InspectContinued {
+        result: InspectionReadResult::Refused { ref reason }, ..
+    } if reason == "Inspection expired; select the object again"),
+        "permission refusal must permanently expire the old token"
+    );
+    assert_eq!(frames, None);
+    {
+        let state = retained.lock().unwrap();
+        assert!(
+            !state.active
+                && state.scene.is_none()
+                && state.traversal.is_none()
+                && state.pins.fields.is_empty(),
+            "permission refusal releases the cached Scene, preparation and pin addresses"
+        );
+    }
+    inspections.ask(&viewer, 0, 0, revision, 10, "cvat_track_7".into());
+    assert!(
+        matches!(
+            verdict(answer(&mut inspections).await.0),
+            InspectionWire::Found { .. }
+        ),
+        "restored permission permits a fresh inspection"
+    );
 }
 
 struct HeldRead {

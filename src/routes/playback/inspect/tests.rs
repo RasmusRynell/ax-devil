@@ -458,3 +458,16 @@ pub(super) async fn bounded<T>(name: &str, future: impl std::future::Future<Outp
         .await
         .unwrap_or_else(|_| panic!("{name} timed out"))
 }
+
+// These CVAT fixtures have short paths and no work-only pages. Bound the whole scan by its
+// maximum leaf count and the 4,096-field page contract, allowing repeated ordinals.
+struct ScanBudget(usize);
+impl ScanBudget {
+    fn new(max_fields: usize) -> Self {
+        Self(max_fields.div_ceil(4096))
+    }
+    fn step(&mut self) {
+        assert!(self.0 > 0, "pin scan exceeded its fixture request budget");
+        self.0 -= 1;
+    }
+}

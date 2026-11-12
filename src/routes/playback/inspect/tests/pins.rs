@@ -42,7 +42,9 @@ async fn restarting_a_partial_pin_scan_preserves_resolved_copy_addresses() {
         offset: 0,
     };
     let mut offset = 0;
+    let mut scan = ScanBudget::new(12_100);
     let (ordinal, scan_next) = loop {
+        scan.step();
         inspections.continue_target(
             InspectionRead {
                 offset,
@@ -105,7 +107,9 @@ async fn restarting_a_partial_pin_scan_preserves_resolved_copy_addresses() {
     inspections.continue_target(copy.clone(), viewer.inspect_target(0, revision, 10));
     assert_chunk(answer(&mut inspections).await.0);
     let mut offset = next.unwrap();
+    let mut scan = ScanBudget::new(12_100);
     loop {
+        scan.step();
         inspections.continue_target(
             InspectionRead {
                 offset,
@@ -193,7 +197,9 @@ async fn re_pinning_the_only_pin_replays_its_value_on_the_same_paused_sample() {
         offset: 0,
     };
     let mut offset = 0;
+    let mut scan = ScanBudget::new(12_100);
     let resolved = loop {
+        scan.step();
         inspections.continue_target(
             InspectionRead {
                 offset,
