@@ -211,16 +211,16 @@ function installIpc({ connect, disconnect, restart, device }) {
       event.returnValue = {};
     }
   });
-  ipcMain.on("device:set", (event, changes) => {
+  ipcMain.handle("device:set", async (event, changes) => {
     try {
       const { window } = sender(event);
-      event.returnValue = device.write(changes);
-      if (event.returnValue !== null) return;
+      await device.write(changes);
       for (const other of BrowserWindow.getAllWindows())
         if (other !== window && trusted.has(other.webContents))
           other.webContents.send("device:changed", device.read());
+      return null;
     } catch (error) {
-      event.returnValue = error.message;
+      return `Could not save the device settings: ${error.message}`;
     }
   });
   handle("window:is-maximized", ({ window }) => window.isMaximized());

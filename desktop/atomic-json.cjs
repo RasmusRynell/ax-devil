@@ -46,10 +46,50 @@ function writeJson(file, values) {
   }
 }
 
+/** Device persistence uses the same strict replacement sequence without blocking the shell's event loop. */
+async function writeJsonAsync(file, values) {
+  const modeOf = async () => {
+    try {
+      const previous = await fs.promises.lstat(file);
+      if (!previous.isFile()) throw new Error("Settings target must be a regular file");
+      return previous.mode & 0o777;
+    } catch (error) {
+      if (error.code === "ENOENT") return 0o600;
+      throw error;
+    }
+  };
+  const mode = await modeOf();
+  await fs.promises.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${randomUUID()}.tmp`);
+  let descriptor;
+  let owned = false;
+  try {
+    descriptor = await fs.promises.open(
+      temporary,
+      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL,
+      0o600,
+    );
+    owned = true;
+    await descriptor.writeFile(JSON.stringify(values));
+    await descriptor.chmod(mode & (await modeOf()));
+    await descriptor.sync();
+    await descriptor.close();
+    descriptor = undefined;
+    await fs.promises.rename(temporary, file);
+    owned = false;
+  } finally {
+    try {
+      if (descriptor !== undefined) await descriptor.close();
+    } finally {
+      if (owned) await fs.promises.unlink(temporary);
+    }
+  }
+}
+
 /** Read only a regular target, avoiding symlinks and blocking special files. */
 function readJson(file) {
   targetMode(file);
   return JSON.parse(fs.readFileSync(file, "utf8"));
 }
 
-module.exports = { readJson, writeJson };
+module.exports = { readJson, writeJson, writeJsonAsync };

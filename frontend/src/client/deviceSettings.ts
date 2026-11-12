@@ -12,7 +12,9 @@ interface Backing {
   /** Every stored value, as stored. */
   read(): Record<string, unknown>;
   /** Stores this save's keys in one batch, returning all raw values after it; shell failures throw. */
-  write(changes: Partial<Record<SettingKey, DeviceValue | null>>): Record<string, unknown>;
+  write(
+    changes: Partial<Record<SettingKey, DeviceValue | null>>,
+  ): Record<string, unknown> | Promise<Record<string, unknown>>;
   /** Calls `listener` with every value after another window or tab changed one. */
   subscribe(listener: (values: Record<string, unknown>) => void): () => void;
 }
@@ -47,7 +49,7 @@ export function browserBacking(
   context: Pick<Window, "localStorage" | "addEventListener" | "removeEventListener"> = window,
 ): Backing {
   let current: Record<string, unknown> = {};
-  const ephemeral = new Map<string, DeviceValue | null>();
+  const ephemeral = new Map<string, { value: DeviceValue | null; observed: string | undefined }>();
   const read = (): Record<string, unknown> => {
     try {
       // The old shared entry is read-only fallback. A per-key null tombstone makes resets authoritative over it.
@@ -78,44 +80,36 @@ export function browserBacking(
     } catch {
       /* Storage is blocked: keep the last current map. */
     }
-    for (const [key, value] of ephemeral) {
-      if (value === null) delete current[key];
-      else current[key] = value;
+    const shown = { ...current };
+    for (const [key, { value }] of ephemeral) {
+      if (value === null) delete shown[key];
+      else shown[key] = value;
     }
-    return { ...current };
+    return shown;
   };
   return {
     read,
     write(changes) {
+      read();
       for (const [key, value] of Object.entries(changes)) {
         try {
           context.localStorage.setItem(`${KEY}.${key}`, JSON.stringify(value));
           ephemeral.delete(key);
         } catch {
-          ephemeral.set(key, value);
+          ephemeral.set(key, { value, observed: JSON.stringify(current[key]) });
         }
       }
       return read();
     },
     subscribe(listener) {
       const changed = (event: StorageEvent) => {
-        if (event.key === null) ephemeral.clear();
-        else if (event.key.startsWith(`${KEY}.`)) ephemeral.delete(event.key.slice(KEY.length + 1));
-        else if (event.key === KEY) {
-          const decode = (text: string | null): Record<string, unknown> => {
-            try {
-              return (JSON.parse(text ?? "{}") as Record<string, unknown>) ?? {};
-            } catch {
-              return {};
-            }
-          };
-          const before = decode(event.oldValue),
-            after = decode(event.newValue);
-          for (const { key } of DEVICE_ROWS)
-            if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) ephemeral.delete(key);
-        }
-        if (event.key === KEY || event.key?.startsWith(`${KEY}.`) || event.key === null)
+        if (event.key === KEY || event.key?.startsWith(`${KEY}.`) || event.key === null) {
+          read();
+          // All event kinds observe current storage, never the delivery order of queued events.
+          for (const [key, choice] of ephemeral)
+            if (JSON.stringify(current[key]) !== choice.observed) ephemeral.delete(key);
           listener(read());
+        }
       };
       context.addEventListener("storage", changed);
       return () => context.removeEventListener("storage", changed);
@@ -175,7 +169,11 @@ export function createDeviceStore(backing: Backing) {
     changes: readonly (readonly [SettingKey, DeviceValue | null])[],
     supersedes = true,
     current = backing.read(),
-  ): DeviceFailure | null => {
+    accepts?: (key: SettingKey) => boolean,
+  ): DeviceFailure | null | Promise<DeviceFailure | null> => {
+    const atDispatch = new Map(changes.map(([key]) => [key, versions.get(key) ?? 0]));
+    const accepted =
+      accepts ?? ((key: SettingKey) => (versions.get(key) ?? 0) === atDispatch.get(key));
     const patch: Partial<Record<SettingKey, DeviceValue | null>> = {};
     for (const [key, value] of changes) {
       const unchanged =
@@ -186,15 +184,32 @@ export function createDeviceStore(backing: Backing) {
             : !(key in current) && value === DEVICE_DEFAULTS.get(key);
       if (!unchanged) patch[key] = value;
     }
+    const finish = (next: Record<string, unknown>) => {
+      const choices = changes.filter(([key]) => accepted(key));
+      if (!choices.length) return null;
+      const kept = { ...next };
+      for (const [key] of changes) {
+        if (accepted(key)) continue;
+        if (key in raw) kept[key] = raw[key];
+        else delete kept[key];
+      }
+      receive(kept, choices, supersedes);
+      return null;
+    };
+    const failed = (error: unknown): DeviceFailure | null => {
+      const keys = (Object.keys(patch) as SettingKey[]).filter(accepted);
+      return keys.length
+        ? { keys, reason: error instanceof Error ? error.message : String(error) }
+        : null;
+    };
     try {
       const next = Object.keys(patch).length ? backing.write(patch) : current;
-      receive(next, changes, supersedes);
-      return null;
+      // Browser commits stay synchronous; a shell reply is checked again after asynchronous persistence.
+      return next instanceof Promise
+        ? next.then(() => finish(backing.read())).catch(failed)
+        : finish(next);
     } catch (error) {
-      return {
-        keys: Object.keys(patch) as SettingKey[],
-        reason: error instanceof Error ? error.message : String(error),
-      };
+      return failed(error);
     }
   };
   backing.subscribe((incoming) => receive(incoming));
@@ -246,13 +261,25 @@ export function createDeviceStore(backing: Backing) {
               ((committed.get(key) ?? 0) > confirmed &&
                 JSON.stringify(current[key]) === JSON.stringify(raw[key]))),
         );
+        const accepts = (key: SettingKey) =>
+          surviving.some(
+            (choice) =>
+              choice.key === key &&
+              (versions.get(key) ?? 0) === choice.version &&
+              choice.ordinal > (committed.get(key) ?? 0),
+          );
         const failure = write(
           surviving.map(({ key, value }) => [key, value] as const),
           false,
           current,
+          accepts,
         );
-        if (!failure) for (const { key, ordinal } of surviving) committed.set(key, ordinal);
-        return failure;
+        const confirmed = (error: DeviceFailure | null) => {
+          if (!error)
+            for (const { key, ordinal } of surviving) if (accepts(key)) committed.set(key, ordinal);
+          return error;
+        };
+        return failure instanceof Promise ? failure.then(confirmed) : confirmed(failure);
       };
     },
     /** Calls `listener` after every change, from here or from another window; returns the way to stop. */
@@ -267,9 +294,9 @@ export function createDeviceStore(backing: Backing) {
 function shellBacking(bridge: WindowBridge): Backing {
   return {
     read: () => bridge.deviceValues?.() ?? {},
-    write: (changes) => {
+    write: async (changes) => {
       if (!bridge.setDeviceValues) throw new Error("This shell does not offer Device persistence");
-      const reason = bridge.setDeviceValues(changes);
+      const reason = await bridge.setDeviceValues(changes);
       if (reason) throw new Error(reason);
       return bridge.deviceValues?.() ?? {};
     },

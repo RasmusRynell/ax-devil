@@ -41,7 +41,7 @@ pub fn api_version() -> &'static str {
 /// Raised when the desktop shell's own interface (the preload bridge and its IPC) changes in a way a frontend served
 /// by a remote backend cannot use. The shell loads a remote backend only when its [`AppInfo::shell`] matches.
 // Device persistence uses one fallible batch setter instead of the upstream single-key setter.
-pub const SHELL_API: u32 = 9;
+pub const SHELL_API: u32 = 10;
 
 /// Identifies a running backend, so the desktop shell and the development supervisor reuse only a compatible one.
 #[derive(Serialize, TS)]

@@ -53,7 +53,7 @@ export interface WindowBridge {
   /** Every setting this device keeps, one file whichever server the window shows; read before the page paints. */
   deviceValues?(): Record<string, unknown>;
   /** Stores one Device batch; null on success, a reason on failure. */
-  setDeviceValues?(changes: Record<string, string | boolean | null>): string | null;
+  setDeviceValues?(changes: Record<string, string | boolean | null>): Promise<string | null>;
   /** Reports every device setting after another window changed one; returns the way to stop listening. */
   onDeviceValuesChange?(listener: (values: Record<string, unknown>) => void): () => void;
   /** The page zoom factor (1 is 100%), read when asked. */

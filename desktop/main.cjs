@@ -279,10 +279,13 @@ app.on("before-quit", (event) => {
     const refused = writeWindow(windowFile, windowState);
     if (refused) console.error(refused);
   }
-  void backend.stop().then(() => {
-    stopped = true;
-    app.exit(exitCode);
-  });
+  void device
+    .close()
+    .then(() => backend.stop())
+    .then(() => {
+      stopped = true;
+      app.exit(exitCode);
+    });
 });
 app.on("window-all-closed", () => {
   if (recovering === 0) app.quit();

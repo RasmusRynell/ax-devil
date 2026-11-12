@@ -10,10 +10,10 @@ beforeAll(() => {
     this.setAttribute("open", "");
   };
 });
-afterEach(() => {
+afterEach(async () => {
   cleanup();
-  deviceStore.reset("ui.theme");
-  deviceStore.reset("ui.text_size");
+  await deviceStore.reset("ui.theme");
+  await deviceStore.reset("ui.text_size");
   delete document.documentElement.dataset.theme;
   delete document.documentElement.dataset.textSize;
 });

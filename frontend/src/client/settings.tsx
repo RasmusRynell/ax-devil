@@ -236,7 +236,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       settings.apply(answer.value);
     }
     // After the backend took its part, so a refused save changes nothing here either.
-    const failure = commitDevice();
+    const failure = await commitDevice();
     if (failure)
       return {
         code: "Internal",

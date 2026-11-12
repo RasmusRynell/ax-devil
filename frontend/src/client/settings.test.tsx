@@ -8,12 +8,12 @@ import type { SettingsPatch } from "../generated/api";
 import { browserBacking, deviceStore } from "./deviceSettings";
 import { SettingsProvider, useSettings } from "./settings";
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
-  deviceStore.reset("ui.theme");
-  deviceStore.reset("ui.text_size");
+  await deviceStore.reset("ui.theme");
+  await deviceStore.reset("ui.text_size");
   vi.unstubAllGlobals();
   window.localStorage.clear();
   window.dispatchEvent(new StorageEvent("storage", { key: null }));
@@ -226,7 +226,7 @@ describe("settings", () => {
       "ui.text_size": "large",
     });
     expect(fetched).not.toHaveBeenCalled();
-    deviceStore.reset("ui.text_size");
+    await deviceStore.reset("ui.text_size");
   });
 
   it("gives a Guest the default of every Personal setting, refuses its change and drops the old copy", async () => {

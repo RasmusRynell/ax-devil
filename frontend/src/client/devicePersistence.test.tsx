@@ -11,19 +11,19 @@ import { DEFAULT_SETTINGS } from "./fakeSettings";
 import { reasonOf } from "./errors";
 import { SettingsProvider, useSettings } from "./settings";
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
-  deviceStore.reset("ui.theme");
-  deviceStore.reset("ui.text_size");
+  await deviceStore.reset("ui.theme");
+  await deviceStore.reset("ui.text_size");
   window.localStorage.clear();
   window.dispatchEvent(new StorageEvent("storage", { key: null }));
 });
 const { createDeviceValues } = createRequire(import.meta.url)("../../../desktop/device.cjs") as {
   createDeviceValues: (file: string) => {
     read(): Record<string, unknown>;
-    write(changes: object): string | null;
+    write(changes: object): Promise<void>;
   };
 };
 
@@ -107,21 +107,20 @@ it.each(["refused", "device fails", "saved", "pending"])(
     const mine = createDeviceStore({
       read: () => writer.read(),
       subscribe: () => () => {},
-      write(changes) {
-        const reason = writer.write(changes);
-        if (reason) throw new Error(reason);
+      async write(changes) {
+        await writer.write(changes);
         return writer.read();
       },
     });
     vi.spyOn(deviceStore, "prepare").mockImplementation(mine.prepare);
-    const rename = vi.spyOn(fs, "renameSync");
+    const rename = vi.spyOn(fs.promises, "rename");
     try {
       const answer = await openSave();
       expect(rename).not.toHaveBeenCalled();
       expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual(raw);
       if (outcome === "pending") {
         // An unanswered PATCH must not reserve the shell's Device writer.
-        expect(writer.write({ "ui.theme": "light" })).toBeNull();
+        await writer.write({ "ui.theme": "light" });
         expect(writer.read()["ui.theme"]).toBe("light");
         return;
       }
@@ -198,8 +197,8 @@ it.each([null, "light"])(
     const tabA = createDeviceStore(a.backing),
       tabB = createDeviceStore(b.backing);
     interleave = () => {
-      if (choice === null) tabB.reset("ui.theme");
-      else tabB.set("ui.theme", choice);
+      if (choice === null) void tabB.reset("ui.theme");
+      else void tabB.set("ui.theme", choice);
     };
     vi.spyOn(deviceStore, "prepare").mockImplementation(tabA.prepare);
     const answer = await openBatch(false);
@@ -327,7 +326,7 @@ it("two successive blocked-storage saves retain both choices through the provide
 it("a newer confirmation in another context supersedes a delayed reply before its event arrives", async () => {
   const answer = await openBatch();
   const other = createDeviceStore(browserBacking());
-  other.set("ui.theme", "light");
+  await other.set("ui.theme", "light");
   // Do not deliver a storage event: the commit must observe the current per-key value itself.
   await answer(true);
   expect(deviceStore.readSaved()).toMatchObject({ "ui.theme": "light", "ui.text_size": "large" });
