@@ -123,8 +123,11 @@ describe("path picker", () => {
     cleanup();
 
     // A file the listing does not show asks too; a question that fails returns no path.
-    const hidden = pick("save", { extensions: [".csv"], name: ".hidden" });
+    const hidden = pick("save", { extensions: [".csv"], name: "marks" });
     await screen.findByRole("option", { name: "clips" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: ".hidden" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     fireEvent.click(await screen.findByRole("button", { name: "Replace" }));
     expect(hidden).toHaveBeenCalledExactlyOnceWith("/home/me/.hidden.csv");

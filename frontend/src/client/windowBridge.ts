@@ -36,10 +36,14 @@ export interface WindowBridge {
   /** Opens the native folder dialog titled `title`, which names what is chosen. Resolves to the absolute path chosen; null when cancelled. */
   pickFolder?: (title?: string) => Promise<string | null>;
   /**
-   * Opens the native save dialog for an export, suggesting `name`. Resolves to the absolute path chosen, which ends in
+   * Opens the native save dialog for an export, suggesting the separate `name` and optional `folder`. Resolves to the absolute path chosen, which ends in
    * `.extension`; null when cancelled.
    */
-  pickExportFile?: (name: string, extension: "mp4" | "png" | "csv") => Promise<string | null>;
+  pickExportFile?: (
+    name: string,
+    extension: "mp4" | "png" | "csv",
+    folder?: string,
+  ) => Promise<string | null>;
   /** Opens the native file dialog for a saved workspace. Resolves to the absolute path chosen; null when cancelled. */
   pickOpenWorkspace?: () => Promise<string | null>;
   /**

@@ -189,11 +189,11 @@ describe("the Bookmarks view", () => {
     await waitFor(() =>
       expect(exported()).toEqual([{ type: "exportBookmarks", path: "/tmp/marks.csv" }]),
     );
-    expect(pick).toHaveBeenLastCalledWith("Untitled bookmarks.csv", "csv");
+    expect(pick).toHaveBeenLastCalledWith("Untitled bookmarks.csv", "csv", undefined);
     act(() => room.show(marks, "saved"));
     fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
     await waitFor(() =>
-      expect(pick).toHaveBeenLastCalledWith("/workspaces/Untitled bookmarks.csv", "csv"),
+      expect(pick).toHaveBeenLastCalledWith("Untitled bookmarks.csv", "csv", "/workspaces/"),
     );
     delete window.axDevilWindow;
   });

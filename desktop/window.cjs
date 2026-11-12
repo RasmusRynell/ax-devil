@@ -1,6 +1,7 @@
 // Windows and the IPC they may use. A window trusts exactly one origin, fixed when it is created: the page there
 // may use the shell's IPC, navigation to any other origin is blocked, and new windows are denied. The one link a page
 // may open is the project's, in the default browser.
+const { safeFileName } = require("../shared/file-name.mjs");
 const { installDeviceIpc } = require("./device-ipc.cjs");
 const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const fs = require("node:fs");
@@ -243,14 +244,21 @@ function installIpc({ connect, disconnect, restart, device }) {
   });
   // The absolute path an export is saved to, with the extension the export writes; null when cancelled. The
   // backend, which writes the file, checks the path again. Only the local backend's page may browse this machine.
-  handle("export:pick-file", async ({ remote, window }, name, extension) => {
+  handle("export:pick-file", async ({ remote, window }, name, extension, folder) => {
     if (remote) throw new Error("Not allowed");
-    if (typeof name !== "string" || !Object.hasOwn(EXPORT_FILTERS, extension))
+    if (
+      typeof name !== "string" ||
+      !Object.hasOwn(EXPORT_FILTERS, extension) ||
+      (folder !== undefined && typeof folder !== "string")
+    )
       throw new Error("Expected a file name and an export extension");
+    const suffix = `.${extension}`;
+    const stem = name.toLowerCase().endsWith(suffix) ? name.slice(0, -suffix.length) : name;
+    const file = safeFileName(stem, suffix);
     const chosen = await dialog.showSaveDialog(window, {
       title: extension === "csv" ? "Export CSV" : "Export Video",
       defaultPath:
-        extension === "csv" ? path.resolve(app.getPath("home"), name) : path.basename(name),
+        folder || extension === "csv" ? path.join(folder || app.getPath("home"), file) : file,
       filters: [{ name: EXPORT_FILTERS[extension], extensions: [extension] }],
       properties: ["showOverwriteConfirmation"],
     });
@@ -277,14 +285,13 @@ function installIpc({ connect, disconnect, restart, device }) {
       (currentPath !== undefined && currentPath !== null && typeof currentPath !== "string")
     )
       throw new Error("Expected a workspace name and an optional current path");
-    const stem = name.replace(/[/\\\p{Cc}]/gu, "-");
-    const file = /^\.*$/.test(stem) ? "-" : stem;
+    const file = safeFileName(name, WORKSPACE_SUFFIX);
     const chosen = await dialog.showSaveDialog(window, {
       title: "Save Workspace As",
       filters: [
         { name: "Workspaces (*.ax-devil.workspace)", extensions: [WORKSPACE_SUFFIX.slice(1)] },
       ],
-      defaultPath: currentPath || path.join(app.getPath("home"), `${file}${WORKSPACE_SUFFIX}`),
+      defaultPath: currentPath || path.join(app.getPath("home"), file),
       properties: ["showOverwriteConfirmation"],
     });
     return suffixed(window, chosen, WORKSPACE_SUFFIX);

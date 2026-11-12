@@ -1,3 +1,4 @@
+import { splitPath } from "../../../shared/file-name.mjs";
 import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 import { useAccess } from "./access";
 import { ask } from "./ask";
@@ -44,17 +45,21 @@ export const saveWorkspace = (name: string, current: string | null): PathRequest
     mode: "save",
     title: "Save workspace as",
     extensions: [SUFFIX],
-    start: current ?? undefined,
-    name,
+    start: current ? splitPath(current).folder : undefined,
+    name: current ? splitPath(current).name : name,
   },
 });
 
 /** Where to write an export, suggested as `name` and ending in `.extension`. */
-export const exportFile = (name: string, extension: "mp4" | "png" | "csv"): PathRequest => ({
-  native: (bridge) => bridge.pickExportFile?.(name, extension),
+export const exportFile = (
+  name: string,
+  extension: "mp4" | "png" | "csv",
+  folder?: string,
+): PathRequest => ({
+  native: (bridge) => bridge.pickExportFile?.(name, extension, folder),
   picker: {
     mode: "save",
-    start: /[/\\]/.test(name) ? name : undefined,
+    start: folder,
     title: extension === "csv" ? "Export CSV" : "Export video",
     extensions: [`.${extension}`],
     name,

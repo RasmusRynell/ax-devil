@@ -27,9 +27,10 @@ contextBridge.exposeInMainWorld("axDevilWindow", {
     // Opens the native file dialog for an overlay file, filtered to `extensions` (lowercase, with their dots); resolves
     // to the chosen absolute path, null when it is cancelled.
     pickOverlay: (extensions) => ipcRenderer.invoke("workspace:pick-file", "overlay", extensions),
-    // Opens the native save dialog for an export (a suggested name and `mp4`, `png` or `csv`; CSV may include its folder); resolves to the chosen
+    // Opens the native save dialog for an export (a suggested name, `mp4`, `png` or `csv`, and an optional separate folder); resolves to the chosen
     // absolute path, null when it is cancelled.
-    pickExportFile: (name, extension) => ipcRenderer.invoke("export:pick-file", name, extension),
+    pickExportFile: (name, extension, folder) =>
+      ipcRenderer.invoke("export:pick-file", name, extension, folder),
     // Opens the native file dialog for a workspace to open; resolves to the chosen absolute path, null when cancelled.
     pickOpenWorkspace: () => ipcRenderer.invoke("workspace:pick-open"),
     // Opens the native save dialog for a workspace, suggesting `name` or, when the workspace has a file, `currentPath`;

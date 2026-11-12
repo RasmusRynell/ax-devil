@@ -1,11 +1,12 @@
 // The smoke test's shell scenario: the start panel, the window chrome, the title, and every dialog and menu fit-checked
 // at the window minimum and 200% zoom, in both themes.
 const { pressShortcut } = require("./shortcut-input.cjs");
-const { app, dialog, nativeTheme } = require("electron");
+const { dialog, nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const fit = require("./fit.cjs");
+const { isolatedHome } = require("./smoke-home.cjs");
 const {
   SCREENSHOTS,
   button,
@@ -39,8 +40,9 @@ module.exports.run = async ({ window }) => {
   // Seed before title edits can start recovery writes; later updates preserve this entry under their file lock.
   // A recent workspace in a deep folder, as a long state folder gives: the start panel still has to fit.
   const state = isolatedState();
+  const home = isolatedHome();
   const deep = path.join(
-    app.getPath("home"),
+    home,
     "ax-devil-smoke-recents",
     "a-folder-whose-name-is-far-too-long-for-the-narrow-sidebar",
     "and-another-one-below-it",
@@ -170,7 +172,7 @@ module.exports.run = async ({ window }) => {
   assert.equal(recent.oneLine, true, "the folder stays on one line");
   assert.equal(
     recent.folder.replaceAll("\\", "/"),
-    path.join("~", path.relative(app.getPath("home"), path.dirname(deep))).replaceAll("\\", "/"),
+    path.join("~", path.relative(home, path.dirname(deep))).replaceAll("\\", "/"),
   );
   for (const [theme, zoom] of [
     ["light", 1],

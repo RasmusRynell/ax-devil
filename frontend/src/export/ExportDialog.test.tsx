@@ -339,7 +339,7 @@ describe("export dialog", () => {
     );
     expect(screen.queryByLabelText("Path on the server")).toBeNull();
     await pressExport();
-    await waitFor(() => expect(pick).toHaveBeenCalledWith("DPM.mp4", "mp4"));
+    await waitFor(() => expect(pick).toHaveBeenCalledWith("DPM.mp4", "mp4", undefined));
     expect(sent).toEqual([]);
     await pressExport();
     await waitFor(() =>
@@ -370,15 +370,15 @@ describe("export dialog", () => {
       </AccessContext.Provider>,
     );
     await pressExport();
-    await waitFor(() => expect(pick).toHaveBeenLastCalledWith("front.v2.mp4", "mp4"));
+    await waitFor(() => expect(pick).toHaveBeenLastCalledWith("front.v2.mp4", "mp4", undefined));
     fireEvent.click(screen.getByLabelText("front.v2.avi"));
     await pressExport();
-    await waitFor(() => expect(pick).toHaveBeenLastCalledWith("detections.mp4", "mp4"));
+    await waitFor(() => expect(pick).toHaveBeenLastCalledWith("detections.mp4", "mp4", undefined));
     fireEvent.click(screen.getByLabelText("detections.json"));
     await pressExport();
-    await waitFor(() => expect(pick).toHaveBeenLastCalledWith("tracks.mp4", "mp4"));
+    await waitFor(() => expect(pick).toHaveBeenLastCalledWith("tracks.mp4", "mp4", undefined));
     fireEvent.click(screen.getByLabelText("camera.v2/tracks"));
     await pressExport();
-    await waitFor(() => expect(pick).toHaveBeenLastCalledWith("folder.mp4", "mp4"));
+    await waitFor(() => expect(pick).toHaveBeenLastCalledWith("folder.mp4", "mp4", undefined));
   });
 });

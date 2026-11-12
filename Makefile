@@ -8,7 +8,7 @@ UI_PORT ?= 7331
 TEST ?=
 SMOKE ?=
 CRATE ?=
-ROOT_FILES := desktop/*.cjs scripts/*.cjs vite.config.ts package.json pnpm-workspace.yaml
+ROOT_FILES := desktop/*.cjs scripts/*.cjs shared/*.mjs shared/*.d.mts vite.config.ts package.json pnpm-workspace.yaml
 # The loader paths of a FFmpeg outside the system's (package builds): Linux, macOS and Windows each read one of them.
 FFMPEG_LOADER := $(if $(FFMPEG_DIR),LD_LIBRARY_PATH="$(FFMPEG_DIR)/lib$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" DYLD_LIBRARY_PATH="$(FFMPEG_DIR)/lib$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}" PATH="$$(cygpath -u '$(FFMPEG_DIR)/bin' 2>/dev/null || echo '$(FFMPEG_DIR)/bin'):$$PATH")
 .PHONY: help web desktop build app cli check check-fast format package smoke-packaged verify-release-version test \
@@ -141,7 +141,7 @@ test-backend: $(if $(or $(filter $(CRATE),$(FRONTEND_TEST_CRATES)),$(if $(CRATE)
 	$(if $(or $(filter ax-devil,$(CRATE)),$(if $(CRATE),,x)),$(ISOLATED) $(CARGO) test $(if $(CRATE),-p ax-devil,$(NO_DEFAULT_PACKAGES)) --no-default-features --locked $(TEST))
 
 test-integration: _dev _dev-rust
-	$(ISOLATED) node --test scripts/smoke-process.test.cjs scripts/build-smoke-fixture.test.cjs scripts/dev.test.cjs desktop/args.test.cjs desktop/links.test.cjs desktop/remote.test.cjs desktop/window-state.test.cjs desktop/device.test.cjs desktop/device-shutdown.test.cjs desktop/restore-drag.test.cjs desktop/backend.test.cjs desktop/uncaught.test.cjs desktop/workspace-dialogs.test.cjs desktop/fit-coverage.test.cjs desktop/shortcut-input.test.cjs scripts/check-architecture.test.cjs
+	$(ISOLATED) node --test scripts/smoke-process.test.cjs scripts/build-smoke-fixture.test.cjs scripts/dev.test.cjs desktop/args.test.cjs desktop/links.test.cjs desktop/remote.test.cjs desktop/window-state.test.cjs desktop/device.test.cjs desktop/device-shutdown.test.cjs desktop/restore-drag.test.cjs desktop/backend.test.cjs desktop/uncaught.test.cjs desktop/workspace-dialogs.test.cjs desktop/smoke-home.test.cjs desktop/fit-coverage.test.cjs desktop/shortcut-input.test.cjs scripts/check-architecture.test.cjs
 
 # The debug backend, which test-backend has already compiled: a release build here would only repeat the package jobs'.
 test-desktop: export AX_DEVIL_BACKEND = $(CURDIR)/target/debug/ax-devil$(if $(filter Windows_NT,$(OS)),.exe)
@@ -199,7 +199,7 @@ _static: node_modules/.installed _types
 	$(CARGO) metadata --locked --format-version 1 | node scripts/check-architecture.cjs
 	node scripts/check-docs.cjs
 	pnpm exec vp fmt --check $(ROOT_FILES)
-	pnpm exec vp lint --deny-warnings desktop scripts
+	pnpm exec vp lint --deny-warnings desktop scripts shared
 	pnpm --dir frontend exec vp check
 	$(CARGO) fmt --all --check
 
@@ -236,5 +236,5 @@ check:
 format: node_modules/.installed _types
 	$(CARGO) fmt --all
 	pnpm exec vp fmt $(ROOT_FILES)
-	pnpm exec vp lint --fix desktop scripts
+	pnpm exec vp lint --fix desktop scripts shared
 	pnpm --dir frontend exec vp check --fix
