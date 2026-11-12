@@ -208,24 +208,22 @@ fn through_postcard(scene: &Scene) -> Scene {
     decode(&bytes).expect("decodes")
 }
 
-/// A frame-keyed Scene whose observations also carry timestamps, some missing and some against the frame order, so
-/// the order the Scene makes (by frame, ties in arrival order) differs from the order of arrival and from any order
-/// the timestamps would give.
+/// Both clocks and a timestamp-only observation survive either encoding.
 fn dual_clock_scene() -> Scene {
     let mut entity = Entity::new(id("a"));
     for (x, frame, us) in [
-        (0.1, 0, Some(2)),
-        (0.2, 1, Some(1)),
-        (0.3, 0, None),
-        (0.4, 1, Some(0)),
+        (0.1, None, Some(2)),
+        (0.2, Some(1), Some(1)),
+        (0.3, Some(0), None),
+        (0.4, Some(1), Some(0)),
     ] {
-        let time = ObservationTime::new(Some(frame), us.map(MediaTime)).expect("a time");
+        let time = ObservationTime::new(frame, us.map(MediaTime)).expect("a time");
         let geometry = Geometry::Box(bounds(x, 0.25, x + 0.125, 0.5));
         entity.push_observation(Observation::new(time, geometry));
     }
     Scene::new(TimeSlice::at(SceneTime::Frame(0)))
         .with_entities(vec![entity])
-        .expect("every observation has a frame")
+        .expect("each observation has a clock")
 }
 
 #[test]
@@ -236,7 +234,7 @@ fn every_model_value_survives_json_and_postcard() {
         .iter()
         .map(|o| o.geometry.bounds().left())
         .collect();
-    assert_eq!(order, [0.1, 0.3, 0.2, 0.4]);
+    assert_eq!(order, [0.2, 0.1, 0.3, 0.4]);
     let scenes = [
         rich_scene(),
         mot_frame(7, &[("1", 0.5)]),
@@ -359,7 +357,6 @@ fn a_document_that_breaks_a_model_rule_is_refused_with_the_reason() {
     let unit_box = r#"{"box":[0,0,1,1]}"#;
     let cases = [
         (one(frame, unit_box), None),
-        (one(r#"{"us":5}"#, unit_box), Some("scene's clock")),
         (one("{}", unit_box), Some("frame number or a timestamp")),
         (one(frame, r#"{"box":[1,0,0,1]}"#), Some("box maxima")),
         (

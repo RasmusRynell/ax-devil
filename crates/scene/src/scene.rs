@@ -7,7 +7,7 @@ use crate::{
     EntityId, Fields, Image, MotionState, Name, Observation, SceneError, TimeKind, TimeSlice,
 };
 
-/// One tracked or untracked thing, with its observations in time order once it is in a Scene.
+/// One tracked or untracked thing, with its observations in insertion order once it is in a Scene.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Entity {
     id: EntityId,
@@ -37,18 +37,18 @@ impl Entity {
         &self.id
     }
 
-    /// Where and what the entity was, in time order inside a Scene; in the order added before that.
+    /// Where and what the entity was, in Scene insertion order; in the order added before that.
     pub fn observations(&self) -> &[Observation] {
         &self.observations
     }
 
-    /// The observation with the latest time.
+    /// The last observation after applying arrival insertion at the Scene boundary.
     pub fn latest_observation(&self) -> Option<&Observation> {
         self.observations.last()
     }
 
-    /// Adds an observation after the others. The order in time is made once, by [`Scene::with_entities`], on the
-    /// Scene's clock.
+    /// Adds an observation after the others. The final order is made once, by [`Scene::with_entities`], using
+    /// Python's arrival insertion rule.
     pub fn push_observation(&mut self, observation: Observation) {
         if self.observations.is_empty() {
             // Most entities of a Scene have one observation; do not reserve the default four.
@@ -247,26 +247,16 @@ impl Scene {
         }
     }
 
-    /// Sets the entities. Every observation must have a time on the Scene's clock; each entity's observations are then
-    /// ordered by that clock, equal times keeping their order.
+    /// Sets the entities. Each arriving observation moves before strictly greater neighbours on its timestamp
+    /// clock (when supplied), otherwise its frame clock, stopping at a missing, equal or smaller value.
+    /// Observation clocks are independent of the Scene key and are never synthesized.
     ///
     /// An id given twice keeps the position of its first entity and the value of its last.
     pub fn with_entities(mut self, entities: Vec<Entity>) -> Result<Self, SceneError> {
-        let kind = self.time.kind();
         let mut slots: HashMap<EntityId, usize> = HashMap::with_capacity(entities.len());
         let mut unique: Vec<Entity> = Vec::with_capacity(entities.len());
         for mut entity in entities {
-            if entity
-                .observations
-                .iter()
-                .any(|o| o.time.on(kind).is_none())
-            {
-                return Err(SceneError::TimeKindMismatch);
-            }
-            let clock = |o: &Observation| o.time.on(kind);
-            if !entity.observations.is_sorted_by_key(clock) {
-                entity.observations.sort_by_key(clock);
-            }
+            crate::order::order(&mut entity.observations);
             match slots.entry(entity.id.clone()) {
                 Entry::Occupied(slot) => unique[*slot.get()] = entity,
                 Entry::Vacant(slot) => {
@@ -416,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn a_scene_orders_observations_by_its_clock_and_equal_times_keep_arrival_order() {
+    fn a_scene_orders_same_clock_observations_and_equal_times_keep_arrival_order() {
         let mut entity = Entity::new(id("a"));
         for (time, x) in [(5, 0.5), (2, 0.2), (5, 0.6), (9, 0.9), (2, 0.3)] {
             entity.push_observation(observation(SceneTime::Frame(time), x));
@@ -442,7 +432,7 @@ mod tests {
     }
 
     #[test]
-    fn a_scene_replaces_repeated_entities_and_holds_its_clock() {
+    fn a_scene_replaces_repeated_entities_and_accepts_other_observation_clocks() {
         let scene = || Scene::new(TimeSlice::at(SceneTime::Frame(0)));
         let entity_at = |name: &str, time| {
             let mut entity = Entity::new(id(name));
@@ -468,12 +458,15 @@ mod tests {
             ])
             .expect("duplicates are replaced");
         assert_eq!(merged.entities(), [replaced, entity_at("b", frame)]);
+        let other = scene()
+            .with_entities(vec![entity_at("a", stamp)])
+            .expect("other clock");
         assert_eq!(
-            scene().with_entities(vec![entity_at("a", stamp)]),
-            Err(SceneError::TimeKindMismatch)
+            other.entities()[0].latest_observation().unwrap().time,
+            stamp.into()
         );
-        // An observation may carry the other clock too. Each Scene orders by its own: here the timestamps and the
-        // frames disagree.
+        assert_eq!(other.entities()[0].span(TimeKind::Frame), None);
+        // Timestamp order wins when both clocks are supplied, independently of the Scene key.
         let mut dual = Entity::new(id("a"));
         for (frame, us, x) in [(2, 10, 0.2), (1, 20, 0.1)] {
             let time = ObservationTime::new(Some(frame), Some(MediaTime(us))).expect("a time");
@@ -488,7 +481,7 @@ mod tests {
         };
         let by_frame = scene().with_entities(vec![dual.clone()]).expect("frames");
         let by_time = Scene::new(TimeSlice::at(stamp)).with_entities(vec![dual]);
-        assert_eq!(lefts(by_frame), [0.1, 0.2]);
+        assert_eq!(lefts(by_frame), [0.2, 0.1]);
         assert_eq!(lefts(by_time.expect("timestamps")), [0.2, 0.1]);
         let late = Event::new(TimeSlice::at(stamp), Operation::Delete { entity: id("a") });
         assert_eq!(
