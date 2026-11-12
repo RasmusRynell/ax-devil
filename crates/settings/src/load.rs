@@ -37,10 +37,10 @@ impl State {
                 |value| setting.kind.with_ids(value),
             );
             let mut value = raw.clone();
-            // A reference whose variable is unset or wrong here still loads, as it does in Python, which checks it
-            // only when it is saved: `patch` and `update` refuse it, and `resolved` falls back to the default.
+            // Folder paths are checked by fallible resolution, independently of loading settings.
             if let Err(reason) = setting.check(&value, &**lookup)
                 && !setting.holds_reference(&value)
+                && !matches!(setting.kind, Kind::Folder)
             {
                 value = preferences::recover(setting, &raw)
                     .ok_or_else(|| invalid(setting.key, &reason))?;

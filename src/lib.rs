@@ -489,7 +489,7 @@ pub(crate) fn rejected(status: StatusCode, reason: String) -> Failure {
     failed(status, UserError::new(code_of(status), reason))
 }
 
-pub(crate) async fn info(principal: Principal) -> Json<AppInfo> {
+pub(crate) async fn info(principal: Principal, State(state): State<AppState>) -> Json<AppInfo> {
     Json(AppInfo {
         app: "ax-devil".into(),
         api: api_version().into(),
@@ -499,6 +499,9 @@ pub(crate) async fn info(principal: Principal) -> Json<AppInfo> {
         shell: SHELL_API,
         owner: principal.is_owner(),
         full_access: principal.full_access(),
+        config_identity: (principal.is_owner() && principal.full_access())
+            .then(|| state.settings.identity())
+            .flatten(),
     })
 }
 

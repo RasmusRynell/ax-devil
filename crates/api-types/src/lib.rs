@@ -55,6 +55,10 @@ pub struct AppInfo {
     pub owner: bool,
     /// Whether the caller is an Owner with Full access.
     pub full_access: bool,
+    /// Opaque SHA-256 identity of the settings file saves replace (nearest existing ancestor canonicalized, remaining names unchanged); only an Owner with Full access receives it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub config_identity: Option<String>,
 }
 
 /// What a client learns of a secret: whether it is set and, for a `$NAME` reference, its name. Never the literal, its

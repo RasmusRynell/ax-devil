@@ -72,6 +72,49 @@ try:
         x.XSync(display, False)
         # The parent closes stdin in its finally block; closing the display destroys this client's window.
         sys.stdin.read()
+    elif action in ("error-dialog", "focus-error-dialog"):
+        x.XDefaultRootWindow.argtypes = [c.c_void_p]
+        x.XDefaultRootWindow.restype = c.c_ulong
+        x.XQueryTree.argtypes = [c.c_void_p, c.c_ulong, c.POINTER(c.c_ulong), c.POINTER(c.c_ulong), c.POINTER(c.POINTER(c.c_ulong)), c.POINTER(c.c_uint)]
+        x.XFetchName.argtypes = [c.c_void_p, c.c_ulong, c.POINTER(c.c_char_p)]
+        def find(window):
+            name = c.c_char_p()
+            if x.XFetchName(display, window, c.byref(name)) and name.value:
+                title = name.value.decode(errors="replace")
+                if "ax-devil could not continue" in title:
+                    if action == "focus-error-dialog":
+                        x.XRaiseWindow.argtypes = [c.c_void_p, c.c_ulong]
+                        x.XSetInputFocus.argtypes = [c.c_void_p, c.c_ulong, c.c_int, c.c_ulong]
+                        x.XGetInputFocus.argtypes = [c.c_void_p, c.POINTER(c.c_ulong), c.POINTER(c.c_int)]
+                        x.XRaiseWindow(display, window)
+                        x.XSetInputFocus(display, window, 2, 0)
+                        x.XSync(display, False)
+                        focused, revert = c.c_ulong(), c.c_int()
+                        x.XGetInputFocus(display, c.byref(focused), c.byref(revert))
+                        return focused.value == window
+                    return True
+            root, parent, children, count = c.c_ulong(), c.c_ulong(), c.POINTER(c.c_ulong)(), c.c_uint()
+            if x.XQueryTree(display, window, c.byref(root), c.byref(parent), c.byref(children), c.byref(count)):
+                found = any(find(children[i]) for i in range(count.value))
+                if children:
+                    x.XFree(children)
+                return found
+            return False
+        print("ready" if find(x.XDefaultRootWindow(display)) else "waiting")
+    elif action == "key":
+        x.XStringToKeysym.argtypes = [c.c_char_p]
+        x.XStringToKeysym.restype = c.c_ulong
+        x.XKeysymToKeycode.argtypes = [c.c_void_p, c.c_ulong]
+        xt.XTestFakeKeyEvent.argtypes = [c.c_void_p, c.c_uint, c.c_int, c.c_ulong]
+        names = {"Enter": "Return", "control": "Control_L", "meta": "Super_L", "alt": "Alt_L", "shift": "Shift_L"}
+        key, *modifiers = args
+        codes = [x.XKeysymToKeycode(display, x.XStringToKeysym(names.get(name, name).encode())) for name in [*modifiers, key]]
+        if not all(codes):
+            sys.exit("Private X11 shortcut contains an unknown key")
+        for code in codes:
+            xt.XTestFakeKeyEvent(display, code, True, 20)
+        for code in reversed(codes):
+            xt.XTestFakeKeyEvent(display, code, False, 20)
     elif action == "move":
         xt.XTestFakeMotionEvent(display, -1, int(args[0]), int(args[1]), 0)
     elif action in ("click", "double"):

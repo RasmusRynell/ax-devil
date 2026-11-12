@@ -84,11 +84,10 @@ impl Secret {
 
     /// A secret the operator chose. It travels in an `Authorization: Bearer` header, which a browser can only send
     /// as printable ASCII without spaces (0x21 to 0x7E); anything else is refused with the reason.
-    pub fn chosen(text: String) -> Result<Self, String> {
+    pub fn chosen(text: String) -> Result<Self, &'static str> {
         if text.is_empty() || !text.bytes().all(|byte| (0x21..=0x7E).contains(&byte)) {
             return Err(
-                "a password may only use printable ASCII characters without spaces (! to ~), and not be empty"
-                    .into(),
+                "a password may only use printable ASCII characters without spaces (! to ~), and not be empty",
             );
         }
         Ok(Self(text))

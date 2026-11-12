@@ -18,7 +18,7 @@ pub fn folder() -> Result<PathBuf, std::io::Error> {
 
 /// The Electron binary: `AX_DEVIL_ELECTRON` (the executable of the shell that started this backend, which in a
 /// packaged app is the app itself), else the one the desktop folder installed. Or why there is none.
-pub fn electron(desktop: &Path) -> Result<PathBuf, String> {
+pub fn electron(desktop: &Path) -> Result<PathBuf, PathBuf> {
     let binary = if cfg!(windows) {
         "electron.cmd"
     } else {
@@ -31,12 +31,16 @@ pub fn electron(desktop: &Path) -> Result<PathBuf, String> {
     if electron.is_file() {
         Ok(electron)
     } else {
-        Err(format!(
-            "Cannot find the desktop shell's Electron at {}; set AX_DEVIL_DESKTOP to the desktop folder, \
-             installed with pnpm install, or AX_DEVIL_ELECTRON to the executable",
-            electron.display()
-        ))
+        Err(electron)
     }
+}
+
+/// The repair for an Electron executable that is missing; these variables name paths only.
+pub fn missing_electron(path: &Path) -> String {
+    format!(
+        "Cannot find the desktop shell's Electron at {}; set AX_DEVIL_DESKTOP to the desktop folder, installed with pnpm install, or AX_DEVIL_ELECTRON to the executable",
+        path.display()
+    )
 }
 
 /// The page the frontend build writes for the hidden renderer, which `desktop/render.cjs` loads, or why there is

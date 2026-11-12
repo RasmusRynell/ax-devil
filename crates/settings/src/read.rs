@@ -3,7 +3,7 @@
 
 use crate::{Kind, State};
 use serde_json::Value;
-use std::{collections::BTreeMap, path::PathBuf};
+use std::collections::BTreeMap;
 
 impl State {
     /// Non-secret keys whose raw saved value differs from the effective preference. Editing such a key back to
@@ -81,14 +81,6 @@ impl State {
         } else {
             value.clone()
         })
-    }
-
-    /// The folder a setting of kind `Folder` holds, as [`resolved`](Self::resolved); `None` when it is empty (the
-    /// standard folder) or `key` is not such a setting.
-    pub fn folder(&self, key: &str) -> Option<PathBuf> {
-        let path = self.resolved(key)?;
-        let path = path.as_str()?;
-        (!path.is_empty()).then(|| PathBuf::from(path))
     }
 
     /// The number a whole-number setting holds, as [`resolved`](Self::resolved); `None` for `auto`, or when `key` is not

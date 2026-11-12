@@ -201,9 +201,9 @@ pub const TABLE: &[Setting] = &[
             min: 256,
             max: 1024 * 1024,
         },
-        label: "Memory for video caching (MiB)",
+        label: "Video cache",
         page: Some("Playback"),
-        section: "Memory",
+        section: "",
         env: false,
         scope: Scope::Server,
         ..BASE
@@ -212,9 +212,9 @@ pub const TABLE: &[Setting] = &[
         key: "playback.prepare_next_video",
         // Read by every open playlist stream as it ticks, so a change applies at once.
         kind: Kind::Bool { default: false },
-        label: "Prepare the next video in the background",
+        label: "Prepare next video",
         page: Some("Playback"),
-        section: "Playlists",
+        section: "",
         env: false,
         scope: Scope::Server,
         ..BASE

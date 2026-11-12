@@ -18,7 +18,6 @@ use handlers::Handlers;
 use plugins::PluginsCommand;
 use sessions::Secret;
 use std::{
-    error::Error,
     net::{IpAddr, SocketAddr},
     path::PathBuf,
     process::{Command as Process, ExitCode},
@@ -34,6 +33,8 @@ mod launch;
 use launch::{describe, launch};
 mod live;
 mod plugins;
+mod start_error;
+use start_error::StartError;
 mod services;
 use services::{Interrupt, Services};
 #[cfg(test)]
@@ -203,18 +204,23 @@ pub async fn run() -> ExitCode {
     if global.hand_off {
         return hand_off(global, command, &plugins);
     }
-    // These commands only print: no logging, settings file or port.
+    // Paths resolve only the folders each command uses; services resolve both before starting.
     match command {
         Some(Command::ListHandlers) => {
             catalog::Report::listing(&plugins.handlers(), &plugins.info()).print()
         }
         Some(Command::ClearCache { force, scope }) => {
-            let folder = settings_folder(global, |paths, settings| {
-                paths.cache_dir(settings.state().folder("storage.cache_dir"))
-            });
+            let folder = cache_folder(global);
             clear_cache::run(folder, scope, force)
         }
         Some(Command::Plugins(command)) => plugins::run(command, plugins).await.print(),
+        Some(Command::Catalog(CatalogCommand::Reference)) => catalog::reference().print(),
+        Some(Command::Catalog(CatalogCommand::Use { catalog })) => catalog::use_default(
+            &catalog,
+            catalog::Home::resolve(global.config, global.cache_dir),
+        )
+        .await
+        .print(),
         Some(Command::Catalog(catalog)) => catalog::run(
             &catalog,
             catalog::Home::resolve(global.config, global.cache_dir),
@@ -224,11 +230,8 @@ pub async fn run() -> ExitCode {
     }
 }
 
-/// A folder that depends on the settings file: resolves the paths of `global`, loads the settings and applies `pick`.
-fn settings_folder(
-    global: Global,
-    pick: impl FnOnce(&Paths, &settings::Settings) -> PathBuf,
-) -> Result<PathBuf, String> {
+/// The cache to clear, validating the selected cache root before it can fall back to another location.
+fn cache_folder(global: Global) -> Result<PathBuf, String> {
     let paths = Paths::resolve(
         &|name| std::env::var_os(name),
         global.config,
@@ -236,7 +239,9 @@ fn settings_folder(
     )?;
     let settings =
         settings::Settings::load(&paths.config_file).map_err(|error| error.to_string())?;
-    Ok(pick(&paths, &settings))
+    paths
+        .cache_dir(&settings)
+        .map_err(|error| error.to_string())
 }
 
 /// Starts what `command` asks for: the desktop backend, `serve` or the shell.
@@ -264,7 +269,7 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
     let (prefix, result) = match command {
         Some(Command::App(args)) => ("Application failed to start: ", launch_app(&args)),
         command => match paths {
-            Err(error) => ("", Err(error.into())),
+            Err(error) => ("", Err(StartError::Paths(error))),
             Ok(paths) => match command {
                 Some(Command::Serve(args)) => (
                     "Application failed to start: ",
@@ -276,7 +281,7 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
                         host_desktop(&paths, global.share_address, plugins, launch, &interrupt)
                             .await,
                     ),
-                    Err(reason) => ("", Err(reason.into())),
+                    Err(reason) => ("", Err(reason)),
                 },
             },
         },
@@ -289,18 +294,26 @@ fn build_launch(
     paths: &Paths,
     command: Option<Command>,
     plugins: &Plugins,
-) -> Result<Option<Launch>, String> {
+) -> Result<Option<Launch>, StartError> {
+    // Only live recipes read camera defaults. Keep a settings failure typed until the shared report boundary.
+    let defaults = if matches!(command, Some(Command::Live(_))) {
+        Some(ax_devil::session::live::defaults(
+            &settings::Settings::load(&paths.config_file)
+                .map_err(StartError::Settings)?
+                .state(),
+            true,
+        ))
+    } else {
+        None
+    };
     launch(
         command,
         &plugins.handlers(),
         &RecoveryFolder::new(paths.recovery_dir.clone()),
         &workspace::Environment::of_process(),
-        || {
-            settings::Settings::load(&paths.config_file)
-                .map(|settings| ax_devil::session::live::defaults(&settings.state(), true))
-                .map_err(|error| error.to_string())
-        },
+        || defaults.ok_or_else(|| "Live defaults are unavailable".to_owned()),
     )
+    .map_err(StartError::Launch)
 }
 
 /// Prints what `command` asks the running app to open, in this process's working folder, for the desktop shell to
@@ -311,21 +324,21 @@ fn hand_off(global: Global, command: Option<Command>, plugins: &Plugins) -> Exit
         global.config,
         global.cache_dir,
     )
+    .map_err(StartError::Paths)
     .and_then(|paths| build_launch(&paths, command, plugins))
     .and_then(|launch| {
-        launch
-            .as_ref()
-            .and_then(HandOff::of)
-            .ok_or_else(|| "This command does not open anything in the running app.".to_owned())
+        launch.as_ref().and_then(HandOff::of).ok_or_else(|| {
+            StartError::Fixed("This command does not open anything in the running app.")
+        })
     })
-    .and_then(|handed| serde_json::to_string(&handed).map_err(|error| error.to_string()));
+    .and_then(|handed| serde_json::to_string(&handed).map_err(StartError::from));
     match handed {
         Ok(text) => {
             announce(&[text]);
             ExitCode::SUCCESS
         }
         Err(reason) => {
-            announce(&[reason]);
+            announce(&[reason.shown()]);
             ExitCode::FAILURE
         }
     }
@@ -336,7 +349,7 @@ fn hand_off(global: Global, command: Option<Command>, plugins: &Plugins) -> Exit
 async fn finish(
     interrupt: &Interrupt,
     prefix: &str,
-    result: Result<ExitCode, Box<dyn Error>>,
+    result: Result<ExitCode, StartError>,
 ) -> ExitCode {
     // A startup step that failed may have run without awaiting, so the runtime's signal driver may not have handed
     // over a Ctrl+C that came during it yet.
@@ -347,34 +360,28 @@ async fn finish(
     // Error level, so every --log-level shows it, as Python prints it whatever the level.
     tracing::error!("Application interrupted by user");
     if let Err(error) = result {
-        tracing::debug!("{prefix}{error}");
-        if let Some(causes) = causes(error.as_ref()) {
-            tracing::debug!("{causes}");
-        }
+        let detail = error.detail().unwrap_or_else(|| error.shown());
+        tracing::debug!("{prefix}{detail}");
     }
     interrupted
 }
 
 /// Logs `error` after `prefix`, then its chain of causes at DEBUG, which is where Python shows its traceback.
-fn fail(prefix: &str, error: Box<dyn Error>) -> ExitCode {
-    tracing::error!("{prefix}{error}");
-    if let Some(causes) = causes(error.as_ref()) {
-        tracing::debug!("{causes}");
+fn fail(prefix: &str, error: StartError) -> ExitCode {
+    let shown = error.shown();
+    if std::env::var("AX_DEVIL_EXIT_ON_STDIN_CLOSE").as_deref() == Ok("1") {
+        announce(&[format!("ax-devil-error: {}", serde_json::json!(shown))]);
+    }
+    let prefix = if matches!(error, StartError::Hidden(_)) {
+        ""
+    } else {
+        prefix
+    };
+    tracing::error!("{prefix}{shown}");
+    if let Some(detail) = error.detail() {
+        tracing::debug!("{detail}");
     }
     ExitCode::FAILURE
-}
-
-/// What caused `error`, one line for each link of its source chain; none when it has no source.
-fn causes(error: &dyn Error) -> Option<String> {
-    let lines: Vec<String> = std::iter::successors(error.source(), |cause| (*cause).source())
-        .map(|cause| format!("caused by: {cause}"))
-        .collect();
-    (!lines.is_empty()).then(|| lines.join("\n"))
-}
-
-/// The folder of the user's render catalogs: the `storage.catalog_dir` setting, else the standard folder.
-fn catalog_folder(paths: &Paths, settings: &settings::Settings) -> PathBuf {
-    paths.catalog_dir(settings.state().folder("storage.catalog_dir"))
 }
 
 /// The backend for the desktop shell and development: loopback only, on `$PORT` (default 7330).
@@ -384,12 +391,18 @@ async fn host_desktop(
     plugins: Arc<Plugins>,
     launch: Option<Launch>,
     interrupt: &Interrupt,
-) -> Result<ExitCode, Box<dyn Error>> {
+) -> Result<ExitCode, StartError> {
     let services = Services::start(paths, plugins, launch, interrupt)?;
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| "7330".into())
         .parse::<u16>()?;
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
+    let address = SocketAddr::from(([127, 0, 0, 1], port));
+    let listener = tokio::net::TcpListener::bind(address)
+        .await
+        .map_err(|error| StartError::Listen {
+            address,
+            kind: error.kind(),
+        })?;
     // The desktop shell and the development supervisor wait for this exact line.
     announce(&[format!("ax-devil: http://{}", listener.local_addr()?)]);
     let state = services
@@ -409,20 +422,25 @@ async fn serve(
     args: ServeArgs,
     plugins: Arc<Plugins>,
     interrupt: &Interrupt,
-) -> Result<ExitCode, Box<dyn Error>> {
-    share::refuse_development_build().map_err(|reason| format!("serve: {reason}"))?;
+) -> Result<ExitCode, StartError> {
+    share::refuse_development_build().map_err(StartError::Fixed)?;
     let services = Services::start(paths, plugins, None, interrupt)?;
     let chosen = std::env::var(PASSWORD_VARIABLE)
         .ok()
         .filter(|text| !text.is_empty());
     let generated = chosen.is_none();
     let password = match chosen {
-        Some(text) => {
-            Secret::chosen(text).map_err(|reason| format!("{PASSWORD_VARIABLE}: {reason}"))?
-        }
+        Some(text) => Secret::chosen(text)
+            .map_err(|_| StartError::Fixed("AX_DEVIL_SERVER_PASSWORD must use printable ASCII characters without spaces (! to ~), and not be empty."))?,
         None => Secret::generate(),
     };
-    let listener = tokio::net::TcpListener::bind((args.bind, args.port)).await?;
+    let address = SocketAddr::from((args.bind, args.port));
+    let listener = tokio::net::TcpListener::bind(address)
+        .await
+        .map_err(|error| StartError::Listen {
+            address,
+            kind: error.kind(),
+        })?;
     let bound = listener.local_addr()?;
     let base = LinkBase::for_listener(args.public_url, bound);
     if !bound.ip().is_loopback() && !base.is_https() {
@@ -456,9 +474,9 @@ async fn serve(
 }
 
 /// Starts the desktop shell and waits for it, passing on its exit code.
-fn launch_app(args: &AppArgs) -> Result<ExitCode, Box<dyn Error>> {
+fn launch_app(args: &AppArgs) -> Result<ExitCode, StartError> {
     let desktop = desktop::folder()?;
-    let electron = desktop::electron(&desktop)?;
+    let electron = desktop::electron(&desktop).map_err(StartError::Electron)?;
     let mut shell = Process::new(electron);
     // Shells hosted in an Electron app export this, which would start Electron as plain Node and crash it at once.
     shell.env_remove("ELECTRON_RUN_AS_NODE");

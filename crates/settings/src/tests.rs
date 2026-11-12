@@ -500,37 +500,42 @@ fn a_patch_is_checked_against_the_stored_state_and_a_refusal_changes_nothing() {
 }
 
 #[test]
-fn the_video_cache_is_auto_or_whole_mib_in_range_and_a_saved_number_survives_a_restart() {
+fn every_storage_folder_refuses_unusable_references_without_returning_the_standard_folder() {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
-    let settings = Settings::load(&path).unwrap();
-    assert_eq!(settings.state().auto_or_whole("playback.video_cache"), None);
-    let with = |cache: Value| {
-        let mut all = change("mqtt");
-        all.set.insert("playback.video_cache".into(), cache);
-        all
-    };
-
-    for rejected in [
-        json!(255),
-        json!(1048577),
-        json!(512.5),
-        json!("512"),
-        json!(true),
-    ] {
-        let error = settings.patch(&with(rejected)).unwrap_err();
-        assert_eq!(error.location, "playback.video_cache");
+    let standard = folder.path().join("standard");
+    for key in ["storage.cache_dir", "storage.catalog_dir"] {
+        for (reference, resolved) in [
+            ("$UNSET", None),
+            ("$EMPTY", Some("")),
+            ("$REL", Some("MUST-NOT-REACH-ERROR")),
+        ] {
+            fs::write(
+                &path,
+                json!({"version": VERSION, "settings": {key: reference}}).to_string(),
+            )
+            .unwrap();
+            let lookup: Lookup = Arc::new(move |_| resolved.map(str::to_owned));
+            let settings = Settings::open(&path, TABLE, migrate::MIGRATIONS, lookup).unwrap();
+            let error = settings
+                .folder(key, &standard)
+                .expect_err("an unusable reference must never select the standard folder")
+                .to_string();
+            for text in [
+                "Invalid storage directory",
+                key,
+                reference,
+                path.to_str().unwrap(),
+                "Change",
+            ] {
+                assert!(error.contains(text), "{error}");
+            }
+            assert!(
+                !error.contains("MUST-NOT-REACH-ERROR"),
+                "Reference contents may be a credential: {error}"
+            );
+        }
     }
-    settings.patch(&with(json!(512))).unwrap();
-    assert_eq!(
-        Settings::load(&path)
-            .unwrap()
-            .state()
-            .auto_or_whole("playback.video_cache"),
-        Some(512)
-    );
-    settings.patch(&with(json!("auto"))).unwrap();
-    assert_eq!(settings.state().auto_or_whole("playback.video_cache"), None);
 }
 
 #[test]

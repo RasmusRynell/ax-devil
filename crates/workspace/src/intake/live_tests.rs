@@ -1,5 +1,6 @@
 mod editing;
 mod login;
+mod privacy;
 
 use super::*;
 use crate::{Content, Environment, LiveOverlay, LiveRecipe, Protocol, RtspRoute, Secret};
@@ -263,7 +264,7 @@ fn what_cannot_be_streamed_is_refused_naming_the_field_and_the_python_message() 
                 })
             }),
             "handler",
-            "Unknown live overlay handler type: NOPE",
+            "Unknown live overlay handler type. List them with: ax-devil list-handlers",
         ),
         // The transport's own fields are checked before the handler.
         (
@@ -504,6 +505,6 @@ fn a_frame_keyed_decoder_cannot_be_a_live_overlay() {
     assert_eq!(error.location, Some(Location::field("handler")));
     assert_eq!(
         error.reason,
-        "CVAT cannot decode a live overlay; select another handler type."
+        "This handler cannot decode a live overlay; select another handler type."
     );
 }

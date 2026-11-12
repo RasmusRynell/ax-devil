@@ -1,4 +1,4 @@
-//! Load-time recovery of playback and view defaults only; device appearance is read by the frontend.
+//! Recovery of playback and view defaults; device appearance belongs to the frontend.
 
 use crate::Setting;
 use serde_json::{Value, json};

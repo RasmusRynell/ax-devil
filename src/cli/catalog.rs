@@ -7,7 +7,9 @@ use catalogs::{CatalogId, Library, Served, sheets};
 use clap::{Subcommand, ValueHint};
 use handlers::Handlers;
 mod manage;
+mod running;
 pub use manage::Home;
+pub use running::use_default;
 use std::{
     ffi::OsString,
     fs,
@@ -44,8 +46,9 @@ pub enum CatalogCommand {
     },
     /// Make a catalog the default for new lanes: `built-in:<name>`, `user:<file name>`, or a file in the catalog folder.
     ///
-    /// A catalog that is not built in is checked first; it must be one the folder lists. A running app applies it
-    /// at its next start, and a settings save before then overwrites it.
+    /// A catalog that is not built in is checked first; it must be one the folder lists. Uses the local backend on
+    /// $PORT (default 7330) when its configuration identity matches; writes the file only for an absent or confirmed different backend.
+    /// A refusal never falls back to disk.
     Use {
         /// The catalog.
         #[arg(value_name = "CATALOG", value_hint = ValueHint::FilePath)]
@@ -223,7 +226,7 @@ pub fn check_in(desktop: &Path, path: &Path) -> Result<Report, String> {
 /// Runs the frontend's catalog checker on `path` in Electron-as-Node with the `NAME=PATH` sheets. The checker reads
 /// the files and writes the report; this only starts it.
 fn run_checker(desktop: &Path, path: &Path, sheets: &[OsString]) -> Result<Report, String> {
-    let electron = desktop::electron(desktop)?;
+    let electron = desktop::electron(desktop).map_err(|path| desktop::missing_electron(&path))?;
     let checker = desktop::catalog_checker(desktop)?;
     let output = Process::new(electron)
         .env("ELECTRON_RUN_AS_NODE", "1")

@@ -9,7 +9,7 @@ import {
 import { Button } from "./Button";
 
 interface FrameProps {
-  title: string;
+  title: ReactNode;
   /** The body, between the title and the footer. */
   children: ReactNode;
   /** The row of answer buttons, which stays in view while a body that can scroll does. */
@@ -80,7 +80,7 @@ export function DialogFrame({
 }
 
 interface Props {
-  title: string;
+  title: ReactNode;
   children: ReactNode;
   /** Without it the dialog has no OK button: its body holds the submit button, and Enter clicks that. */
   onOk?: () => void;

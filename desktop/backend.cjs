@@ -45,6 +45,7 @@ function startProcess(executable, args, env, onExit, { onSpawn = () => {}, spawn
   child.stdin.on("error", () => {});
   child.stderr.on("data", (data) => process.stderr.write(data));
   let ready = false;
+  let startReason;
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new Error("Backend startup timed out"));
@@ -54,23 +55,36 @@ function startProcess(executable, args, env, onExit, { onSpawn = () => {}, spawn
       clearTimeout(timer);
       reject(error);
     });
-    child.once("exit", (code, signal) => {
+    void lifecycle.done.then(({ code, signal, error }) => {
       clearTimeout(timer);
-      if (ready) onExit(code ?? signal);
-      else reject(new Error("Backend stopped during startup"));
+      if (ready) onExit(code ?? signal ?? error);
+      else {
+        // Give already queued stdout one turn to deliver its final reason, without awaiting inherited pipes.
+        setImmediate(() => reject(new Error(startReason ?? "Backend stopped during startup")));
+      }
+    });
+    // Exit may precede the last stdout data. Close follows both pipes, so the start reason has arrived.
+    child.once("close", () => {
+      clearTimeout(timer);
+      if (!ready) reject(new Error(startReason ?? "Backend stopped during startup"));
     });
     createInterface({ input: child.stdout }).on("line", (line) => {
+      if (line.startsWith("ax-devil-error: ")) {
+        try {
+          const reason = JSON.parse(line.slice("ax-devil-error: ".length));
+          if (typeof reason === "string") startReason = reason;
+        } catch {
+          /* Only the explicit user-facing message is shown, never log output. */
+        }
+        return;
+      }
       const match = /^ax-devil: (http:\/\/127\.0\.0\.1:\d+)/.exec(line);
-      if (match) {
+      if (match && !lifecycle.ended()) {
         clearTimeout(timer);
         ready = true;
         resolve({ child, lifecycle, origin: match[1] });
       }
     });
-    if (child.exitCode != null || child.signalCode != null) {
-      clearTimeout(timer);
-      reject(new Error("Backend stopped during startup"));
-    }
     onSpawn(child, lifecycle);
   });
 }

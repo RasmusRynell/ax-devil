@@ -184,9 +184,14 @@ fn a_number_may_be_a_reference_that_resolves_to_a_whole_number_in_range() {
 fn a_folder_is_a_reference_or_a_home_relative_or_absolute_path_that_need_not_exist() {
     let (_folder, _path, settings) = open();
     let dir = |value: Value| edit(&[("net.dir", value)]);
-    let resolved = |settings: &Settings| settings.state().folder("net.dir");
+    let standard = PathBuf::from("/standard");
+    let resolved = |settings: &Settings| settings.folder("net.dir", &standard).unwrap();
 
-    assert_eq!(resolved(&settings), None, "empty is the standard folder");
+    assert_eq!(
+        resolved(&settings),
+        standard,
+        "a literal empty setting selects the standard folder"
+    );
     for rejected in [
         json!("cache"),
         json!("$UNSET"),
@@ -205,10 +210,10 @@ fn a_folder_is_a_reference_or_a_home_relative_or_absolute_path_that_need_not_exi
     ] {
         let state = settings.patch(&dir(stored.clone())).unwrap();
         assert_eq!(state.values()["net.dir"], stored);
-        assert_eq!(resolved(&settings), Some(PathBuf::from(used)));
+        assert_eq!(resolved(&settings), PathBuf::from(used));
     }
     settings.patch(&dir(json!(""))).unwrap();
-    assert_eq!(resolved(&settings), None);
+    assert_eq!(resolved(&settings), standard);
 }
 
 #[test]
@@ -217,7 +222,7 @@ fn a_saved_reference_that_does_not_resolve_loads_and_falls_back_but_is_refused_o
     let path = folder.path().join("settings.json");
     fs::write(
         &path,
-        r#"{"version": 1, "settings": {"net.port": "$UNSET", "net.dir": "$REL", "net.mode": "$MODE"}}"#,
+        r#"{"version": 1, "settings": {"net.port": "$UNSET", "net.mode": "$MODE"}}"#,
     )
     .unwrap();
     let settings = Settings::open(&path, NET, &[], Arc::new(lookup)).unwrap();
@@ -236,7 +241,6 @@ fn a_saved_reference_that_does_not_resolve_loads_and_falls_back_but_is_refused_o
         Some(&json!("$MODE")),
         "text stays as written"
     );
-    assert_eq!(state.folder("net.dir"), None, "the standard folder is used");
 
     let kept = settings.patch(&edit(&[("net.port", json!("$UNSET"))]));
     assert_eq!(kept.unwrap_err().location, "net.port");

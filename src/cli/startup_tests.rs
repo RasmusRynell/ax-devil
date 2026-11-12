@@ -1,4 +1,5 @@
 use super::{tests::parse, *};
+use std::error::Error;
 
 #[test]
 fn the_root_help_ends_with_the_links_and_a_subcommand_help_does_not() {
@@ -34,10 +35,13 @@ fn a_failure_logs_the_chain_of_causes_that_led_to_it() {
         Some(Box::new(Because("cannot write", Some(Box::new(leaf))))),
     );
     assert_eq!(
-        causes(&chain).as_deref(),
-        Some("caused by: cannot write\ncaused by: disk full")
+        StartError::from(chain).detail().as_deref(),
+        Some("cannot save\ncaused by: cannot write\ncaused by: disk full")
     );
-    assert_eq!(causes(&Because("alone", None)), None);
+    assert_eq!(
+        StartError::from(Because("alone", None)).detail().as_deref(),
+        Some("alone")
+    );
 }
 
 /// Sends SIGINT to this process, which every Ctrl+C listener of the test binary receives.

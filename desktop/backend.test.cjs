@@ -18,6 +18,7 @@ function fakeProcess({ stubborn = false } = {}) {
     setImmediate(() => {
       child.signalCode = signal;
       child.emit("exit", null, signal);
+      child.emit("close", null, signal);
     });
   if (!stubborn) child.stdin.on("finish", () => end("SIGTERM"));
   child.kill = (signal) => {
@@ -159,9 +160,56 @@ void test(
       const backend = backendOf(child);
       const started = assert.rejects(backend.ensure());
       child.emit(event, event === "error" ? new Error("spawn failed") : 0);
+      if (event === "exit") child.emit("close", 0, null);
       await started;
       await backend.stop();
       assert.deepEqual(child.signals, []);
+    }
+  },
+);
+
+void test("startup failure forwards the user-facing reason even when exit precedes the last stdout data", async () => {
+  const child = fakeProcess();
+  const starting = backendOf(child).ensure();
+  child.stderr.write("camera password: MUST-NOT-REACH-DIALOG\n");
+  child.exitCode = 1;
+  child.emit("exit", 1, null);
+  child.stdout.write(
+    `ax-devil-error: ${JSON.stringify("Invalid storage directory: storage.cache_dir. Change settings.json or CACHE.")}\n`,
+  );
+  child.emit("close", 1, null);
+  await assert.rejects(starting, {
+    message: "Invalid storage directory: storage.cache_dir. Change settings.json or CACHE.",
+  });
+});
+
+void test(
+  "an exit before delayed startup output rejects once without waiting for close",
+  { timeout: 1000 },
+  async () => {
+    for (const reason of [undefined, "Repair the configuration"]) {
+      const child = fakeProcess();
+      let unexpected = 0;
+      const backend = createBackend({
+        port: "0",
+        executable: "ax-devil",
+        spawner: () => child,
+        onUnexpectedExit: () => {
+          unexpected += 1;
+        },
+      });
+      const starting = backend.ensure();
+      const rejected = assert.rejects(starting, {
+        message: reason ?? "Backend stopped during startup",
+      });
+      child.exitCode = 1;
+      child.emit("exit", 1, null);
+      child.stdout.write("ax-devil: http://127.0.0.1:7330\n");
+      if (reason) child.stdout.write(`ax-devil-error: ${JSON.stringify(reason)}\n`);
+      await rejected;
+      child.emit("close", 1, null);
+      assert.equal(unexpected, 0, "startup refusal does not also report an unexpected exit");
+      await backend.stop();
     }
   },
 );

@@ -13,6 +13,7 @@ import { settingsPatch, useSettings } from "../client/settings";
 import { literalSecret, PlainTextNote, SettingField, type Row } from "./SettingField";
 import { Refusal } from "../kit/Refusal";
 import { ShortcutsDialog } from "./ShortcutsDialog";
+import type { ManualCache } from "./VideoCacheField";
 import { numericInput } from "./numericInput";
 import { useRepairIntent } from "./useRepairIntent";
 import { useSaveDialog } from "./useSaveDialog";
@@ -42,6 +43,11 @@ export function SettingsDialog({
   const [base] = useState(savedValues);
   const [opened] = useState(values);
   const [draft, setDraft] = useState(opened);
+  const [manualCache, setManualCache] = useState<ManualCache>(() => {
+    const value = opened["playback.video_cache"];
+    const mib = typeof value === "number" ? value : 1024;
+    return { text: (mib / 1024).toFixed(2), mib };
+  });
   const repair = useRepairIntent(recovered);
   const [page, setPage] = useState(pages[0] ?? "");
   const [editingShortcuts, setEditingShortcuts] = useState(false);
@@ -80,7 +86,12 @@ export function SettingsDialog({
   const refusedRow = shown.some((row) => row.key === refusal?.location);
   return (
     <>
-      <Dialog title="Settings" onOk={() => void ok()} onCancel={onClose} busy={saving}>
+      <Dialog
+        title={<span className="sr-only [@media(min-height:20rem)]:not-sr-only">Settings</span>}
+        onOk={() => void ok()}
+        onCancel={onClose}
+        busy={saving}
+      >
         <Tabs
           label="Settings pages"
           tabs={pages}
@@ -98,7 +109,7 @@ export function SettingsDialog({
         >
           {[...new Set(rows.map((row) => row.section))].map((section) => (
             <section key={section} className="flex flex-col gap-m">
-              <SectionCaption heading={section} plain />
+              {section && <SectionCaption heading={section} plain />}
               {rows
                 .filter((row) => row.section === section)
                 .map((row) => {
@@ -113,6 +124,11 @@ export function SettingsDialog({
                       <fieldset disabled={row.full_access && !fullAccess} className="contents">
                         <SettingField
                           row={row}
+                          cacheDraft={
+                            row.key === "playback.video_cache"
+                              ? { manual: manualCache, onManualChange: setManualCache }
+                              : undefined
+                          }
                           value={draft[row.key]}
                           describedBy={warning ? note : undefined}
                           decoders={decoders}
