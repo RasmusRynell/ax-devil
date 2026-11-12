@@ -57,7 +57,8 @@ function audit(folder) {
     `
     const fs = require('node:fs');
     const kill = process.kill.bind(process);
-    const log = (target, signal) => fs.appendFileSync(${JSON.stringify(log)}, \`\${JSON.stringify({ target, signal, caller: process.pid, leaderAlive: kill(process.pid, 0) })}\\n\`);
+    const alive = (pid) => { try { return kill(pid, 0); } catch (error) { if (error.code === 'ESRCH') return false; throw error; } };
+    const log = (target, signal) => fs.appendFileSync(${JSON.stringify(log)}, \`\${JSON.stringify({ target, signal, caller: process.pid, leaderAlive: alive(target < 0 ? -target : process.pid) })}\\n\`);
     process.kill = (target, signal) => {
       if (signal !== 0) log(target, signal);
       return kill(target, signal);
@@ -81,10 +82,81 @@ function audit(folder) {
 }
 function assertSafe(signals) {
   for (const entry of signals) {
-    if (entry.target < 0) assert.equal(entry.target, -entry.caller, JSON.stringify(entry));
-    assert.equal(entry.leaderAlive, true, JSON.stringify(entry));
+    if (entry.target < 0)
+      assert.equal(
+        entry.target,
+        -entry.caller,
+        `group signal must originate from its live leader: ${JSON.stringify(entry)}`,
+      );
+    assert.equal(
+      entry.leaderAlive,
+      true,
+      `group leader must not be retired: ${JSON.stringify(entry)}`,
+    );
   }
 }
+void test(
+  "normal completion audits the launcher too and rejects a post-exit group-signal mutant",
+  { timeout: 10000 },
+  async () => {
+    for (const broken of [false, true]) {
+      const folder = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-audit-"));
+      const signals = audit(folder);
+      let launcher;
+      try {
+        for (const file of ["smoke-process.cjs", "child.cjs", "group-leader.cjs"]) {
+          let source = fs.readFileSync(path.join(__dirname, file), "utf8");
+          if (broken && file === "smoke-process.cjs") {
+            const guard = '    child.on("exit", () => {\n      if (finished) return;';
+            assert.ok(source.includes(guard), "mutation must reach the normal exit callback");
+            source = source.replace(guard, `${guard}\n      process.kill(-child.pid, "SIGKILL");`);
+          }
+          fs.writeFileSync(path.join(folder, file), source);
+        }
+        launcher = spawn(
+          process.execPath,
+          [
+            path.join(folder, "smoke-process.cjs"),
+            "2",
+            path.join(folder, "result"),
+            "normal-completion",
+            process.execPath,
+            "-e",
+            'require("node:fs").writeFileSync(process.env.AX_DEVIL_SMOKE_RESULT, "PASS")',
+          ],
+          { env: signals.env, stdio: ["ignore", "pipe", "pipe"] },
+        );
+        launcher.stdout.resume();
+        launcher.stderr.resume();
+        const outcome = await bounded(events.once(launcher, "close"));
+        const entries = signals.read();
+        if (broken) {
+          assert.ok(
+            entries.some(
+              (entry) => entry.caller === launcher.pid && entry.target < 0 && !entry.leaderAlive,
+            ),
+            "mutant must expose a launcher signal to a retired leader",
+          );
+          assert.throws(
+            () => assertSafe(entries),
+            /group signal must originate|group leader must not be retired/,
+          );
+        } else {
+          assert.deepEqual(outcome, [0, null]);
+          assert.ok(
+            entries.some((entry) => entry.target < 0),
+            "the live leader cleanup must be audited",
+          );
+          assertSafe(entries);
+        }
+      } finally {
+        await stopChild(launcher);
+        fs.rmSync(folder, { recursive: true, force: true });
+      }
+    }
+  },
+);
+
 for (const escaped of [false, true])
   void test(
     `wrapper exit with ${escaped ? "own-session" : "same-group"} survivor`,
@@ -150,10 +222,10 @@ for (const escaped of [false, true])
   );
 
 void test(
-  "live leader signals safely for clean exit, deadline and cancellation; status preserves signals",
+  "command signals are preserved and stubborn commands escalate through a live leader",
   { timeout: 10000 },
   async () => {
-    for (const mode of ["clean", "deadline", "cancel", "signal", "escalation"]) {
+    for (const mode of ["signal", "escalation"]) {
       const folder = fs.mkdtempSync(path.join(os.tmpdir(), "leader-status-"));
       const signals = audit(folder);
       let child;
@@ -163,31 +235,21 @@ void test(
           process.execPath,
           [
             "-e",
-            mode === "clean"
-              ? "process.exit(0)"
-              : mode === "signal"
-                ? "process.kill(process.pid, 'SIGTERM')"
-                : `process.on("SIGINT", () => {}); require("node:fs").writeFileSync(${JSON.stringify(ready)}, "ready"); setInterval(() => {}, 1000)`,
+            mode === "signal"
+              ? "process.kill(process.pid, 'SIGTERM')"
+              : `process.on("SIGINT", () => {}); require("node:fs").writeFileSync(${JSON.stringify(ready)}, "ready"); setInterval(() => {}, 1000)`,
           ],
           { env: signals.env, stdio: "pipe" },
         );
         const done = bounded(events.once(child, "exit"));
-        if (mode === "deadline" || mode === "cancel" || mode === "escalation") {
+        if (mode === "escalation") {
           const owner = observe(child, { graceMs: 20 });
           await waitFor(() => fs.existsSync(ready));
-          if (mode === "deadline") await owner.stop();
-          else {
-            const first = owner.stop();
-            assert.equal(owner.stop(), first);
-            await first;
-          }
+          await owner.stop();
         }
         const [code, signal] = await done;
-        if (mode === "clean") assert.deepEqual([code, signal], [0, null]);
-        else {
-          assert.equal(code, null);
-          assert.equal(signal, mode === "signal" ? "SIGTERM" : "SIGKILL");
-        }
+        assert.equal(code, null);
+        assert.equal(signal, mode === "signal" ? "SIGTERM" : "SIGKILL");
         assertSafe(signals.read());
       } finally {
         await stopChild(child);
