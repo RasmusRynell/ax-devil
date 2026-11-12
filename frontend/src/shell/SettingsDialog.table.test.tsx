@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { waitFor, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { AccessContext } from "../client/access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import { SettingsDialog } from "./SettingsDialog";
@@ -100,3 +100,51 @@ describe("settings dialog, real table", () => {
     }
   });
 });
+
+it.each([
+  [" +5 ", 5, "+5.12e2", 512],
+  ["1_024", 1024, "512.", 512],
+  ["5e0", "5e0", "5_12.0", 512],
+  ["5.", "5.", "512.5", 512.5],
+  ["1__2", "1__2", "1__2", "1__2"],
+  [" -5 ", -5, ".5", 0.5],
+  [" +٥ ", 5, "٥١٢.", 512],
+  ["\u00855\u0085", 5, "512e+0", 512],
+  ["\uFEFF5", "\uFEFF5", "nan", "nan"],
+])(
+  "normalizes numeric input %s on submit, preserving references and password whitespace",
+  async (head, parsedHead, cache, parsedCache) => {
+    const apply = vi.fn().mockResolvedValue(null);
+    render(
+      <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
+        <FakeSettings apply={apply}>
+          <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
+        </FakeSettings>
+      </AccessContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Stream defaults" }));
+    for (const [label, value] of [
+      ["RTSP port", " $PORT "],
+      ["Camera head", head],
+      ["Password", " secret "],
+    ])
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    fireEvent.click(screen.getByRole("tab", { name: "Playback" }));
+    fireEvent.change(screen.getByLabelText("Memory for video caching (MiB)"), {
+      target: { value: cache },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    await waitFor(() =>
+      expect(apply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          set: expect.objectContaining({
+            "camera.rtsp_port": "$PORT",
+            "camera.head": parsedHead,
+            "playback.video_cache": parsedCache,
+            "camera.password": " secret ",
+          }),
+        }),
+      ),
+    );
+  },
+);

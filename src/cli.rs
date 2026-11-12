@@ -79,7 +79,7 @@ struct OverlayOption {
 #[derive(Args)]
 struct Global {
     /// Use this settings file instead of $XDG_CONFIG_HOME/ax-devil/settings.json (~/.config/ax-devil/settings.json).
-    #[arg(long, global = true, value_name = "PATH", value_hint = ValueHint::FilePath)]
+    #[arg(long, value_name = "PATH", value_hint = ValueHint::FilePath)]
     config: Option<PathBuf>,
     /// Keep caches in this folder instead of $XDG_CACHE_HOME/ax-devil (~/.cache/ax-devil).
     #[arg(long, global = true, value_name = "PATH", value_hint = ValueHint::DirPath)]

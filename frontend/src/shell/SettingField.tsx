@@ -8,6 +8,7 @@ import { Icon } from "../kit/Icon";
 import { SET_PASSWORD } from "../live/expansions";
 import { chooseFolder, usePickPath } from "../client/pickPath";
 import { isSecretState, secretStateOf, type Login } from "../client/secret";
+import { numericInput } from "./numericInput";
 import { LoginsEditor } from "./LoginsEditor";
 
 /** A setting's value as the backend tells it, or as edited: logins carry the passwords typed since. */
@@ -119,14 +120,14 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
     <TextField
       label={label}
       value={textOf(value)}
-      onChange={(text) => onChange(/^\d+$/.test(text) ? Number(text) : text)}
+      onChange={(text) => onChange(numericInput(text, "auto_or_whole", true))}
     />
   ),
   whole: ({ label, value, onChange }) => (
     <TextField
       label={label}
       value={textOf(value)}
-      onChange={(text) => onChange(/^\d+$/.test(text) ? Number(text) : text)}
+      onChange={(text) => onChange(numericInput(text, "whole", true))}
     />
   ),
   // The scan logins are the only list of records on a page (the confirmed references have none): edited in place,

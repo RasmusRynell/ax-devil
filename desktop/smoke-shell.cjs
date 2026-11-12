@@ -241,6 +241,11 @@ module.exports.run = async ({ window }) => {
         "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'View')",
       );
     await wait("document.querySelector('[role=menu]')");
+    assert.deepEqual(
+      await js(`(${fit.panel.toString()})('[data-cursor-region="popup"]')`),
+      [],
+      `The View menu stays inside the window at ${zoom * 100}% zoom`,
+    );
     await shoot(`menu-${theme}${suffix}.png`);
     for (const { name, open, close = "Cancel" } of [
       {

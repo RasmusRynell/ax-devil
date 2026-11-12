@@ -15,7 +15,9 @@ mod env;
 mod expand;
 mod file;
 mod kind;
+mod load;
 mod migrate;
+mod preferences;
 mod read;
 mod secret;
 pub mod shortcuts;
@@ -97,98 +99,13 @@ impl fmt::Debug for State {
 }
 
 impl State {
-    /// Validates `rest` (a settings file without its `version`) and normalizes it.
-    fn build(
-        version: u64,
-        rest: &Map<String, Value>,
-        table: &'static [Setting],
-        lookup: &Lookup,
-    ) -> Result<Self, Error> {
-        let invalid = |location: &str, reason: &str| Error {
-            location: location.to_owned(),
-            reason: reason.to_owned(),
-            invalid: true,
-            forbidden: false,
-        };
-        let object = |name: &str| match rest.get(name) {
-            None => Ok(Map::new()),
-            Some(Value::Object(map)) => Ok(map.clone()),
-            Some(_) => Err(invalid(name, "expected an object")),
-        };
-        let mut stored = object("settings")?;
-        let mut values = BTreeMap::new();
-        let mut numbers = BTreeMap::new();
-        let mut settings = Map::new();
-        for setting in table {
-            if setting.scope == Scope::Device {
-                // A device keeps its own; an old file's value is dropped with the next write.
-                stored.remove(setting.key);
-                continue;
-            }
-            let value = stored.remove(setting.key).map_or_else(
-                || setting.kind.default_value(),
-                |value| setting.kind.with_ids(value),
-            );
-            // A reference whose variable is unset or wrong here still loads, as it does in Python, which checks it
-            // only when it is saved: `patch` and `update` refuse it, and `resolved` falls back to the default.
-            if let Err(reason) = setting.check(&value, &**lookup)
-                && !setting.holds_reference(&value)
-            {
-                return Err(invalid(setting.key, &reason));
-            }
-            if matches!(setting.kind, Kind::Whole { .. }) && setting.holds_reference(&value) {
-                numbers.insert(setting.key.to_owned(), setting.used(&value, &**lookup));
-            }
-            if !setting.kind.is_default(&value) {
-                settings.insert(setting.key.to_owned(), value.clone());
-            }
-            values.insert(setting.key.to_owned(), value);
-        }
-        settings.append(&mut stored);
-
-        let mut stored = object("shortcuts")?;
-        let mut known = BTreeMap::new();
-        for command in shortcuts::COMMANDS {
-            match stored.remove(command.id) {
-                None => {}
-                Some(Value::String(key)) => {
-                    known.insert(command.id.to_owned(), Some(key));
-                }
-                Some(Value::Null) => {
-                    known.insert(command.id.to_owned(), None);
-                }
-                Some(_) => {
-                    return Err(invalid(
-                        &format!("shortcuts.{}", command.id),
-                        "expected a key or null",
-                    ));
-                }
-            }
-        }
-        let bound: BTreeMap<String, Option<String>> = shortcuts::effective(&known)
-            .into_iter()
-            .map(|(id, key)| (id.to_owned(), key))
-            .collect();
-        let overrides = shortcuts::overrides_from(&bound)?;
-        let mut shortcut_entries = Map::new();
-        for (id, key) in &overrides {
-            shortcut_entries.insert(id.clone(), key.clone().map_or(Value::Null, Value::String));
-        }
-        shortcut_entries.append(&mut stored);
-
-        let mut document = rest.clone();
-        document.insert("settings".into(), Value::Object(settings));
-        document.insert("shortcuts".into(), Value::Object(shortcut_entries));
-        Ok(Self {
-            table,
-            lookup: Arc::clone(lookup),
-            version,
-            revision: 0,
-            values,
-            numbers,
-            overrides,
-            document,
-        })
+    /// Raw settings, including recoverable preferences, so a patch changes only the keys it names.
+    fn saved_values(&self) -> BTreeMap<String, Value> {
+        self.document
+            .get("settings")
+            .and_then(Value::as_object)
+            .map(|values| values.clone().into_iter().collect())
+            .unwrap_or_default()
     }
 
     /// What this version does not know and keeps: top-level keys, settings and command ids.
@@ -261,8 +178,8 @@ pub struct Settings {
 impl Settings {
     /// Loads the config at `path`. A missing file gives the defaults and is created on the first save. An older file
     /// is copied to `<name>.v<N>.json`, migrated and written back. A file that is malformed, has no integer
-    /// `version`, is newer than this build, or holds a known setting or shortcut that does not validate is an
-    /// error naming the file and the key. Keys this version does not know are logged and kept.
+    /// `version`, or is newer than this build is an error naming the file. Recoverable preferences keep their
+    /// raw saved values; other invalid values fail with the key. Unknown keys are logged and kept.
     pub fn load(path: &Path) -> Result<Self, Error> {
         Self::open(
             path,
@@ -368,7 +285,7 @@ impl Settings {
         if let Some(key) = patch.reset.iter().find(|key| patch.set.contains_key(*key)) {
             return Err(invalid(key, "named twice"));
         }
-        let mut values = current.values.clone();
+        let mut values = current.saved_values();
         for setting in current.rows() {
             let value = match patch.set.get(setting.key) {
                 Some(value) => value.clone(),
@@ -400,11 +317,11 @@ impl Settings {
         }
         bound.extend(patch.shortcuts_set.clone());
         let overrides = shortcuts::overrides_from(&bound)?;
-        self.write(&current, values, overrides)
+        self.write(&current, values, overrides, patch)
     }
 
     /// Changes the one setting `key` and nothing else. Under the same lock that orders every change, `edit` sees the
-    /// stored value as it is now and answers the value to store, or `None` to leave the setting alone and get the
+    /// effective value as it is now and answers the value to store, or `None` to leave the setting alone and get the
     /// current state back. It works on raw values (a `$NAME` reference as written, a secret as stored), so no secret
     /// passes through it, and no other change falls between the read and the write. The stored value is validated as
     /// by [`patch`](Self::patch); on any failure nothing changes.
@@ -432,10 +349,10 @@ impl Settings {
                 .check(&value, &*current.lookup)
                 .map_err(|reason| invalid(key, &reason))?;
         }
-        let mut values = current.values.clone();
+        let mut values = current.saved_values();
         values.insert(key.to_owned(), value);
         let overrides = current.overrides.clone();
-        self.write(&current, values, overrides)
+        self.write(&current, values, overrides, &Patch::default())
     }
 
     /// Validates `values` and `overrides` on top of `current`, writes the file and publishes the new state. The caller
@@ -445,30 +362,24 @@ impl Settings {
         current: &State,
         values: BTreeMap<String, Value>,
         overrides: BTreeMap<String, Option<String>>,
+        patch: &Patch,
     ) -> Result<Arc<State>, Error> {
         let mut rest = current.document.clone();
-        let mut settings = Map::from_iter(values);
-        if let Some(Value::Object(kept)) = rest.get("settings") {
-            settings.extend(
+        let settings = Map::from_iter(values);
+        let mut shortcut_entries: Map<String, Value> = overrides
+            .into_iter()
+            .map(|(id, key)| (id, key.map_or(Value::Null, Value::String)))
+            .collect();
+        if let Some(Value::Object(kept)) = rest.get("shortcuts") {
+            shortcut_entries.extend(
                 kept.iter()
-                    .filter(|(key, _)| !current.values.contains_key(*key))
-                    .map(|(k, v)| (k.clone(), v.clone())),
+                    .filter(|(id, _)| {
+                        !patch.shortcuts_set.contains_key(*id)
+                            && !patch.shortcuts_reset.contains(*id)
+                    })
+                    .map(|(id, value)| (id.clone(), value.clone())),
             );
         }
-        let mut shortcut_entries = Map::new();
-        if let Some(Value::Object(kept)) = rest.get("shortcuts") {
-            let unknown = kept.iter().filter(|(id, _)| {
-                !shortcuts::COMMANDS
-                    .iter()
-                    .any(|command| command.id == id.as_str())
-            });
-            shortcut_entries.extend(unknown.map(|(k, v)| (k.clone(), v.clone())));
-        }
-        shortcut_entries.extend(
-            overrides
-                .into_iter()
-                .map(|(id, key)| (id, key.map_or(Value::Null, Value::String))),
-        );
         rest.insert("settings".into(), Value::Object(settings));
         rest.insert("shortcuts".into(), Value::Object(shortcut_entries));
 

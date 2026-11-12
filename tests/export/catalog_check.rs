@@ -106,9 +106,9 @@ fn catalog_use_makes_a_catalog_of_the_folder_the_default_and_new_copies_a_catalo
     fs::write(&settings, r#"{"version": 1}"#).unwrap();
     let run = |args: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_ax-devil"))
+            .args(["catalog"])
             .arg("--config")
             .arg(&settings)
-            .args(["catalog"])
             .args(args)
             .env("XDG_DATA_HOME", home.path())
             .output()

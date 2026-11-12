@@ -65,19 +65,6 @@ fn a_plain_launch_opens_nothing_and_keeps_the_global_options() {
     assert_eq!(cli.global.log_level, logging::Level::Debug);
     assert_eq!(cli.global.config, Some(PathBuf::from("x.json")));
     assert_eq!(parse(&[]).unwrap().global.log_level, logging::Level::Info);
-
-    // A global option applies before or after the command.
-    let placed: [&[&str]; 3] = [
-        &["clear-cache", "--config", "x.json"],
-        &["--config", "x.json", "clear-cache"],
-        &["--config", "x.json", "catalog", "list"],
-    ];
-    for args in placed {
-        assert_eq!(
-            parse(args).unwrap().global.config,
-            Some(PathBuf::from("x.json"))
-        );
-    }
 }
 
 #[test]
@@ -108,6 +95,9 @@ fn local_pairs_overlays_with_handlers_in_order_or_leaves_them_all_to_the_extensi
     let folder = tempfile::tempdir().unwrap();
     let path = |name: &str| folder.path().join(name).to_str().unwrap().to_owned();
     let [video, tracks, onvif] = ["a.mp4", "x.txt", "y.xml"].map(path);
+    for path in [&video, &tracks, &onvif] {
+        std::fs::write(path, "").unwrap();
+    }
     let item = &items(&[
         "local",
         "--video",
@@ -198,11 +188,22 @@ fn local_pairs_overlays_with_handlers_in_order_or_leaves_them_all_to_the_extensi
 
 #[test]
 fn a_local_overlay_no_single_handler_reads_fails_with_the_correction() {
+    let folder = tempfile::tempdir().unwrap();
+    let video = folder.path().join("a.mp4");
+    std::fs::write(&video, "").unwrap();
     let run = |overlay: &str| {
+        let overlay = folder.path().join(overlay);
+        std::fs::write(&overlay, "").unwrap();
         launch_items(
-            parse(&["local", "--video", "a.mp4", "--overlay", overlay])
-                .unwrap()
-                .command,
+            parse(&[
+                "local",
+                "--video",
+                video.to_str().unwrap(),
+                "--overlay",
+                overlay.to_str().unwrap(),
+            ])
+            .unwrap()
+            .command,
             &Handlers::built_in(),
             stream_defaults,
         )
@@ -260,11 +261,17 @@ fn open_refuses_a_recovery_copy_the_window_could_not_take_over() {
 
 #[test]
 fn an_overlay_option_belongs_to_the_nearest_preceding_overlay_and_is_typed_by_its_decoder() {
+    let folder = tempfile::tempdir().unwrap();
+    let [video, first_overlay, second_overlay] = ["a.mp4", "x.txt", "y.txt"].map(|name| {
+        let path = folder.path().join(name);
+        std::fs::write(&path, "").unwrap();
+        path.to_str().unwrap().to_owned()
+    });
     let args = |first: &[&'static str]| {
-        let head = ["local", "--video", "a.mp4", "--overlay", "x.txt"];
+        let head = ["local", "--video", &video, "--overlay", &first_overlay];
         let tail = [
             "--overlay",
-            "y.txt",
+            &second_overlay,
             "--overlay-option",
             "width=32",
             "--overlay-option",
@@ -296,9 +303,9 @@ fn an_overlay_option_belongs_to_the_nearest_preceding_overlay_and_is_typed_by_it
         "--overlay-option",
         "width=1",
         "--video",
-        "a.mp4",
+        &video,
         "--overlay",
-        "x.txt",
+        &first_overlay,
     ];
     assert!(parse(&early).is_err(), "no overlay precedes it");
     let missing = launch_items(
@@ -450,6 +457,10 @@ async fn plugins_installed_updated_and_removed_through_the_registry_are_listed_a
         "loaded"
     );
     let handlers = Plugins::new(registry.clone(), Handlers::built_in()).handlers();
+    let video = folder.path().join("v.mp4");
+    let overlay = folder.path().join("a.txt");
+    std::fs::write(&video, "").unwrap();
+    std::fs::write(&overlay, "").unwrap();
     assert!(
         args::try_parse_from(
             &handlers,
@@ -457,9 +468,9 @@ async fn plugins_installed_updated_and_removed_through_the_registry_are_listed_a
                 "ax-devil",
                 "local",
                 "--video",
-                "v.mp4",
+                video.to_str().unwrap(),
                 "--overlay",
-                "a.txt",
+                overlay.to_str().unwrap(),
                 "--handler-type",
                 "shell-times"
             ]
@@ -483,4 +494,38 @@ async fn plugins_installed_updated_and_removed_through_the_registry_are_listed_a
     assert!(plugins(&["remove", "shell-times"]).await.ok);
     assert!(!plugins(&["remove", "shell-times"]).await.ok);
     assert!(plugins(&["list"]).await.text.contains("No plugins"));
+}
+
+#[test]
+fn utilities_use_only_their_local_config() {
+    for command in [vec!["clear-cache"], vec!["catalog", "list"]] {
+        let mut root = vec!["--config", "root.json"];
+        root.extend(&command);
+        assert_eq!(parse(&root).unwrap().global.config, None);
+        root.extend(["--config", "local.json"]);
+        assert_eq!(
+            parse(&root).unwrap().global.config,
+            Some(PathBuf::from("local.json"))
+        );
+    }
+}
+
+#[test]
+fn local_rejects_missing_files_and_directories_before_launch() {
+    let folder = tempfile::tempdir().unwrap();
+    let video = folder.path().join("video.mp4");
+    std::fs::write(&video, "").unwrap();
+    let video = video.to_str().unwrap();
+    let missing = folder.path().join("missing.xml");
+    for path in [missing.as_path(), folder.path()] {
+        let path = path.to_str().unwrap();
+        for args in [
+            vec!["local", "--video", path],
+            vec!["local", "--video", video, "--overlay", path],
+        ] {
+            let error = parse(&args).err().expect("invalid file must fail");
+            assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
+            assert!(error.to_string().contains(path));
+        }
+    }
 }

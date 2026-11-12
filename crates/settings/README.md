@@ -29,8 +29,8 @@ credential. Only shortcuts are read live.
   when used. A reference that gives nothing usable is logged without its value and gives empty text, or the default
   where empty is not valid. A folder is read once at start; `State::references` gives a form the values.
 - Unknown top-level keys, settings keys and command ids are logged and kept on save, so another version's settings
-  survive. A known key with an invalid value, malformed JSON, a missing or non-integer `version`, or a file newer
-  than `VERSION` stops loading with an error naming the file and key.
+  survive. Recovery leaves the saved raw value separate from the effective fallback; only a patch/update naming that key replaces it.
+  Other invalid values, malformed JSON, a missing or non-integer `version`, or a file newer than `VERSION` stop loading.
 
 ## Changing the format
 
