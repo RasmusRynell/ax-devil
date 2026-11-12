@@ -6,6 +6,7 @@ import { FileScope } from "./fileScope";
 import type { ClientMessage } from "../stream/protocol";
 
 const ROW: EventRowWire = {
+  anchor: Array(32).fill(0) as EventRowWire["anchor"],
   event: 4,
   frame: 12,
   kind: "merge",
@@ -126,6 +127,10 @@ describe("one event", () => {
     events.want(0, 5, 64);
     files.receive(found(2, { kind: "Event", event: 5, detail: null }));
     expect(events.event(0)).toMatchObject({ event: 5, detail: null });
+    files.suspend();
+    sent.length = 0;
+    events.want(0, null);
+    expect(sent).toEqual([]);
   });
 
   it("says why there is no event, to whoever listens, until another is wanted", () => {

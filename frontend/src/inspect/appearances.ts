@@ -18,6 +18,8 @@ export type Spans = readonly (readonly [number, number])[];
 
 /** Where the object appears; replaced, never mutated, when it changes. */
 export type Appearance = {
+  /** History revision that placed these events. */
+  revision: number;
   entity: string;
   spans: Spans;
   /** More spans exist than were sent: these are the first ones. */
@@ -34,10 +36,11 @@ const APPEARANCES: FileRequestSpec<"Appearances", string, Basis, Appearance> = {
   shape: "lookup",
   basis: basisOf,
   message: (lane, request, entity) => ({ type: "Appearances", lane, request, entity }),
-  page: (body, entity) =>
+  page: (body, entity, revision) =>
     body.entity === entity
       ? {
           entity,
+          revision,
           spans: body.spans,
           truncated: body.truncated,
           events: body.events,

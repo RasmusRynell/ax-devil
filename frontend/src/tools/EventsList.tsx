@@ -68,7 +68,7 @@ export function EventsList({
   const { page, unavailable } = listed;
   const frame = view.shown?.sequenceId;
   const items = useMemo(
-    () => page?.rows.map((row) => itemOf(row, (at) => source.frameTime(at))) ?? [],
+    () => page?.rows.map((row) => itemOf(row, (at) => source.frameTime(at), page.revision)) ?? [],
     // The frames' times are known once the video is described, which `frameCount` follows.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [page, source, view.frameCount],

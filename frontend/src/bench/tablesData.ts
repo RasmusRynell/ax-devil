@@ -63,6 +63,7 @@ export class FakeFiles {
     want: () => {},
     event: () => null,
     eventUnavailable: () => null,
+    revision: () => 0,
     basis: () => "",
   };
   locating = () => {};

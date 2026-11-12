@@ -142,10 +142,36 @@ pub struct EventObject {
     pub class: Option<String>,
 }
 
+/// A server-issued SHA-256 digest of kind, label and ordered entity ids (length-prefixed UTF-8).
+/// Frame, index and classes are excluded. All 256 bits are retained; accidental collisions are impractical.
+pub type EventAnchor = [u8; 32];
+
+fn anchor<'a>(
+    kind: OperationKind,
+    label: &'a str,
+    ids: impl Iterator<Item = &'a str>,
+) -> EventAnchor {
+    use sha2::{Digest, Sha256};
+    let mut digest = Sha256::new();
+    digest.update([match kind {
+        OperationKind::Delete => 0,
+        OperationKind::Rename => 1,
+        OperationKind::Merge => 2,
+        OperationKind::Split => 3,
+    }]);
+    for text in std::iter::once(label).chain(ids) {
+        digest.update((text.len() as u64).to_le_bytes());
+        digest.update(text.as_bytes());
+    }
+    digest.finalize().into()
+}
+
 /// An event of the file as a list shows it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(rename = "EventRowWire")]
 pub struct EventRow {
+    /// Bounded identity for finding this event after a file replacement.
+    pub anchor: EventAnchor,
     /// The event's index in the file's events, which names it in a request.
     pub event: u32,
     /// The frame the video shows it on.
@@ -205,7 +231,8 @@ impl<'a> EventView<'a> {
     /// Finds Python's nearest equal event: kind, label and ordered ids match; frame distance breaks ties in file order.
     pub fn nearest(
         self,
-        previous: &EventRow,
+        previous: &EventAnchor,
+        frame: u64,
         cancel: &CancelToken,
     ) -> Result<Option<u32>, Cancelled> {
         let mut best = None;
@@ -215,19 +242,18 @@ impl<'a> EventView<'a> {
             let Some(data) = self.history.event(event) else {
                 continue;
             };
-            if data.kind != previous.kind || data.label != previous.label {
+            let candidate = anchor(
+                data.kind,
+                data.label,
+                self.history
+                    .event_entities(event)
+                    .iter()
+                    .map(|&id| self.history.id(id)),
+            );
+            if candidate != *previous {
                 continue;
             }
-            if !self
-                .history
-                .event_entities(event)
-                .iter()
-                .map(|&id| self.history.id(id))
-                .eq(previous.objects.iter().map(|object| object.id.as_str()))
-            {
-                continue;
-            }
-            let delta = u64::from(self.events.frames[event as usize]).abs_diff(previous.frame);
+            let delta = u64::from(self.events.frames[event as usize]).abs_diff(frame);
             if best.is_none() || delta < distance {
                 best = Some(event);
                 distance = delta;
@@ -240,7 +266,7 @@ impl<'a> EventView<'a> {
     pub fn row(self, event: u32) -> Option<EventRow> {
         let frame = self.events.frame(event)?;
         let data = self.history.event(event)?;
-        let objects = self
+        let objects: Vec<EventObject> = self
             .history
             .event_entities(event)
             .iter()
@@ -250,6 +276,13 @@ impl<'a> EventView<'a> {
             })
             .collect();
         Some(EventRow {
+            anchor: anchor(
+                data.kind,
+                data.label,
+                objects
+                    .iter()
+                    .map(|object: &EventObject| object.id.as_str()),
+            ),
             event,
             frame: u64::from(frame),
             kind: data.kind,

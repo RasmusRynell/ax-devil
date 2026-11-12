@@ -61,7 +61,10 @@ pub(super) fn history_of(scenes: &[Scene], policy: &FilterPolicy) -> History {
     for scene in scenes {
         builder.add(scene);
     }
-    match builder.finish(Some(policy)) {
+    match builder
+        .finish(Some(policy), &CancelToken::new())
+        .expect("not cancelled")
+    {
         Built::Ready(history) => *history,
     }
 }
@@ -252,18 +255,19 @@ fn a_finished_track_loads_its_history_from_the_artifact_and_a_reopen_finds_it_ag
 #[test]
 fn a_history_over_the_cache_cap_still_answers_file_queries() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let runs = Arc::new(AtomicUsize::new(0));
     let emit = || Emit {
         scenes: scenes(),
         policy: policy_of(&[]),
         header: false,
         fail: false,
-        runs: Arc::default(),
+        runs: runs.clone(),
     };
     let small = Tuning {
         history_bytes: 64,
         ..Tuning::default()
     };
-    let track = open(&dir, &registry(&dir, emit(), small));
+    let track = open(&dir, &registry(&dir, emit(), small.clone()));
     let history = waited(&track).expect("a large history is still available");
     let cancel = CancelToken::new();
     let timeline =
@@ -291,19 +295,43 @@ fn a_history_over_the_cache_cap_still_answers_file_queries() {
             .matched(),
         2
     );
+    let artifact = fs::read_dir(dir.path().join("cache/scenes"))
+        .expect("cache")
+        .next()
+        .expect("artifact")
+        .expect("entry")
+        .path();
+    let file = std::fs::File::open(artifact).expect("artifact");
+    let tail = crate::format::Tail::read(&file).expect("tail");
+    assert!(
+        tail.sections().history.is_empty(),
+        "the artifact budget still applies"
+    );
+    assert!(
+        tail.identity().expect("identity").digest.is_none(),
+        "not reusable without history"
+    );
     drop((history, track));
-    let again = open(&dir, &registry(&dir, emit(), small));
+    let again = open(&dir, &registry(&dir, emit(), small.clone()));
     assert_eq!(entities(&waited(&again).expect("rebuilt history")).len(), 3);
+    assert_eq!(
+        runs.load(Ordering::SeqCst),
+        2,
+        "reopen rebuilt instead of restoring an incomplete cache"
+    );
 }
 
 #[test]
+#[ignore = "stress: heavy make test-backend CRATE=scene-store TEST=\"a_history_larger_than_256 -- --ignored\""]
 fn a_history_larger_than_256_mib_answers_a_file_query() {
     let mut builder = HistoryBuilder::new();
     for sample in 0..257 {
         let class = format!("{sample:03}{}", "x".repeat(1 << 20));
         builder.add(&scene_of(sample, &[("a", &[&class])]));
     }
-    let Built::Ready(history) = builder.finish(None);
+    let Built::Ready(history) = builder
+        .finish(None, &CancelToken::new())
+        .expect("not cancelled");
     assert!(history.bytes() > 256 << 20);
     let cancel = CancelToken::new();
     let keys = SampleKeys {
@@ -383,4 +411,82 @@ fn an_incomplete_track_keeps_the_history_of_the_samples_it_has() {
         track.snapshot().ingest,
         crate::Ingest::Incomplete(_)
     ));
+}
+
+#[test]
+fn cancellation_during_finalization_publishes_no_artifact() {
+    use std::{
+        sync::{Mutex, mpsc},
+        time::Duration,
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let remaining = move || deadline.saturating_duration_since(std::time::Instant::now());
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (entered, started) = mpsc::channel();
+    let (resume, released) = mpsc::channel();
+    let released = Mutex::new(released);
+    let tuning = Tuning {
+        finalizing: Some(Arc::new(move |cancel| {
+            entered.send(cancel.clone()).expect("finalization started");
+            released
+                .lock()
+                .expect("lock")
+                .recv_timeout(remaining())
+                .expect("resume deadline");
+        })),
+        ..Tuning::default()
+    };
+    let finalizing = tuning.finalizing.clone();
+    let registry = registry(
+        &dir,
+        Emit {
+            scenes: scenes(),
+            policy: policy_of(&[("car", "car")]),
+            header: false,
+            fail: false,
+            runs: Arc::default(),
+        },
+        tuning,
+    );
+    let source = dir.path().join("overlay.txt");
+    fs::write(&source, b"rows\n").expect("source");
+    let overlay = OverlayRef {
+        label: "lane".into(),
+        slot: "lane".into(),
+        path: source,
+        handler: "TEST".into(),
+        options: Settings::new(),
+        metadata: Default::default(),
+    };
+    let (done, finished) = mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let mut builder = HistoryBuilder::new();
+        for scene in scenes() {
+            builder.add(&scene);
+        }
+        builder.finalizing = finalizing;
+        let stopped = builder.finish(None, &CancelToken::new()).is_err();
+        let cancelled = matches!(
+            registry.open(&overlay, &CancelToken::new()),
+            Err(Interrupt::Cancelled)
+        );
+        done.send(stopped && cancelled).expect("result");
+    });
+    for _ in 0..2 {
+        let token = started.recv_timeout(remaining()).expect("start deadline");
+        token.cancel();
+        resume.send(()).expect("resume");
+    }
+    assert!(
+        finished
+            .recv_timeout(remaining())
+            .expect("whole operation deadline")
+    );
+    worker.join().expect("worker");
+    assert_eq!(
+        fs::read_dir(dir.path().join("cache/scenes"))
+            .expect("cache")
+            .count(),
+        0
+    );
 }

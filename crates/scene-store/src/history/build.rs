@@ -2,6 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use foundation::{CancelToken, Cancelled};
 use scene::{FilterPolicy, Scene};
 
 use super::{Built, EventRow, History, Strings, kind_index};
@@ -25,11 +26,16 @@ impl Interner {
     }
 }
 
+#[cfg(test)]
+pub(crate) type Finalizing = std::sync::Arc<dyn Fn(&CancelToken) + Send + Sync>;
+
 /// No run yet.
 const NO_RUN: u32 = u32::MAX;
 
 /// Collects the history from the Scenes of a file in sample order.
 pub(crate) struct HistoryBuilder {
+    #[cfg(test)]
+    pub(crate) finalizing: Option<Finalizing>,
     samples: u32,
     ids: Interner,
     words: Interner,
@@ -49,6 +55,8 @@ impl HistoryBuilder {
     /// A builder for the full file history.
     pub(crate) fn new() -> Self {
         Self {
+            #[cfg(test)]
+            finalizing: None,
             samples: 0,
             ids: Interner::default(),
             words: Interner::default(),
@@ -121,29 +129,44 @@ impl HistoryBuilder {
 
     /// The history, with each entity's file mask judged by `policy`'s rules over the classes it was recorded with. No
     /// policy (the file gave none) has no options.
-    pub(crate) fn finish(self, policy: Option<&FilterPolicy>) -> Built {
+    pub(crate) fn finish(
+        self,
+        policy: Option<&FilterPolicy>,
+        cancel: &CancelToken,
+    ) -> Result<Built, Cancelled> {
+        cancel.check()?;
         let entities = self.ids.strings.len();
         let options = policy.map_or(&[][..], |policy| &policy.options[..]);
         let mask_words = options.len().div_ceil(32);
-        let (classes, class_ids) = group(entities, self.class_log);
-        let (runs, run_pairs) = group(entities, self.run_log);
+        let (classes, class_ids) = group(entities, self.class_log, cancel)?;
+        let (runs, run_pairs) = group(entities, self.run_log, cancel)?;
+        #[cfg(test)]
+        if let Some(finalizing) = self.finalizing {
+            finalizing(cancel);
+        }
+        cancel.check()?;
         let mut file_mask = vec![0_u32; entities * mask_words];
         let mut names = Vec::new();
         for entity in 0..entities {
+            cancel.check()?;
             let [first, count] = classes[entity];
             names.clear();
-            names.extend(
-                class_ids[first as usize..(first + count) as usize]
-                    .iter()
-                    .map(|&word| self.words.strings.get(word)),
-            );
+            for &word in &class_ids[first as usize..(first + count) as usize] {
+                cancel.check()?;
+                names.push(self.words.strings.get(word));
+            }
             for (i, option) in options.iter().enumerate() {
-                if option.rule.matches(names.iter().copied()) {
+                cancel.check()?;
+                if option
+                    .rule
+                    .matches(names.iter().copied().take_while(|_| !cancel.is_cancelled()))
+                {
                     file_mask[entity * mask_words + i / 32] |= 1 << (i % 32);
                 }
             }
         }
-        Built::Ready(Box::new(History {
+        cancel.check()?;
+        Ok(Built::Ready(Box::new(History {
             ids: self.ids.strings,
             words: self.words.strings,
             options: options.len() as u32,
@@ -156,28 +179,38 @@ impl HistoryBuilder {
             run_pairs,
             events: self.events,
             event_entities: self.event_entities,
-        }))
+        })))
     }
 }
 
 /// Collects a log of `(entity, item)` into per-entity ranges (first and count) over one list, keeping the log's order
 /// within each entity.
-fn group<T: Copy + Default>(entities: usize, log: Vec<(u32, T)>) -> (Vec<[u32; 2]>, Vec<T>) {
+fn group<T: Copy + Default>(
+    entities: usize,
+    log: Vec<(u32, T)>,
+    cancel: &CancelToken,
+) -> Result<(Vec<[u32; 2]>, Vec<T>), Cancelled> {
+    cancel.check()?;
     let mut ranges = vec![[0_u32; 2]; entities];
     for &(entity, _) in &log {
+        cancel.check()?;
         ranges[entity as usize][1] += 1;
     }
     let mut next = 0;
     for range in &mut ranges {
+        cancel.check()?;
         range[0] = next;
         next += range[1];
     }
+    cancel.check()?;
     let mut filled = vec![0_u32; entities];
+    cancel.check()?;
     let mut items = vec![T::default(); log.len()];
     for (entity, item) in log {
+        cancel.check()?;
         let e = entity as usize;
         items[(ranges[e][0] + filled[e]) as usize] = item;
         filled[e] += 1;
     }
-    (ranges, items)
+    Ok((ranges, items))
 }

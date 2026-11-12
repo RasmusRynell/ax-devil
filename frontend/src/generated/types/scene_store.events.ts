@@ -42,6 +42,10 @@ class: string | null, };
  */
 export type EventRowWire = { 
 /**
+ * Bounded identity for finding this event after a file replacement.
+ */
+anchor: [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number], 
+/**
  * The event's index in the file's events, which names it in a request.
  */
 event: number, 

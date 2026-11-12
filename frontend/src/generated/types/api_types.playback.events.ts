@@ -1,6 +1,5 @@
 // Generated from api_types::playback::events by make; do not edit.
 
-import type { EventRowWire } from "./scene_store.events";
 import type { SearchWire } from "./scene_store.query";
 
 /**
@@ -72,9 +71,17 @@ lane: number,
  */
 request: number, 
 /**
- * The previously shown event and frame.
+ * The prior index, echoed in the answer.
  */
-previous: EventRowWire, 
+event: number, 
+/**
+ * Server-issued identity; fixed size regardless of event content.
+ */
+anchor: [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number], 
+/**
+ * The previously shown frame.
+ */
+frame: number, 
 /**
  * At most 256 presence bins per object.
  */

@@ -284,7 +284,7 @@ impl TrackRegistry {
                 options,
                 artifact: artifact.as_deref(),
                 cache_bytes: self.scene_cache_bytes,
-                tuning: self.tuning,
+                tuning: self.tuning.clone(),
             },
             cancel,
         )

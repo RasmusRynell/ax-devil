@@ -279,6 +279,7 @@ impl<I: Incoming> Live<'_, I> {
                 | ClientMessage::Prepare { .. }
                 | ClientMessage::Export { .. }
                 | ClientMessage::CancelExport { .. }
+                | ClientMessage::EventRelease { .. }
                 | ClientMessage::FileRelease { .. },
             )) => Ok(()),
             Some(Err(error)) => Err(End::Failed(error)),

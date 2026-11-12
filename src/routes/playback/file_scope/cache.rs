@@ -8,7 +8,7 @@ use std::{
     sync::{Arc, Mutex, PoisonError},
 };
 
-/// The most memory the lanes' kept queries may take together: two of the largest histories (256 MiB each). A
+/// The memory budget for the lanes' kept queries (512 MiB). A
 /// placement takes eight bytes per frame, the events' eight per event and a listing four per object or event, so the history is nearly all of it. A history
 /// two lanes share is counted for each, which only makes the bound safer. One kept query over the budget stays, for
 /// the lane that has just used it.

@@ -70,7 +70,12 @@ function Live({
   const { viewport, onViewport, onDrawn } = useSharedViewport(viewer);
   const [inspector, setInspector] = useState<InspectorMemory>(FRESH_MEMORY);
   // The media tools' pages, lists and width, kept while they are closed; the selected object is the page on top.
-  const { outlined, pick, chooseLane, panel } = useMediaTools(session, objectDetails, tools);
+  const { outlined, pick, chooseLane, panel } = useMediaTools(
+    session,
+    objectDetails,
+    tools,
+    session,
+  );
   const shown = useMemo(() => shownLanes(view.lanes, NOTHING_HIDDEN, entry), [view.lanes, entry]);
   const fullscreen = useLaneFullscreen(pane, shown);
   const shownViewport = useRef(viewport);

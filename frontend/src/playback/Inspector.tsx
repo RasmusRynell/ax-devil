@@ -94,7 +94,7 @@ export function Inspector({
   onMemory: (memory: InspectorMemory) => void;
   reach: Reach;
   /** Opens the page of one of the object's events. */
-  onEvent: (event: EventRowWire) => void;
+  onEvent: (event: EventRowWire, revision: number) => void;
 }) {
   const { selection } = inspection;
   const appearance = useAppearance(reach.source, selection.lane, selection.entity);
@@ -261,7 +261,7 @@ export function Inspector({
           events={appearance.events}
           truncated={appearance.eventsTruncated}
           timeOf={reach.timeOf}
-          onOpen={onEvent}
+          onOpen={(row) => onEvent(row, appearance.revision)}
         />
       )}
     </div>

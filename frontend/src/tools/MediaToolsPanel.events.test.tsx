@@ -278,13 +278,39 @@ describe("Event pages", () => {
     act(() => shown.reread(2));
     expect(shown.eventAsks().at(-1)?.type).toBe("FindEvent");
     shown.answerEvent(detail({ row: { ...EVENTS[0], event: 9, frame: 3 } }), 2);
+    shown.answerEvent(detail({ row: { ...EVENTS[0], event: 9, frame: 3 } }), 2);
     fireEvent.click(button("Go to frame"));
     expect(shown.source.seek).toHaveBeenLastCalledWith(3);
     expect(page()).toBeTruthy();
+    fireEvent.click(
+      within(page())
+        .getByRole("listbox", { name: "Objects involved" })
+        .querySelector("[role=option]")!,
+    );
+    expect(screen.getByRole("region", { name: "Object page" })).toBeTruthy();
+    expect(shown.sent.at(-1)).not.toMatchObject({ type: "FileRelease" });
+    expect(shown.sent).toContainEqual({ type: "EventRelease", lane: 0 });
+    // A second replacement while only the object component is mounted must also remap the stacked event.
     act(() => shown.reread(3));
+    shown.answerEvent(detail({ row: { ...EVENTS[0], event: 10, frame: 2 } }), 3);
+    fireEvent.click(screen.getByRole("button", { name: /Back to Merge/ }));
+    expect(shown.eventAsks().at(-1)).toMatchObject({ type: "Event", event: 10 });
+    shown.answerEvent(detail({ row: { ...EVENTS[0], event: 10, frame: 2 } }), 3);
+    fireEvent.click(button("Go to frame"));
+    expect(shown.source.seek).toHaveBeenLastCalledWith(2);
+    shown.answerEvents([{ ...EVENTS[0], event: 10, frame: 2 }], { data_revision: 3 });
+    expect(shown.eventQueries().at(-1)).toMatchObject({ locate: 10 });
+    fireEvent.click(screen.getByRole("button", { name: "Back to Events" }));
+    expect(
+      within(screen.getByRole("listbox", { name: "Events" }))
+        .getByRole("option")
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    act(() => shown.reread(4));
     expect(shown.eventAsks().at(-1)).toMatchObject({
       type: "FindEvent",
-      previous: { event: 9, frame: 3 },
+      event: 10,
+      frame: 2,
     });
   });
 

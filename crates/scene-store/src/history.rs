@@ -16,6 +16,8 @@ use crate::{format::read_history, track::Ingest};
 
 mod build;
 
+#[cfg(test)]
+pub(crate) use build::Finalizing;
 pub(crate) use build::HistoryBuilder;
 
 /// The most bytes of history stored in the artifact. Larger histories stay with the track.

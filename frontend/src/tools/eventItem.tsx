@@ -8,6 +8,10 @@ import type { Column } from "./table/columns";
 export type EventItem = {
   /** Names it in its list: its index in the file's events, or the live list's own count. */
   id: number;
+  /** Server-issued equality identity, absent for live events. */
+  anchor?: EventRowWire["anchor"];
+  /** History revision this identity was placed under. */
+  revision?: number;
   /** The video frame it is on. */
   frame: number;
   /** Which run of a live stream's frame numbers the frame is of; a recording has one, `0`. */
@@ -26,8 +30,11 @@ export type EventItem = {
 export const itemOf = (
   row: EventRowWire,
   timeOf: (frame: number) => number | undefined,
+  revision?: number,
 ): EventItem => ({
   id: row.event,
+  anchor: row.anchor,
+  revision,
   frame: row.frame,
   generation: 0,
   timeUs: timeOf(row.frame),

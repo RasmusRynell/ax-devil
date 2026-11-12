@@ -88,24 +88,30 @@ const EVENTS: FileRequestSpec<"Events", Wanted, Basis, EventsPage> = {
 };
 
 /** What an event is wanted to be: which, and how finely its objects' presence is binned. */
-type Event = { event: number; bins: number; previous?: EventRowWire; data: number };
+type Event = {
+  event: number;
+  bins: number;
+  previous?: { anchor: EventRowWire["anchor"]; frame: number; revision: number };
+};
 
 const EVENT: FileRequestSpec<"Event", Event, Basis, EventView> = {
   kind: "Event",
   shape: "lookup",
   basis: basisOf,
-  message: (lane, request, { event, bins, previous, data }, basis) =>
-    previous && data !== basis.data
-      ? { type: "FindEvent", lane, request, previous, bins }
-      : { type: "Event", lane, request, event: previous?.event ?? event, bins },
-  page: (body, wanted, revision) => {
-    if (body.event !== (wanted.previous?.event ?? wanted.event)) return null;
-    if (wanted.previous && body.detail) {
-      wanted.previous = body.detail.row;
-      wanted.data = revision;
-    }
-    return { event: wanted.event, revision, detail: body.detail };
-  },
+  message: (lane, request, { event, bins, previous }, basis) =>
+    previous && previous.revision !== basis.data
+      ? {
+          type: "FindEvent",
+          lane,
+          request,
+          event,
+          anchor: previous.anchor,
+          frame: previous.frame,
+          bins,
+        }
+      : { type: "Event", lane, request, event, bins },
+  page: (body, wanted, revision) =>
+    body.event === wanted.event ? { event: wanted.event, revision, detail: body.detail } : null,
 };
 
 export class FileEvents {
@@ -116,12 +122,23 @@ export class FileEvents {
 
   constructor(private readonly host: FileRequestsHost) {
     this.list = new FileRequests(EVENTS, host);
-    this.one = new FileRequests(EVENT, host);
+    this.one = new FileRequests(EVENT, {
+      ...host,
+      released: (lane) => {
+        host.send({ type: "EventRelease", lane });
+        host.released(lane);
+      },
+    });
   }
 
   /** What the lane's Events list shows now; the same object until it changes. */
   view(lane: number): EventsView {
     return this.list.view(lane);
+  }
+
+  /** The current history revision, used by the navigation owner. */
+  revision(lane: number): number {
+    return basisOf(this.host.lanes, lane, this.host.owner()).data;
   }
 
   /** The event the lane wants, once the backend has answered; `null` until then. */
@@ -179,15 +196,19 @@ export class FileEvents {
   }
 
   /** Wants `event` of the lane, with presence in at most `bins` spans per object, or nothing with `null`. */
-  want(lane: number, event: number | null, bins = 0, previous?: EventRowWire): void {
+  want(lane: number, event: number | null, bins = 0, previous?: Event["previous"]): void {
     const held = this.one.wanted(lane);
-    if (event === null) this.one.release(lane);
-    else if (held?.event !== event || held.bins !== bins)
+    if (event === null) {
+      this.one.release(lane);
+    } else if (
+      held?.event !== event ||
+      held.bins !== bins ||
+      JSON.stringify(held.previous) !== JSON.stringify(previous)
+    )
       this.one.want(lane, {
         event,
         bins,
         previous,
-        data: basisOf(this.host.lanes, lane, this.host.owner()).data,
       });
   }
 }

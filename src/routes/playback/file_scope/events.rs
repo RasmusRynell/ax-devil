@@ -68,7 +68,7 @@ impl Events {
                             "An event request asks for 0 to {MAX_BINS} spans, not {}",
                             wire.bins
                         );
-                        self.detail.say(Reply::problem(lane, request, reason));
+                        self.detail.say(Reply::problem(lane, reason));
                     }
                     return;
                 }
@@ -85,11 +85,11 @@ impl Events {
                             events: &cached.events,
                             placement: &cached.placement,
                         };
-                        let matched = view.nearest(&wire.previous, cancel)?;
+                        let matched = view.nearest(&wire.anchor, wire.frame, cancel)?;
                         Ok(found(
                             &cached,
                             FileBody::Event {
-                                event: wire.previous.event,
+                                event: wire.event,
                                 detail: matched.and_then(|event| {
                                     view.detail(event, wire.bins, MAX_LIMIT as usize)
                                 }),
@@ -107,7 +107,7 @@ impl Events {
                             "An event query asks for 1 to {MAX_LIMIT} rows, not {}",
                             wire.limit
                         );
-                        self.list.say(Reply::problem(lane, request, reason));
+                        self.list.say(Reply::problem(lane, reason));
                     }
                     return;
                 }
@@ -126,7 +126,7 @@ impl Events {
                             "An event request asks for 0 to {MAX_BINS} spans, not {}",
                             wire.bins
                         );
-                        self.detail.say(Reply::problem(lane, request, reason));
+                        self.detail.say(Reply::problem(lane, reason));
                     }
                     return;
                 }
@@ -143,6 +143,11 @@ impl Events {
     /// The lane's events are no longer wanted: its running requests stop without an answer.
     pub(super) fn release(&mut self, lane: u16) {
         self.list.release(lane);
+        self.detail.release(lane);
+    }
+
+    /// Cancels only the event detail subscription.
+    pub(super) fn release_detail(&mut self, lane: u16) {
         self.detail.release(lane);
     }
 

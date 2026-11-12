@@ -55,7 +55,6 @@ pub(super) struct Ask {
 /// A message about one request.
 pub(super) struct Reply {
     lane: u16,
-    request: u32,
     message: ServerMessage,
 }
 
@@ -64,7 +63,6 @@ impl Reply {
     fn file(lane: u16, request: u32, answer: FileAnswer) -> Self {
         Self {
             lane,
-            request,
             message: ServerMessage::File {
                 lane,
                 request,
@@ -78,11 +76,10 @@ impl Reply {
         Self::file(lane, request, FileAnswer::Unavailable { unavailable: why })
     }
 
-    /// Tells the owner what request `request` of `lane` got wrong, in `reason`.
-    fn problem(lane: u16, request: u32, reason: String) -> Self {
+    /// Tells the owner what a request of `lane` got wrong, in `reason`.
+    fn problem(lane: u16, reason: String) -> Self {
         Self {
             lane,
-            request,
             message: ServerMessage::LaneProblem { lane, reason },
         }
     }
@@ -231,7 +228,7 @@ impl FileScopes {
                     "A file query asks for 1 to {MAX_LIMIT} rows and 0 to {MAX_BINS} spans, not {} and {}",
                     ask.limit, ask.bins
                 );
-                self.ready.push_back(Reply::problem(lane, request, reason));
+                self.ready.push_back(Reply::problem(lane, reason));
             }
             return Ok(());
         }
@@ -247,6 +244,13 @@ impl FileScopes {
             }
             Err(why) => self.ready.push_back(Reply::unavailable(lane, request, why)),
         }
+        Ok(())
+    }
+
+    /// Releases only the detail job, independently of list subscriptions.
+    pub(super) fn release_event(&mut self, overlays: &ViewerOverlays, lane: u16) -> Flow<()> {
+        check_lane(overlays, lane)?;
+        self.events.release_detail(lane);
         Ok(())
     }
 

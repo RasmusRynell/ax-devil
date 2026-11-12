@@ -181,7 +181,11 @@ request: number,
 /**
  * The object's id.
  */
-entity: string, } | { "type": "EventQuery" } & EventQueryWire | { "type": "Event" } & EventAskWire | { "type": "FindEvent" } & FindEventWire | { "type": "Close" };
+entity: string, } | { "type": "EventQuery" } & EventQueryWire | { "type": "Event" } & EventAskWire | { "type": "FindEvent" } & FindEventWire | { "type": "EventRelease", 
+/**
+ * The lane position.
+ */
+lane: number, } | { "type": "Close" };
 
 /**
  * What the backend sends as text. `Opened` is followed by a Timeline envelope.
@@ -407,7 +411,7 @@ answer: FileAnswer, } | { "type": "LiveOpened" } & LiveOpenedWire | { "type": "L
  * Raised when the messages or the envelope change in a way an older frontend cannot read, or a message is added
  * that an older backend would reject.
  */
-export const PLAYBACK_PROTOCOL = 14;
+export const PLAYBACK_PROTOCOL = 15;
 
 /**
  * "AXDV" read as a little-endian u32.

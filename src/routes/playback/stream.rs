@@ -383,6 +383,9 @@ impl<I: Incoming> Playing<'_, I> {
                 self.gate.is_own(),
                 file_scope::EventsAsk::Detail(wire),
             ),
+            Some(Ok(ClientMessage::EventRelease { lane })) => {
+                self.file_scopes.release_event(self.lanes.overlays(), lane)
+            }
             Some(Ok(ClientMessage::FileRelease { lane })) => {
                 self.file_scopes.release(self.lanes.overlays(), lane)
             }

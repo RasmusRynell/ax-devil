@@ -550,6 +550,7 @@ fn file_answers_are_one_message_tagged_by_state_and_kind() {
         matched: 1,
         offset: 0,
         rows: vec![EventRow {
+            anchor: [0; 32],
             event: 7,
             frame: 12,
             kind: OperationKind::Merge,
@@ -583,4 +584,29 @@ fn event_messages_use_the_names_the_frontend_parses() {
             ..
         })
     ));
+}
+
+#[test]
+fn finding_an_event_has_a_fixed_small_request_even_for_a_large_id() {
+    let row = scene_store::EventRow {
+        anchor: [255; 32],
+        event: u32::MAX,
+        frame: u64::MAX,
+        kind: scene::OperationKind::Delete,
+        label: format!("Delete {}", "x".repeat(40_000)),
+        objects: vec![scene_store::EventObject {
+            id: "x".repeat(40_000),
+            class: None,
+        }],
+    };
+    let ask = ClientMessage::FindEvent(FindEventWire {
+        lane: u16::MAX,
+        request: u32::MAX,
+        event: row.event,
+        anchor: row.anchor,
+        frame: row.frame,
+        bins: 256,
+    });
+    assert!(serde_json::to_vec(&row).unwrap().len() > 80_000);
+    assert!(serde_json::to_vec(&ask).unwrap().len() < 512);
 }

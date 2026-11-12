@@ -1,3 +1,4 @@
+import { useEventNavigation } from "./useEventNavigation";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { vi } from "vite-plus/test";
@@ -88,6 +89,7 @@ function Viewer({
   const [chosen, onChosen] = useState<number | null>(null);
   const [memory, onMemory] = useState(FRESH_MEMORY);
   const [open, setOpen] = useState(true);
+  useEventNavigation(props.source, chosen ?? 0, pages, setPages, open);
   return open ? (
     <MediaToolsPanel
       {...props}
@@ -331,7 +333,7 @@ export function mount(
   const answerEvent = (detail: EventDetailWire | null, data_revision = 1) => {
     const ask = eventAsks().at(-1);
     const request = ask?.request ?? 0;
-    const event = ask?.type === "FindEvent" ? ask.previous.event : (ask?.event ?? 0);
+    const event = ask?.type === "FindEvent" ? ask.event : (ask?.event ?? 0);
     act(() => files.receive(found(request, { kind: "Event", event, detail }, { data_revision })));
   };
   return {
@@ -373,6 +375,7 @@ export const fileEvent = (
   kind: EventRowWire["kind"] = "merge",
   objects = ["1", "2"],
 ): EventRowWire => ({
+  anchor: Array(32).fill(0) as EventRowWire["anchor"],
   event,
   frame,
   kind,
