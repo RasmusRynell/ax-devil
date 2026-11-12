@@ -307,12 +307,14 @@ mod tests {
                 reply["revision"] = (revision - offset).into();
             }
         }
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/catalogs/lend-feed.json");
-        fs::write(
-            path,
-            format!("{}\n", serde_json::to_string_pretty(&recorded).unwrap()),
-        )
-        .unwrap();
+        crate::test_support::fixtures::check(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures"),
+            "catalogs",
+            &std::collections::BTreeMap::from([(
+                "lend-feed.json".into(),
+                format!("{}\n", serde_json::to_string_pretty(&recorded).unwrap()),
+            )]),
+        );
     }
 
     async fn next_catalog(feed: &mut CatalogFeed) -> serde_json::Value {

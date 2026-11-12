@@ -2,8 +2,8 @@
 //!
 //! Each scenario builds a session through `transition`, projects it with [`project`] for the owner and for a
 //! watcher, and records the commands a client may send from a named state. `frontend_fixtures_match_the_backend`
-//! writes them to `fixtures/session/<scenario>.json`, plus `seat-access.json`, and `make check` fails when that changes
-//! them. Regenerate with `make test-backend TEST=frontend_fixtures`.
+//! compares them with `fixtures/session/<scenario>.json`, plus `seat-access.json`. Regenerate explicitly with
+//! `UPDATE_GOLDENS=1 make test-backend TEST=frontend_fixture`.
 //!
 //! A scenario lives in `base`, `tree`, `viewer`, `shell` or `live` and is built with [`Scene`]; a new shape is a new
 //! scenario, or a new state or step in one.
@@ -26,7 +26,7 @@ use serde_json::{Value, json};
 use sessions::session::{
     Access, Command, Control, Fresh, Input, Lease, Outcome, SessionState, can, transition,
 };
-use std::{collections::BTreeMap, fs, io, path::Path};
+use std::{collections::BTreeMap, path::Path};
 use workspace::Environment;
 
 /// One scenario's file: the ids its keys name, the Doc in each named state for both audiences, and the commands
@@ -269,36 +269,6 @@ fn text(value: &impl Serialize) -> String {
     text
 }
 
-/// Checks, before anything is written, that `fixtures` holds a real `session` folder (or none yet) of regular files
-/// only: a symlink or a sub-folder there would make the writes and the pruning reach outside it.
-fn check_folder(fixtures: &Path) -> Result<(), String> {
-    let plain = |path: &Path| match fs::symlink_metadata(path) {
-        Ok(found) if found.is_dir() => Ok(true),
-        Ok(_) => Err(format!("{} is not a plain folder", path.display())),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(format!("{} cannot be read: {error}", path.display())),
-    };
-    if !plain(fixtures)? {
-        return Err(format!("{} does not exist", fixtures.display()));
-    }
-    let session = fixtures.join("session");
-    if !plain(&session)? {
-        return Ok(());
-    }
-    let entries = fs::read_dir(&session).map_err(|error| format!("{session:?}: {error}"))?;
-    for entry in entries {
-        let entry = entry.map_err(|error| format!("{session:?}: {error}"))?;
-        let kind = entry
-            .file_type()
-            .map_err(|error| format!("{:?}: {error}", entry.path()))?;
-        if !kind.is_file() {
-            let path = entry.path();
-            return Err(format!("{} is not a regular file", path.display()));
-        }
-    }
-    Ok(())
-}
-
 /// The file written besides the scenarios.
 const SEAT_ACCESS: &str = "seat-access";
 
@@ -329,79 +299,16 @@ async fn frontend_fixtures_match_the_backend() {
     let scenarios: Vec<(&str, Build)> = GROUPS.iter().copied().flatten().copied().collect();
     let names: Vec<&str> = scenarios.iter().map(|(name, _)| *name).collect();
     check_names(&names).unwrap_or_else(|reason| panic!("{reason}"));
-    check_folder(&fixtures).unwrap_or_else(|reason| panic!("{reason}"));
     let mut files: BTreeMap<String, String> = BTreeMap::new();
     for (name, build) in scenarios {
         files.insert(format!("{name}.json"), text(&build()));
     }
     files.insert(format!("{SEAT_ACCESS}.json"), text(&seat_access()));
-    let folder = fixtures.join("session");
-    fs::create_dir_all(&folder).expect("the fixtures folder exists");
-    for (name, wanted) in &files {
-        let path = folder.join(name);
-        if fs::read_to_string(&path).ok().as_ref() != Some(wanted) {
-            fs::write(&path, wanted).expect("a fixture is written");
-        }
-    }
-    // Only plain files are here (checked above), so removing one never leaves the folder.
-    for entry in fs::read_dir(&folder).expect("the fixtures folder reads") {
-        let path = entry.expect("a fixture entry reads").path();
-        let named = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| files.contains_key(name));
-        let json = path
-            .extension()
-            .is_some_and(|extension| extension == "json");
-        if json && !named {
-            fs::remove_file(&path).expect("a stale fixture is removed");
-        }
-    }
+    crate::test_support::fixtures::check(&fixtures, "session", &files);
 }
 
-#[cfg(unix)]
 #[test]
-fn a_fixtures_folder_that_leaves_itself_is_refused_untouched() {
-    use std::os::unix::fs::symlink;
-    let listing = |folder: &Path| {
-        let mut found: Vec<String> = fs::read_dir(folder)
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
-        found.sort();
-        found
-    };
-    let temp = tempfile::tempdir().unwrap();
-    let outside = temp.path().join("outside");
-    fs::create_dir(&outside).unwrap();
-    fs::write(outside.join("kept.json"), "kept").unwrap();
-    let refused = |name: &str, setup: &dyn Fn(&Path)| {
-        let fixtures = temp.path().join(name);
-        fs::create_dir_all(fixtures.join("session")).unwrap();
-        setup(&fixtures);
-        let before = listing(&fixtures.join("session"));
-        assert!(check_folder(&fixtures).is_err(), "{name} is accepted");
-        assert_eq!(listing(&fixtures.join("session")), before);
-        assert_eq!(listing(&outside), ["kept.json"]);
-    };
-    refused("file", &|fixtures| {
-        symlink(outside.join("kept.json"), fixtures.join("session/a.json")).unwrap();
-    });
-    refused("folder", &|fixtures| {
-        fs::remove_dir(fixtures.join("session")).unwrap();
-        symlink(&outside, fixtures.join("session")).unwrap();
-    });
-    refused("parent", &|fixtures| {
-        let real = fixtures.with_extension("real");
-        fs::rename(fixtures, &real).unwrap();
-        symlink(&real, fixtures).unwrap();
-    });
-    refused("sub", &|fixtures| {
-        fs::create_dir(fixtures.join("session/sub")).unwrap();
-    });
-    let fresh = temp.path().join("fresh");
-    fs::create_dir(&fresh).unwrap();
-    assert!(check_folder(&fresh).is_ok());
+fn scenario_names_are_unique_file_stems() {
     assert!(check_names(&["a"]).is_ok());
     assert!(check_names(&[]).is_err());
     assert!(check_names(&["a", "a"]).is_err());

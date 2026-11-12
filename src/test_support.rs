@@ -1,5 +1,7 @@
 //! Shared by the route tests: the app over a private settings file.
 
+pub mod fixtures;
+
 use crate::{AppState, access::Policy, app, plugins::Plugins};
 use axum::{
     Router,

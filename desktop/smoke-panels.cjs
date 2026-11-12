@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { delay, frames, moveTo, page, setView, settled } = require("./smoke-kit.cjs");
+const { delay, frames, moveTo, page, setView, settled, until } = require("./smoke-kit.cjs");
 
 const THEMES = ["light", "dark"];
 
@@ -188,6 +188,9 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
   // Copy the lane's catalog from its Look page, then delete the copy: the name field and the confirmation fit, the
   // dialog survives Escape and a press on it without the menu closing under it, and the lane ends where it began.
   const press = async (selector, text) => {
+    window.focus();
+    await until(() => window.isFocused(), "the panel window to have native focus");
+    await wait("document.hasFocus()");
     const at = await settled(
       window,
       `(() => {
@@ -286,6 +289,9 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
       return Promise.resolve(new Response(JSON.stringify({ code: 'CatalogInvalid', params: {}, reason: 'Reload refused' }), { status: 400 }));
     };
   })()`);
+  window.blur();
+  await until(() => !window.isFocused(), "the Apply probe to lose native focus");
+  await wait("!document.hasFocus()");
   await press(menu, "Apply to all lanes");
   await wait(`!document.querySelector(${JSON.stringify(menu)})`);
   await wait(`document.querySelector('[aria-label="GT: warnings"]')`);
@@ -306,6 +312,9 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
     await frames({ js });
     await shoot(`catalog-apply-refused-${theme}.png`);
   }
+  window.blur();
+  await until(() => !window.isFocused(), "the Dismiss probe to lose native focus");
+  await wait("!document.hasFocus()");
   await press(warnings, "Dismiss Apply error");
   await wait(`!document.querySelector('[aria-label="GT: warnings"]')`);
   await js("document.querySelector('[aria-label=Workspace]').click()");
