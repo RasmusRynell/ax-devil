@@ -140,14 +140,6 @@ revision: number,
  */
 values: Record<SettingKey, string | boolean | number | SecretState | Array<LoginView> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<"score" | "confidence", { min: number | null; max: number | null }>; expression: string }>, 
 /**
- * Keys with a preserved raw value different from the displayed fallback; a patch naming the key replaces it.
- */
-recovered?: Array<SettingKey>, 
-/**
- * Commands with a preserved raw override different from the displayed binding.
- */
-recoveredShortcuts?: Array<CommandId>, 
-/**
  * What each non-secret setting among `values` that holds a `$NAME` reference gives as it is used (a number for a
  * whole-number setting), for a form that starts from the value. Only with Full access, since it is the server's
  * environment; absent for a setting without a reference.
