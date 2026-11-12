@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { shortcutInput } = require("./shortcut-input.cjs");
+const { shortcutInput, shortcutDisplay } = require("./shortcut-input.cjs");
 
 void test("portable smoke chords use the physical modifiers of the tested platform", () => {
   for (const [platform, ctrl, meta] of [
@@ -17,6 +17,15 @@ void test("portable smoke chords use the physical modifiers of the tested platfo
     ])
       assert.deepEqual(shortcutInput(chord, platform), { keyCode, modifiers }, platform);
   }
+});
+
+void test("smoke labels use native text on each packaged platform", () => {
+  for (const [platform, expected] of [
+    ["darwin", "⌘E"],
+    ["linux", "Ctrl+E"],
+    ["win32", "Ctrl+E"],
+  ])
+    assert.equal(shortcutDisplay("Ctrl+E", platform).text, expected);
 });
 
 void test("unsupported smoke platforms fail instead of silently sending the wrong shortcut", () => {

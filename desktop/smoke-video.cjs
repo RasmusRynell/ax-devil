@@ -1,5 +1,5 @@
 // The smoke test's video scenario: add a video the way a user does, then check the picture on the real canvas.
-const { pressShortcut } = require("./shortcut-input.cjs");
+const { pressShortcut, shortcutDisplay } = require("./shortcut-input.cjs");
 const { dialog, nativeTheme } = require("electron");
 const fs = require("node:fs/promises");
 const assert = require("node:assert/strict");
@@ -411,13 +411,16 @@ async function fullscreen(window) {
     const items = await js(
       "[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((item) => item.textContent)",
     );
+    const shortcuts = await js(
+      "fetch('/api/settings').then(r => r.json()).then(state => state.shortcuts)",
+    );
     const expected = [
-      "Export videoCtrl+E",
-      "Toggle Media Tools PanelCtrl+B",
-      "Toggle Lane FullscreenF",
-      "Add BookmarkM",
-      "Reset Zoom0",
-    ];
+      ["Export video", "export-video"],
+      ["Toggle Media Tools Panel", "media-tools"],
+      ["Toggle Lane Fullscreen", "lane-fullscreen"],
+      ["Add Bookmark", "add-bookmark"],
+      ["Reset Zoom", "zoom-reset"],
+    ].map(([label, id]) => `${label}${shortcuts[id] ? shortcutDisplay(shortcuts[id]).text : ""}`);
     assert.deepEqual(items.slice(0, 5), expected, "The lane menu lists the lane's commands");
     await shoot(`video-lane-menu-${theme}.png`);
     await key("Escape");

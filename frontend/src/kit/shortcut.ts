@@ -1,20 +1,25 @@
-/** Splits portable shortcut text into keys; a Mac platform uses Qt native modifier symbols and order. */
-export function keyParts(shortcut: string, platform = ""): string[] {
+/** The native key parts and plain text of a portable shortcut, for every shortcut label and hint. */
+export function shortcutDisplay(
+  shortcut: string,
+  platform = navigator.platform,
+): { parts: string[]; text: string } {
   const key = shortcut.endsWith("+") ? "+" : (shortcut.split("+").pop() ?? "");
   const modifiers = shortcut
     .slice(0, shortcut.length - key.length)
     .split("+")
     .filter(Boolean);
-  if (platform.startsWith("Mac")) {
+  let parts = [...modifiers, key];
+  const mac = platform.startsWith("Mac");
+  if (mac) {
     const symbols: Record<string, string> = { Meta: "⌃", Alt: "⌥", Shift: "⇧", Ctrl: "⌘" };
-    return [
+    parts = [
       ...["Meta", "Alt", "Shift", "Ctrl"]
         .filter((name) => modifiers.includes(name))
         .map((name) => symbols[name] ?? name),
       key,
     ];
   }
-  return [...modifiers, key];
+  return { parts, text: parts.join(mac ? "" : "+") };
 }
 
 /** The names a shortcut gives keys whose `event.key` is not a readable character. */

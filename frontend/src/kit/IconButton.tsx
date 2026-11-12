@@ -1,3 +1,4 @@
+import { shortcutDisplay } from "./shortcut";
 import type { ButtonHTMLAttributes } from "react";
 import { Icon } from "./Icon";
 import type { IconName } from "./icons";
@@ -33,7 +34,7 @@ export function IconButton({
     <button
       type="button"
       aria-label={label}
-      title={shortcut ? `${label} (${shortcut})` : label}
+      title={shortcut ? `${label} (${shortcutDisplay(shortcut).text})` : label}
       className={`${onCanvas ? ON_CANVAS : QUIET_ICON} ${SQUARE} shrink-0 ${className}`}
       {...rest}
     >

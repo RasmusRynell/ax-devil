@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import keys from "../../../fixtures/shortcuts/keys.json";
-import { keyParts, shortcutOf } from "./shortcut";
+import { shortcutDisplay, shortcutOf } from "./shortcut";
 
 /** The key press that types a canonical shortcut. */
 function press(shortcut: string): KeyboardEvent {
-  const parts = keyParts(shortcut);
+  const parts = shortcutDisplay(shortcut, "Linux").parts;
   const name = parts[parts.length - 1] ?? "";
   const shift = parts.includes("Shift");
   const key =
@@ -29,7 +29,7 @@ describe("shortcutOf", () => {
     for (const shortcut of accepted) expect(shortcutOf(press(shortcut))).toBe(shortcut);
   });
 
-  it("uses Qt portable names for macOS Command and Control, and native chip order", () => {
+  it("uses Qt portable names for macOS Command and Control", () => {
     for (const [held, expected] of [
       [{ ctrlKey: true }, "Meta+S"],
       [{ metaKey: true }, "Ctrl+S"],
@@ -37,7 +37,6 @@ describe("shortcutOf", () => {
       expect(shortcutOf(new KeyboardEvent("keydown", { key: "s", ...held }), "MacIntel")).toBe(
         expected,
       );
-    expect(keyParts("Meta+Ctrl+Alt+Shift+S", "MacIntel")).toEqual(["⌃", "⌥", "⇧", "⌘", "S"]);
   });
 
   it("gives nothing until the press is a whole shortcut, and drops Shift from symbols", () => {
@@ -49,4 +48,19 @@ describe("shortcutOf", () => {
     // Keypad Enter is Enter, not a key of its own that would record as nothing.
     expect(of({ key: "Enter", code: "NumpadEnter", ctrlKey: true })).toBe("Ctrl+Enter");
   });
+});
+
+describe("shortcutDisplay", () => {
+  it.each([
+    ["MacIntel", ["⌃", "⌥", "⇧", "⌘", "S"], "⌃⌥⇧⌘S", "⌘E", "⌘+"],
+    ["Linux", ["Meta", "Ctrl", "Alt", "Shift", "S"], "Meta+Ctrl+Alt+Shift+S", "Ctrl+E", "Ctrl++"],
+    ["Win32", ["Meta", "Ctrl", "Alt", "Shift", "S"], "Meta+Ctrl+Alt+Shift+S", "Ctrl+E", "Ctrl++"],
+  ] as const)(
+    "uses the same native names for chips and text on %s",
+    (platform, parts, text, exportKey, plus) => {
+      expect(shortcutDisplay("Meta+Ctrl+Alt+Shift+S", platform)).toEqual({ parts, text });
+      expect(shortcutDisplay("Ctrl+E", platform).text).toBe(exportKey);
+      expect(shortcutDisplay("Ctrl++", platform).text).toBe(plus);
+    },
+  );
 });

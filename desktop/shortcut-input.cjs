@@ -20,6 +20,18 @@ function shortcutInput(chord, platform = process.platform) {
   };
 }
 
+// Mirrors kit/shortcut.ts: one native display for plain labels and key parts.
+function shortcutDisplay(chord, platform = process.platform) {
+  const { keyCode, modifiers } = shortcutInput(chord, platform);
+  const mac = platform === "darwin";
+  const names = mac
+    ? { control: "⌃", alt: "⌥", shift: "⇧", meta: "⌘" }
+    : { meta: "Meta", control: "Ctrl", alt: "Alt", shift: "Shift" };
+  const held = mac ? Object.keys(names).filter((name) => modifiers.includes(name)) : modifiers;
+  const parts = [...held.map((name) => names[name]), keyCode];
+  return { parts, text: parts.join(mac ? "" : "+") };
+}
+
 function pressShortcut(window, chord, { keypad = false, character = false } = {}) {
   const input = shortcutInput(chord);
   if (keypad) input.modifiers.push("isKeypad");
@@ -29,4 +41,4 @@ function pressShortcut(window, chord, { keypad = false, character = false } = {}
   window.webContents.sendInputEvent({ type: "keyUp", ...input });
 }
 
-module.exports = { shortcutInput, pressShortcut };
+module.exports = { shortcutInput, shortcutDisplay, pressShortcut };

@@ -1,5 +1,5 @@
 // Native button activation, shortcut capture and modal focus restoration need Chromium's default actions.
-const { pressShortcut } = require("./shortcut-input.cjs");
+const { pressShortcut, shortcutDisplay } = require("./shortcut-input.cjs");
 const assert = require("node:assert/strict");
 const { nativeTheme } = require("electron");
 const fs = require("node:fs/promises");
@@ -70,13 +70,11 @@ module.exports.run = async ({ window }) => {
     await wait(`${key}.textContent !== 'Press a key…'`);
     assert.equal(
       await js("document.querySelector('[role=status]')?.textContent"),
-      `Exit set to Ctrl+Alt+${captured.toUpperCase()}`,
+      `Exit set to ${shortcutDisplay(`Ctrl+Alt+${captured.toUpperCase()}`).text}`,
     );
     assert.deepEqual(
       await binding(key),
-      process.platform === "darwin"
-        ? ["⌥", "⌘", captured.toUpperCase()]
-        : ["Ctrl", "Alt", captured.toUpperCase()],
+      shortcutDisplay(`Ctrl+Alt+${captured.toUpperCase()}`).parts,
     );
     assert.equal(await js(`document.activeElement === ${key}`), true);
   }
@@ -84,7 +82,7 @@ module.exports.run = async ({ window }) => {
   await open();
   assert.deepEqual(
     await binding(key),
-    process.platform === "darwin" ? ["⌥", "⌘", "J"] : ["Ctrl", "Alt", "J"],
+    shortcutDisplay("Ctrl+Alt+J").parts,
     "OK keeps the complete binding",
   );
   // Adding Meta to reserved Ctrl+0 makes a distinct chord: capture, persist and dispatch it without page zoom.
@@ -94,10 +92,7 @@ module.exports.run = async ({ window }) => {
   await wait(`${settings}.textContent === 'Press a key…'`);
   press("Meta+Ctrl+0");
   await wait(`${settings}.textContent !== 'Press a key…'`);
-  assert.deepEqual(
-    await binding(settings),
-    process.platform === "darwin" ? ["⌃", "⌘", "0"] : ["Meta", "Ctrl", "0"],
-  );
+  assert.deepEqual(await binding(settings), shortcutDisplay("Meta+Ctrl+0").parts);
   const originalTheme = nativeTheme.themeSource;
   for (const theme of ["light", "dark"]) {
     nativeTheme.themeSource = theme;
