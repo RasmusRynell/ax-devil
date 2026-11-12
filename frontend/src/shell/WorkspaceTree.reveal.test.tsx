@@ -149,6 +149,9 @@ describe("the item a viewer shows", () => {
       expect(labels()).toEqual(["v.mp4", ...all]);
       show(2, ...both);
       expect(labels()).toEqual(["v.mp4", ...all]);
+      expect(
+        screen.getAllByRole("treeitem", { current: true }).map((row) => row.textContent),
+      ).toEqual(["mot", "A", "other", "X"]);
 
       // Folding Playlists and showing a playlist beside a video reveals it for as long as that viewer stays.
       show(1, ids.v);

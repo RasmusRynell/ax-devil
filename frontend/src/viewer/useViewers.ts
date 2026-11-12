@@ -67,7 +67,7 @@ function closeItems(
 /**
  * Keeps a viewer in front for a window that decides what it shows: when the front one closed, the first in the layout
  * takes its place. A window that may also open viewers gives a viewer to every open item that has none (but those
- * its own commands are placing) beside the largest pane, in front; an item that finds the window full is closed
+ * its own commands are placing) by the preview rule, in front; an item that finds the window full is closed
  * again and `onFull` told. A following or watching window shows whatever the presenter's view says.
  */
 export function useFrontViewer(onFull?: () => void): void {
@@ -88,15 +88,19 @@ export function useFrontViewer(onFull?: () => void): void {
   useEffect(() => {
     if (!decides || following) return;
     const full: string[] = [];
+    const displaced: string[] = [];
     setView((shown) => {
       let next = shown;
       const placed = new Set(Object.values(shown.viewers).map((viewer) => viewer?.item));
       if (opens)
         for (const item of open) {
-          if (placed.has(item.id) || isHeld(item.id)) continue;
-          const added = autoPlace(next, item.id);
-          if (added) next = added;
-          else full.push(item.id);
+          if (placed.has(item.id) || isHeld(item.id) || closing.current.has(item.id)) continue;
+          // Starting a camera uses Open to the Side in the reference, including when added.
+          const added = (item.kind === "live" ? openToSide : autoPlace)(next, item.id);
+          if (added) {
+            displaced.push(...leftWithout(next, added));
+            next = added;
+          } else full.push(item.id);
         }
       const live = leaves(next.layout).filter((id) =>
         open.some((item) => item.id === next.viewers[id]?.item),
@@ -105,11 +109,11 @@ export function useFrontViewer(onFull?: () => void): void {
       return live[0] === undefined ? next : { ...next, active: live[0] };
     });
     closing.current = new Set([...closing.current].filter((id) => open.some((i) => i.id === id)));
-    const fresh = full.filter((id) => !closing.current.has(id));
+    const fresh = [...new Set([...full, ...displaced])].filter((id) => !closing.current.has(id));
     for (const item of fresh) closing.current.add(item);
     if (fresh.length > 0) {
       void closeItems(command, fresh);
-      told.current?.();
+      if (full.length > 0) told.current?.();
     }
   }, [decides, opens, following, open, front, viewers, layout, setView, command]);
 }

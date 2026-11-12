@@ -194,7 +194,7 @@ describe("opening", () => {
     expect(screen.getByText("Cap at 8 panes")).toBeTruthy();
   });
 
-  it("replaces the preview in front with another entry, which starts from its beginning, and leaves the one on screen alone", async () => {
+  it("reopens the preview from the beginning for the same row or another entry", async () => {
     const room = await renderTree(TREE, "mot-open");
     const clock = { frame: 7, playing: false, speedCenti: 100, atUs: 0 };
     act(() =>
@@ -204,17 +204,15 @@ describe("opening", () => {
       }),
     );
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^A/ }));
-    expect(shown().viewers[1]).toEqual({
-      item: TREE.ids.mot,
-      pinned: false,
-      entry: TREE.ids["mot/A"],
-      clock,
+    expect(shown()).toEqual({
+      active: 2,
+      viewers: { 2: { item: TREE.ids.mot, pinned: false, entry: TREE.ids["mot/A"] } },
     });
     fireEvent.click(screen.getByRole("button", { name: "Show hidden items" }));
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^B/ }));
     expect(shown()).toEqual({
-      active: 2,
-      viewers: { 2: { item: TREE.ids.mot, pinned: false, entry: TREE.ids["mot/B"] } },
+      active: 3,
+      viewers: { 3: { item: TREE.ids.mot, pinned: false, entry: TREE.ids["mot/B"] } },
     });
   });
 

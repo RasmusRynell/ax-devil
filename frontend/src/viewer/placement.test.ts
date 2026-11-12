@@ -49,12 +49,18 @@ describe("ordinary Open", () => {
     expect(Object.keys(next.viewers)).toEqual(["1", "3", "4"]);
   });
 
-  it("changes nothing when the front pane already shows what is opened, so its clock is kept", () => {
-    const view = viewOf(2, ["a"], ["b", true]);
-    view.viewers[2] = { item: "b", pinned: true, entry: "b/1" };
-    expect(open(view, "b")).toBe(view);
-    expect(open(view, "b", "b/1")).toBe(view);
-    expect(itemsOf(open(view, "b", "b/2")!)).toEqual(["a", "b", "b"]);
+  it("reopens the shown item with a fresh preview, replacing a preview or splitting beside a pin", () => {
+    const preview = viewOf(1, ["a"]);
+    expect(open(preview, "a")).toMatchObject({
+      active: 2,
+      viewers: { 2: { item: "a", pinned: false } },
+    });
+    expect(itemsOf(open(viewOf(1, ["a", true]), "a")!)).toEqual(["a", "a"]);
+  });
+
+  it("automatically places an added item in the active preview, or beside its pin", () => {
+    expect(itemsOf(autoPlace(viewOf(1, ["a"], ["b"]), "c")!)).toEqual(["c", "b"]);
+    expect(itemsOf(autoPlace(viewOf(1, ["a", true], ["b"]), "c")!)).toEqual(["a", "c", "b"]);
   });
 
   it("opens to the right of a pinned pane in front, and never replaces it", () => {
@@ -78,7 +84,8 @@ describe("ordinary Open", () => {
       ...Array.from({ length: 8 }, (_, n): [string, boolean] => [`v${n}`, true]),
     );
     expect(open(pinned, "x")).toBeUndefined();
-    expect(autoPlace(eight, "x")).toBeUndefined();
+    expect(itemsOf(autoPlace(eight, "x")!)).toHaveLength(8);
+    expect(autoPlace(pinned, "x")).toBeUndefined();
   });
 });
 

@@ -92,7 +92,12 @@ module.exports.run = async ({ window }) => {
       await wait(
         `!document.querySelector('dialog') && ${clips}.length === ${site === "north" ? 1 : 2}`,
       );
+      if (site === "north") {
+        await wait("document.querySelector('[aria-label^=\"Pin:\"]')");
+        await js("document.querySelector('[aria-label^=\"Pin:\"]').click()");
+      }
     }
+    await wait(`${clips}.filter((r) => r.getAttribute('aria-current') === 'true').length === 2`);
     // Both rows are called clip.mp4, and each says which folder it is in.
     await wait(
       `${clips}.filter((r) => /^clip\\.mp4, (north|south)$/.test(r.textContent)).length === 2`,

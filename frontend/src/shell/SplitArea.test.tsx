@@ -126,15 +126,53 @@ describe("split area", () => {
     }
   });
 
-  it("restores another Owner's omitted open pane", async () => {
-    const { show, room, store } = await setup();
-    show("abc-open", split);
-    await waitFor(() => expect(Object.keys(room.presenter.viewers)).toHaveLength(3));
-    // Hold an earlier A-only snapshot, then deliver it after B and C have been placed.
-    const delayed = { ...room.presenter, ...viewing([split.ids.a, { pinned: true }]) };
-    act(() => room.publish(delayed));
-    await waitFor(() => expect(screen.getAllByRole("group")).toHaveLength(3));
-    expect(store.getSnapshot().doc?.workspace.items.filter((item) => item.open)).toHaveLength(3);
+  it("places an added video in the active preview and closes the displaced item's last viewer", async () => {
+    const { room, store } = await setup();
+    act(() => {
+      store.setView((view) => ({ ...view, ...viewing(split.ids.a, split.ids.c), active: 2 }));
+      room.show(split, "abc-open");
+    });
+    await waitFor(() =>
+      expect(screen.getAllByRole("group").map((p) => p.getAttribute("aria-label"))).toEqual([
+        "a.mp4",
+        "b.mp4",
+      ]),
+    );
+    expect(store.readView().viewers[store.readView().active!]?.item).toBe(split.ids.b);
+    expect(room.shown.doc(true).workspace.items.find((item) => item.id === split.ids.c)?.open).toBe(
+      false,
+    );
+  });
+
+  it("leaves automatic placement to the Owner in Following and Exploring seats", async () => {
+    const room = FakeSocket.host("watch");
+    room.show(split, "abc-open");
+    room.publish({ ...room.presenter, ...viewing(split.ids.a) });
+    const presenter = room.presenter;
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+    );
+    const store = new SessionStore();
+    render(
+      <SessionProvider store={store}>
+        <Area />
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    expect(store.readView().viewers).toEqual(presenter.viewers);
+    await act(async () => {
+      room.allow("explore");
+      store.setView((view) => ({ ...view, sidebar: { view: "offline", open: true } }));
+    });
+    expect(store.getSnapshot().following).toBe(false);
+    expect(store.readView().viewers).toEqual(presenter.viewers);
+    expect(room.presenter).toEqual(presenter);
+    expect(
+      FakeSocket.latest.received.filter(
+        (message) => message.type === "command" && message.cmd.type === "content",
+      ),
+    ).toEqual([]);
   });
 
   it("closes a single Owner's last pane by an explicit command without placing another", async () => {
@@ -232,9 +270,17 @@ describe("split area", () => {
     expect(screen.getByRole("alert")).toBeTruthy();
   });
 
-  it("gives eight open items a pane and closes the ninth again", async () => {
-    const { show } = await setup();
-    show("nine-open", split);
+  it("keeps eight pinned panes and closes the ninth again", async () => {
+    const { room } = await setup();
+    act(() => {
+      room.publish({
+        ...room.presenter,
+        ...viewing(
+          ..."abcdefgh".split("").map((key) => [split.ids[key], { pinned: true }] as const),
+        ),
+      });
+      room.show(split, "nine-open");
+    });
     expect(screen.getAllByRole("group")).toHaveLength(8);
     expect(FakeSocket.latest.received).toContainEqual(
       expect.objectContaining({
@@ -244,11 +290,14 @@ describe("split area", () => {
   });
 
   it("gives each pane an equal share of the window's 512 MiB of frames, redivided as panes come and go", async () => {
-    const { show } = await setup();
+    const { show, room, store } = await setup();
     const budget = (key: string) => screen.getByLabelText(`budget ${split.ids[key]}`).textContent;
     show("a-open", split);
     expect(budget("a")).toBe(String(512 * 1024 * 1024));
-    show("abc-open", split);
+    act(() => {
+      store.setView((view) => ({ ...view, ...viewing(split.ids.a, split.ids.b, split.ids.c) }));
+      room.show(split, "abc-open");
+    });
     expect(budget("a")).toBe(String(Math.floor((512 * 1024 * 1024) / 3)));
     fireEvent.click(within(pane("c.mp4")).getByRole("button", { name: "Close this pane" }));
     expect(budget("a")).toBe(String(256 * 1024 * 1024));
@@ -359,8 +408,11 @@ describe("split area", () => {
   });
 
   it("moves a dragged pane to the side it is dropped on without restarting its viewer or unpinning it", async () => {
-    const { show } = await setup();
-    show("ab-open", split);
+    const { room, store } = await setup();
+    act(() => {
+      store.setView((view) => ({ ...view, ...viewing(split.ids.a, split.ids.b) }));
+      room.show(split, "ab-open");
+    });
     fireEvent.click(within(pane("a.mp4")).getByRole("button", { name: /^Pin:/ }));
     const left = (name: string) => pane(name).style.left;
     expect([left("a.mp4"), left("b.mp4")]).toEqual(["0px", "200px"]);
