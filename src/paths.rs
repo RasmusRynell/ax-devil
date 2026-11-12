@@ -54,29 +54,17 @@ impl Paths {
         })
     }
 
-    /// The folder for cached video indexes and decoded frames: `--cache-dir`, else the `storage.cache_dir`
-    /// setting (`setting`), else the standard folder. The folder is not checked here; failing to use it is not fatal.
-    pub fn cache_dir(&self, setting: Option<PathBuf>) -> PathBuf {
-        let chosen = self.cache_override.clone().or(setting);
-        chosen.unwrap_or_else(|| self.default_cache_dir.clone())
-    }
-
-    /// The cache selected for clearing: an explicit override, otherwise the validated cache setting or its default.
-    pub fn cache_to_clear(
-        &self,
-        settings: &settings::Settings,
-    ) -> Result<PathBuf, settings::Error> {
-        if let Some(folder) = &self.cache_override {
-            return Ok(folder.clone());
+    /// The cache folder: an explicit `--cache-dir`, otherwise the fallible storage-setting resolver.
+    pub fn cache_dir(&self, settings: &settings::Settings) -> Result<PathBuf, settings::Error> {
+        match &self.cache_override {
+            Some(folder) => Ok(folder.clone()),
+            None => settings.folder("storage.cache_dir", &self.default_cache_dir),
         }
-        settings.validate_cache_storage()?;
-        Ok(self.cache_dir(settings.state().folder("storage.cache_dir")))
     }
 
-    /// The folder of the user's render catalogs: the `storage.catalog_dir` setting (`setting`), else the standard
-    /// folder. The folder need not exist, and nothing creates it.
-    pub fn catalog_dir(&self, setting: Option<PathBuf>) -> PathBuf {
-        setting.unwrap_or_else(|| self.default_catalog_dir.clone())
+    /// The catalog folder, through the same fallible resolver as every configured storage path.
+    pub fn catalog_dir(&self, settings: &settings::Settings) -> Result<PathBuf, settings::Error> {
+        settings.folder("storage.catalog_dir", &self.default_catalog_dir)
     }
 }
 
@@ -132,8 +120,15 @@ mod tests {
         )
     }
 
+    fn preferences() -> (tempfile::TempDir, settings::Settings) {
+        let folder = tempfile::tempdir().unwrap();
+        let settings = settings::Settings::load(&folder.path().join("settings.json")).unwrap();
+        (folder, settings)
+    }
+
     #[test]
     fn xdg_homes_win_when_absolute_and_the_home_folder_fills_in_the_rest() {
+        let (_folder, settings) = preferences();
         let xdg = [
             ("HOME", "/home/me"),
             ("XDG_CONFIG_HOME", "/x/config"),
@@ -146,9 +141,12 @@ mod tests {
             found.config_file,
             Path::new("/x/config/ax-devil/settings.json")
         );
-        assert_eq!(found.cache_dir(None), Path::new("/x/cache/ax-devil"));
         assert_eq!(
-            found.catalog_dir(None),
+            found.cache_dir(&settings).unwrap(),
+            Path::new("/x/cache/ax-devil")
+        );
+        assert_eq!(
+            found.catalog_dir(&settings).unwrap(),
             Path::new("/x/data/ax-devil/catalogs")
         );
         assert_eq!(
@@ -181,13 +179,21 @@ mod tests {
         let mine = tempfile::NamedTempFile::new().unwrap();
         let found = paths(&relative, mine.path().to_str()).unwrap();
         assert_eq!(found.config_file, mine.path());
-        assert_eq!(found.cache_dir(None), Path::new("/home/me/.cache/ax-devil"));
         assert_eq!(
-            found.catalog_dir(None),
-            Path::new("/home/me/.local/share/ax-devil/catalogs")
+            found.cache_dir(&settings).unwrap(),
+            Path::new("/home/me/.cache/ax-devil")
         );
         assert_eq!(
-            found.catalog_dir(Some("/mnt/mine".into())),
+            found.catalog_dir(&settings).unwrap(),
+            Path::new("/home/me/.local/share/ax-devil/catalogs")
+        );
+        settings
+            .update("storage.catalog_dir", |_| {
+                Some(serde_json::json!("/mnt/mine"))
+            })
+            .unwrap();
+        assert_eq!(
+            found.catalog_dir(&settings).unwrap(),
             Path::new("/mnt/mine")
         );
         assert_eq!(
@@ -201,7 +207,7 @@ mod tests {
         assert!(paths(&[], None).is_err());
         let windows = paths(&[("USERPROFILE", "/home/win")], None).unwrap();
         assert_eq!(
-            windows.cache_dir(None),
+            windows.cache_dir(&settings).unwrap(),
             Path::new("/home/win/.cache/ax-devil")
         );
     }
@@ -219,11 +225,25 @@ mod tests {
     #[test]
     fn the_cache_folder_comes_from_the_command_line_then_the_setting_then_the_xdg_default() {
         let vars = [("HOME", "/home/me")];
-        let setting = || Some(PathBuf::from("/mnt/big/cache"));
+        let (_folder, settings) = preferences();
         let plain = resolve(&vars, None, None).unwrap();
-        assert_eq!(plain.cache_dir(None), Path::new("/home/me/.cache/ax-devil"));
-        assert_eq!(plain.cache_dir(setting()), Path::new("/mnt/big/cache"));
+        assert_eq!(
+            plain.cache_dir(&settings).unwrap(),
+            Path::new("/home/me/.cache/ax-devil")
+        );
+        settings
+            .update("storage.cache_dir", |_| {
+                Some(serde_json::json!("/mnt/big/cache"))
+            })
+            .unwrap();
+        assert_eq!(
+            plain.cache_dir(&settings).unwrap(),
+            Path::new("/mnt/big/cache")
+        );
         let flagged = resolve(&vars, None, Some("/tmp/flag")).unwrap();
-        assert_eq!(flagged.cache_dir(setting()), Path::new("/tmp/flag"));
+        assert_eq!(
+            flagged.cache_dir(&settings).unwrap(),
+            Path::new("/tmp/flag")
+        );
     }
 }

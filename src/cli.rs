@@ -204,7 +204,7 @@ pub async fn run() -> ExitCode {
     if global.hand_off {
         return hand_off(global, command, &plugins);
     }
-    // Services validate their storage at startup; cache clearing validates only the cache it selects.
+    // Paths resolve only the folders each command uses; services resolve both before starting.
     match command {
         Some(Command::ListHandlers) => {
             catalog::Report::listing(&plugins.handlers(), &plugins.info()).print()
@@ -214,6 +214,7 @@ pub async fn run() -> ExitCode {
             clear_cache::run(folder, scope, force)
         }
         Some(Command::Plugins(command)) => plugins::run(command, plugins).await.print(),
+        Some(Command::Catalog(CatalogCommand::Reference)) => catalog::reference().print(),
         Some(Command::Catalog(CatalogCommand::Use { catalog })) => catalog::use_default(
             &catalog,
             catalog::Home::resolve(global.config, global.cache_dir),
@@ -239,7 +240,7 @@ fn cache_folder(global: Global) -> Result<PathBuf, String> {
     let settings =
         settings::Settings::load(&paths.config_file).map_err(|error| error.to_string())?;
     paths
-        .cache_to_clear(&settings)
+        .cache_dir(&settings)
         .map_err(|error| error.to_string())
 }
 
@@ -381,11 +382,6 @@ fn fail(prefix: &str, error: StartError) -> ExitCode {
         tracing::debug!("{detail}");
     }
     ExitCode::FAILURE
-}
-
-/// The folder of the user's render catalogs: the `storage.catalog_dir` setting, else the standard folder.
-fn catalog_folder(paths: &Paths, settings: &settings::Settings) -> PathBuf {
-    paths.catalog_dir(settings.state().folder("storage.catalog_dir"))
 }
 
 /// The backend for the desktop shell and development: loopback only, on `$PORT` (default 7330).

@@ -27,8 +27,7 @@ credential. Only shortcuts are read live.
 - A row with `env` accepts a whole-value `$NAME` reference, stored as written and expanded where it is used
   (`State::resolved`), silently. A number or folder is checked as expanded on save; text and a choice are read only
   when used. An unusable non-storage reference is logged without its value and gives empty text, or the default
-  where empty is not valid. Services validate storage at startup; independent commands can load the file without
-  using those folders. `State::references` gives a form the values.
+  where empty is not valid. Folder resolution refuses unusable values instead of falling back; loading alone does not use folders. `State::references` gives a form the values.
 - Unknown top-level keys, settings keys and command ids are logged and kept on save, so another version's settings
   survive. Recovery leaves the saved raw value separate from the effective fallback; only a patch/update naming that key replaces it.
   Other invalid values, malformed JSON, a missing or non-integer `version`, or a file newer than `VERSION` stop loading.

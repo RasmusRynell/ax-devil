@@ -37,10 +37,10 @@ impl State {
                 |value| setting.kind.with_ids(value),
             );
             let mut value = raw.clone();
-            // Service startup validates storage paths; independent commands may load them without using them.
+            // Folder paths are checked by fallible resolution, independently of loading settings.
             if let Err(reason) = setting.check(&value, &**lookup)
                 && !setting.holds_reference(&value)
-                && !preferences::is_storage(setting)
+                && !matches!(setting.kind, Kind::Folder)
             {
                 value = preferences::recover(setting, &raw)
                     .ok_or_else(|| invalid(setting.key, &reason))?;

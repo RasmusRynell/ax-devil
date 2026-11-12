@@ -25,7 +25,9 @@ impl Home {
         let paths = Paths::resolve(&|name| std::env::var_os(name), config, cache_dir)?;
         let settings = Settings::load(&paths.config_file).map_err(|error| error.to_string())?;
         Ok(Self {
-            folder: crate::cli::catalog_folder(&paths, &settings),
+            folder: paths
+                .catalog_dir(&settings)
+                .map_err(|error| error.to_string())?,
             settings,
         })
     }

@@ -368,3 +368,54 @@ fn clearing_invalid_cache_storage_refuses_without_touching_the_standard_cache() 
         "the standard cache is never an invalid-setting fallback"
     );
 }
+
+#[test]
+fn catalog_commands_refuse_unusable_catalog_storage_without_touching_the_standard_folder() {
+    let folder = tempfile::tempdir().unwrap();
+    let path = folder.path().join("settings.json");
+    let data_home = folder.path().join("data");
+    let standard = data_home.join("ax-devil/catalogs");
+    std::fs::create_dir_all(&standard).unwrap();
+    let marker = standard.join("keep.txt");
+    std::fs::write(&marker, "standard catalog storage must survive").unwrap();
+    std::fs::write(
+        &path,
+        json!({"version": settings::VERSION, "settings": {
+            "storage.catalog_dir": "relative/catalogs", "storage.cache_dir": "$AX_TEST_UNUSED_CACHE"
+        }})
+        .to_string(),
+    )
+    .unwrap();
+    let mut launch = Command::new(env!("CARGO_BIN_EXE_ax-devil"));
+    launch
+        .args(["catalog", "--config"])
+        .arg(&path)
+        .args(["new", "must-not-create", "--from", "built-in:standard"])
+        .env("XDG_DATA_HOME", &data_home)
+        .env_remove("AX_TEST_UNUSED_CACHE")
+        .current_dir(folder.path());
+    let result = output(launch);
+    assert!(
+        !result.status.success(),
+        "invalid catalog storage must refuse before a file write"
+    );
+    let reason = String::from_utf8_lossy(&result.stderr);
+    for text in [
+        "storage.catalog_dir",
+        "relative/catalogs",
+        "Invalid storage directory",
+        "Change",
+        path.to_str().unwrap(),
+    ] {
+        assert!(reason.contains(text), "{reason}");
+    }
+    assert_eq!(
+        std::fs::read_to_string(&marker).unwrap(),
+        "standard catalog storage must survive"
+    );
+    assert_eq!(
+        std::fs::read_dir(&standard).unwrap().count(),
+        1,
+        "no catalog was created in fallback storage"
+    );
+}
