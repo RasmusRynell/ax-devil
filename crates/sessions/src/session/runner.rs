@@ -1,11 +1,11 @@
 //! Running the jobs a session asks for.
 
 use super::{Completion, Spawn, Work};
-use foundation::{ErrorCode, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
 use handlers::HandlerSet;
 use std::sync::{Arc, Mutex};
 use tokio::runtime;
-use workspace::{Environment, ItemId, Watch};
+use workspace::{Environment, ItemId, VideoRef, Watch};
 
 /// Runs the jobs a session asks for. The session does not care how: a runner starts the work and reports its
 /// [`Completion`] through the [`Completer`], now or later, on any thread.
@@ -58,6 +58,8 @@ impl Completer {
     }
 }
 
+type OpenMedia = dyn Fn(&VideoRef, &CancelToken) -> Result<(), Interrupt<UserError>> + Send + Sync;
+
 /// A [`Runner`] that resolves items on a tokio runtime's blocking threads, with the installed handlers for
 /// playlists and overlays.
 pub struct OnRuntime {
@@ -68,6 +70,8 @@ pub struct OnRuntime {
     /// Where a live stream's `$NAME` references get their values; each job takes the environment as it is when it
     /// starts.
     pub environment: Arc<dyn Fn() -> Environment + Send + Sync>,
+    /// Checks that replacement media opens before a reload replaces the shown Content.
+    pub opens: Arc<OpenMedia>,
 }
 
 impl Runner for OnRuntime {
@@ -79,11 +83,12 @@ impl Runner for OnRuntime {
             Environment::literal()
         };
         let watcher = done.watcher();
+        let opens = Arc::clone(&self.opens);
         self.runtime.spawn(async move {
             if spawn.cancel.is_cancelled() {
                 return;
             }
-            let Work::Resolve(job) = spawn.work;
+            let Work::Resolve { job, shown } = spawn.work;
             let item = job.item;
             let cancel = spawn.cancel;
             // Resolving reads the file system, which must not block the runtime's workers.
@@ -94,7 +99,13 @@ impl Runner for OnRuntime {
                 if let Some(watch) = watch {
                     watcher.record(job.item, watch);
                 }
-                result
+                let content = result?;
+                for id in shown {
+                    if let Some(entry) = content.entry(&id) {
+                        opens(&entry.video, &cancel)?;
+                    }
+                }
+                Ok(content)
             };
             let result = match tokio::task::spawn_blocking(resolve).await {
                 Ok(Ok(content)) => Ok(content),

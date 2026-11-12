@@ -8,7 +8,7 @@ use super::{
     state::Doc,
     streams,
     transition::{Effects, Fresh},
-    views::{Overlay, View, Viewport},
+    views::{Overlay, View, Viewport, shown_entries},
 };
 use crate::JoinLink;
 use serde::Deserialize;
@@ -188,7 +188,8 @@ pub(super) fn content(next: &mut SessionState, fx: &mut Effects, command: DocCom
             item: job.item,
             attempt: job.attempt,
         };
-        spawn(next, fx, owner, Work::Resolve(job));
+        let shown = shown_entries(next, job.item);
+        spawn(next, fx, owner, Work::Resolve { job, shown });
     }
 }
 

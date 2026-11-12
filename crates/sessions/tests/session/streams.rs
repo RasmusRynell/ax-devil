@@ -284,7 +284,7 @@ async fn a_result_that_arrives_late_or_for_a_session_that_is_gone_is_dropped() {
     assert!(!second.cancel.is_cancelled());
 
     let resolve = |spawn: &sessions::session::Spawn| {
-        let sessions::session::Work::Resolve(job) = &spawn.work;
+        let sessions::session::Work::Resolve { job, .. } = &spawn.work;
         Completion::Resolved(crate::resolve(job))
     };
     first_done.complete(resolve(&first));

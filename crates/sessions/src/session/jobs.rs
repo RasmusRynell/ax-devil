@@ -7,7 +7,7 @@
 use super::{JobId, SessionState, state::Doc, transition::Effects};
 use foundation::{CancelToken, UserError};
 use workspace::store::ResolveJob;
-use workspace::{Content, ItemId};
+use workspace::{Content, ContentId, ItemId};
 
 /// Who a job works for. Its result is dropped when the owner no longer wants it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,7 +32,12 @@ pub enum Completion {
 #[derive(Clone, Debug)]
 pub enum Work {
     /// Resolve an item's recipe into its Content.
-    Resolve(ResolveJob),
+    Resolve {
+        /// The recipe to resolve.
+        job: ResolveJob,
+        /// Entries currently shown whose replacement media must open before committing.
+        shown: Vec<ContentId>,
+    },
 }
 
 /// A job to run: report its [`Completion`] to the session, and stop early once `cancel` is cancelled.

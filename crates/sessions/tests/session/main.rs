@@ -49,7 +49,7 @@ impl Jobs {
     /// Resolves every waiting job the way the real runner would.
     pub(crate) fn finish_all(&self) {
         for (spawn, done) in self.take() {
-            let Work::Resolve(job) = &spawn.work;
+            let Work::Resolve { job, .. } = &spawn.work;
             done.complete(Completion::Resolved(resolve(job)));
         }
     }

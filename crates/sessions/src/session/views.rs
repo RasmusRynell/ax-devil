@@ -4,6 +4,7 @@
 //! what the Doc has open by [`restrict`] after every Doc change.
 
 use super::{
+    SessionState,
     layout::{Layout, ViewerId},
     state::Doc,
 };
@@ -265,13 +266,28 @@ pub(super) fn shown_entry<'a>(
         .or_else(|| entries.first())
 }
 
+/// The distinct entries of `item` currently shown by the presenter or exploring seats.
+pub(super) fn shown_entries(state: &SessionState, item: ItemId) -> Vec<ContentId> {
+    let mut shown = Vec::new();
+    for view in std::iter::once(&state.presenter)
+        .chain(state.seats.values().filter_map(|seat| seat.view.as_ref()))
+    {
+        for viewer in view.viewers.values().filter(|viewer| viewer.item == item) {
+            if let Some(entry) = shown_entry(&state.doc.workspace, &item, viewer.entry.as_ref())
+                && !shown.contains(&entry.id)
+            {
+                shown.push(entry.id.clone());
+            }
+        }
+    }
+    shown
+}
+
 /// The most View changes a seat has applied per second.
 const VIEWS_PER_SECOND: u32 = 60;
 
-/// The View lane of one seat: it keeps the latest view offered and releases it at most [`VIEWS_PER_SECOND`] times a
-/// second. A view offered while another waits overwrites it, and an overwritten sequence number counts as done
-/// because the view that replaced it carries a higher one. The lane never refuses and never closes the socket. A
-/// command sent after a waiting view flushes it first, so a command never overtakes a view sent before it.
+/// Coalesces a seat's views at [`VIEWS_PER_SECOND`], marking overwritten sequences done. Commands flush pending views
+/// first so they cannot overtake them. Never refuses or closes the socket.
 #[derive(Debug, Default)]
 pub struct ViewLane {
     waiting: Option<(u64, View)>,
