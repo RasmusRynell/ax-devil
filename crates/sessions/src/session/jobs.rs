@@ -25,7 +25,12 @@ pub enum JobOwner {
 #[derive(Debug)]
 pub enum Completion {
     /// An item's Content, or why it has none.
-    Resolved(Result<Content, UserError>),
+    Resolved {
+        /// The resolution and media-check outcome.
+        result: Result<Content, UserError>,
+        /// Shown entries covered by this attempt, including failed checks and removed entries.
+        validated: Vec<ContentId>,
+    },
 }
 
 /// The work of a job.

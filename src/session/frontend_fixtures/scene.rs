@@ -41,13 +41,16 @@ pub(super) fn run(session: &mut SessionState, outcomes: &Outcomes, command: Comm
         .unwrap_or_else(|refusal| panic!("the scenario's command was refused: {refusal:?}"));
     *session = next;
     for spawn in fx.spawn {
-        let Work::Resolve { job, .. } = &spawn.work;
+        let Work::Resolve { job, shown } = &spawn.work;
         let Some(outcome) = outcomes.answer(job) else {
             continue;
         };
         let input = Input::Complete {
             job: spawn.job,
-            completion: Completion::Resolved(outcome),
+            completion: Completion::Resolved {
+                result: outcome,
+                validated: shown.clone(),
+            },
         };
         let (next, _) = transition(session, input)
             .unwrap_or_else(|refusal| panic!("a resolution was refused: {refusal:?}"));

@@ -89,6 +89,7 @@ impl Runner for OnRuntime {
                 return;
             }
             let Work::Resolve { job, shown } = spawn.work;
+            let validated = shown.clone();
             let item = job.item;
             let cancel = spawn.cancel;
             // Resolving reads the file system, which must not block the runtime's workers.
@@ -118,7 +119,7 @@ impl Runner for OnRuntime {
                 )
                 .at(item)),
             };
-            done.complete(Completion::Resolved(result));
+            done.complete(Completion::Resolved { result, validated });
         });
     }
 }

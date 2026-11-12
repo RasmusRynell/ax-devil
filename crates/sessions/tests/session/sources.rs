@@ -116,8 +116,11 @@ async fn what_a_superseded_job_read_is_never_recorded_for_the_item() {
         || Err::<Content, ()>(()),
     );
     done.watcher().record(id, watch.unwrap());
-    let Work::Resolve { job, .. } = &spawn.work;
-    done.complete(Completion::Resolved(resolve(job)));
+    let Work::Resolve { job, shown } = &spawn.work;
+    done.complete(Completion::Resolved {
+        result: resolve(job),
+        validated: shown.clone(),
+    });
 
     fs::write(&overlay, "1,1,1,1,1,1\n").unwrap();
     rig.service.check_sources();
@@ -206,9 +209,12 @@ async fn a_read_replaces_the_files_an_item_was_recorded_from_even_with_none() {
             .command(Command::Content(DocCommand::Resolve(id)))
             .unwrap();
         for (spawn, done) in rig.jobs.take() {
-            let Work::Resolve { job, .. } = &spawn.work;
+            let Work::Resolve { job, shown } = &spawn.work;
             done.watcher().record(id, watch.clone());
-            done.complete(Completion::Resolved(resolve(job)));
+            done.complete(Completion::Resolved {
+                result: resolve(job),
+                validated: shown.clone(),
+            });
         }
     };
     let by_edit = |watch: Watch| rig.service.record_sources(owner.session(), id, watch);

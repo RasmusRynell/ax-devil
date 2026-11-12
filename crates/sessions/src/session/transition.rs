@@ -8,7 +8,7 @@ use super::{
     layout::Layout,
     state::{Seat, SeatKind},
     streams,
-    views::{View, restrict},
+    views::{View, restrict, shown_entries},
 };
 use crate::{EndReason, MAX_SEATS, Secret};
 use foundation::CancelToken;
@@ -19,7 +19,7 @@ use std::{
     sync::Arc,
 };
 use tokio::time::Instant;
-use workspace::store::{DocCommand, complete};
+use workspace::store::{DocCommand, Reload, complete};
 use workspace::{Content, Entry, ItemId};
 
 /// The server's furthest-back time a presenter's clock intent may claim, in microseconds before it is received.
@@ -438,12 +438,27 @@ fn keep_overlays(mut view: View, stored: &View) -> View {
 
 fn complete_job(next: &mut SessionState, job: JobId, completion: Completion) {
     match (jobs::finish(next, job), completion) {
-        (Some(super::JobOwner::Doc { item, attempt }), Completion::Resolved(result)) => {
+        (
+            Some(super::JobOwner::Doc { item, attempt }),
+            Completion::Resolved { result, validated },
+        ) => {
+            let workspace = &next.doc.workspace;
+            if matches!(workspace.reloads.get(&item), Some(Reload::Running { attempt: running, .. }) if *running == attempt)
+                && shown_entries(next, item)
+                    .iter()
+                    .any(|id| !validated.contains(id))
+            {
+                // Navigation left this attempt's coverage. Keep the generation and source-change offer.
+                let mut workspace = workspace.clone();
+                workspace.reloads.remove(&item);
+                set_workspace(next, workspace);
+                return;
+            }
             let workspace = complete(&next.doc.workspace, item, attempt, result);
             set_workspace(next, workspace);
         }
         // The job is no longer registered: its result is dropped.
-        (None, Completion::Resolved(_)) => {}
+        (None, Completion::Resolved { .. }) => {}
     }
 }
 

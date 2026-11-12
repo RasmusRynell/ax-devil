@@ -284,8 +284,11 @@ async fn a_result_that_arrives_late_or_for_a_session_that_is_gone_is_dropped() {
     assert!(!second.cancel.is_cancelled());
 
     let resolve = |spawn: &sessions::session::Spawn| {
-        let sessions::session::Work::Resolve { job, .. } = &spawn.work;
-        Completion::Resolved(crate::resolve(job))
+        let sessions::session::Work::Resolve { job, shown } = &spawn.work;
+        Completion::Resolved {
+            result: crate::resolve(job),
+            validated: shown.clone(),
+        }
     };
     first_done.complete(resolve(&first));
     let workspace = &owner.state().doc.workspace;
