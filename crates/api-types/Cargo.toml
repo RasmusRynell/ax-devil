@@ -29,3 +29,6 @@ settings.workspace = true
 syn.workspace = true
 ts-rs.workspace = true
 workspace.workspace = true
+
+[build-dependencies]
+sha2.workspace = true
