@@ -32,13 +32,14 @@ export class Inspections {
     key: string;
     lane: number;
     token: string;
-    field: number | null;
+    field: number | "raw" | null;
     path: boolean;
     offset: number;
   } | null = null;
   #copy: { value: string; received: number; total: number } | null = null;
   #error: string | null = null;
   #copied = false;
+  #capActive = false;
   #writing = false;
   #writingCopy: { value: string } | null = null;
   readonly #send: (message: ClientMessage) => void;
@@ -147,15 +148,14 @@ export class Inspections {
   /** Selects an object, or clears the selection with `null`. Reports whether the view changed. */
   select(selection: Selection): boolean {
     if (this.#error) {
-      this.#cancelRead();
-      this.#cache.clear();
+      this.#abandon();
     }
     if (
       selection?.lane !== this.#selection?.lane ||
       selection?.source !== this.#selection?.source ||
       selection?.entity !== this.#selection?.entity
     )
-      this.#cancelRead();
+      this.#abandon();
     if (
       selection?.entity !== this.#selection?.entity ||
       selection?.source !== this.#selection?.source
@@ -173,7 +173,7 @@ export class Inspections {
     this.#visible = visible;
     if (!visible) {
       this.suspend();
-      this.#cancelRead();
+      this.#abandon();
     }
     return visible && this.#sync();
   }
@@ -220,7 +220,7 @@ export class Inspections {
   /** The backend's answer to a request for fields. Reports whether the view changed. */
   receive(message: Reply): boolean {
     const key = keyOf(message.source, message.data_revision, message.sample, message.entity);
-    if (key !== this.#wanted) return false;
+    if (key !== this.#wanted || !this.#capActive || !this.#visible) return false;
     if (key === this.#inflight?.key) this.#inflight = null;
     if (message.data_revision === this.#revisions.get(message.source)) {
       if (message.inspection.state === "Unavailable")
@@ -236,7 +236,7 @@ export class Inspections {
    * the viewer hold.
    */
   reconnect(): void {
-    this.#cancelRead();
+    this.#abandon();
     this.#inflight = null;
     this.#refused = null;
     this.#awaiting = true;
@@ -245,9 +245,20 @@ export class Inspections {
     this.#update();
   }
 
+  #abandon(): void {
+    if (this.#capActive) this.#send({ type: "InspectRelease" });
+    this.#capActive = false;
+    this.#cancelRead();
+    this.#cache.clear();
+    this.#inflight = null;
+    this.#refused = null;
+  }
+
   #cancelRead(): void {
     this.#serial++;
     if (this.#writingCopy) this.#writingCopy.value = "";
+    this.#writingCopy = null;
+    this.#writing = false;
     this.#pending = null;
     this.#copy = null;
     this.#error = null;
@@ -261,7 +272,7 @@ export class Inspections {
     this.#changed();
   }
 
-  #read(field: number | null, offset: number, path = false): void {
+  #read(field: number | "raw" | null, offset: number, path = false): void {
     const key = this.#wanted;
     const reply = key === null ? undefined : this.#cache.get(key);
     if (
@@ -278,7 +289,7 @@ export class Inspections {
       this.#notify();
       return;
     }
-    if (field !== null && field !== -1) {
+    if (field !== null && field !== "raw") {
       const cut = reply.fields
         .map((entry) => (path ? entry.path_cut : entry.cut))
         .find((cut) => cut?.[0] === field);
@@ -290,7 +301,7 @@ export class Inspections {
       }
       this.#copy = { value: "", received: 0, total: cut[1] };
     }
-    if (field === -1) this.#copy = { value: "", received: 0, total: MAX_COPY_BYTES };
+    if (field === "raw") this.#copy = { value: "", received: 0, total: MAX_COPY_BYTES };
     this.#pending = {
       request: ++this.#serial,
       key,
@@ -311,8 +322,8 @@ export class Inspections {
         type: "InspectContinue",
         request: pending.request,
         token: pending.token,
-        field: pending.field === -1 ? null : pending.field,
-        raw: pending.field === -1 ? true : undefined,
+        field: pending.field === "raw" ? null : pending.field,
+        raw: pending.field === "raw" ? true : undefined,
         path: pending.path,
         offset: pending.offset,
       });
@@ -371,9 +382,9 @@ export class Inspections {
       () => copy.value,
       () => serial === this.#serial,
     ).then((written) => {
+      if (serial !== this.#serial) return;
       this.#writing = false;
       this.#writingCopy = null;
-      if (serial !== this.#serial) return;
       this.#copied = written;
       // A fresh click can grant clipboard permission after a long transfer, including an HTTP watcher.
       this.#copy = written ? null : copy;
@@ -428,6 +439,7 @@ export class Inspections {
     if (!this.#visible || this.#awaiting || this.#cache.has(key)) return;
     if (refused?.key === key && refused.columns === frame.columns) return;
     if (this.#inflight?.key === key && !this.#overdue()) return;
+    this.#capActive = true;
     this.#inflight = { key, at: this.#draws };
     this.#send({
       type: "Inspect",
@@ -480,8 +492,7 @@ export class Inspections {
     this.#last = summary;
     const key = keyOf(frame.source, frame.dataRevision, frame.sample, selection.entity);
     if (this.#wanted !== key) {
-      this.#cancelRead();
-      this.#cache.clear();
+      this.#abandon();
       this.#pageOffset = 0;
     }
     this.#wanted = key;
@@ -505,7 +516,7 @@ export class Inspections {
                 ? null
                 : () => this.#read(null, found.continuation?.next ?? 0),
             first: this.#pageOffset === 0 || this.#pending ? null : () => this.#read(null, 0),
-            raw: () => this.#read(-1, 0),
+            raw: () => this.#read("raw", 0),
             copy: (ordinal, path) => this.#read(ordinal, 0, path),
             cancel: () => {
               this.#cancelRead();

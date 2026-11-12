@@ -230,6 +230,10 @@ impl<I: Incoming> Live<'_, I> {
                     .ask_target(source, data_revision, sample, entity, target);
                 Ok(())
             }
+            Some(Ok(ClientMessage::InspectRelease)) => {
+                self.inspections.release();
+                Ok(())
+            }
             Some(Ok(ClientMessage::InspectContinue(read))) => {
                 let target = self.inspections.continuation_target(&read.token).and_then(
                     |(source, revision, sample)| {

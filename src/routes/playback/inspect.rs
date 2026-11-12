@@ -197,6 +197,13 @@ impl Inspections {
         self.objects.ask(request, target);
     }
 
+    /// Releases this socket's capability, including its permutation and page addresses.
+    pub(super) fn release(&mut self) {
+        if let Some(cursor) = self.cursor.take() {
+            position::invalidate(&cursor.5);
+        }
+    }
+
     /// Identifies the target only for this socket's current capability. The caller rechecks its held sample.
     pub(super) fn continuation_target(&self, token: &str) -> Option<(u16, u32, u32)> {
         let (held, source, revision, sample, _, _) = self.cursor.as_ref()?;
@@ -292,7 +299,29 @@ fn answer(Job { request, target }: Job) -> Outgoing {
     let Some((track, snapshot, frame)) = target else {
         return unavailable(&request);
     };
-    match track.scene_in(&snapshot, request.sample as usize) {
+    let position = match &request.ask {
+        Ask::Object(_, _, position) | Ask::Continue(_, _, position) => Some(position),
+        Ask::Paths(_) => None,
+    };
+    let cached = position.and_then(|position| {
+        position
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .scene
+            .clone()
+    });
+    // Admission still checks the current held revision before this path. Reuse the immutable input so a large
+    // uncached record is not decoded again for every 64-KiB chunk.
+    let scene = cached.map_or_else(|| track.scene_in(&snapshot, request.sample as usize), Ok);
+    if let (Some(position), Ok(scene)) = (position, &scene) {
+        let mut position = position
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if position.active {
+            position.scene = Some(scene.clone());
+        }
+    }
+    match scene {
         Ok(scene) => Outgoing {
             message: text(&reply(&request, Some(&scene))),
             frames: Some(frame..=frame),

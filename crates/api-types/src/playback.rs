@@ -129,6 +129,8 @@ pub enum ClientMessage {
     /// Asks for the leaves every object of a Sample Item the viewer holds has at the query paths named, for a search
     /// of the objects' fields; the answer is `InspectedFields`. A newer request replaces one not started yet.
     InspectContinue(InspectionRead),
+    /// Releases the socket's held inspection capability and bounded traversal cache.
+    InspectRelease,
     /// Queries selected paths across objects.
     InspectFields {
         /// The viewer's source id, `LaneInfo::source`.

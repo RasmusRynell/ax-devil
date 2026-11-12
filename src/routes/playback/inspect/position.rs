@@ -7,6 +7,8 @@ use std::{
 /// Only addresses of the current page and its next boundary are retained, never a flattened list.
 pub(super) struct Position {
     pub(super) active: bool,
+    /// One shared reference to the immutable held input; no flattened fields or copied texts.
+    pub(super) scene: Option<Arc<scene::Scene>>,
     pub(super) fields: BTreeMap<usize, Vec<usize>>,
     pub(super) next: Option<(usize, Vec<usize>)>,
     pub(super) raw: Option<scene::inspection::RawCopy>,
@@ -17,6 +19,7 @@ impl Default for Position {
     fn default() -> Self {
         Self {
             active: true,
+            scene: None,
             fields: BTreeMap::new(),
             next: None,
             raw: None,
@@ -49,6 +52,7 @@ pub(super) fn invalidate(position: &PositionRef) {
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     position.active = false;
     position.traversal = None;
+    position.scene = None;
     position.fields.clear();
     position.raw = None;
     position.next = None;

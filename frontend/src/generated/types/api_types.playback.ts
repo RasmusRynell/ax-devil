@@ -72,7 +72,7 @@ sample: number,
 /**
  * The object's id; at most 1024 bytes.
  */
-entity: string, } | { "type": "InspectContinue" } & InspectionRead | { "type": "InspectFields", 
+entity: string, } | { "type": "InspectContinue" } & InspectionRead | { "type": "InspectRelease" } | { "type": "InspectFields", 
 /**
  * The viewer's source id, `LaneInfo::source`.
  */

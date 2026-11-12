@@ -11,10 +11,7 @@ mod list_shape;
 mod pages;
 mod traversal;
 mod walk;
-pub use pages::{
-    FieldChunk, FieldPage, MAX_COPY_BYTES, PageField, field_chunk, field_chunk_from, field_page,
-    field_page_from,
-};
+pub use pages::{FieldChunk, FieldPage, MAX_COPY_BYTES, PageField};
 pub use traversal::{MAX_CLASSIFICATIONS, Traversal};
 use walk::walk_entity;
 mod query;

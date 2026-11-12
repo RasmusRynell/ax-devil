@@ -54,7 +54,7 @@ fn prefix(text: &str, bytes: usize) -> &str {
 struct Page<'a> {
     work: usize,
     digest: sha2::Sha256,
-    order: Option<&'a super::Traversal>,
+    order: &'a super::Traversal,
     resume: Vec<usize>,
     address: Vec<usize>,
     start: usize,
@@ -90,16 +90,7 @@ impl Sink for Page<'_> {
         if self.resume.starts_with(address) && self.resume.len() > address.len() + 1 {
             return Some(false);
         }
-        let result = if let Some(order) = self.order {
-            order.colors(address, items, &mut self.work)
-        } else {
-            Some(
-                !items.is_empty()
-                    && items
-                        .iter()
-                        .all(|item| crate::ColorEntry::read_exact(item).is_some()),
-            )
-        };
+        let result = self.order.colors(address, items, &mut self.work);
         if result.is_none() {
             self.pause(address);
         }
@@ -107,7 +98,7 @@ impl Sink for Page<'_> {
     }
 
     fn ranked(&self) -> Option<&[u32]> {
-        self.order.map(super::Traversal::order)
+        Some(self.order.order())
     }
     fn resume(&self) -> &[usize] {
         &self.resume
@@ -208,21 +199,11 @@ impl Sink for Page<'_> {
     }
 }
 
-/// Reads at most 4096 fields and 8 MiB of paths/text. Text previews are 16 KiB; whole Raw copying uses its own bounded stream.
-pub fn field_page(entity: &Entity, start: usize) -> FieldPage {
-    field_page_from(entity, start, &[])
-}
-
-/// Resumes at a structural address returned with a page, without visiting preceding subtrees.
-pub fn field_page_from(entity: &Entity, start: usize, resume: &[usize]) -> FieldPage {
-    page_ordered(entity, start, resume, None)
-}
-
 pub(super) fn page_ordered(
     entity: &Entity,
     start: usize,
     resume: &[usize],
-    order: Option<&super::Traversal>,
+    order: &super::Traversal,
 ) -> FieldPage {
     use sha2::Digest;
     let mut page = Page {
@@ -245,7 +226,7 @@ pub(super) fn page_ordered(
 }
 
 struct Chunk<'a> {
-    order: Option<&'a super::Traversal>,
+    order: &'a super::Traversal,
     resume: Vec<usize>,
     wanted: usize,
     path: bool,
@@ -260,20 +241,11 @@ impl Sink for Chunk<'_> {
         if self.resume.starts_with(address) && self.resume.len() > address.len() + 1 {
             return Some(false);
         }
-        if let Some(order) = self.order {
-            order.colors(address, items, &mut (1 << 20))
-        } else {
-            Some(
-                !items.is_empty()
-                    && items
-                        .iter()
-                        .all(|item| crate::ColorEntry::read_exact(item).is_some()),
-            )
-        }
+        self.order.colors(address, items, &mut (1 << 20))
     }
 
     fn ranked(&self) -> Option<&[u32]> {
-        self.order.map(super::Traversal::order)
+        Some(self.order.order())
     }
     fn resume(&self) -> &[usize] {
         &self.resume
@@ -319,34 +291,13 @@ impl Sink for Chunk<'_> {
     }
 }
 
-/// Retrieves only one bounded piece, without copying the rest of the leaf.
-pub fn field_chunk(
-    entity: &Entity,
-    ordinal: usize,
-    offset: usize,
-    path: bool,
-) -> Result<FieldChunk, String> {
-    field_chunk_from(entity, ordinal, offset, path, &[])
-}
-
-/// Reads a field directly at its bounded structural address.
-pub fn field_chunk_from(
-    entity: &Entity,
-    ordinal: usize,
-    offset: usize,
-    path: bool,
-    resume: &[usize],
-) -> Result<FieldChunk, String> {
-    chunk_ordered(entity, ordinal, offset, path, resume, None)
-}
-
 pub(super) fn chunk_ordered(
     entity: &Entity,
     ordinal: usize,
     offset: usize,
     path: bool,
     resume: &[usize],
-    order: Option<&super::Traversal>,
+    order: &super::Traversal,
 ) -> Result<FieldChunk, String> {
     let mut chunk = Chunk {
         order,
@@ -408,6 +359,7 @@ fn path_chunk(path: &[&str], offset: usize) -> Result<FieldChunk, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::inspection::Traversal;
     use crate::{
         BoundingBox, EntityId, Fields, Geometry, Name, Observation, ObservationTime, SceneTime,
         Value,
@@ -436,7 +388,8 @@ mod tests {
             (Name::Owned("z".into()), Value::Null),
         ];
         let entity = object(fields);
-        let page = field_page(&entity, 0);
+        let traversal = Traversal::new(&entity).unwrap();
+        let page = traversal.page(&entity, 0, &[]);
         let bytes: usize = page
             .fields
             .iter()
@@ -451,7 +404,7 @@ mod tests {
         assert_eq!(bytes, 8 * 1024 * 1024);
         assert_eq!(page.fields.len(), 6);
         assert_eq!(page.next, Some(6));
-        let last = field_page_from(
+        let last = traversal.page(
             &entity,
             6,
             page.next_address.as_deref().expect("next address"),
@@ -467,9 +420,10 @@ mod tests {
                 .map(|i| (Name::Owned(format!("field{i}")), Value::Int(i)))
                 .collect(),
         );
-        let first = field_page(&many, 0);
+        let prepared = Traversal::new(&many).unwrap();
+        let first = prepared.page(&many, 0, &[]);
         assert_eq!(first.fields.len(), 4096);
-        let next = field_page_from(
+        let next = prepared.page(
             &many,
             first.next.expect("next"),
             first.next_address.as_deref().expect("next address"),
@@ -485,7 +439,9 @@ mod tests {
                 Name::Owned("text".into()),
                 Value::Str("x".repeat(size).into()),
             )]);
-            let result = field_chunk(&entity, 4, size - 1, false);
+            let traversal = Traversal::new(&entity).unwrap();
+            let page = traversal.page(&entity, 0, &[]);
+            let result = traversal.chunk(&entity, 4, size - 1, false, &page.fields[4].address);
             if size == 268_435_456 {
                 let chunk = result.expect("exactly the ceiling is copyable");
                 assert_eq!(chunk.text, "x");
@@ -501,11 +457,14 @@ mod tests {
             Name::Owned("p".repeat(9 * 1024 * 1024)),
             Value::Int(1),
         )]);
-        let page = field_page(&entity, 0);
+        let traversal = Traversal::new(&entity).unwrap();
+        let page = traversal.page(&entity, 0, &[]);
         assert_eq!(page.next, None);
         let (ordinal, bytes) = page.fields[4].path_cut.expect("path preview");
         assert_eq!(bytes, 9 * 1024 * 1024);
-        let chunk = field_chunk(&entity, ordinal, bytes - 1, true).expect("last path byte");
+        let chunk = traversal
+            .chunk(&entity, ordinal, bytes - 1, true, &page.fields[4].address)
+            .expect("last path byte");
         assert_eq!(chunk.text, "p");
         assert_eq!(chunk.next, None);
     }
@@ -516,10 +475,16 @@ mod tests {
             Name::Owned("text".into()),
             Value::Str(format!("{}z", "a".repeat(65536)).into()),
         )]);
-        let first = field_chunk(&entity, 4, 0, false).expect("first chunk");
+        let traversal = Traversal::new(&entity).unwrap();
+        let page = traversal.page(&entity, 0, &[]);
+        let first = traversal
+            .chunk(&entity, 4, 0, false, &page.fields[4].address)
+            .expect("first chunk");
         assert_eq!(first.text, "a".repeat(65536));
         assert_eq!(first.next, Some(65536));
-        let last = field_chunk(&entity, 4, 65536, false).expect("last chunk");
+        let last = traversal
+            .chunk(&entity, 4, 65536, false, &page.fields[4].address)
+            .expect("last chunk");
         assert_eq!(last.text, "z");
         assert_eq!(last.next, None);
     }
@@ -531,13 +496,23 @@ mod tests {
             Name::Owned("text".into()),
             Value::Str(text.clone().into()),
         )]);
-        let page = field_page(&entity, 0);
+        let traversal = Traversal::new(&entity).unwrap();
+        let page = traversal.page(&entity, 0, &[]);
         let (ordinal, total) = page.fields[4].cut.expect("preview is cut");
         assert_eq!(total, text.len());
-        let first = field_chunk(&entity, ordinal, 0, false).expect("first chunk");
+        let first = traversal
+            .chunk(&entity, ordinal, 0, false, &page.fields[4].address)
+            .expect("first chunk");
         assert_eq!(first.text.len(), 65535);
-        let last =
-            field_chunk(&entity, ordinal, first.next.expect("more"), false).expect("last chunk");
+        let last = traversal
+            .chunk(
+                &entity,
+                ordinal,
+                first.next.expect("more"),
+                false,
+                &page.fields[4].address,
+            )
+            .expect("last chunk");
         assert_eq!(last.text, "😀é");
         assert_eq!(last.next, None);
         assert_eq!(format!("{}{}", first.text, last.text), text);

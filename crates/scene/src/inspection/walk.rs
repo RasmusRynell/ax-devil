@@ -190,6 +190,9 @@ impl<S: Sink> Walk<'_, S> {
                 .ranked()
                 .map_or_else(|| fallback.as_ref().map_or(0, Vec::len), <[u32]>::len);
             for index in walk.skip()..count {
+                if walk.stop() {
+                    break;
+                }
                 let candidate = if let Some(order) = walk.sink.ranked() {
                     &observation.classifications[order[index] as usize]
                 } else {

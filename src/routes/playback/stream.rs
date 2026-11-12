@@ -260,6 +260,10 @@ impl<I: Incoming> Playing<'_, I> {
                     .ask(self.lanes.overlays(), source, data_revision, sample, entity);
                 Ok(())
             }
+            Some(Ok(ClientMessage::InspectRelease)) => {
+                self.inspections.release();
+                Ok(())
+            }
             Some(Ok(ClientMessage::InspectContinue(read))) => {
                 let target = self.inspections.continuation_target(&read.token).and_then(
                     |(source, revision, sample)| {

@@ -21,7 +21,7 @@ const withCar = fullSample([
 ]);
 const withoutCar = fullSample([{ id: "9", class: "human", box: [0.5, 0.5, 0.6, 0.7] }]);
 
-/** Displayed sample at the inspection boundary. */
+/** A displayed sample. */
 const frame = (
   sample: number,
   columns = withCar,
@@ -70,7 +70,7 @@ function setup() {
     (message) => sent.push(message),
     () => time.now,
   );
-  const samples = () => sent.map((m) => (m.type === "Inspect" ? m.sample : -1));
+  const samples = () => sent.flatMap((m) => (m.type === "Inspect" ? [m.sample] : []));
   return { inspections, sent, samples, time };
 }
 
@@ -257,7 +257,7 @@ describe("inspections", () => {
 
   it("ignores a reply of a data revision the source has left", () => {
     const { inspections, sent } = setup();
-    const revisions = () => sent.map((m) => (m.type === "Inspect" ? m.data_revision : -1));
+    const revisions = () => sent.flatMap((m) => (m.type === "Inspect" ? [m.data_revision] : []));
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
     inspections.follow([frame(0, withCar, 2)]);

@@ -60,7 +60,7 @@ impl Traversal {
 
     /// Resumes a bounded page at an address returned with the preceding page.
     pub fn page(&self, entity: &Entity, start: usize, address: &[usize]) -> FieldPage {
-        super::pages::page_ordered(entity, start, address, Some(self))
+        super::pages::page_ordered(entity, start, address, self)
     }
 
     /// Reads one chunk directly at an address of the current page.
@@ -72,7 +72,7 @@ impl Traversal {
         path: bool,
         address: &[usize],
     ) -> Result<FieldChunk, String> {
-        super::pages::chunk_ordered(entity, ordinal, offset, path, address, Some(self))
+        super::pages::chunk_ordered(entity, ordinal, offset, path, address, self)
     }
 }
 

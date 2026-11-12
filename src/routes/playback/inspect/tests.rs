@@ -351,6 +351,38 @@ async fn a_cursor_cannot_cross_sockets_or_outlast_its_held_sample() {
         }
     ));
     assert!(frames.is_some());
+    let position = inspections.cursor.as_ref().unwrap().5.clone();
+    let cached = Arc::downgrade(position.lock().unwrap().traversal.as_ref().unwrap());
+    assert!(position.lock().unwrap().scene.is_some());
+    inspections.release();
+    assert!(
+        cached.upgrade().is_none(),
+        "releasing the capability releases its prepared permutation"
+    );
+    assert!(
+        position.lock().unwrap().scene.is_none(),
+        "released input reference"
+    );
+    inspections.continue_target(read.clone(), viewer.inspect_target(0, revision, 10));
+    assert!(matches!(
+        answer(&mut inspections).await.0,
+        ServerMessage::InspectContinued {
+            result: InspectionReadResult::Refused { .. },
+            ..
+        }
+    ));
+    inspections.ask(&viewer, 0, revision, 10, "2".into());
+    let InspectionWire::Found {
+        continuation: Some(cursor),
+        ..
+    } = verdict(answer(&mut inspections).await.0)
+    else {
+        panic!("fresh capability");
+    };
+    let read = InspectionRead {
+        token: cursor.token,
+        ..read
+    };
     hold(&mut viewer, 40).await;
     inspections.continue_target(read, viewer.inspect_target(0, revision, 10));
     let (message, frames) = answer(&mut inspections).await;
