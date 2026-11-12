@@ -55,7 +55,7 @@ describe("catalogs", () => {
         await rejected;
       }
       expect(catalogs.get(id)).toMatchObject({ problem: expect.any(String) });
-      expect(catalogs.compiledRevision(id)).toBe(httpFirst ? 2 : 1);
+      expect(catalogs.compiledRevision(id)).toBe(1);
       // A superseded action cannot even install a newer valid document.
       const superseded = catalogs.validate(id, () => false);
       reply(Response.json({ revision: 5, document: catalogDocument() }));
@@ -73,6 +73,14 @@ describe("catalogs", () => {
       reply(Response.json({ revision: 6, document: catalogDocument() }));
       expect(await oldConnection).toBe(false);
       expect(catalogs.get(id)).toMatchObject({ catalog: { name: "Classic" } });
+      const validation = catalogs.validate(id, () => true);
+      reply(Response.json({ revision: 8, document: catalogDocument("tracking") }));
+      expect(await validation).toBe(true);
+      expect(catalogs.compiledRevision(id)).toBe(1);
+      // Identical text/revision from the feed must still promote the compile: it is now retained for export.
+      catalogs.receive(id, 8, catalogDocument("tracking"));
+      expect(catalogs.compiledRevision(id)).toBe(8);
+      expect(catalogs.get(id)).toMatchObject({ catalog: { name: "Tracking" } });
     }
   });
 

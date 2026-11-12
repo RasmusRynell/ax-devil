@@ -1,7 +1,10 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import feed from "../../../fixtures/catalog-export/http-feed.json";
+import { choicesOf } from "../export/lanes";
 import { catalogDocument } from "./fakeData";
 import { setup } from "./fakePlayback";
+import { READY } from "./fakeFileAnswer";
 import { laneNotices } from "./laneNotices";
 import type { ClientMessage, LaneInfo } from "./protocol";
 
@@ -73,6 +76,43 @@ describe("catalog actions", () => {
     ]);
     expect(session.laneSettings()[1]).toMatchObject({ theme: "dusk", visible: false });
     expect(session.getSnapshot().lanes[1].settings.sticky.opacity).toBe(0.5);
+  });
+
+  it("exports the drawing the real feed retained when an HTTP-validated edit is coalesced away", async () => {
+    const { session, server, sent } = await setup();
+    server.open(10, TWO_LANES);
+    server.status(0, READY);
+    session.setLane(0, { catalog: feed.initial.id });
+    server.catalog(feed.initial.id, feed.initial.document, feed.initial.revision);
+    let release!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      release = resolve;
+    }).then(() => {
+      server.catalog(feed.broken.id, feed.broken.document, feed.broken.revision);
+    });
+    vi.stubGlobal("window", { sessionStorage: { getItem: () => null } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(feed.http)),
+    );
+    await session.applyToAll(0);
+    expect(session.laneSettings()[1].catalog).toBe(feed.initial.id);
+    release();
+    await delivery;
+    expect(laneNotices(session.getSnapshot().lanes[0])).toHaveLength(1);
+    const wire = choicesOf(session.getSnapshot().lanes)[0].wire!;
+    // These acceptance results came from Exports::begin after the actual Library/CatalogFeed/HTTP sequence.
+    expect(feed.exportable).toContain(wire.catalog.revision);
+    expect(wire.catalog.revision).toBe(feed.initial.revision);
+    expect(feed.exportable).not.toContain(feed.http.revision);
+    session.exports.start({
+      lanes: [wire],
+      first: 0,
+      last: 0,
+      format: { format: "Png" },
+      path: "out.png",
+    });
+    expect(sent.at(-1)).toMatchObject({ type: "Export", lanes: [{ catalog: wire.catalog }] });
   });
 
   it("expires Apply refusals on recovery, selection, dismissal and lane replacement without clearing backend errors", async () => {

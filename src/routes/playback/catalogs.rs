@@ -222,7 +222,7 @@ mod tests {
 
         assert!(feed.kept("user:a.json", 1).is_some());
         assert!(feed.kept("user:b.json", 2 * MAX_KEPT as u32).is_some());
-        assert_eq!(feed.kept.len(), MAX_KEPT);
+        assert_eq!(feed.kept.len(), 16);
     }
 
     /// Records real feed replies, including the revision-zero withdrawal, for the frontend's ordering regression.

@@ -18,6 +18,8 @@ type Reply = { revision: number; document: string | null; problem: string | null
 type Held = {
   reply?: Reply;
   epoch?: number;
+  /** Whether the latest reply was delivered by the playback feed, which retains it for export. */
+  delivered?: boolean;
   /** Last document revision, retained across an availability withdrawal. */
   revision?: number;
   /** Counts ordered feed availability transitions, independently of document revisions. */
@@ -94,7 +96,7 @@ export class Catalogs {
     if (!current() || epoch !== this.#epoch) return false;
     // A reply started before a withdrawal cannot restore availability; only the ordered feed can do that.
     if (availability === this.#held.get(id)?.availability)
-      this.receive(id, fresh.revision, fresh.document);
+      this.#accept(id, fresh.revision, fresh.document, null, false);
     const held = this.get(id);
     if (held.state !== "ready" || !held.catalog || held.problem)
       throw new Error(held.state === "ready" ? held.problem : "The catalog is loading");
@@ -117,6 +119,16 @@ export class Catalogs {
     document: string | null,
     problem: string | null = null,
   ): boolean {
+    return this.#accept(id, revision, document, problem, true);
+  }
+
+  #accept(
+    id: string,
+    revision: number,
+    document: string | null,
+    problem: string | null,
+    delivered: boolean,
+  ): boolean {
     const held = this.#held.get(id);
     const last = held?.reply;
     if (!held) return false;
@@ -127,19 +139,26 @@ export class Catalogs {
     } else held.revision = undefined;
     held.epoch = this.#epoch;
     if (!withdrawn) held.revision = revision;
-    if (last?.revision === revision && last.document === document && last.problem === problem)
+    if (
+      last?.revision === revision &&
+      last.document === document &&
+      last.problem === problem &&
+      (!delivered || held.delivered)
+    )
       return false;
     if ((last?.document === null) !== (document === null)) held.availability++;
     held.reply = { revision, document, problem };
+    held.delivered = delivered;
     const catalog = held.entry.state === "ready" ? held.entry.catalog : undefined;
     if (document === null) {
       held.entry = { state: "ready", catalog, problem: problem ?? `There is no catalog ${id}` };
       return true;
     }
     const result = compileCatalog(document);
-    if (result.ok) this.#compiled.set(id, revision);
+    // Only feed delivery proves the export owner retained this document. HTTP still validates immediately.
+    if (result.ok && delivered) this.#compiled.set(id, revision);
     held.entry = result.ok
-      ? { state: "ready", catalog: result.catalog }
+      ? { state: "ready", catalog: delivered ? result.catalog : catalog }
       : { state: "ready", catalog, problem: describe(result.diagnostics, document) };
     return true;
   }
