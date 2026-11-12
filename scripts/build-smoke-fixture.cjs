@@ -1,8 +1,7 @@
-const { spawn } = require("node:child_process");
-const { observe } = require("../desktop/child.cjs");
+const { spawnOwned: spawn, observe } = require("./child.cjs");
 const { FIXTURE_BUILD_MS, EXIT_GRACE_MS } = require("../desktop/smoke-budget.cjs");
 
-// A build owns a process group until its leader exits. A descendant escaping that group can hold the pipes;
+// A live private group leader owns the build through cleanup. An escaped descendant can hold the pipes;
 // report that as failure, close our ends, and never signal the retired group id.
 async function build(
   command,
@@ -15,8 +14,12 @@ async function build(
     report = (message) => process.stderr.write(`${message}\n`),
   } = {},
 ) {
-  const child = spawner(command, args, { detached: true, stdio: ["ignore", "pipe", "pipe"] });
-  const owned = observe(child, true);
+  const child = spawner(command, args, {
+    detached: true,
+    windowsTree: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const owned = observe(child);
   const closed = new Promise((resolve) => child.once("close", resolve));
   child.stdout.on("data", output);
   child.stderr.on("data", output);

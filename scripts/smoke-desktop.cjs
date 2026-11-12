@@ -2,7 +2,7 @@
 // group, one after another. A name is a group (all of it) or a scenario (it and the ones before it in its group, which
 // leave the state it needs). Empty means every group. `--plan <names>` prints one `<group> <scenarios> <deadline seconds>` line per
 // launch: the deadline is how long the launcher waits for that launch's verdict (scripts/smoke-packaged.sh waits as long).
-const { spawn } = require("node:child_process");
+const { supervise } = require("./smoke-process.cjs");
 const fs = require("node:fs");
 const Module = require("node:module");
 const os = require("node:os");
@@ -10,13 +10,7 @@ const path = require("node:path");
 
 const desktop = path.join(__dirname, "..", "desktop");
 // What a launch needs beside its own start and scenarios: the app starting, a failure picture, the backend stopping.
-const { LAUNCH_MARGIN_MS, KILL_AFTER_MS, EXIT_GRACE_MS } = require("../desktop/smoke-budget.cjs");
-// How long after the app has exited its output pipes may stay open before the launcher cuts them: `close` fires only
-// once every holder of the pipes has closed them.
-
-// Ends the launch running now (once per launch): its whole process group gets SIGTERM, then SIGKILL if the leader
-// has not closed within KILL_AFTER_MS. Once the app has exited it signals nothing.
-let stopActive = () => {};
+const { LAUNCH_MARGIN_MS } = require("../desktop/smoke-budget.cjs");
 let cancelled = false;
 
 /** Prints what is wrong and stops, before anything is launched. */
@@ -142,129 +136,23 @@ function deadlineMs(names, scenarios) {
   );
 }
 
-/**
- * Starts one launch and resolves with its verdict. It passes only when the app exited 0 and wrote PASS to `result`,
- * the file `AX_DEVIL_SMOKE_RESULT` names; an app that was stopped before it judged exits 0 with no verdict.
- */
 function launch(group, names, scenarios, result) {
-  const limit = deadlineMs(names, scenarios);
-  const began = Date.now();
-  process.stdout.write(`smoke: group ${group}: ${names.join(", ")}\n`);
-  return new Promise((resolve) => {
-    const child = spawn(
-      path.join(__dirname, "isolated"),
-      [
-        group === "native" ? "--window-manager" : "--display",
-        "pnpm",
-        "--dir",
-        "desktop",
-        "exec",
-        "electron",
-        ".",
-        "--ozone-platform=x11",
-        "--smoke-test",
-      ],
-      {
-        cwd: path.join(__dirname, ".."),
-        detached: true,
-        env: {
-          ...process.env,
-          AX_DEVIL_SMOKE_RUN: names.join(","),
-          AX_DEVIL_SMOKE_RESULT: result,
-        },
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
-    let last = "start";
-    let killed = "";
-    const pass = (chunk) => {
-      process.stdout.write(chunk);
-      for (const match of chunk.toString().matchAll(/smoke: running (\S+)/g)) last = match[1];
-    };
-    child.stdout.on("data", pass);
-    child.stderr.on("data", pass);
-    // The launch owns its process group: the id is signalled only while `pid` is set, and `finish` retires it.
-    const owned = {
-      pid: child.pid,
-      stopped: false,
-      done: false,
-      escalation: undefined,
-      deadline: undefined,
-      sweep: undefined,
-    };
-    const signal = (name) => {
-      if (owned.pid === undefined) return;
-      try {
-        process.kill(-owned.pid, name);
-      } catch (error) {
-        if (error.code !== "ESRCH")
-          process.stderr.write(`group "${group}": ${name} failed: ${error.message}\n`);
-      }
-    };
-    const stop = () => {
-      if (owned.stopped) return;
-      owned.stopped = true;
-      // After the app has exited there is no group left to signal, but the launch is still cancelled.
-      if (owned.pid === undefined) return;
-      signal("SIGTERM");
-      owned.escalation = setTimeout(() => signal("SIGKILL"), KILL_AFTER_MS);
-      owned.escalation.unref();
-    };
-    stopActive = stop;
-    owned.deadline = setTimeout(() => {
-      killed = `killed after ${Math.round((Date.now() - began) / 1000)} s with no verdict, while running "${last}"`;
-      process.stderr.write(`group "${group}" ${killed}\n`);
-      stop();
-    }, limit);
-    // The app has exited, so its group id is certain only now: end what is left of the group at once, and let no later
-    // path signal it (the id could be reused). A descendant that still holds the launcher's output pipes, or one in
-    // another session, delays `close`; after the grace the pipes are cut, so the launch finishes through `finish`.
-    // This is cleanup, not a stop: it changes no verdict.
-    child.on("exit", () => {
-      clearTimeout(owned.deadline);
-      clearTimeout(owned.escalation);
-      signal("SIGKILL");
-      owned.pid = undefined;
-      owned.sweep = setTimeout(() => {
-        process.stderr.write(
-          `group "${group}": the app's output was still held open after it exited; the group was killed and the output closed (a process outside the app's process group may still be running)\n`,
-        );
-        child.stdout.destroy();
-        child.stderr.destroy();
-      }, EXIT_GRACE_MS);
-    });
-    // Runs once per launch, from `error` (spawn failed) or `close`, whichever comes first; the other does nothing.
-    const finish = (code, spawnError) => {
-      if (owned.done) return;
-      owned.done = true;
-      clearTimeout(owned.deadline);
-      clearTimeout(owned.escalation);
-      clearTimeout(owned.sweep);
-      // Sweep members that outlived the leader (Xvfb, the backend), once, while this launch still owns the id; after the
-      // app's exit the id is already retired and this does nothing.
-      signal("SIGKILL");
-      owned.pid = undefined;
-      if (stopActive === stop) stopActive = () => {};
-      const seconds = Math.round((Date.now() - began) / 1000);
-      let verdict = "";
-      try {
-        verdict = fs.readFileSync(result, "utf8").trim();
-      } catch {
-        // The app never judged.
-      }
-      // A launch that was told to stop (deadline or cancel) never passes, whatever it wrote or exited with.
-      const ok = !spawnError && !owned.stopped && code === 0 && verdict === "PASS";
-      const reason = ok
-        ? ""
-        : spawnError?.message ||
-          killed ||
-          (owned.stopped ? `cancelled while running "${last}"` : "") ||
-          (verdict && verdict !== "PASS" ? verdict : `no verdict (exit ${code}), in "${last}"`);
-      resolve({ ok, seconds, reason });
-    };
-    child.on("error", (error) => finish(null, error));
-    child.on("close", (code) => finish(code));
-  });
+  return supervise(
+    path.join(__dirname, "isolated"),
+    [
+      group === "native" ? "--window-manager" : "--display",
+      "pnpm",
+      "--dir",
+      "desktop",
+      "exec",
+      "electron",
+      ".",
+      "--ozone-platform=x11",
+      "--smoke-test",
+    ],
+    result,
+    { group, names, limitMs: deadlineMs(names, scenarios) },
+  );
 }
 
 async function main() {
@@ -272,7 +160,6 @@ async function main() {
   const planOnly = args[0] === "--plan";
   const groups = require(path.join(desktop, "smoke-groups.cjs"));
   const scenarios = loadScenarios(groups);
-  // Native X11 gestures belong to the Linux suite, not the macOS/Windows package checks.
   const launches = plan(groups, (planOnly ? args[1] : args[0]) ?? "").filter(
     ([group]) => group !== "native" || process.platform === "linux",
   );
@@ -289,7 +176,6 @@ async function main() {
   for (const signal of ["SIGINT", "SIGTERM"])
     process.on(signal, () => {
       cancelled = true;
-      stopActive();
     });
   const verdicts = [];
   for (const [group, names] of launches) {
@@ -307,4 +193,5 @@ async function main() {
 }
 
 if (require.main === module) void main();
+
 module.exports = { loadScenarios, deadlineMs };

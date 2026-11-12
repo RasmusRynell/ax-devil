@@ -4,6 +4,7 @@ const path = require("node:path");
 const { promisify } = require("node:util");
 const { SMOKE_ROOT, settled, frames, page, until } = require("./smoke-kit.cjs");
 const execute = promisify(execFile);
+const { observe } = require("./child.cjs");
 
 async function input(action, ...values) {
   if (process.env.AX_DEVIL_PRIVATE_X11 !== "1")
@@ -65,16 +66,10 @@ async function withUnfocused(window, work) {
   const other = spawn("python3", [path.join(SMOKE_ROOT, "scripts/private-x11.py"), "competitor"], {
     stdio: ["pipe", "inherit", "inherit"],
   });
+  const lifecycle = observe(other);
   let failure;
-  const closed = new Promise((resolve) => {
-    other.once("error", (error) => {
-      failure = error;
-      resolve();
-    });
-    other.once("exit", (code) => {
-      if (code) failure = new Error(`exit ${code}`);
-      resolve();
-    });
+  const closed = lifecycle.done.then(({ code, signal, error }) => {
+    if (error || code || signal) failure = error ?? new Error(`exit ${code ?? signal}`);
   });
   try {
     await until(async () => {
@@ -93,8 +88,8 @@ async function withUnfocused(window, work) {
         }),
         new Promise((_resolve, reject) => {
           timer = setTimeout(() => {
-            other.kill("SIGKILL");
             reject(new Error("Private X11 focus witness cleanup timed out after 3 seconds"));
+            lifecycle.signal("SIGKILL");
           }, 3000);
         }),
       ]);

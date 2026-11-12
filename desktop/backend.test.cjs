@@ -89,6 +89,7 @@ void test("a backend that ignores its closed stdin gets SIGINT, then SIGKILL", a
     child.stdout.write("ax-devil: http://127.0.0.1:7330\n");
     await ensured;
     const stopped = backend.stop();
+    assert.equal(backend.stop(), stopped);
     mock.timers.tick(3000);
     assert.deepEqual(child.signals, ["SIGINT"]);
     mock.timers.tick(3000);
@@ -148,3 +149,19 @@ void test("repeated child stop sends one interrupt and arms one escalation", asy
     mock.timers.reset();
   }
 });
+
+void test(
+  "cleanup after startup exit or spawn failure settles without signalling",
+  { timeout: 1000 },
+  async () => {
+    for (const event of ["exit", "error"]) {
+      const child = fakeProcess();
+      const backend = backendOf(child);
+      const started = assert.rejects(backend.ensure());
+      child.emit(event, event === "error" ? new Error("spawn failed") : 0);
+      await started;
+      await backend.stop();
+      assert.deepEqual(child.signals, []);
+    }
+  },
+);

@@ -1,43 +1,29 @@
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const { EventEmitter } = require("node:events");
 
-/** Observes a child immediately and owns its one interrupt/escalation sequence. */
-function observe(child, { signal = "SIGINT", graceMs = 3000 } = {}) {
-  let exited = child.exitCode !== null || child.signalCode !== null;
-  let stopping;
-  let timer;
-  let resolve;
-  const done = new Promise((r) => {
-    resolve = r;
-  });
-  const finish = () => {
-    exited = true;
-    clearTimeout(timer);
-    resolve();
-  };
-  child.once("exit", finish);
-  child.once("error", finish);
-  if (exited) finish();
-  return {
-    done,
-    stop() {
-      if (stopping) return stopping;
-      stopping = done;
-      if (!exited) {
-        timer = setTimeout(() => child.kill("SIGKILL"), graceMs);
-        child.kill(signal);
-      }
-      return stopping;
-    },
-  };
-}
+const { observe } = require("../desktop/child.cjs");
 
 /**
  * Spawns through a live POSIX group leader. Only that leader signals its own group; the launcher never signals a
  * numeric group identity. IPC disconnect kills the group if the launcher dies. Windows retains direct child handles.
  */
-function spawnOwned(command, args, options) {
-  if (process.platform === "win32") return spawn(command, args, options);
+function spawnOwned(command, args, { windowsTree = false, ...options }) {
+  if (process.platform === "win32") {
+    const child = spawn(command, args, options);
+    // The fixture build already used taskkill /T on Windows; development retains its direct-child behavior.
+    if (windowsTree)
+      child.kill = () => {
+        if (!child.pid || child.exitCode != null || child.signalCode != null) return false;
+        const killed = spawnSync("taskkill", ["/F", "/T", "/PID", String(child.pid)], {
+          encoding: "utf8",
+        });
+        if (killed.error) throw killed.error;
+        if (killed.status !== 0 && !/not found/i.test(killed.stderr))
+          throw new Error(`taskkill failed: ${killed.stderr}`);
+        return killed.status === 0;
+      };
+    return child;
+  }
   const leader = spawn(
     process.execPath,
     [require.resolve("./group-leader.cjs"), command, ...args],

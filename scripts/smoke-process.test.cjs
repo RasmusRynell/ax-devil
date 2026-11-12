@@ -105,6 +105,12 @@ void posixTest(
       const signals = audit(folder);
       let launcher;
       try {
+        const scripts = path.join(folder, "scripts");
+        const desktop = path.join(folder, "desktop");
+        fs.mkdirSync(scripts);
+        fs.mkdirSync(desktop);
+        for (const file of ["child.cjs", "smoke-budget.cjs"])
+          fs.copyFileSync(path.join(__dirname, "..", "desktop", file), path.join(desktop, file));
         for (const file of [
           "smoke-process.cjs",
           "child.cjs",
@@ -117,12 +123,12 @@ void posixTest(
             assert.ok(source.includes(guard), "mutation must reach the normal exit callback");
             source = source.replace(guard, `${guard}\n      process.kill(-child.pid, "SIGKILL");`);
           }
-          fs.writeFileSync(path.join(folder, file), source);
+          fs.writeFileSync(path.join(scripts, file), source);
         }
         launcher = spawn(
           process.execPath,
           [
-            path.join(folder, "smoke-process.cjs"),
+            path.join(scripts, "smoke-process.cjs"),
             "2",
             path.join(folder, "result"),
             "normal-completion",
@@ -471,7 +477,7 @@ void posixTest(
           "-c",
           `
       ${functions}
-      os=win; logs="$1"; run=(bash -c 'echo $$ > "$1/pid"; echo PASS > "$AX_DEVIL_SMOKE_RESULT"; read -r _ < "$1/hold"' bash "$1"); flags=()
+      os=win; stop_seconds=10; logs="$1"; run=(bash -c 'echo $$ > "$1/pid"; echo PASS > "$AX_DEVIL_SMOKE_RESULT"; read -r _ < "$1/hold"' bash "$1"); flags=()
       native() { echo "$1"; }; fresh_home() { :; }
       export AX_DEVIL_SMOKE_RESULT
       mkfifo "$1/hold"

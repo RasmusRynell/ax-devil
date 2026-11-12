@@ -1,8 +1,7 @@
 const { spawnOwned: spawn, observe } = require("./child.cjs");
 const fs = require("node:fs");
 const { passed } = require("./smoke-verdict.cjs");
-const KILL_AFTER_MS = 10_000;
-const EXIT_GRACE_MS = 5000;
+const { KILL_AFTER_MS, EXIT_GRACE_MS, PACKAGE_EXIT_MS } = require("../desktop/smoke-budget.cjs");
 
 /**
  * Starts one launch and resolves with its verdict. It passes only when the app exited 0 and wrote PASS to `result`,
@@ -58,7 +57,7 @@ function supervise(
       owned.shutdown = setTimeout(() => {
         killed = "app required forced stopping after its verdict";
         stop();
-      }, killAfterMs);
+      }, PACKAGE_EXIT_MS);
     }, 100);
     owned.deadline = setTimeout(() => {
       killed = `killed after ${Math.round((Date.now() - began) / 1000)} s with no verdict, while running "${last}"`;
