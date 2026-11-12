@@ -23,7 +23,9 @@ use wire::page_field;
 mod position;
 use position::{Position, PositionRef, remember};
 use std::sync::{Arc, Mutex};
-use tokio::task::JoinHandle;
+mod queue;
+use foundation::CancelToken;
+use queue::{Job, Queue};
 
 /// The longest object id an `Inspect` may name, in bytes.
 const MAX_ENTITY_BYTES: usize = 1024;
@@ -65,6 +67,7 @@ impl Ask {
 /// What a request asked for.
 #[derive(Clone)]
 struct Request {
+    validity: CancelToken,
     generation: u32,
     source: u16,
     data_revision: u32,
@@ -74,53 +77,6 @@ struct Request {
 
 /// The sample a request may read, with the snapshot its index is of and the frame it ranks by.
 type Target = (Arc<dyn TrackRead>, Arc<TrackSnapshot>, u64);
-
-/// A request and the sample it may read, decided when the request arrived.
-struct Job {
-    request: Request,
-    /// `None` when the viewer does not hold the sample.
-    target: Option<Target>,
-}
-
-/// The requests of one kind: one runs at a time, the newest waits for it.
-#[derive(Default)]
-struct Queue {
-    running: Option<(Request, JoinHandle<Outgoing>)>,
-    queued: Option<Job>,
-}
-
-impl Queue {
-    fn ask(&mut self, request: Request, target: Option<Target>) {
-        let target = target.filter(|_| request.ask.within_bounds());
-        self.queued = Some(Job { request, target });
-        self.start();
-    }
-
-    /// The next answer or token refusal; waits while there is neither.
-    async fn next(&mut self) -> Outgoing {
-        let Some((request, running)) = self.running.as_mut() else {
-            return std::future::pending().await;
-        };
-        // Only the handle is polled, so a dropped call loses nothing.
-        let finished = running.await;
-        let request = request.clone();
-        self.running = None;
-        self.start();
-        finished.unwrap_or_else(|error| {
-            tracing::warn!("An inspection failed: {error}");
-            unavailable(&request)
-        })
-    }
-
-    fn start(&mut self) {
-        if self.running.is_none()
-            && let Some(job) = self.queued.take()
-        {
-            let request = job.request.clone();
-            self.running = Some((request, tokio::task::spawn_blocking(move || answer(job))));
-        }
-    }
-}
 
 /// A viewer's inspections: an object's fields and a search's leaves are asked and answered apart.
 #[derive(Default)]
@@ -183,9 +139,7 @@ impl Inspections {
         if !self.admit() {
             return;
         }
-        if let Some(old) = self.cursor.take() {
-            position::invalidate(&old.5);
-        }
+        self.release();
         let token = sessions::Secret::generate().to_string();
         let position = Arc::new(Mutex::new(Position::default()));
         self.cursor = Some((
@@ -197,8 +151,10 @@ impl Inspections {
             position.clone(),
             generation,
         ));
+        let validity = position::validity(&position);
         let ask = Ask::Object(entity, token, position);
         let request = Request {
+            validity,
             generation,
             source,
             data_revision,
@@ -213,6 +169,7 @@ impl Inspections {
         if let Some(cursor) = self.cursor.take() {
             position::invalidate(&cursor.5);
         }
+        self.objects.cancel_pending();
     }
 
     /// Resolves a continuation through this socket's capability and its viewer's currently held samples.
@@ -238,7 +195,13 @@ impl Inspections {
             .cursor
             .as_ref()
             .map_or_else(String::new, |cursor| cursor.4.clone());
+        let validity = self
+            .cursor
+            .as_ref()
+            .map(|c| position::validity(&c.5))
+            .unwrap_or_default();
         let request = Request {
+            validity,
             generation: read.request,
             source,
             data_revision,
@@ -256,10 +219,13 @@ impl Inspections {
             self.refused = Some(unavailable(&request));
             return;
         }
-        if target.is_none()
-            && let Some(cursor) = self.cursor.take()
-        {
-            position::invalidate(&cursor.5);
+        if target.is_none() || request.validity.is_cancelled() {
+            self.release();
+            self.refused = Some(unavailable(&Request {
+                validity: CancelToken::new(),
+                ..request
+            }));
+            return;
         }
         self.objects.ask(request, target);
     }
@@ -292,6 +258,7 @@ impl Inspections {
             return;
         }
         let request = Request {
+            validity: CancelToken::new(),
             generation,
             source,
             data_revision,
@@ -315,14 +282,15 @@ impl Inspections {
 
 impl Drop for Inspections {
     fn drop(&mut self) {
-        if let Some(cursor) = &self.cursor {
-            position::invalidate(&cursor.5);
-        }
+        self.release();
     }
 }
 
 /// The answer to `job`, reading the sample's scene.
 fn answer(Job { request, target }: Job) -> Outgoing {
+    if request.validity.is_cancelled() {
+        return unavailable(&request);
+    }
     let Some((track, snapshot, frame)) = target else {
         return unavailable(&request);
     };
@@ -339,21 +307,32 @@ fn answer(Job { request, target }: Job) -> Outgoing {
     });
     // Admission still checks the current held revision before this path. Reuse the immutable input so a large
     // uncached record is not decoded again for every 64-KiB chunk.
+    if request.validity.is_cancelled() {
+        return unavailable(&request);
+    }
     let scene = cached.map_or_else(|| track.scene_in(&snapshot, request.sample as usize), Ok);
+    if request.validity.is_cancelled() {
+        return unavailable(&request);
+    }
+    let response = reply(&request, scene.as_deref().ok());
+    if request.validity.is_cancelled() {
+        return unavailable(&request);
+    }
+    let message = text(&response);
     if let (Some(position), Ok(scene)) = (position, &scene) {
         let mut position = position
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if position.active {
+        if !position.validity.is_cancelled() && position.traversal.is_some() {
             position.scene = Some(scene.clone());
         }
     }
     match scene {
-        Ok(scene) => Outgoing {
-            message: text(&reply(&request, Some(&scene))),
+        Ok(_) => Outgoing {
+            message,
             frames: Some(frame..=frame),
             data: None,
-            inspection: true,
+            inspection: Some(request.validity.clone()),
         },
         Err(error) => {
             tracing::debug!("Sample {} cannot be inspected: {error:?}", request.sample);
@@ -368,7 +347,7 @@ fn unavailable(request: &Request) -> Outgoing {
         message: text(&reply(request, None)),
         frames: None,
         data: None,
-        inspection: true,
+        inspection: Some(request.validity.clone()),
     }
 }
 
@@ -380,6 +359,7 @@ fn reply(request: &Request, scene: Option<&Scene>) -> ServerMessage {
         data_revision,
         sample,
         ask,
+        ..
     } = request;
     let (source, data_revision, sample) = (*source, *data_revision, *sample);
     match ask {
@@ -421,25 +401,17 @@ fn inspection_at(
 ) -> InspectionWire {
     match scene.entity(entity) {
         Some(entity) => {
-            if !position
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .active
-            {
+            if position::validity(position).is_cancelled() {
                 return InspectionWire::Unavailable;
             }
-            let traversal = match scene::inspection::Traversal::new(entity) {
-                Ok(traversal) => Arc::new(traversal),
-                Err(reason) => {
-                    position::invalidate(position);
-                    return InspectionWire::Refused { reason };
-                }
-            };
-            if !position
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .active
-            {
+            let traversal =
+                match scene::inspection::Traversal::new(entity, position::validity(position)) {
+                    Ok(traversal) => Arc::new(traversal),
+                    Err(reason) => {
+                        return InspectionWire::Refused { reason };
+                    }
+                };
+            if position::validity(position).is_cancelled() {
                 return InspectionWire::Unavailable;
             }
             let page = traversal.page(entity, 0, &[]);
@@ -447,7 +419,7 @@ fn inspection_at(
                 let mut position = position
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if !position.active {
+                if position.validity.is_cancelled() {
                     return InspectionWire::Unavailable;
                 }
                 position.traversal = Some(traversal);
@@ -463,10 +435,7 @@ fn inspection_at(
                 }),
             }
         }
-        None => {
-            position::invalidate(position);
-            InspectionWire::Absent
-        }
+        None => InspectionWire::Absent,
     }
 }
 
@@ -474,8 +443,10 @@ fn inspection_at(
 fn continued(scene: Option<&Scene>, entity: &str, read: &InspectionRead) -> InspectionReadResult {
     let position = Arc::default();
     if let Some(entity) = scene.and_then(|scene| scene.entity(entity)) {
-        let traversal =
-            Arc::new(scene::inspection::Traversal::new(entity).expect("bounded test entity"));
+        let traversal = Arc::new(
+            scene::inspection::Traversal::new(entity, position::validity(&position))
+                .expect("bounded test entity"),
+        );
         remember(&position, 0, &traversal.page(entity, 0, &[]));
         position.lock().unwrap().traversal = Some(traversal);
     }

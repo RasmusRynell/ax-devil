@@ -88,19 +88,33 @@ pub fn raw_chunk(
     entity: &Entity,
     cursor: &mut RawCopy,
     offset: usize,
+    cancel: &foundation::CancelToken,
 ) -> Result<FieldChunk, String> {
+    let check = || {
+        cancel
+            .check()
+            .map_err(|_| "Inspection cancelled".to_owned())
+    };
+    check()?;
     if offset != cursor.output {
         return Err("The Raw copy offset is invalid".into());
     }
     let segments = segments(entity);
     if offset == 0 {
-        cursor.total = segments
-            .iter()
-            .map(|segment| match segment {
+        cursor.total = 0;
+        for segment in &segments {
+            cursor.total += match segment {
                 Segment::Literal(text) => text.len(),
-                Segment::Escaped(text) => text.chars().map(escaped_len).sum(),
-            })
-            .sum();
+                Segment::Escaped(text) => {
+                    let mut bytes = 0;
+                    for character in text.chars() {
+                        check()?;
+                        bytes += escaped_len(character);
+                    }
+                    bytes
+                }
+            };
+        }
         if cursor.total > MAX_COPY_BYTES {
             return Err(format!(
                 "Raw group is {} bytes; copying supports at most {MAX_COPY_BYTES} bytes",
@@ -110,6 +124,7 @@ pub fn raw_chunk(
     }
     let mut text = String::with_capacity(CHUNK_BYTES);
     while let Some(segment) = segments.get(cursor.segment) {
+        check()?;
         let (part, next) = match segment {
             Segment::Literal(value) => {
                 let end = (cursor.input + (CHUNK_BYTES) - text.len()).min(value.len());
@@ -193,7 +208,8 @@ mod tests {
         let mut offset = 0;
         let mut copied = String::new();
         loop {
-            let chunk = raw_chunk(entity, &mut cursor, offset).unwrap();
+            let chunk =
+                raw_chunk(entity, &mut cursor, offset, &foundation::CancelToken::new()).unwrap();
             assert!(chunk.text.len() <= 65536);
             copied.push_str(&chunk.text);
             if let Some(next) = chunk.next {

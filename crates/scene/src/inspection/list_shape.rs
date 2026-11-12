@@ -14,6 +14,7 @@ impl ListShapes {
         address: &[usize],
         items: &[Value],
         work: &mut usize,
+        cancel: &foundation::CancelToken,
     ) -> Option<bool> {
         if let Some((_, answer)) = self.known.iter().find(|(key, _)| key == address) {
             return Some(*answer);
@@ -28,6 +29,9 @@ impl ListShapes {
             .map_or(0, |(_, n)| *n);
         let mut answer = true;
         while checked < items.len() {
+            if cancel.is_cancelled() {
+                return None;
+            }
             if *work == 0 {
                 self.pending = Some((address.to_vec(), checked));
                 return None;

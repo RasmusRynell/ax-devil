@@ -1,14 +1,7 @@
 //! Admission and delivery after a following seat loses object-detail permission.
+use super::worker::{HeldRead, deliver};
 use super::*;
-use foundation::UserError;
-use handler_api::Form;
-use overlay_sync::MatchBasis;
-use scene::{Coverage, Fields, FilterPolicy};
-use scene_store::{History, HistoryUnavailable};
-use std::sync::{
-    Weak,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[tokio::test]
 async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capability() {
@@ -236,7 +229,7 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
     {
         let state = retained.lock().unwrap();
         assert!(
-            !state.active
+            state.validity.is_cancelled()
                 && state.scene.is_none()
                 && state.traversal.is_none()
                 && state.pins.fields.is_empty(),
@@ -253,67 +246,15 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
     );
 }
 
-struct HeldRead {
-    inner: Arc<dyn TrackRead>,
-    started: tokio::sync::Notify,
-    release: Mutex<std::sync::mpsc::Receiver<()>>,
-}
-impl TrackRead for HeldRead {
-    fn bases(&self) -> &[MatchBasis] {
-        self.inner.bases()
-    }
-    fn default_basis(&self) -> MatchBasis {
-        self.inner.default_basis()
-    }
-    fn options(&self) -> &Form {
-        self.inner.options()
-    }
-    fn snapshot(&self) -> Arc<TrackSnapshot> {
-        self.inner.snapshot()
-    }
-    fn on_change(&self, listener: Weak<dyn Fn() + Send + Sync>) {
-        self.inner.on_change(listener);
-    }
-    fn history(&self) -> Result<Arc<History>, HistoryUnavailable> {
-        self.inner.history()
-    }
-    fn coverage(&self) -> Coverage {
-        self.inner.coverage()
-    }
-    fn filter(&self) -> &FilterPolicy {
-        self.inner.filter()
-    }
-    fn metadata(&self) -> &Fields {
-        self.inner.metadata()
-    }
-    fn scene_in(&self, snapshot: &TrackSnapshot, index: usize) -> Result<Arc<Scene>, UserError> {
-        self.started.notify_one();
-        self.release
-            .lock()
-            .unwrap()
-            .recv_timeout(Duration::from_secs(20))
-            .expect("held Scene read released in time");
-        self.inner.scene_in(snapshot, index)
-    }
-    fn item_in(&self, snapshot: &TrackSnapshot, index: usize) -> Result<Arc<[u8]>, UserError> {
-        self.inner.item_in(snapshot, index)
-    }
-}
-
 #[tokio::test]
 async fn a_blocking_inspection_finishing_after_permission_withdrawal_is_not_delivered() {
-    use futures_util::sink;
     let folder = tempfile::tempdir().unwrap();
     let (mut viewer, revision) = viewer(folder.path()).await;
     hold(&mut viewer, 10).await;
     let (track, snapshot, frame) = viewer.inspect_target(0, revision, 10).unwrap();
     let (release, held) = std::sync::mpsc::channel();
     let release = ReleaseOnDrop(release);
-    let track = Arc::new(HeldRead {
-        inner: track,
-        started: tokio::sync::Notify::new(),
-        release: Mutex::new(held),
-    });
+    let track = Arc::new(HeldRead::new(track, Some(held)));
     let allowed = Arc::new(AtomicBool::new(true));
     let (_holder, authority) = watch::channel(Authority::Follow {
         intent: ClockIntent {
@@ -342,70 +283,5 @@ async fn a_blocking_inspection_finishing_after_permission_withdrawal_is_not_deli
     allowed.store(false, Ordering::SeqCst);
     drop(release);
     let outgoing = bounded("withdrawn inspection answer", inspections.next()).await;
-    let delivered = Arc::new(Mutex::new(Vec::new()));
-    let socket = Box::pin(sink::unfold(
-        delivered.clone(),
-        |delivered, message| async move {
-            delivered.lock().unwrap().push(message);
-            Ok::<_, ()>(delivered)
-        },
-    ));
-    let (outbox, writer) = crate::routes::playback::spawn_writer(socket, gate);
-    bounded("inspection delivery queued", outbox.send(outgoing))
-        .await
-        .unwrap();
-    drop(outbox);
-    bounded("inspection writer finished", writer).await.unwrap();
-    assert!(delivered.lock().unwrap().is_empty());
-}
-
-#[tokio::test]
-async fn a_released_held_read_echoes_its_generation_without_releasing_its_replacement() {
-    let folder = tempfile::tempdir().unwrap();
-    let (mut viewer, revision) = viewer(folder.path()).await;
-    hold(&mut viewer, 10).await;
-    let (input, snapshot, frame) = viewer.inspect_target(0, revision, 10).unwrap();
-    let (release, waiting) = std::sync::mpsc::channel();
-    let release = ReleaseOnDrop(release);
-    let track = Arc::new(HeldRead {
-        inner: input.clone(),
-        started: tokio::sync::Notify::new(),
-        release: Mutex::new(waiting),
-    });
-    let mut inspections = Inspections::default();
-    inspections.ask_target(
-        101,
-        0,
-        revision,
-        10,
-        "2".into(),
-        Some((track.clone(), snapshot.clone(), frame)),
-    );
-    bounded("held Scene read started", track.started.notified()).await;
-    inspections.release();
-    inspections.ask_target(
-        102,
-        0,
-        revision,
-        10,
-        "2".into(),
-        Some((input, snapshot, frame)),
-    );
-    drop(release);
-    assert!(matches!(
-        answer(&mut inspections).await.0,
-        ServerMessage::Inspected {
-            request: 101,
-            inspection: InspectionWire::Unavailable,
-            ..
-        }
-    ));
-    assert!(matches!(
-        answer(&mut inspections).await.0,
-        ServerMessage::Inspected {
-            request: 102,
-            inspection: InspectionWire::Found { .. },
-            ..
-        }
-    ));
+    assert!(deliver(gate, vec![outgoing]).await.is_empty());
 }

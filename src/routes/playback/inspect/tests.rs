@@ -444,6 +444,7 @@ fn an_abbreviated_path_advertises_how_to_retrieve_its_last_byte() {
 
 mod permission;
 mod pins;
+mod worker;
 
 /// Every held worker is released on assertion failure as well as on the successful path.
 pub(super) struct ReleaseOnDrop(pub(super) std::sync::mpsc::Sender<()>);

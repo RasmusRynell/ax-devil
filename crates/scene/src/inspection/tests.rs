@@ -125,7 +125,9 @@ fn fields_are_grouped_in_display_order_and_debug_fields_say_who_produced_them() 
         data: Bytes::from_static(&[1, 2, 3]),
     });
 
-    let page = Traversal::new(&entity).unwrap().page(&entity, 0, &[]);
+    let page = Traversal::new(&entity, foundation::CancelToken::new())
+        .unwrap()
+        .page(&entity, 0, &[]);
     assert!(page.next.is_none());
     let fields: Vec<_> = page.fields.into_iter().map(|entry| entry.field).collect();
     assert_eq!(
@@ -275,7 +277,7 @@ fn a_polygon_lists_its_bounds_and_point_count_and_a_timestamp_is_a_datetime() {
     observation.geometry = Geometry::Polygon(Polygon::new(points).expect("a polygon"));
 
     let entity = entity(observation);
-    let fields: Vec<_> = Traversal::new(&entity)
+    let fields: Vec<_> = Traversal::new(&entity, foundation::CancelToken::new())
         .unwrap()
         .page(&entity, 0, &[])
         .fields
@@ -415,7 +417,7 @@ fn an_integer_reaches_the_wire_exactly_and_is_not_a_float() {
             .expect("ok"),
     );
 
-    let fields: Vec<_> = Traversal::new(&entity)
+    let fields: Vec<_> = Traversal::new(&entity, foundation::CancelToken::new())
         .unwrap()
         .page(&entity, 0, &[])
         .fields

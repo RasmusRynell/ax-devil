@@ -79,6 +79,9 @@ impl Sink for Page<'_> {
         self.digest = digest.clone();
     }
     fn enter(&mut self, address: &[usize]) -> bool {
+        if self.order.cancelled() {
+            return false;
+        }
         if self.work == 0 {
             self.pause(address);
             return false;
@@ -109,7 +112,9 @@ impl Sink for Page<'_> {
     }
 
     fn full(&mut self) -> bool {
-        self.result.next.is_some() || (self.preview && !self.result.fields.is_empty())
+        self.order.cancelled()
+            || self.result.next.is_some()
+            || (self.preview && !self.result.fields.is_empty())
     }
 
     fn wants(&mut self, _: Place, path: &[&str], _: bool, bytes: usize) -> bool {
@@ -272,7 +277,7 @@ impl Sink for Chunk<'_> {
         &self.resume
     }
     fn full(&mut self) -> bool {
-        self.result.is_some()
+        self.order.cancelled() || self.result.is_some()
     }
     fn wants(&mut self, _: Place, path: &[&str], _: bool, _: usize) -> bool {
         let ordinal = self.ordinal;
@@ -409,7 +414,7 @@ mod tests {
             (Name::Owned("z".into()), Value::Null),
         ];
         let entity = object(fields);
-        let traversal = Traversal::new(&entity).unwrap();
+        let traversal = Traversal::new(&entity, foundation::CancelToken::new()).unwrap();
         let page = traversal.page(&entity, 0, &[]);
         let bytes: usize = page
             .fields
@@ -441,7 +446,7 @@ mod tests {
                 .map(|i| (Name::Owned(format!("field{i}")), Value::Int(i)))
                 .collect(),
         );
-        let prepared = Traversal::new(&many).unwrap();
+        let prepared = Traversal::new(&many, foundation::CancelToken::new()).unwrap();
         let first = prepared.page(&many, 0, &[]);
         assert_eq!(first.fields.len(), 4096);
         let next = prepared.page(
@@ -460,7 +465,7 @@ mod tests {
                 Name::Owned("text".into()),
                 Value::Str("x".repeat(size).into()),
             )]);
-            let traversal = Traversal::new(&entity).unwrap();
+            let traversal = Traversal::new(&entity, foundation::CancelToken::new()).unwrap();
             let page = traversal.page(&entity, 0, &[]);
             let preview = traversal
                 .preview(&entity, 4, &page.fields[4].address)
@@ -481,7 +486,7 @@ mod tests {
         }
         for size in [128 * 1024, 9 * 1024 * 1024] {
             let entity = object(vec![(Name::Owned("p".repeat(size)), Value::Int(1))]);
-            let traversal = Traversal::new(&entity).unwrap();
+            let traversal = Traversal::new(&entity, foundation::CancelToken::new()).unwrap();
             let page = traversal.page(&entity, 0, &[]);
             assert_eq!(page.next, None);
             let original = &page.fields[4];
@@ -507,7 +512,7 @@ mod tests {
             Name::Owned("text".into()),
             Value::Str(format!("{}z", "a".repeat(65536)).into()),
         )]);
-        let traversal = Traversal::new(&entity).unwrap();
+        let traversal = Traversal::new(&entity, foundation::CancelToken::new()).unwrap();
         let page = traversal.page(&entity, 0, &[]);
         let first = traversal
             .chunk(&entity, 4, 0, false, &page.fields[4].address)
@@ -528,7 +533,7 @@ mod tests {
             Name::Owned("text".into()),
             Value::Str(text.clone().into()),
         )]);
-        let traversal = Traversal::new(&entity).unwrap();
+        let traversal = Traversal::new(&entity, foundation::CancelToken::new()).unwrap();
         let page = traversal.page(&entity, 0, &[]);
         let (ordinal, total) = page.fields[4].cut.expect("preview is cut");
         assert_eq!(total, text.len());

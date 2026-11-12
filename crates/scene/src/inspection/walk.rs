@@ -131,7 +131,12 @@ impl<S: Sink> Walk<'_, S> {
         {
             if let Some(digest) = &mut digest {
                 digest.update((segment.len() as u64).to_le_bytes());
-                digest.update(segment.as_bytes());
+                for bytes in segment.as_bytes().chunks(64 << 10) {
+                    if self.sink.full() {
+                        return;
+                    }
+                    digest.update(bytes);
+                }
             } else if self.path.iter().map(|part| part.len()).sum::<usize>() + segment.len()
                 > 16 << 10
             {
@@ -139,7 +144,12 @@ impl<S: Sink> Walk<'_, S> {
                 let mut next = sha2::Sha256::new();
                 for part in self.path.iter().copied().chain(std::iter::once(segment)) {
                     next.update((part.len() as u64).to_le_bytes());
-                    next.update(part.as_bytes());
+                    for bytes in part.as_bytes().chunks(64 << 10) {
+                        if self.sink.full() {
+                            return;
+                        }
+                        next.update(bytes);
+                    }
                 }
                 digest = Some(next);
             }

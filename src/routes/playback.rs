@@ -131,7 +131,7 @@ struct Outgoing {
     message: Message,
     frames: Option<RangeInclusive<u64>>,
     data: Option<OverlayEvent>,
-    inspection: bool,
+    inspection: Option<foundation::CancelToken>,
 }
 
 impl Outgoing {
@@ -141,7 +141,7 @@ impl Outgoing {
             message,
             frames: Some(frame..=frame),
             data: None,
-            inspection: false,
+            inspection: None,
         }
     }
 }
@@ -152,7 +152,7 @@ impl From<Message> for Outgoing {
             message,
             frames: None,
             data: None,
-            inspection: false,
+            inspection: None,
         }
     }
 }
@@ -290,10 +290,17 @@ where
             inspection,
         }) = queue.recv().await
         {
+            // Wait for socket readiness before the final validity/authority checks, then submit without awaiting.
+            if std::future::poll_fn(|cx| sink.poll_ready_unpin(cx))
+                .await
+                .is_err()
+            {
+                return;
+            }
             if gate.is_revoked() {
                 break;
             }
-            if inspection && !gate.can_inspect() {
+            if inspection.is_some_and(|validity| validity.is_cancelled() || !gate.can_inspect()) {
                 continue;
             }
             if frames.is_some_and(|frames| !gate.admits(&frames)) {
@@ -302,7 +309,7 @@ where
                 }
                 continue;
             }
-            if sink.send(message).await.is_err() {
+            if sink.start_send_unpin(message).is_err() || sink.flush().await.is_err() {
                 return;
             }
         }

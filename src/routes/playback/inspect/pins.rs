@@ -39,7 +39,7 @@ pub(super) fn resolve(
         let mut state = position
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if !state.active {
+        if state.validity.is_cancelled() {
             return refused();
         }
         if state.pins.set != Some(set) {
@@ -71,6 +71,9 @@ pub(super) fn resolve(
     if offset == 0 {
         // A retained match says nothing about client receipt. Replay it on every restart, without caching text.
         matched.retain(|index, ordinal| {
+            if traversal.cancelled() {
+                return false;
+            }
             let item = addresses
                 .get(ordinal)
                 .and_then(|address| traversal.preview(entity, *ordinal, address))
@@ -94,6 +97,9 @@ pub(super) fn resolve(
         traversal.page(entity, offset, &address)
     };
     for (index, item) in page.fields.into_iter().enumerate() {
+        if traversal.cancelled() {
+            return refused();
+        }
         let matches: Vec<_> = wanted
             .iter()
             .enumerate()
@@ -114,7 +120,7 @@ pub(super) fn resolve(
     let mut state = position
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if !state.active {
+    if state.validity.is_cancelled() {
         return refused();
     }
     state.pins.fields = addresses;

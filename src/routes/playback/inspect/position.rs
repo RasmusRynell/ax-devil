@@ -6,7 +6,7 @@ use std::{
 
 /// Only addresses of the current page and its next boundary are retained, never a flattened list.
 pub(super) struct Position {
-    pub(super) active: bool,
+    pub(super) validity: foundation::CancelToken,
     /// One shared reference to the immutable held input; no flattened fields or copied texts.
     pub(super) scene: Option<Arc<scene::Scene>>,
     pub(super) pins: super::pins::Pins,
@@ -19,7 +19,7 @@ pub(super) struct Position {
 impl Default for Position {
     fn default() -> Self {
         Self {
-            active: true,
+            validity: foundation::CancelToken::new(),
             scene: None,
             pins: super::pins::Pins::default(),
             fields: BTreeMap::new(),
@@ -31,6 +31,14 @@ impl Default for Position {
 }
 
 pub(super) type PositionRef = Arc<Mutex<Position>>;
+
+pub(super) fn validity(position: &PositionRef) -> foundation::CancelToken {
+    position
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .validity
+        .clone()
+}
 
 pub(super) fn remember(position: &PositionRef, first: usize, page: &scene::inspection::FieldPage) {
     let fields = page
@@ -44,7 +52,7 @@ pub(super) fn remember(position: &PositionRef, first: usize, page: &scene::inspe
         let mut state = position
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if !state.active {
+        if state.validity.is_cancelled() {
             return;
         }
         (
@@ -60,10 +68,12 @@ pub(super) fn invalidate(position: &PositionRef) {
         let mut state = position
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.validity.cancel();
+        let validity = state.validity.clone();
         std::mem::replace(
             &mut *state,
             Position {
-                active: false,
+                validity,
                 ..Position::default()
             },
         )
@@ -84,7 +94,7 @@ pub(super) fn raw(
     offset: usize,
 ) -> api_types::inspect::InspectionReadResult {
     raw_with(position, offset, |cursor| {
-        scene::inspection::raw_chunk(entity, cursor, offset)
+        scene::inspection::raw_chunk(entity, cursor, offset, &validity(position))
     })
 }
 
@@ -98,7 +108,7 @@ fn raw_with(
         let mut state = position
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if offset == 0 && state.active {
+        if offset == 0 && !state.validity.is_cancelled() {
             state.raw = Some(scene::inspection::RawCopy::default());
         }
         state.raw.take()
@@ -112,7 +122,7 @@ fn raw_with(
     let mut state = position
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if !state.active {
+    if state.validity.is_cancelled() {
         return InspectionReadResult::Refused {
             reason: "Inspection expired; select the object again".into(),
         };

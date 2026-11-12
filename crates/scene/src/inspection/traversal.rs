@@ -8,11 +8,15 @@ pub const MAX_CLASSIFICATIONS: usize = 2 << 20;
 /// Stable classification order prepared once for one inspected entity of a held sample.
 pub struct Traversal {
     order: Vec<u32>,
+    cancel: foundation::CancelToken,
     shapes: std::sync::Mutex<super::list_shape::ListShapes>,
 }
 impl Traversal {
     /// Prepares an index permutation; refuses before allocating when the classification count exceeds the cap.
-    pub fn new(entity: &Entity) -> Result<Self, String> {
+    pub fn new(entity: &Entity, cancel: foundation::CancelToken) -> Result<Self, String> {
+        cancel
+            .check()
+            .map_err(|_| "Inspection cancelled".to_owned())?;
         let classes = entity.latest_observation().map_or(&[][..], |observation| {
             observation.classifications.as_slice()
         });
@@ -22,8 +26,14 @@ impl Traversal {
                 classes.len()
             ));
         }
-        let mut order: Vec<u32> = (0..classes.len() as u32).collect();
-        order.sort_unstable_by(|&a, &b| {
+        let mut order = Vec::with_capacity(classes.len());
+        for index in 0..classes.len() as u32 {
+            cancel
+                .check()
+                .map_err(|_| "Inspection cancelled".to_owned())?;
+            order.push(index);
+        }
+        sort_order(&mut order, &cancel, |a, b| {
             let (left, right) = (&classes[a as usize], &classes[b as usize]);
             right
                 .score
@@ -36,11 +46,20 @@ impl Traversal {
                         .unwrap_or(Ordering::Equal)
                 })
                 .then_with(|| a.cmp(&b))
-        });
+        })?;
+        cancel
+            .check()
+            .map_err(|_| "Inspection cancelled".to_owned())?;
         Ok(Self {
             order,
+            cancel,
             shapes: std::sync::Mutex::default(),
         })
+    }
+
+    /// Whether the capability owning this traversal was released.
+    pub fn cancelled(&self) -> bool {
+        self.cancel.is_cancelled()
     }
 
     pub(super) fn order(&self) -> &[u32] {
@@ -57,7 +76,7 @@ impl Traversal {
         self.shapes
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .check(address, items, work)
+            .check(address, items, work, &self.cancel)
     }
 
     /// Resumes a bounded page at an address returned with the preceding page.
@@ -92,6 +111,43 @@ impl Traversal {
     }
 }
 
+// In-place heapsort can stop at every sift step without changing the comparison relation or allocating a
+// second permutation. Index ties retain source order, just as in the normal classification ranking.
+fn sort_order(
+    order: &mut [u32],
+    cancel: &foundation::CancelToken,
+    compare: impl Fn(u32, u32) -> Ordering,
+) -> Result<(), String> {
+    let sift = |order: &mut [u32], mut root: usize, end: usize| -> Result<(), String> {
+        while root * 2 + 1 < end {
+            cancel
+                .check()
+                .map_err(|_| "Inspection cancelled".to_owned())?;
+            let mut child = root * 2 + 1;
+            if child + 1 < end && compare(order[child], order[child + 1]).is_lt() {
+                child += 1;
+            }
+            if !compare(order[root], order[child]).is_lt() {
+                break;
+            }
+            order.swap(root, child);
+            root = child;
+        }
+        Ok(())
+    };
+    for root in (0..order.len() / 2).rev() {
+        sift(order, root, order.len())?;
+    }
+    for end in (1..order.len()).rev() {
+        cancel
+            .check()
+            .map_err(|_| "Inspection cancelled".to_owned())?;
+        order.swap(0, end);
+        sift(order, 0, end)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,7 +165,7 @@ mod tests {
             observation.classifications = vec![Classification::new(ClassType::CAR); count];
             let mut entity = Entity::new(EntityId::from(7_i64));
             entity.push_observation(observation);
-            let result = Traversal::new(&entity);
+            let result = Traversal::new(&entity, foundation::CancelToken::new());
             if count == 2_097_152 {
                 let prepared = result.unwrap();
                 assert_eq!(
@@ -139,7 +195,7 @@ mod tests {
         observation.classifications = vec![class];
         let mut entity = Entity::new(EntityId::from(7_i64));
         entity.push_observation(observation);
-        let traversal = Traversal::new(&entity).unwrap();
+        let traversal = Traversal::new(&entity, foundation::CancelToken::new()).unwrap();
         let first = traversal.page(&entity, 0, &[]);
         assert_eq!(first.fields.len(), 1);
         let second = traversal.page(
@@ -188,7 +244,7 @@ mod tests {
         observation.classifications = vec![class];
         let mut entity = Entity::new(EntityId::from(7_i64));
         entity.push_observation(observation);
-        let traversal = Traversal::new(&entity).unwrap();
+        let traversal = Traversal::new(&entity, foundation::CancelToken::new()).unwrap();
         let mut next = 0;
         let mut address = Vec::new();
         let mut seen = Vec::new();
@@ -241,7 +297,7 @@ mod tests {
         .collect();
         let mut entity = Entity::new(EntityId::from(7_i64));
         entity.push_observation(observation);
-        let traversal = Traversal::new(&entity).unwrap();
+        let traversal = Traversal::new(&entity, foundation::CancelToken::new()).unwrap();
         let page = traversal.page(&entity, 0, &[]);
         assert_eq!(
             page.fields[0].field.value,

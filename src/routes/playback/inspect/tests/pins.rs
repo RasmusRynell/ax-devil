@@ -249,7 +249,7 @@ async fn re_pinning_the_only_pin_replays_its_value_on_the_same_paused_sample() {
     assert_chunk(answer(&mut inspections).await.0);
 }
 
-async fn pin_viewer() -> (tempfile::TempDir, ViewerOverlays, u32) {
+pub(super) async fn pin_viewer() -> (tempfile::TempDir, ViewerOverlays, u32) {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("pins.xml");
     let extra = (0..12000)
