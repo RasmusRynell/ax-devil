@@ -38,7 +38,8 @@ export function SettingsDialog({
   const pages = [...new Set(shown.flatMap((row) => row.page ?? [])), ...(file ? ["Advanced"] : [])];
   // What the dialog opened with: only the settings changed from it are sent, so another window's change to the rest stays.
   const [base] = useState(savedValues);
-  const [draft, setDraft] = useState(values);
+  const [opened] = useState(values);
+  const [draft, setDraft] = useState(opened);
   const [page, setPage] = useState(pages[0] ?? "");
   const [editingShortcuts, setEditingShortcuts] = useState(false);
   const { saving, refusal, submit } = useSaveDialog(onClose);
@@ -48,7 +49,7 @@ export function SettingsDialog({
     .filter((decoder) => decoder.live)
     .map((decoder) => [decoder.handler, decoder.display_name] as const);
   const ok = async () => {
-    const outcome = await submit(settingsPatch(base, draft));
+    const outcome = await submit(settingsPatch(base, draft, opened));
     if (outcome.kind === "refused") {
       const at = shown.find((row) => row.key === outcome.refusal.location);
       if (at?.page) setPage(at.page);

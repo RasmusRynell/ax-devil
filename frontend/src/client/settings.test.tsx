@@ -137,7 +137,12 @@ it.each(["before reply", "after reply"])(
             ? { ok: true, json: () => earlier }
             : {
                 ok: false,
-                json: async () => ({ reason: "disk full", location: "ui.quick_setup_done" }),
+                json: async () => ({
+                  code: "Internal",
+                  params: {},
+                  reason: "disk full",
+                  location: "ui.quick_setup_done",
+                }),
               };
         }
         return { ok: true, json: async () => served };

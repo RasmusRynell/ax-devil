@@ -2,6 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import { QuickSetupDialog } from "./QuickSetupDialog";
+import type { SettingsApi } from "../client/settings";
 import { deviceStore } from "../client/deviceSettings";
 
 beforeAll(() => {
@@ -24,11 +25,11 @@ const firstRun = {
 
 function open(
   state: typeof firstRun,
-  save: (change: unknown) => Promise<null | { reason: string; location: string }>,
+  save: SettingsApi["apply"],
   { onClose = () => {}, onNotice = () => {} } = {},
 ) {
   render(
-    <FakeSettings state={state} apply={save as never}>
+    <FakeSettings state={state} apply={save}>
       <QuickSetupDialog onClose={onClose} onNotice={onNotice} />
     </FakeSettings>,
   );

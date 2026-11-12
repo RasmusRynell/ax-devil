@@ -1,7 +1,12 @@
 import { createContext, useContext, useEffect, useLayoutEffect, type ReactNode } from "react";
 import { useAccess } from "./access";
 import { ask } from "./ask";
-import { deviceStore, useDeviceValues, useSavedDeviceValues, type DeviceValue } from "./deviceSettings";
+import {
+  deviceStore,
+  useDeviceValues,
+  useSavedDeviceValues,
+  type DeviceValue,
+} from "./deviceSettings";
 import { reasonOf } from "./errors";
 import type { ErrorWire, LoginEdit, SettingsPatch, SettingsState } from "../generated/api";
 import { refusalOf, useResource } from "./resource";
@@ -58,11 +63,15 @@ export const isEmpty = (patch: SettingsPatch) =>
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/** The patch that takes the settings *base* to *draft*: only the keys that differ. */
-export function settingsPatch(base: SettingsState["values"], draft: SettingsState["values"]) {
+/** Chosen values that differ from the confirmed baseline or the values the dialog initially showed. */
+export function settingsPatch(
+  base: SettingsState["values"],
+  draft: SettingsState["values"],
+  shown = base,
+) {
   const set: Record<string, unknown> = {};
   for (const key of Object.keys(draft) as SettingKey[])
-    if (!same(base[key], draft[key])) set[key] = draft[key];
+    if (!same(base[key], draft[key]) || !same(shown[key], draft[key])) set[key] = draft[key];
   return (Object.keys(set).length ? { set } : {}) as SettingsPatch;
 }
 

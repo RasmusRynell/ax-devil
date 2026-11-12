@@ -4,7 +4,7 @@ import { SETTINGS, type SettingKey } from "../generated/settings";
 import { SegmentedControl, TileChoice } from "../kit/Chips";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { SectionCaption } from "../kit/SectionCaption";
-import { settingsPatch, useAppearance, useSettings } from "../client/settings";
+import { isEmpty, settingsPatch, useAppearance, useSettings } from "../client/settings";
 import { textOf, type Row } from "./SettingField";
 import { useSaveDialog } from "./useSaveDialog";
 
@@ -100,7 +100,8 @@ export function QuickSetupDialog({
 }) {
   const { values, savedValues, previewDevice } = useSettings();
   const [base] = useState(savedValues);
-  const [draft, setDraft] = useState(values);
+  const [opened] = useState(values);
+  const [draft, setDraft] = useState(opened);
   const theme = values["ui.theme"];
   const textSize = values["ui.text_size"];
   useEffect(() => {
@@ -108,11 +109,10 @@ export function QuickSetupDialog({
   }, [theme, textSize]);
   useAppearance(textOf(draft["ui.theme"]), textOf(draft["ui.text_size"]));
   const { saving, submit } = useSaveDialog(onClose);
-  const changed =
-    !base["ui.quick_setup_done"] || ROWS.some((row) => draft[row.key] !== base[row.key]);
   const done = async () => {
-    if (!changed) return onClose();
-    const outcome = await submit(settingsPatch(base, { ...draft, "ui.quick_setup_done": true }));
+    const patch = settingsPatch(base, { ...draft, "ui.quick_setup_done": true }, opened);
+    if (isEmpty(patch)) return onClose();
+    const outcome = await submit(patch);
     if (outcome.kind === "refused") {
       onNotice(`Could not save these choices: ${reasonOf(outcome.refusal)}`);
       onClose();

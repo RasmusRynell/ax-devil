@@ -50,6 +50,31 @@ describe("device settings", () => {
     expect(store.readSaved()["ui.theme"]).toBe("dark");
   });
 
+  it("replaces previews when confirming or resetting a stored choice without redundant writes", () => {
+    const write = vi.fn();
+    const store = createDeviceStore({
+      read: () => ({ "ui.theme": "light" }),
+      write,
+      subscribe: () => () => {},
+    });
+    store.preview("ui.theme", "dark");
+    store.preview("ui.text_size", "larger");
+    store.prepare(
+      [
+        ["ui.theme", "light"],
+        ["ui.text_size", "system"],
+      ],
+      [],
+    )();
+    expect(store.read()).toEqual({ "ui.theme": "light" });
+    expect(store.readSaved()).toEqual({ "ui.theme": "light" });
+    expect(write).not.toHaveBeenCalled();
+    store.preview("ui.text_size", "larger");
+    store.prepare([], ["ui.text_size"])();
+    expect(store.read()).toEqual({ "ui.theme": "light" });
+    expect(write).not.toHaveBeenCalled();
+  });
+
   it("changes in memory and tells its listeners even when the browser's storage is blocked", async () => {
     vi.stubGlobal("localStorage", {
       getItem: () => {

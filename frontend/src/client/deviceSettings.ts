@@ -18,6 +18,9 @@ interface Backing {
 }
 
 const DEVICE_ROWS = SETTINGS.filter((row) => row.scope === "device");
+const DEVICE_DEFAULTS = new Map<SettingKey, unknown>(
+  DEVICE_ROWS.map((row) => [row.key, "default" in row.kind ? row.kind.default : undefined]),
+);
 
 /** Whether *value* is something *row* can hold. */
 function holds(row: (typeof DEVICE_ROWS)[number], value: unknown) {
@@ -88,6 +91,15 @@ export function createDeviceStore(backing: Backing) {
     listeners.forEach((listener) => listener());
   };
   const write = (key: SettingKey, value: DeviceValue | null, supersedes = true) => {
+    // Confirming an already stored choice must still replace its runtime preview, without another backing write.
+    const unchanged =
+      value === null
+        ? stored[key] === undefined
+        : value === (stored[key] ?? DEVICE_DEFAULTS.get(key));
+    if (unchanged) {
+      publish(key, stored[key] ?? null, supersedes);
+      return;
+    }
     stored = { ...stored };
     if (value === null) delete stored[key];
     else stored[key] = value;
