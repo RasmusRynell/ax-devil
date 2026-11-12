@@ -20,7 +20,7 @@ void test("a device save retains malformed neighboring preferences and existing 
   });
   if (process.platform !== "win32") assert.equal(fs.statSync(file).mode & 0o777, 0o640);
   await device.write({ ["ui.theme"]: "dark" });
-  assert.equal(createDeviceValues(file).read()["ui.theme"], "dark");
+  assert.equal(createDeviceValues(file).read().values["ui.theme"], "dark");
 });
 
 void test("device writes use private exclusive files and refuse non-regular targets", async (t) => {
@@ -64,51 +64,58 @@ void test("a failed device replacement reports its reason, removes its temporary
   const file = path.join(folder, "device.json");
   fs.writeFileSync(file, JSON.stringify({ "ui.theme": "dark" }), { mode: 0o600 });
   const device = createDeviceValues(file);
+  const announcements = [];
+  device.subscribe((snapshot) => announcements.push(snapshot));
   t.mock.method(fs.promises, "rename", () => {
     throw new Error("replacement refused");
   });
   await assert.rejects(device.write({ ["ui.theme"]: "light" }), /replacement refused/);
   assert.deepEqual(fs.readdirSync(folder), ["device.json"]);
-  assert.deepEqual(device.read(), { "ui.theme": "dark" });
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")), device.read());
+  assert.deepEqual(device.read(), { values: { "ui.theme": "dark" }, sequence: 0 });
+  assert.deepEqual(announcements, []);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")), device.read().values);
 });
 
-void test("overlapping Device batches persist in arrival order, and quit drains the owner", async (t) => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "ax-device-order-"));
-  t.after(() => fs.rmSync(folder, { recursive: true, force: true }));
-  const file = path.join(folder, "device.json");
-  fs.writeFileSync(file, JSON.stringify({ "ui.theme": "auto" }), { mode: 0o600 });
-  const device = createDeviceValues(file);
-  let release;
-  const blocked = new Promise((resolve) => {
-    release = resolve;
-  });
-  let entered;
-  const started = new Promise((resolve) => {
-    entered = resolve;
-  });
-  const rename = fs.promises.rename;
-  const writes = [];
-  t.mock.method(fs.promises, "rename", async (source, target) => {
-    writes.push(JSON.parse(await fs.promises.readFile(source, "utf8")));
-    if (writes.length === 1) {
-      entered();
-      await blocked;
-    }
-    return rename(source, target);
-  });
-  const first = device.write({ "ui.theme": "dark" });
-  const second = device.write({ "ui.text_size": "large" });
-  assert.deepEqual(device.read(), { "ui.theme": "auto" });
-  await started;
-  assert.equal(writes.length, 1);
-  const drained = device.close();
-  await assert.rejects(device.write({ "ui.theme": "light" }), /closing/);
-  release();
-  await Promise.all([first, second, drained]);
-  assert.deepEqual(writes, [
-    { "ui.theme": "dark" },
-    { "ui.theme": "dark", "ui.text_size": "large" },
-  ]);
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")), device.read());
-});
+void test(
+  "overlapping Device batches persist in arrival order, and quit drains the owner",
+  { timeout: 5000 },
+  async (t) => {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), "ax-device-order-"));
+    t.after(() => fs.rmSync(folder, { recursive: true, force: true }));
+    const file = path.join(folder, "device.json");
+    fs.writeFileSync(file, JSON.stringify({ "ui.theme": "auto" }), { mode: 0o600 });
+    const device = createDeviceValues(file);
+    let release;
+    const blocked = new Promise((resolve) => {
+      release = resolve;
+    });
+    let entered;
+    const started = new Promise((resolve) => {
+      entered = resolve;
+    });
+    const rename = fs.promises.rename;
+    const writes = [];
+    t.mock.method(fs.promises, "rename", async (source, target) => {
+      writes.push(JSON.parse(await fs.promises.readFile(source, "utf8")));
+      if (writes.length === 1) {
+        entered();
+        await blocked;
+      }
+      return rename(source, target);
+    });
+    const first = device.write({ "ui.theme": "dark" });
+    const second = device.write({ "ui.text_size": "large" });
+    assert.deepEqual(device.read().values, { "ui.theme": "auto" });
+    await started;
+    assert.equal(writes.length, 1);
+    const drained = device.close();
+    await assert.rejects(device.write({ "ui.theme": "light" }), /closing/);
+    release();
+    await Promise.all([first, second, drained]);
+    assert.deepEqual(writes, [
+      { "ui.theme": "dark" },
+      { "ui.theme": "dark", "ui.text_size": "large" },
+    ]);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")), device.read().values);
+  },
+);

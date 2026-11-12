@@ -1,5 +1,6 @@
 // The desktop shell's lifecycle: which windows exist and how they move between the local backend and another
 // machine's server. Backend, window, link and remote details live in their own modules.
+const { createShutdown } = require("./shutdown.cjs");
 const { app, BrowserWindow, dialog, screen } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -270,6 +271,15 @@ installIpc({
   },
 });
 
+const finishShutdown = createShutdown({
+  device,
+  backend,
+  exit: () => {
+    stopped = true;
+    app.exit(exitCode);
+  },
+});
+
 app.on("before-quit", (event) => {
   if (stopped) return;
   event.preventDefault();
@@ -279,13 +289,7 @@ app.on("before-quit", (event) => {
     const refused = writeWindow(windowFile, windowState);
     if (refused) console.error(refused);
   }
-  void device
-    .close()
-    .then(() => backend.stop())
-    .then(() => {
-      stopped = true;
-      app.exit(exitCode);
-    });
+  void finishShutdown();
 });
 app.on("window-all-closed", () => {
   if (recovering === 0) app.quit();

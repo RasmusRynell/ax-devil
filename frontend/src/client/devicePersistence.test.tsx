@@ -6,7 +6,7 @@ import { useState } from "react";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { AccessContext } from "./access";
-import { browserBacking, createDeviceStore, deviceStore } from "./deviceSettings";
+import { browserBacking, createDeviceStore, deviceStore, shellBacking } from "./deviceSettings";
 import { DEFAULT_SETTINGS } from "./fakeSettings";
 import { reasonOf } from "./errors";
 import { SettingsProvider, useSettings } from "./settings";
@@ -22,8 +22,11 @@ afterEach(async () => {
 });
 const { createDeviceValues } = createRequire(import.meta.url)("../../../desktop/device.cjs") as {
   createDeviceValues: (file: string) => {
-    read(): Record<string, unknown>;
-    write(changes: object): Promise<void>;
+    read(): { values: Record<string, unknown>; sequence: number };
+    write(changes: object): Promise<number>;
+    subscribe(
+      listener: (snapshot: { values: Record<string, unknown>; sequence: number }) => void,
+    ): () => void;
   };
 };
 
@@ -104,14 +107,19 @@ it.each(["refused", "device fails", "saved", "pending"])(
     const raw = { "ui.theme": { recoverable: "light" }, unrelated: 17 };
     fs.writeFileSync(file, JSON.stringify(raw), { mode: 0o600 });
     const writer = createDeviceValues(file);
-    const mine = createDeviceStore({
-      read: () => writer.read(),
-      subscribe: () => () => {},
-      async write(changes) {
-        await writer.write(changes);
-        return writer.read();
-      },
-    });
+    const mine = createDeviceStore(
+      shellBacking({
+        deviceValues: () => writer.read(),
+        onDeviceValuesChange: (listener) => writer.subscribe(listener),
+        async setDeviceValues(changes) {
+          try {
+            return { sequence: await writer.write(changes), reason: null };
+          } catch (error) {
+            return { sequence: null, reason: String(error) };
+          }
+        },
+      }),
+    );
     vi.spyOn(deviceStore, "prepare").mockImplementation(mine.prepare);
     const rename = vi.spyOn(fs.promises, "rename");
     try {
@@ -121,7 +129,7 @@ it.each(["refused", "device fails", "saved", "pending"])(
       if (outcome === "pending") {
         // An unanswered PATCH must not reserve the shell's Device writer.
         await writer.write({ "ui.theme": "light" });
-        expect(writer.read()["ui.theme"]).toBe("light");
+        expect(writer.read().values["ui.theme"]).toBe("light");
         return;
       }
       if (outcome === "device fails")
@@ -132,11 +140,15 @@ it.each(["refused", "device fails", "saved", "pending"])(
       expect(screen.getAllByRole("alert")).toHaveLength(1);
       if (outcome === "saved") {
         expect(rename).toHaveBeenCalledTimes(1);
-        expect(writer.read()).toEqual({ ...raw, "ui.theme": "dark", "ui.text_size": "large" });
+        expect(writer.read().values).toEqual({
+          ...raw,
+          "ui.theme": "dark",
+          "ui.text_size": "large",
+        });
         expect(alert.textContent).toBe("saved");
       } else {
         expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual(raw);
-        expect(writer.read()).toEqual(raw);
+        expect(writer.read().values).toEqual(raw);
         if (outcome === "refused") {
           expect(alert.textContent).toBe("Server refused");
           expect(rename).not.toHaveBeenCalled();

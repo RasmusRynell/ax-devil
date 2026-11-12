@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { SETTINGS, type SettingKey } from "../generated/settings";
-import type { WindowBridge } from "./windowBridge";
+import type { DeviceSnapshot, WindowBridge } from "./windowBridge";
 
 /** A value a Device setting holds. */
 export type DeviceValue = string | boolean;
@@ -8,16 +8,17 @@ export type DeviceValue = string | boolean;
 export type DeviceValues = Partial<Record<SettingKey, DeviceValue>>;
 
 /** Where Device values are kept: the desktop shell's file for this device, or this browser's storage. */
-interface Backing {
-  /** Every stored value, as stored. */
+interface DeviceRead {
+  problem?: string;
   read(): Record<string, unknown>;
-  /** Stores this save's keys in one batch, returning all raw values after it; shell failures throw. */
-  write(
-    changes: Partial<Record<SettingKey, DeviceValue | null>>,
-  ): Record<string, unknown> | Promise<Record<string, unknown>>;
-  /** Calls `listener` with every value after another window or tab changed one. */
   subscribe(listener: (values: Record<string, unknown>) => void): () => void;
 }
+type Changes = Partial<Record<SettingKey, DeviceValue | null>>;
+type Backing = DeviceRead &
+  (
+    | { announced: true; write(changes: Changes): Promise<Record<string, unknown>> }
+    | { announced?: false; write(changes: Changes): Record<string, unknown> }
+  );
 
 const DEVICE_ROWS = SETTINGS.filter((row) => row.scope === "device");
 const DEVICE_DEFAULTS = new Map<SettingKey, unknown>(
@@ -197,17 +198,21 @@ export function createDeviceStore(backing: Backing) {
       return null;
     };
     const failed = (error: unknown): DeviceFailure | null => {
-      const keys = (Object.keys(patch) as SettingKey[]).filter(accepted);
+      const keys = (Object.keys(patch) as SettingKey[]).filter(
+        (key) => backing.announced || accepted(key),
+      );
       return keys.length
         ? { keys, reason: error instanceof Error ? error.message : String(error) }
         : null;
     };
     try {
-      const next = Object.keys(patch).length ? backing.write(patch) : current;
-      // Browser commits stay synchronous; a shell reply is checked again after asynchronous persistence.
-      return next instanceof Promise
-        ? next.then(() => finish(backing.read())).catch(failed)
-        : finish(next);
+      if (!Object.keys(patch).length) return finish(current);
+      if (backing.announced)
+        return backing
+          .write(patch)
+          .then(() => null)
+          .catch(failed);
+      return finish(backing.write(patch));
     } catch (error) {
       return failed(error);
     }
@@ -216,6 +221,8 @@ export function createDeviceStore(backing: Backing) {
   return {
     /** The effective Device values, including unsaved Quick Setup previews. */
     read: () => values,
+    /** An incompatible startup snapshot prevents the settings UI from opening. */
+    problem: () => backing.problem,
     /** Last confirmed values, excluding previews; backing writes remain best effort. */
     readSaved: () => stored,
     /** Raw invalid keys whose effective defaults can be explicitly repaired. */
@@ -274,6 +281,11 @@ export function createDeviceStore(backing: Backing) {
           current,
           accepts,
         );
+        if (backing.announced) {
+          // A local draft is superseded at dispatch; only the owner announces persistence.
+          for (const { key, ordinal } of surviving) committed.set(key, ordinal);
+          return failure;
+        }
         const confirmed = (error: DeviceFailure | null) => {
           if (!error)
             for (const { key, ordinal } of surviving) if (accepts(key)) committed.set(key, ordinal);
@@ -291,24 +303,55 @@ export function createDeviceStore(backing: Backing) {
 }
 
 /** The shell's file, through its three bridge functions; the shell and its frontend are versioned together. */
-function shellBacking(bridge: WindowBridge): Backing {
+export function shellBacking(
+  bridge: Pick<WindowBridge, "deviceValues" | "setDeviceValues" | "onDeviceValuesChange">,
+): Backing {
+  const validSnapshot = (value: unknown): DeviceSnapshot => {
+    const snapshot = value as DeviceSnapshot | null;
+    if (
+      !snapshot ||
+      !Number.isSafeInteger(snapshot.sequence) ||
+      snapshot.sequence < 0 ||
+      !snapshot.values ||
+      typeof snapshot.values !== "object" ||
+      Array.isArray(snapshot.values)
+    )
+      throw new Error(
+        "Incompatible desktop shell: update and restart the desktop app (Device snapshot interface 10 required).",
+      );
+    return snapshot;
+  };
+  let snapshot: DeviceSnapshot = { values: {}, sequence: 0 };
+  let problem: string | undefined;
+  try {
+    snapshot = validSnapshot(bridge.deviceValues?.());
+  } catch (error) {
+    problem = error instanceof Error ? error.message : String(error);
+  }
   return {
-    read: () => bridge.deviceValues?.() ?? {},
+    announced: true,
+    problem,
+    read: () => snapshot.values,
     write: async (changes) => {
+      if (problem) throw new Error(problem);
       if (!bridge.setDeviceValues) throw new Error("This shell does not offer Device persistence");
-      const reason = await bridge.setDeviceValues(changes);
-      if (reason) throw new Error(reason);
-      return bridge.deviceValues?.() ?? {};
+      const reply = await bridge.setDeviceValues(changes);
+      if (reply.reason) throw new Error(reply.reason);
+      return snapshot.values;
     },
-    subscribe: (listener) => bridge.onDeviceValuesChange?.(listener) ?? (() => {}),
+    subscribe: (listener) =>
+      bridge.onDeviceValuesChange?.((incoming) => {
+        const next = validSnapshot(incoming);
+        if (next.sequence <= snapshot.sequence) return;
+        snapshot = next;
+        listener(snapshot.values);
+      }) ?? (() => {}),
   };
 }
 
 const bridge = window.axDevilWindow;
 /** This device's settings: the desktop shell's file in the desktop app, browser storage in a browser. */
-export const deviceStore = createDeviceStore(
-  bridge?.deviceValues ? shellBacking(bridge) : browserBacking(),
-);
+export const deviceStore = createDeviceStore(bridge ? shellBacking(bridge) : browserBacking());
 
 /** The Device values, and a re-render when they change. */
 export function useDeviceValues(): DeviceValues {

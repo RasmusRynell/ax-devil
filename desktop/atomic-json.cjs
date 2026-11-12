@@ -47,7 +47,9 @@ function writeJson(file, values) {
 }
 
 /** Device persistence uses the same strict replacement sequence without blocking the shell's event loop. */
-async function writeJsonAsync(file, values) {
+async function writeJsonAsync(file, values, signal) {
+  const check = () => signal?.throwIfAborted();
+  check();
   const modeOf = async () => {
     try {
       const previous = await fs.promises.lstat(file);
@@ -59,7 +61,9 @@ async function writeJsonAsync(file, values) {
     }
   };
   const mode = await modeOf();
+  check();
   await fs.promises.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  check();
   const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${randomUUID()}.tmp`);
   let descriptor;
   let owned = false;
@@ -70,13 +74,19 @@ async function writeJsonAsync(file, values) {
       0o600,
     );
     owned = true;
+    check();
     await descriptor.writeFile(JSON.stringify(values));
+    check();
     await descriptor.chmod(mode & (await modeOf()));
+    check();
     await descriptor.sync();
+    check();
     await descriptor.close();
     descriptor = undefined;
+    check();
     await fs.promises.rename(temporary, file);
     owned = false;
+    check();
   } finally {
     try {
       if (descriptor !== undefined) await descriptor.close();

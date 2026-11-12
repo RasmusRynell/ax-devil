@@ -29,6 +29,10 @@ class FakeWebContents extends EventEmitter {
 class FakeBrowserWindow extends EventEmitter {
   static windows = [];
 
+  static getAllWindows() {
+    return this.windows;
+  }
+
   static fromWebContents(contents) {
     return FakeBrowserWindow.windows.find((window) => window.webContents === contents) ?? null;
   }
@@ -93,7 +97,12 @@ function withFakeElectron(load) {
 
 const { installIpc, openWindow } = withFakeElectron(() => require("./window.cjs"));
 let restarts = 0;
-installIpc({ connect: () => {}, disconnect: () => {}, restart: () => restarts++ });
+installIpc({
+  device: require("./device.cjs").createDeviceValues(path.join(root, "device.json")),
+  connect: () => {},
+  disconnect: () => {},
+  restart: () => restarts++,
+});
 
 async function pageContents(options = {}) {
   const window = await openWindow(origin, options);

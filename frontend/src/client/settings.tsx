@@ -217,6 +217,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const values = { ...DEFAULT_VALUES, ...remote?.values, ...device };
   useAppearance(values["ui.theme"] as string, values["ui.text_size"] as string);
 
+  if (deviceStore.problem())
+    return <p role="alert">ax-devil cannot read its settings: {deviceStore.problem()}</p>;
+
   if (owner && !remote) {
     return settings.error ? (
       <p role="alert">ax-devil cannot read its settings: {reasonOf(refusalOf(settings.error))}</p>

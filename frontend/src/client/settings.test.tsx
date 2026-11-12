@@ -369,3 +369,16 @@ it.each(["before reply", "after reply"])(
     ]);
   },
 );
+
+it("blocks settings startup for an incompatible Device snapshot", () => {
+  vi.spyOn(deviceStore, "problem").mockReturnValue(
+    "Incompatible desktop shell: update and restart the desktop app.",
+  );
+  render(
+    <SettingsProvider>
+      <p>Settings opened</p>
+    </SettingsProvider>,
+  );
+  expect(screen.getByRole("alert").textContent).toContain("Incompatible desktop shell");
+  expect(screen.queryByText("Settings opened")).toBeNull();
+});

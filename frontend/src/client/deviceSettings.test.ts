@@ -170,27 +170,3 @@ describe("device settings", () => {
     expect(store.readSaved()).toEqual(store.read());
   });
 });
-
-it("a late asynchronous reply cannot overwrite a superseding confirmed choice", async () => {
-  let raw: Record<string, unknown> = {};
-  const replies: ((values: Record<string, unknown>) => void)[] = [];
-  const store = createDeviceStore({
-    read: () => raw,
-    subscribe: () => () => {},
-    write: () => new Promise<Record<string, unknown>>((resolve) => replies.push(resolve)),
-  });
-  const old = store.prepare([["ui.theme", "dark"]], [])();
-  const newer = store.prepare([["ui.theme", "light"]], [])();
-  expect(store.readSaved()).toEqual({});
-  raw = { "ui.theme": "light" };
-  replies[1](raw);
-  await newer;
-  expect(store.readSaved()).toEqual(raw);
-  const published = vi.fn();
-  store.subscribe(published);
-  replies[0]({ "ui.theme": "dark" });
-  await old;
-  expect(published).not.toHaveBeenCalled();
-  expect(store.readSaved()).toEqual({ "ui.theme": "light" });
-  expect(store.read()).toEqual({ "ui.theme": "light" });
-});
