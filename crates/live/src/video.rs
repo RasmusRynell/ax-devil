@@ -37,7 +37,6 @@ pub struct VideoTask {
     decoder: Option<Box<dyn UnitDecoder>>,
     epoch: Option<u32>,
     attempt: u64,
-    next_sequence: u64,
     warned_capture: bool,
     warned_decode: bool,
 }
@@ -60,7 +59,6 @@ impl VideoTask {
             decoder: None,
             epoch: None,
             attempt,
-            next_sequence: 1,
             warned_capture: false,
             warned_decode: false,
         }
@@ -156,10 +154,9 @@ impl VideoTask {
         let time_us = capture.0.div_euclid(1000);
         self.shared.video_at(time_us);
         let id = FrameId {
-            sequence_id: self.next_sequence,
+            sequence_id: self.shared.next_sequence.fetch_add(1, Ordering::Relaxed),
             timestamp: MediaTime::from_us(time_us),
         };
-        self.next_sequence += 1;
         let decided = self.decided();
         let was_early = self.gate.released_early();
         let released = self.gate.push(id, now, unit, settled(decided.as_deref()));

@@ -3,6 +3,8 @@ const { spawn } = require("node:child_process");
 const { createInterface } = require("node:readline");
 const path = require("node:path");
 
+const { observe, BACKEND_INTERRUPT_MS, BACKEND_STOP_MS } = require("./child.cjs");
+
 const { apiVersion, shellApi } = require("./generated/api.json");
 
 /** Reads a server's `/api/info`; rejects when it cannot be reached or does not answer with JSON. */
@@ -38,14 +40,15 @@ function startProcess(executable, args, env, onExit, { onSpawn = () => {}, spawn
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
   });
+  const lifecycle = observe(child);
   // The backend may be gone by the time stdin is written or closed; that is not an error.
   child.stdin.on("error", () => {});
-  onSpawn(child);
+  onSpawn(child, lifecycle);
   child.stderr.on("data", (data) => process.stderr.write(data));
   let ready = false;
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      child.kill("SIGKILL");
+      lifecycle.signal("SIGKILL");
       reject(new Error("Backend startup timed out"));
     }, 10000);
     child.once("error", (error) => {
@@ -62,7 +65,7 @@ function startProcess(executable, args, env, onExit, { onSpawn = () => {}, spawn
       if (match) {
         clearTimeout(timer);
         ready = true;
-        resolve({ child, origin: match[1] });
+        resolve({ child, lifecycle, origin: match[1] });
       }
     });
   });
@@ -77,6 +80,7 @@ function startProcess(executable, args, env, onExit, { onSpawn = () => {}, spawn
 function createBackend({ port, devUrl, executable, args = [], onUnexpectedExit, spawner }) {
   let child;
   let origin;
+  let lifecycle;
   let stopping = false;
 
   async function reusable() {
@@ -118,8 +122,9 @@ function createBackend({ port, devUrl, executable, args = [], onUnexpectedExit, 
       },
       {
         // Recorded at once, so a stop during startup reaches the process.
-        onSpawn: (spawned) => {
+        onSpawn: (spawned, observed) => {
           child = spawned;
+          lifecycle = observed;
         },
         spawner,
       },
@@ -146,19 +151,12 @@ function createBackend({ port, devUrl, executable, args = [], onUnexpectedExit, 
       stopping = true;
       const starting = origin?.catch(() => undefined);
       const owned = child;
-      const ended =
-        !owned || owned.exitCode !== null || owned.signalCode !== null
-          ? Promise.resolve()
-          : new Promise((resolve) => {
-              const kill = setTimeout(() => owned.kill("SIGKILL"), 6000);
-              const interrupt = setTimeout(() => owned.kill("SIGINT"), 3000);
-              owned.once("exit", () => {
-                clearTimeout(interrupt);
-                clearTimeout(kill);
-                resolve();
-              });
-              owned.stdin.end();
-            });
+      const ended = lifecycle?.done;
+      if (owned && owned.exitCode === null && owned.signalCode === null) {
+        lifecycle.after(BACKEND_INTERRUPT_MS, "SIGINT");
+        lifecycle.after(BACKEND_STOP_MS, "SIGKILL");
+        owned.stdin.end();
+      }
       return Promise.all([starting, ended]).then(() => undefined);
     },
   };

@@ -10,11 +10,9 @@ const path = require("node:path");
 
 const desktop = path.join(__dirname, "..", "desktop");
 // What a launch needs beside its own start and scenarios: the app starting, a failure picture, the backend stopping.
-const LAUNCH_MARGIN_MS = 60_000;
-const KILL_AFTER_MS = 10_000;
+const { LAUNCH_MARGIN_MS, KILL_AFTER_MS, EXIT_GRACE_MS } = require("../desktop/smoke-budget.cjs");
 // How long after the app has exited its output pipes may stay open before the launcher cuts them: `close` fires only
 // once every holder of the pipes has closed them.
-const EXIT_GRACE_MS = 5000;
 
 // Ends the launch running now (once per launch): its whole process group gets SIGTERM, then SIGKILL if the leader
 // has not closed within KILL_AFTER_MS. Once the app has exited it signals nothing.
@@ -305,4 +303,5 @@ async function main() {
   process.exitCode = !cancelled && verdicts.every(([, { ok }]) => ok) ? 0 : 1;
 }
 
-void main();
+if (require.main === module) void main();
+module.exports = { loadScenarios, deadlineMs };

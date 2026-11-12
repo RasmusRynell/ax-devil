@@ -21,6 +21,7 @@ logs="$PWD/artifacts/smoke-logs"
 rm -rf "$logs"
 mkdir -p "$logs"
 export AX_DEVIL_SMOKE_ROOT="$PWD"
+read -r stop_seconds grace_seconds < <(node -e 'const b = require("./desktop/smoke-budget.cjs"); console.log(b.PACKAGE_EXIT_MS / 1000, b.PACKAGE_KILL_MS / 1000)')
 
 # A path for the app and its tools: C:/... on Windows, unchanged elsewhere.
 native() { if [[ $os == win ]]; then cygpath -m "$1"; else echo "$1"; fi; }
@@ -91,7 +92,7 @@ kill_tree() {
     taskkill //F //T //PID "$(cat "/proc/$pid/winpid" 2>/dev/null || echo "$pid")" >/dev/null 2>&1 || true
   else
     kill -TERM -- "-$pid" 2>/dev/null || true
-    sleep 1
+    sleep "$grace_seconds"
     kill -KILL -- "-$pid" 2>/dev/null || true
   fi
 }
@@ -124,7 +125,7 @@ run_group() {
   # A launch still without a verdict at its deadline has failed for good: a PASS written while it is ended does not count.
   if [[ ! -s $result ]] && ((seconds >= deadline)); then expired=1; fi
   # After the verdict the app quits by itself; what is left is ended.
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
+  for ((n = 0; n < stop_seconds; n++)); do
     alive || break
     sleep 1
   done

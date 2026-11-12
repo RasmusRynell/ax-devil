@@ -63,7 +63,7 @@ async function setup(lane = OVERLAY) {
           status: "Ready",
           bases: ["Time"],
           default_basis: "Time",
-          filter: [],
+          filter: [{ id: "car", label: "Car", default_enabled: true }],
           warnings: [],
           samples: 0,
           data_revision: 1,
@@ -170,6 +170,32 @@ describe("live session", () => {
       [1, true],
       [2, false],
     ]);
+  });
+
+  it("keeps paused filter and catalog redraws usable after timing changes", async () => {
+    const { session, server, refresh, drawn } = await setup();
+    server.ready();
+    server.sample(0, 20);
+    server.frame(20);
+    refresh();
+    const original = drawn.at(-1)!.lane!;
+    session.pause();
+    session.setLane(0, { tolerance_ms: 100 });
+    session.setLane(0, { filter: { car: false }, hidden: 1 });
+    expect(drawn.at(-1)!.lane!.classMask.enabled[0]).toBe(0);
+    expect(drawn.at(-1)!.lane!.hidden).toBe(1);
+    session.setLane(0, { catalog: "built-in:minimal" });
+    server.say({
+      type: "Catalog",
+      id: "built-in:minimal",
+      revision: 1,
+      document: catalogDocument("minimal"),
+      problem: null,
+    });
+    expect(drawn.at(-1)!.lane!.catalog).not.toBe(original.catalog);
+    expect(drawn.at(-1)!.lane!.columns).toBe(original.columns);
+    expect(drawn.every((frame) => frame.sequenceId === 20)).toBe(true);
+    session.close();
   });
 
   it("draws a plain lane's frames at once, the newest of those that arrived", async () => {

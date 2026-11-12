@@ -99,3 +99,52 @@ void test("a backend that ignores its closed stdin gets SIGINT, then SIGKILL", a
     mock.timers.reset();
   }
 });
+
+void test(
+  "cleanup after an early backend exit preserves the scenario failure and never signals again",
+  { timeout: 2000 },
+  async () => {
+    const { startProcess } = require("./backend.cjs");
+    const child = fakeProcess({ stubborn: true });
+    const pending = startProcess("backend", [], {}, () => {}, { spawner: () => child });
+    child.stdout.write("ax-devil: http://127.0.0.1:7330\n");
+    const served = await pending;
+    child.exitCode = 23;
+    child.emit("exit", 23, null);
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      await assert.rejects(async () => {
+        try {
+          throw new Error("scenario failed");
+        } finally {
+          await served.lifecycle.stop();
+        }
+      }, /scenario failed/);
+      mock.timers.tick(60000);
+      assert.deepEqual(child.signals, []);
+    } finally {
+      mock.timers.reset();
+    }
+  },
+);
+
+void test("repeated child stop sends one interrupt and arms one escalation", async () => {
+  const { observe } = require("./child.cjs");
+  const child = fakeProcess({ stubborn: true });
+  child.kill = (signal) => child.signals.push(signal);
+  const owned = observe(child);
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const first = owned.stop();
+    assert.equal(owned.stop(), first);
+    mock.timers.tick(3000);
+    assert.deepEqual(child.signals, ["SIGINT", "SIGKILL"]);
+    child.emit("exit", 0, null);
+    await first;
+    await owned.stop();
+    mock.timers.tick(60000);
+    assert.deepEqual(child.signals, ["SIGINT", "SIGKILL"]);
+  } finally {
+    mock.timers.reset();
+  }
+});

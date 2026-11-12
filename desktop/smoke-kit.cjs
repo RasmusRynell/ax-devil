@@ -9,9 +9,9 @@ const path = require("node:path");
 const SMOKE_ROOT = process.env.AX_DEVIL_SMOKE_ROOT || path.resolve(__dirname, "..");
 const SCREENSHOTS = path.join(SMOKE_ROOT, "artifacts/screenshots");
 // How long one scenario may run before the launch fails naming it; a scenario that needs longer exports `timeoutMs`.
-const SCENARIO_TIMEOUT_MS = 90_000;
+const { SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, FAILURE_MS } = require("./smoke-budget.cjs");
 // How long the start of every launch (the first page and Quick Setup) may take before the launch fails naming it.
-const START_TIMEOUT_MS = 90_000;
+
 // AX_DEVIL_SMOKE_SLOWDOWN=4 runs every page's scripts that many times slower, and makes the start and scenario timeouts and the launch
 // deadline that much longer; the waits inside a scenario keep their own limits.
 const slowdown = () => Math.max(1, Number(process.env.AX_DEVIL_SMOKE_SLOWDOWN) || 1);
@@ -84,7 +84,7 @@ async function saveFailure(window) {
     // A window the system is not drawing may never answer.
     const image = await Promise.race([
       window.webContents.capturePage(),
-      delay(5000).then(() => {
+      delay(FAILURE_MS).then(() => {
         throw new Error("no picture in 5 seconds");
       }),
     ]);

@@ -73,6 +73,31 @@ export class LaneData {
     };
   }
 
+  /** Recompose the held presentation with current appearance, independently of maps for future pictures. */
+  restyle(lane: number, held: LaneFrame | undefined, retained: boolean): LaneDraw {
+    const ready = this.#lanes.awaited(lane);
+    const state = this.#lanes.states[lane];
+    if (
+      !held ||
+      !ready ||
+      state.source !== held.source ||
+      ready.data_revision !== held.dataRevision
+    )
+      return NONE;
+    const chosen = this.#catalogs.resolve(lane, state.settings.catalog);
+    if (chosen.pending) return PENDING;
+    if (!chosen.catalog) return NONE;
+    return {
+      state: "draw",
+      frame: frameOf(this.#style(lane, state.label, state.settings, ready), {
+        ...held,
+        catalog: chosen.catalog,
+        styleRevision: this.#lanes.styleRevision(lane),
+        retained,
+      }),
+    };
+  }
+
   /** How `lane` matched a sample to `frame`; `null` for a lane without a source, or while the cell or the sample has not arrived. */
   match(lane: number, frame: number): LaneMatch | null {
     const source = this.#lanes.states[lane]?.source;

@@ -61,6 +61,7 @@ pub(crate) struct MessageWire {
 
 #[derive(Default)]
 struct World {
+    video_count: watch::Sender<usize>,
     videos: Mutex<Vec<Arc<VideoWire>>>,
     messages: Mutex<Vec<Arc<MessageWire>>>,
     /// The cameras whose MQTT client a connection holds.
@@ -87,6 +88,15 @@ impl FakeConnector {
     /// The RTSP connections opened so far.
     pub fn videos(&self) -> Vec<Arc<VideoWire>> {
         lock(&self.0.videos).clone()
+    }
+
+    /// Waits for an expected transport, failing instead of leaving a broken retry hanging.
+    pub async fn wait_videos(&self, count: usize) {
+        let mut changed = self.0.video_count.subscribe();
+        tokio::time::timeout(Duration::from_secs(5), changed.wait_for(|n| *n >= count))
+            .await
+            .expect("replacement video transport deadline")
+            .unwrap();
     }
 
     /// The MQTT and DataHub connections opened so far that were not refused.
@@ -145,7 +155,12 @@ impl Connector for FakeConnector {
             closed: Arc::default(),
             closing: Arc::default(),
         });
-        lock(&self.0.videos).push(Arc::clone(&wire));
+        let count = {
+            let mut videos = lock(&self.0.videos);
+            videos.push(Arc::clone(&wire));
+            videos.len()
+        };
+        self.0.video_count.send_replace(count);
         let mut held = self.0.closing_held.subscribe();
         Transport::new(
             Inputs {

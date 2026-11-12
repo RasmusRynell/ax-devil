@@ -129,8 +129,6 @@ export class LiveSession implements LaneDisplay {
   /** Asks the backend to reopen every transport of a failed or stalled feed; the backend resumes delivery, so this does too. */
   retry(): void {
     this.#connection?.send({ type: "Live", action: "retry" });
-    // The reopened feed numbers its frames from the start.
-    this.events.newRun();
     if (!this.#parts.paused) return;
     this.#parts.paused = false;
     this.#publish();
@@ -175,14 +173,14 @@ export class LiveSession implements LaneDisplay {
     if (surface) this.represent();
   }
 
-  /**
-   * Draws the frame on screen again. A lane whose data is not there (its matching just changed, and the maps start
-   * over with the next frame) keeps the picture it has until then.
-   */
+  /** Redraws the retained presentation; timing edits apply to future live pictures. */
   represent(): void {
     const frame = this.#presented;
-    if (!frame || !this.#data.draw?.ready(frame.sequenceId)) return;
-    if (this.#data.present(frame, frame.sequenceId, this.#surface)) this.#publish();
+    if (!frame) return;
+    const changed = this.#data.draw?.ready(frame.sequenceId)
+      ? this.#data.present(frame, frame.sequenceId, this.#surface)
+      : this.#data.redraw(frame, this.#surface);
+    if (changed) this.#publish();
   }
 
   /** Changes a lane's settings; what the backend selects by (sticky, visibility) is sent. */

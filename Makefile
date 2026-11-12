@@ -92,7 +92,7 @@ build: _frontend-build
 package:
 	scripts/package-desktop.sh $(OS)
 
-smoke-packaged:
+smoke-packaged: _smoke-fixtures
 	scripts/smoke-packaged.sh $(OS)
 
 verify-release-version:
@@ -141,13 +141,17 @@ test-backend: $(if $(or $(filter $(CRATE),$(FRONTEND_TEST_CRATES)),$(if $(CRATE)
 	$(if $(or $(filter ax-devil,$(CRATE)),$(if $(CRATE),,x)),$(ISOLATED) $(CARGO) test $(if $(CRATE),-p ax-devil,$(NO_DEFAULT_PACKAGES)) --no-default-features --locked $(TEST))
 
 test-integration: _dev _dev-rust
-	$(ISOLATED) node --test scripts/dev.test.cjs desktop/args.test.cjs desktop/links.test.cjs desktop/remote.test.cjs desktop/window-state.test.cjs desktop/backend.test.cjs desktop/uncaught.test.cjs desktop/workspace-dialogs.test.cjs desktop/fit-coverage.test.cjs scripts/check-architecture.test.cjs
+	$(ISOLATED) node --test scripts/build-smoke-fixture.test.cjs scripts/dev.test.cjs desktop/args.test.cjs desktop/links.test.cjs desktop/remote.test.cjs desktop/window-state.test.cjs desktop/backend.test.cjs desktop/uncaught.test.cjs desktop/workspace-dialogs.test.cjs desktop/fit-coverage.test.cjs scripts/check-architecture.test.cjs
 
 # The debug backend, which test-backend has already compiled: a release build here would only repeat the package jobs'.
 test-desktop: export AX_DEVIL_BACKEND = $(CURDIR)/target/debug/ax-devil$(if $(filter Windows_NT,$(OS)),.exe)
-test-desktop: _frontend-build desktop/node_modules/.electron-ready
+test-desktop: _frontend-build desktop/node_modules/.electron-ready _smoke-fixtures
 	$(CARGO) build --locked --bin ax-devil
 	node scripts/smoke-desktop.cjs '$(SMOKE)'
+
+.PHONY: _smoke-fixtures
+_smoke-fixtures:
+	node scripts/build-smoke-fixture.cjs bash $(CARGO) build --locked -p camera --example loopback_rtsp
 
 # Needs a real camera, so it is not part of `test` or `check`; each test skips itself when AX_DEVIL_TARGET_ADDR is unset.
 test-camera:

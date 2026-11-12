@@ -5,7 +5,7 @@ use std::{
     collections::VecDeque,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering},
     },
 };
 
@@ -109,6 +109,8 @@ impl GapLog {
 /// What a feed's tasks and viewers share.
 pub struct Shared {
     pub(super) clock: Clock,
+    /// Frame identity belongs to the shared feed, including across transport replacement on Retry.
+    pub(super) next_sequence: AtomicU64,
     pub(super) board: Board,
     pub(super) frames: watch::Sender<Option<Arc<Released>>>,
     /// The newest decoded picture, kept when later units give none (nobody watching, a unit that does not decode).
@@ -221,6 +223,7 @@ impl Feed {
         };
         let shared = Arc::new(Shared {
             clock,
+            next_sequence: AtomicU64::new(1),
             board: Board::new(link, clock.now()),
             frames: watch::channel(None).0,
             picture: watch::channel(None).0,

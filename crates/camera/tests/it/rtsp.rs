@@ -197,15 +197,22 @@ async fn a_keepalive_the_camera_refuses_with_401_ends_a_live_stream_without_a_re
 }
 
 #[tokio::test]
-async fn a_stream_without_the_wanted_media_fails_for_good() {
-    let fake = FakeRtsp::with(Behaviour {
-        video: false,
-        ..Behaviour::default()
-    })
-    .await;
+async fn an_unsupported_codec_ends_the_connection_task_without_scheduling_retries() {
+    let fake = FakeRtsp::start().await;
+    fake.unsupported();
     let mut stream = open_stream(&fake.camera(), request(true, false));
     let status = status_where(&mut stream, |s| matches!(s, Status::Failed(_))).await;
     assert!(matches!(&status, Status::Failed(e) if e.kind == ErrorKind::Unsupported));
+    // The final status is delivered by the task that owns retries. Its sender must close, not remain asleep
+    // until another attempt. Advance controlled time beyond every backoff as well.
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(60)).await;
+    assert!(
+        timeout(WAIT, stream.status.changed())
+            .await
+            .unwrap()
+            .is_err()
+    );
     assert_eq!(fake.connections(), 1);
 }
 

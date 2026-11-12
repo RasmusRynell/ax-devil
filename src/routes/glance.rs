@@ -53,37 +53,17 @@ pub(super) fn jpeg(picture: Option<Bytes>) -> Response {
     }
 }
 
-/// The picture of a stream for a hover card, whichever sidebar view asks: the newest one an open viewer has on screen
-/// (none until its first), else a snapshot of the stream's camera with the stream's own login. `open` is whether the
-/// stream's viewer was requested. `None` when the host is not started or the camera does not give one. A camera is asked
-/// at most once per 10 s for a login and head.
-pub(super) async fn stream_picture(
-    state: &AppState,
-    content: &LiveVideoContent,
-    open: bool,
-) -> Option<Bytes> {
-    if let Some(shown) = state.live.open_picture(content) {
-        return state.glances.picture(&shown?).await;
-    }
-    let resolved = &content.camera;
-    let (Some(head), Ok(camera)) = (
-        Head::new(resolved.head),
-        camera_of(resolved, SNAPSHOT_TIMEOUT),
-    ) else {
-        return None;
-    };
-    if !started(state, open, resolved) {
-        return None;
-    }
-    state.glances.snapshot(camera, head).await
-}
-
 /// The picture of the stream `item` names, 404 when it is not a resolved live stream or has none.
 pub(super) async fn snapshot(State(state): State<AppState>, Path(item): Path<String>) -> Response {
     let Some((held, content)) = live_item(&state, &item) else {
         return jpeg(None);
     };
-    jpeg(stream_picture(&state, &content, held.open).await)
+    jpeg(
+        state
+            .glances
+            .stream_picture(&state.live, &content, held.open)
+            .await,
+    )
 }
 
 /// A snapshot of the first head of a camera the scan found, with the scan login that signed in to it.

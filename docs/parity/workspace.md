@@ -20,7 +20,7 @@ Row format: [parity](../parity.md). Deviations: [workspace deviations](workspace
 | WS-12 | Start panel and welcome area | M | done | `shell/{Shell,WorkspaceFiles,Sidebar}.test.tsx` | Only while empty; heading only with recents; Open Workspace default; Live: AC-03 |
 | WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | done | `viewer/*.test.*`, `shell/{SplitArea,headerFailure}.test.*`, `playback/{budget,videoDetails}.test.ts`, `desktop/smoke-video.cjs` header details | Header menu: the row's, without Edit |
 | WS-14 | Long playlists load collapsed | S | done | `shell/reveal.test.ts` |  |
-| WS-15 | Hover cards with thumbnails | S | in progress | `tests/it/{local_video,glance}.rs`, `shell/{WorkspaceTree*,LiveView}.test.tsx` | Offline, Live |
+| WS-15 | Hover cards with thumbnails | S | in progress | `tests/it/{local_video,glance}.rs`, `crates/live/src/glance/tests.rs`, `shell/{WorkspaceTree*,LiveView}.test.tsx`, `desktop/smoke-loopback.cjs` | Loopback live pictures; real cameras unverified |
 
 ## Adding content
 
@@ -36,8 +36,8 @@ Row format: [parity](../parity.md). Deviations: [workspace deviations](workspace
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| LV-01 | RTSP video with one overlay: embedded ONVIF metadata, MQTT or DataHub | M | done | `camera/tests/it/{rtsp,mqtt,datahub}.rs`, `crates/live` | |
-| LV-02 | Per-feed status: connected, reconnecting, error, stalled; Retry | M | done | `crates/live`, `live/{words,session}.test.ts` | |
+| LV-01 | RTSP video with one overlay: embedded ONVIF metadata, MQTT or DataHub | M | done | `camera/tests/it/{rtsp,mqtt,datahub}.rs`, `crates/live`, `desktop/smoke-loopback.cjs` | Loopback decoded pictures |
+| LV-02 | Per-feed status: connected, reconnecting, error, stalled; Retry | M | done | `crates/live/src/tests/retry.rs`, `live/{words,session}.test.ts`, `desktop/smoke-loopback.cjs` | Loopback recovery and terminal codec |
 | LV-03 | Pause keeps the connection; stop is terminal | M | done | `crates/live`, `live/session.test.ts` | |
 | LV-04 | Capture-time synchronization of frames and overlays | M | done | `overlay-sync`, `crates/live` | |
 | LV-05 | Network scan with optional sign-in; add found camera | M | done | `camera/tests/it/scan.rs`, `shell/LiveView.test.tsx` | |

@@ -57,6 +57,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       groups: ${{ steps.groups.outputs.groups }}
+      smoke-minutes: ${{ steps.budget.outputs.smokeMinutes }}
+      package-minutes: ${{ steps.budget.outputs.jobMinutes }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -66,6 +68,9 @@ jobs:
 
       - id: groups
         run: echo "groups=$(node -p 'JSON.stringify(Object.keys(require("./desktop/smoke-groups.cjs")))')" >> "$GITHUB_OUTPUT"
+
+      - id: budget
+        run: node scripts/smoke-budget.cjs --github >> "$GITHUB_OUTPUT"
 
   desktop:
     name: Desktop (${{ matrix.group }})
@@ -95,8 +100,9 @@ jobs:
   package:
     name: Package (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
-    # Tool installs and a cold release build, the 50-minute packaged smoke cap, and the uploads.
-    timeout-minutes: 80
+    needs: desktop-groups
+    # Derived smoke cap plus 30 minutes for tool installs, release build and uploads.
+    timeout-minutes: ${{ fromJSON(needs.desktop-groups.outputs.package-minutes) }}
     defaults:
       run:
         shell: bash
@@ -183,12 +189,10 @@ jobs:
       - name: Build and package
         run: make package OS=${{ matrix.name }}
 
-      # The script runs every smoke group on its own launch, waits as long as the launcher's deadline for each, and prints
-      # the logs. This cap ends a script that hangs itself, so it sits above the 44-minute sum of the deadlines
-      # (node scripts/smoke-desktop.cjs --plan ''), which are above every scenario's own timeout: a hung scenario is
-      # always named first. It must grow with the groups file.
+      # scripts/smoke-budget.cjs sums fixture build, setup, each startup/scenario/failure/teardown
+      # budget and a final minute. Adding a group updates both caps, without hand-edited arithmetic.
       - name: Smoke-test the package
-        timeout-minutes: 50
+        timeout-minutes: ${{ fromJSON(needs.desktop-groups.outputs.smoke-minutes) }}
         run: make smoke-packaged OS=${{ matrix.name }}
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

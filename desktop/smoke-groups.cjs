@@ -6,6 +6,9 @@
 // - A scenario is `desktop/smoke-<name>.cjs` exporting `run(ctx)`; it must not call Electron APIs at module load (the launcher loads it with a stub that throws on any use).
 // oxfmt-ignore
 module.exports = {
+  rtsp: [
+    "loopback",
+  ],
   chrome: [
     "shell",
     "live",

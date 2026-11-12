@@ -15,6 +15,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::Semaphore;
+use workspace::LiveVideoContent;
 
 /// How long a camera may take to answer a snapshot: hovering must not leave a request hanging.
 pub const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(3);
@@ -70,6 +71,37 @@ impl Default for Glances {
 }
 
 impl Glances {
+    /// The picture of a stream for a hover card, whichever sidebar view asks: the newest one an open viewer has on screen
+    /// (none until its first), else a snapshot of the stream's camera with the stream's own login. `open` is whether the
+    /// stream's viewer was requested. `None` when the host is not started or the camera does not give one. A camera is asked
+    /// at most once per 10 s for a login and head.
+    pub async fn stream_picture(
+        &self,
+        live: &crate::LiveSources,
+        content: &LiveVideoContent,
+        open: bool,
+    ) -> Option<Bytes> {
+        if let Some(shown) = live.open_picture(content) {
+            return self.picture(&shown?).await;
+        }
+        let resolved = &content.camera;
+        let (Some(head), Ok(camera)) = (
+            Head::new(resolved.head),
+            crate::camera_of(resolved, SNAPSHOT_TIMEOUT),
+        ) else {
+            return None;
+        };
+        if !(open || live.has_started(&resolved.host)) {
+            return None;
+        }
+        let snapshot = self.snapshot(camera, head).await;
+        // Another window may have opened this shared feed while the snapshot was in flight.
+        if let Some(shown) = live.open_picture(content) {
+            return self.picture(&shown?).await;
+        }
+        snapshot
+    }
+
     /// The JPEG of a picture an open viewer holds, for the hover card. A frame is encoded once, however many ask while
     /// it is the newest; the work is on the blocking pool and at most `ENCODING` at a time. `None` when it cannot be
     /// encoded, or the encoder is busy: busy is not remembered, so a frame that stays the newest (a paused stream) is
@@ -134,3 +166,6 @@ impl Glances {
             .await
     }
 }
+
+#[cfg(test)]
+mod tests;
