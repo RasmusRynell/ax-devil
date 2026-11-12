@@ -5,8 +5,7 @@
  * session is framework-free; the socket, the display refresh and time are injected, and the UI reads `getSnapshot`.
  */
 
-import { reasonOf } from "../client/errors";
-import type { LiveOpenedWire } from "../generated/api";
+import type { ErrorWire, LiveOpenedWire } from "../generated/api";
 import type { FileScope } from "../inspect/fileScope";
 import type { FrameFields } from "../inspect/frameFields";
 import type { LaneDisplay, LaneFrame, LaneSettings, Selection, Surface } from "../lanes/contract";
@@ -282,7 +281,7 @@ export class LiveSession implements LaneDisplay {
         this.#arm();
       }
     } else if (message.type === "Error") {
-      return this.#fail(reasonOf(message), message.location);
+      return this.#fail(message);
     } else {
       this.#data.receive(message);
     }
@@ -385,8 +384,9 @@ export class LiveSession implements LaneDisplay {
     this.#publish();
   }
 
-  #fail(reason: string, location?: string): void {
-    this.#parts.failure = { reason, location };
+  #fail(error: string | ErrorWire, location?: string): void {
+    this.#parts.failure =
+      typeof error === "string" ? { code: "Internal", params: {}, reason: error, location } : error;
     this.#parts.status = "failed";
     this.#connection?.close();
     this.#connection = undefined;

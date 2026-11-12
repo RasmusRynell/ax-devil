@@ -152,6 +152,20 @@ describe("video viewer objects", () => {
     expect(props().cells?.map(({ lane }) => lane)).toEqual([0, 1]);
   });
 
+  it("restores comparison when switching entries from lane fullscreen", async () => {
+    const lanes: LaneInfo[] = [
+      { label: "DPM", slot: "DPM", source: 0 },
+      { label: "GT", slot: "GT", source: 1 },
+    ];
+    const { props, run, show } = await mount(lanes);
+    run("lane-fullscreen");
+    expect(props().cells?.map(({ lane }) => lane)).toEqual([0]);
+    show({ entryId: s.ids["list/B"], lanes });
+    await slider();
+    expect(fullscreen.exit).toHaveBeenCalledOnce();
+    expect(props().cells?.map(({ lane }) => lane)).toEqual([0, 1]);
+  });
+
   it("takes the keyboard to the lane the tree opened, ahead of the lane the pointer was left over", async () => {
     // The grid is 400 by 200, so the two lanes are its left and right halves.
     vi.stubGlobal(

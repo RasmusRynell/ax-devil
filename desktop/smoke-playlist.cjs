@@ -257,6 +257,27 @@ module.exports.run = async ({ window }) => {
   for (const [theme, zoom] of THEMES_AND_ZOOMS) {
     await setView(window, [640, 480], zoom);
     await setTheme(theme);
+    await js(
+      "(() => { const h = document.querySelector('[role=group] [draggable]'); const r = h.getBoundingClientRect(); h.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 8, clientY: r.top + 8 })); })()",
+    );
+    await wait("document.querySelector('[role=menuitem]')");
+    assert.deepEqual(
+      await js(`(${fit.panel.toString()})('[role=menu]')`),
+      [],
+      `The playlist header menu must fit at ${zoom * 100}% zoom`,
+    );
+    await shoot(`playlist-header-${theme}-${zoom}.png`);
+    await js(
+      "[...document.querySelectorAll('[role=menuitem]')].find(e => e.textContent === 'Information').click()",
+    );
+    await wait("document.querySelector('dialog[open]')");
+    assert.deepEqual(
+      await js(`(${fit.dialog.toString()})()`),
+      [],
+      `Information must fit the 640x480 window at ${zoom * 100}% zoom`,
+    );
+    await shoot(`playlist-information-${theme}-${zoom}.png`);
+    await clickButton("Close");
     await showChrome(window);
     assert.deepEqual(
       await js(`(${fit.page.toString()})()`),

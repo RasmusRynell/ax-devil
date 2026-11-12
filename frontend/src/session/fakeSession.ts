@@ -84,6 +84,12 @@ export class Room {
   /** Shows a backend-written scenario in one of its states. */
   show(s: Scenario, state = "initial") {
     this.shown = new Showing(s, state);
+    const view = s.view(state);
+    if (view) {
+      this.presenter = view;
+      this.presenterRev += 1;
+      this.presenterBy = undefined;
+    }
     this.docRev += 1;
     this.share();
   }

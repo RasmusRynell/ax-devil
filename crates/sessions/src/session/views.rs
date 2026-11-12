@@ -179,7 +179,8 @@ pub struct View {
 }
 
 /// `view` cut down to what `doc` has open: no viewer, and no pane, for an item that is not open, and no viewer outside
-/// the layout. A pane that loses its viewer gives its space to its sibling. Each viewer's entry is made one of its
+/// the layout. A resolved item that lost the selected entry also loses that viewer. A pane that loses its viewer
+/// gives its space to its sibling. Each viewer's entry is made one of its
 /// item's Content, as [`shown_entry`] picks it: this is the one place that decides which entry a viewer shows.
 pub fn restrict(view: &View, doc: &Doc) -> View {
     // Destructured without `..`, so a new field does not compile until its restriction is decided.
@@ -194,9 +195,15 @@ pub fn restrict(view: &View, doc: &Doc) -> View {
     let open = &workspace.open;
     let layout = layout.clone().and_then(|layout| {
         layout.retain(&|id| {
-            viewers
-                .get(&id)
-                .is_some_and(|viewer| open.contains(&viewer.item))
+            viewers.get(&id).is_some_and(|viewer| {
+                open.contains(&viewer.item)
+                    && match (&viewer.entry, workspace.resolutions.get(&viewer.item)) {
+                        (Some(entry), Some(Resolution::Resolved { content, .. })) => {
+                            content.entry(entry).is_some()
+                        }
+                        _ => true,
+                    }
+            })
         })
     });
     let viewers: BTreeMap<_, _> = layout
@@ -323,7 +330,6 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
 mod tests {
     use super::{super::layout::Axis, *};
     use serde_json::json;
-    use workspace::store::HiddenRef;
 
     #[test]
     fn a_view_reads_as_the_wire_writes_it_and_an_id_that_names_no_item_is_refused() {
@@ -424,122 +430,6 @@ mod tests {
         assert_eq!(
             restricted.layout,
             Some(split(Axis::Row, 3000, pane(1), pane(3)))
-        );
-    }
-
-    fn entry(item: &ItemId, label: &str) -> Entry {
-        Entry {
-            id: ContentId::of_entry(item, "P", label),
-            label: label.into(),
-            video: workspace::VideoRef::File(format!("{label}.mp4").into()),
-            overlays: Vec::new(),
-            starts_hidden: false,
-            lanes_starting_hidden: Vec::new(),
-            metadata: Default::default(),
-        }
-    }
-
-    #[test]
-    fn a_viewer_shows_the_entry_it_asked_for_while_it_exists_else_the_first_one_not_hidden() {
-        let playlist = workspace::intake::video(
-            std::path::Path::new("p.mp4"),
-            &[],
-            &handlers::Handlers::built_in(),
-        )
-        .unwrap();
-        let item = playlist.id;
-        let (state, jobs) = workspace::store::apply(
-            &WorkspaceState::default(),
-            workspace::store::DocCommand::AddItems {
-                items: vec![playlist],
-                open: false,
-            },
-        );
-        let (state, _) =
-            workspace::store::apply(&state, workspace::store::DocCommand::OpenViewer(item));
-        let viewer = |entry: Option<ContentId>| View {
-            active: Some(ViewerId(1)),
-            viewers: [(
-                ViewerId(1),
-                ViewerView {
-                    entry,
-                    ..looking(item)
-                },
-            )]
-            .into(),
-            layout: Some(*pane(1)),
-            ..View::default()
-        };
-        let shown = |workspace: &WorkspaceState, asked: Option<ContentId>| {
-            let doc = Doc {
-                workspace: workspace.clone(),
-            };
-            restrict(&viewer(asked), &doc).viewers[&ViewerId(1)]
-                .entry
-                .clone()
-        };
-        let (a, b) = (
-            ContentId::of_entry(&item, "P", "A"),
-            ContentId::of_entry(&item, "P", "B"),
-        );
-        assert_eq!(
-            shown(&state, Some(a.clone())),
-            Some(a.clone()),
-            "the entry asked for is kept while resolving"
-        );
-        assert_eq!(shown(&state, None), None, "and none is chosen for it");
-
-        let content = Content::Playlist(workspace::PlaylistContent {
-            id: ContentId::of_item(&item),
-            item_id: item,
-            display_name: "P".into(),
-            entries: vec![entry(&item, "A"), entry(&item, "B")],
-            playlists: vec![workspace::PlaylistSpan {
-                id: ContentId::of_playlist(&item, "P"),
-                name: "P".into(),
-                entries: 2,
-                matches: None,
-                sequence_groups: None,
-                metadata: Default::default(),
-            }],
-            warnings: Vec::new(),
-        });
-        let resolved = workspace::store::complete(&state, item, jobs[0].attempt, Ok(content));
-        assert_eq!(shown(&resolved, Some(b.clone())), Some(b.clone()));
-        let (reloading, _) =
-            workspace::store::apply(&resolved, workspace::store::DocCommand::Resolve(item));
-        assert_eq!(
-            shown(&reloading, Some(b.clone())),
-            Some(b.clone()),
-            "a reload keeps the entry on screen"
-        );
-        assert_eq!(shown(&resolved, None), Some(a.clone()));
-        let gone = ContentId::of_entry(&item, "P", "GONE");
-        assert_eq!(shown(&resolved, Some(gone.clone())), Some(a.clone()));
-
-        let (hidden, _) = workspace::store::apply(
-            &resolved,
-            workspace::store::DocCommand::SetHidden {
-                target: HiddenRef::Entry(a.clone()),
-                hidden: true,
-            },
-        );
-        assert_eq!(shown(&hidden, Some(gone)), Some(b.clone()));
-        assert_eq!(
-            shown(&hidden, Some(a.clone())),
-            Some(a),
-            "asking for a hidden entry shows it"
-        );
-        let (all, _) = workspace::store::apply(
-            &hidden,
-            workspace::store::DocCommand::SetHidden {
-                target: HiddenRef::Entry(b),
-                hidden: true,
-            },
-        );
-        assert_eq!(
-            shown(&all, None),
-            Some(ContentId::of_entry(&item, "P", "A"))
         );
     }
 }

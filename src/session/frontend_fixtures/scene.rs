@@ -275,6 +275,28 @@ impl Scene {
         id
     }
 
+    /// Another Owner seat publishes a view through the same transition as its window.
+    pub(super) fn present(&mut self, view: sessions::session::View) {
+        let seat = self.session.seat_owner();
+        let (next, _) = transition(
+            &self.session,
+            Input::View {
+                seat,
+                lease: Lease(0),
+                view,
+                seq: 1,
+                now_us: 0,
+            },
+        )
+        .expect("the scenario's view is accepted");
+        self.session = next;
+    }
+
+    /// Changes the Session through the first Owner seat's command lane.
+    pub(super) fn command(&mut self, command: Command) {
+        run(&mut self.session, &self.outcomes, command);
+    }
+
     /// Requests the viewer of item `key`, as a client does.
     pub(super) fn open(&mut self, key: &str) {
         self.apply(DocCommand::OpenViewer(self.item(key)));

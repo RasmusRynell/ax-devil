@@ -1,3 +1,4 @@
+import { reasonOf } from "../client/errors";
 /** How a camera's live stream is doing as the sidebar shows it: one state per stream, the most urgent per camera. */
 
 import { useEffect, useSyncExternalStore } from "react";
@@ -83,7 +84,7 @@ export function statusOf({
   paused,
 }: Pick<LiveView, "status" | "failure" | "video" | "paused">): StreamStatus {
   if (status === "failed")
-    return { state: "failed", text: failure?.reason ?? "Failed", anyLive: false };
+    return { state: "failed", text: failure ? reasonOf(failure) : "Failed", anyLive: false };
   if (status === "reconnecting")
     return { state: "reconnecting", text: "Reconnecting", anyLive: false };
   const shown = feedStatus(video);

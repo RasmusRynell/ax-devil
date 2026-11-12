@@ -1,5 +1,6 @@
 /** What a playback stream shows the UI: one immutable snapshot that is replaced only when something in it changed. */
 
+import type { ErrorWire } from "../generated/api";
 import type { FrameInfo, PlaybackClock } from "../stream/clock";
 import type { InspectionView, Selection } from "../lanes/contract";
 import type { FrameFailures } from "../stream/failures";
@@ -9,7 +10,7 @@ import { videoDetails } from "./videoDetails";
 
 export type PlaybackView = {
   status: "connecting" | "indexing" | "ready" | "reconnecting" | "failed";
-  failure?: { reason: string; location?: string };
+  failure?: ErrorWire;
   /** How many frames the video has; 0 until it is ready. */
   frameCount: number;
   /** The time of the last frame in microseconds; 0 until it is ready. */

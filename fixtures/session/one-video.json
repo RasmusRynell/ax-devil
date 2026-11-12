@@ -232,6 +232,79 @@
         }
       }
     },
+    "closed": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "a.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/a/a.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "a.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "a.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "a.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "a.mp4",
+              "location": "/data/a/a.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
     "failed": {
       "guest": {
         "workspace": {
@@ -963,6 +1036,17 @@
       },
       "from": "initial",
       "to": "removed-at-once"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000001",
+          "type": "closeViewer"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "closed"
     },
     {
       "command": {

@@ -5,9 +5,14 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
  * inspector come along, and the other lanes keep playing. `point` and `pick` are told which lane the pointer is over
  * and which was last pressed; `focus` names one by keyboard and then outranks where the pointer was, until it moves or
  * presses again. `toggle` takes the lane under the pointer, else the last pressed, else the first of `shown`. Leaving
- * fullscreen by any route clears `solo` and puts the keyboard back on the pane; unmounting leaves it.
+ * fullscreen by any route clears `solo` and puts the keyboard back on the pane; unmounting or replacing
+ * the optional playback `lifetime` leaves it.
  */
-export function useLaneFullscreen(pane: RefObject<HTMLElement | null>, shown: readonly number[]) {
+export function useLaneFullscreen(
+  pane: RefObject<HTMLElement | null>,
+  shown: readonly number[],
+  lifetime?: object,
+) {
   const [solo, setSolo] = useState<number | null>(null);
   const aim = useRef<{ pointer: number | null; clicked: number | null; shown: readonly number[] }>({
     pointer: null,
@@ -49,6 +54,7 @@ export function useLaneFullscreen(pane: RefObject<HTMLElement | null>, shown: re
 
   useEffect(() => {
     const element = pane.current;
+    setSolo(null);
     let inside = false;
     const changed = () => {
       const now = document.fullscreenElement === element;
@@ -63,7 +69,7 @@ export function useLaneFullscreen(pane: RefObject<HTMLElement | null>, shown: re
       document.removeEventListener("fullscreenchange", changed);
       if (document.fullscreenElement === element) void document.exitFullscreen();
     };
-  }, [pane]);
+  }, [pane, lifetime]);
 
   return { solo, point, pick, focus, target, toggle, leave };
 }

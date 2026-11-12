@@ -14,7 +14,7 @@ function Block({ info, level }: { info: Information; level: number }) {
           colSpan={2}
           scope="colgroup"
           style={{ paddingLeft: `calc(var(--spacing-m) * ${level * 2})` }}
-          className="px-m py-xs text-left font-semibold break-words"
+          className="px-m py-xs text-left font-semibold wrap-anywhere"
         >
           <button
             type="button"
@@ -23,7 +23,7 @@ function Block({ info, level }: { info: Information; level: number }) {
             className="flex w-full items-center gap-s bg-transparent text-left font-semibold text-fg focus-ring"
           >
             <Icon name={open ? "chevron-down" : "chevron-right"} />
-            {info.title}
+            <span className="min-w-0 wrap-anywhere">{info.title}</span>
           </button>
         </th>
       </tr>
@@ -38,7 +38,26 @@ function Block({ info, level }: { info: Information; level: number }) {
               <MiddleElided text={label} className="max-w-[24ch]" />
             </th>
             <td className="px-m py-xs select-text">
-              <div className="max-w-[80ch] break-words">{value}</div>
+              <div
+                role="textbox"
+                aria-label={label}
+                aria-readonly="true"
+                tabIndex={0}
+                className="max-w-[80ch] wrap-anywhere focus-ring"
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const range = document.createRange();
+                    range.selectNodeContents(event.currentTarget);
+                    const selection = window.getSelection();
+                    selection?.removeAllRanges();
+                    selection?.addRange(range);
+                  }
+                }}
+              >
+                {value}
+              </div>
             </td>
           </tr>
         ))}

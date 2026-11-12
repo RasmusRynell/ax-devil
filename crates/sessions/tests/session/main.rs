@@ -4,6 +4,7 @@
 
 mod matrix;
 mod owner_seats;
+mod retirement;
 mod revocation;
 mod roster;
 mod runner;

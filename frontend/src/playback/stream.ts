@@ -1,9 +1,9 @@
 /**
- * One viewer's playback of one entry: the socket, held frames and lane data, the clock and what to ask the
- * backend for. Playing never holds a frame for lane data; after a seek or step it waits briefly. Framework-free:
- * time, refresh and socket are injected; the UI reads `getSnapshot`.
+ * A viewer's playback. Playback never waits for lane data; seeking waits briefly. Time, display refresh and socket
+ * are injected; the UI reads `getSnapshot`.
  */
 
+import type { ErrorWire } from "../generated/api";
 import { reasonOf } from "../client/errors";
 import { ExportJobs } from "../export/jobs";
 import {
@@ -363,7 +363,7 @@ export class PlaybackStream implements LaneControl {
     } else if (message.type === "FrameError") {
       this.#noteFailure(message.sequence_id, reasonOf(message));
     } else if (message.type === "Error") {
-      return this.#fail(reasonOf(message), message.location);
+      return this.#fail(message);
     } else {
       this.#data.receive(message);
     }
@@ -502,11 +502,12 @@ export class PlaybackStream implements LaneControl {
     this.#publish();
   }
 
-  #fail(reason: string, location?: string): void {
+  #fail(error: string | ErrorWire, location?: string): void {
     // A running clock stops with the viewer, unless a presenter's.
     if (this.#clock?.playing && !this.#followed)
       this.#deps.onIntent?.({ frame: this.#clock.playhead, playing: false, speed: this.#speed });
-    this.#failure = { reason, location };
+    this.#failure =
+      typeof error === "string" ? { code: "Internal", params: {}, reason: error, location } : error;
     this.#status = "failed";
     this.#link.drop();
     this.#releaseVideo();
