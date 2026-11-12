@@ -101,6 +101,8 @@ for (const scenario of ["two windows", "replacement document"] as const) {
     const file = path.join(folder, "device.json");
     fs.writeFileSync(file, JSON.stringify({ "ui.theme": "auto" }), { mode: 0o600 });
     const owner = createDeviceValues(file);
+    const announcements: DeviceSnapshot[] = [];
+    owner.subscribe((snapshot) => announcements.push(snapshot));
     const openWindow = shell(owner);
     const a = openWindow();
     const first = createDeviceStore(shellBacking(a.bridge));
@@ -128,13 +130,22 @@ for (const scenario of ["two windows", "replacement document"] as const) {
       if (scenario === "two windows") {
         const b = openWindow();
         const second = createDeviceStore(shellBacking(b.bridge));
-        const later = second.prepare([["ui.theme", "light"]], [])();
+        // Quick Setup retains its unsaved preview after refusal. Settings then explicitly
+        // chooses the persisted System value, which must still reach the ordering owner.
+        second.preview("ui.theme", "light");
+        expect(second.read()["ui.theme"]).toBe("light");
+        const later = second.prepare([["ui.theme", "auto"]], [])();
         release();
         expect(await saved).toBeNull();
         expect(await later).toBeNull();
-        expect(first.readSaved()["ui.theme"]).toBe("light");
-        expect(second.readSaved()["ui.theme"]).toBe("light");
-        expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ "ui.theme": "light" });
+        expect(first.readSaved()["ui.theme"]).toBe("auto");
+        expect(second.readSaved()["ui.theme"]).toBe("auto");
+        expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ "ui.theme": "auto" });
+        expect(owner.read()).toEqual({ values: { "ui.theme": "auto" }, sequence: 2 });
+        expect(announcements).toEqual([
+          { values: { "ui.theme": "dark" }, sequence: 1 },
+          { values: { "ui.theme": "auto" }, sequence: 2 },
+        ]);
         // Delivery of older or duplicate owner snapshots cannot regress the current value.
         b.window.webContents.send("device:changed", {
           values: { "ui.theme": "dark" },
@@ -144,7 +155,7 @@ for (const scenario of ["two windows", "replacement document"] as const) {
           values: { "ui.theme": "dark" },
           sequence: 2,
         });
-        expect(second.readSaved()["ui.theme"]).toBe("light");
+        expect(second.readSaved()["ui.theme"]).toBe("auto");
       } else {
         const replacement = a.reload();
         expect(replacement.readSaved()["ui.theme"]).toBe("auto");

@@ -183,7 +183,9 @@ export function createDeviceStore(backing: Backing) {
           : DEVICE_ROWS.some((row) => row.key === key && holds(row, current[key]))
             ? value === current[key]
             : !(key in current) && value === DEVICE_DEFAULTS.get(key);
-      if (!unchanged) patch[key] = value;
+      // Only the shell owner can compare an explicit choice with persisted state:
+      // an earlier admitted batch may still be in flight beyond this cached snapshot.
+      if (backing.announced || !unchanged) patch[key] = value;
     }
     const finish = (next: Record<string, unknown>) => {
       const choices = changes.filter(([key]) => accepted(key));
