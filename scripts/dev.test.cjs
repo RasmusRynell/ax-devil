@@ -103,7 +103,7 @@ void test(
     const os = require("node:os");
     const path = require("node:path");
     const http = require("node:http");
-    const { apiVersion } = require("../desktop/generated/api.json");
+    const { apiVersion } = require("../desktop/generated/api-version.json");
     for (const signal of ["SIGHUP", "SIGTERM"]) {
       const folder = fs.mkdtempSync(path.join(os.tmpdir(), "dev-signal-"));
       const [port, uiPort] = await freePorts();

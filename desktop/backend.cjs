@@ -5,7 +5,7 @@ const path = require("node:path");
 
 const { observe, BACKEND_INTERRUPT_MS, BACKEND_STOP_MS } = require("./child.cjs");
 
-const { apiVersion, shellApi } = require("./generated/api.json");
+const { shellApi } = require("./generated/api.json");
 
 /** Reads a server's `/api/info`; rejects when it cannot be reached or does not answer with JSON. */
 async function fetchInfo(base, timeoutMs) {
@@ -92,7 +92,11 @@ function createBackend({ port, devUrl, executable, args = [], onUnexpectedExit, 
     const base = `http://127.0.0.1:${port}`;
     try {
       const info = await fetchInfo(base, 1500);
-      if (info.app !== "ax-devil" || info.api !== apiVersion || info.shell !== shellApi)
+      if (
+        info.app !== "ax-devil" ||
+        info.api !== require("./generated/api-version.json").apiVersion ||
+        info.shell !== shellApi
+      )
         throw new Error(`Port ${port} belongs to an incompatible server.`);
       if (!(info.owner && info.fullAccess))
         throw new Error(`Port ${port} does not give this app full access.`);

@@ -22,7 +22,7 @@ use ts_rs::TS;
 
 /// The version of the generated contract: a hash of every TypeScript file `export-types` writes for the frontend (the
 /// types, the constants and the settings tables, with their doc comments, so a comment-only edit changes it), computed
-/// when this crate is built (`contract_version.rs`) and written for the desktop shell to `desktop/generated/api.json`.
+/// when this crate is built (`contract_version.rs`) and written for the desktop shell to the untracked `desktop/generated/api-version.json`.
 /// The route table lives in the root crate, which this one cannot read, so a changed route path or method does not
 /// change it. A client that expects another version refuses the backend.
 pub fn api_version() -> &'static str {

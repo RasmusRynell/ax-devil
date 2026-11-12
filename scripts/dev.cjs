@@ -1,5 +1,4 @@
 const { observe, spawnOwned: spawn } = require("./child.cjs");
-const { apiVersion } = require("../desktop/generated/api.json");
 const STARTUP_TIMEOUT_MS = 60_000;
 const PROBE_TIMEOUT_MS = 1000;
 const mode = process.argv[2];
@@ -40,7 +39,10 @@ async function available(url) {
       throw new Error(
         `A release server is already running at ${url}. Stop it or choose another PORT for development.`,
       );
-    if (data.app !== "ax-devil" || data.api !== apiVersion)
+    if (
+      data.app !== "ax-devil" ||
+      data.api !== require("../desktop/generated/api-version.json").apiVersion
+    )
       throw new Error(`Incompatible app at ${url}`);
     return true;
   } catch (error) {

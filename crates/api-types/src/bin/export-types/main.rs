@@ -1,7 +1,8 @@
 //! Writes the Rust API types and the playback constants to one file per Rust module under
 //! frontend/src/generated/types/ (re-exported by frontend/src/generated/api.ts), the settings and command
-//! tables to frontend/src/generated/settings.ts, and the API and shell versions and the reserved shortcuts to
-//! desktop/generated/api.json (untracked; the API version is a hash of the TypeScript files), only when they changed.
+//! tables to frontend/src/generated/settings.ts, the shell version and the reserved shortcuts to
+//! desktop/generated/api.json, and the API version (a hash of the TypeScript files, so it is not committed) to the
+//! untracked desktop/generated/api-version.json, only when they changed.
 
 #[path = "../../../contract_version.rs"]
 mod contract_version;
@@ -32,10 +33,11 @@ impl std::error::Error for Failed {}
 const TYPES_FOLDER: &str = "frontend/src/generated/types";
 
 /// The entry file, the settings tables and the desktop JSON, in the order they are written.
-const FIXED_OUTPUTS: [&str; 3] = [
+const FIXED_OUTPUTS: [&str; 4] = [
     "frontend/src/generated/api.ts",
     "frontend/src/generated/settings.ts",
     "desktop/generated/api.json",
+    "desktop/generated/api-version.json",
 ];
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -70,13 +72,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_if_changed(FIXED_OUTPUTS[1], &settings)?;
     prune(&files.keys().map(|stem| format!("{stem}.ts")).collect())?;
     // The desktop shell and the development supervisor are CommonJS and read these from JSON. The version is
-    // hashed from the files just written, as the backend hashes them when it is built.
+    // hashed from the files just written, as the backend hashes them when it is built; it has its own file so the
+    // committed one holds no hash for two pull requests to edit.
     let desktop = serde_json::json!({
-        "apiVersion": contract_version(std::path::Path::new(&repo_path("frontend/src/generated")))?,
         "shellApi": api_types::SHELL_API,
         "reserved": settings::shortcuts::RESERVED,
     });
+    let version = serde_json::json!({
+        "apiVersion": contract_version(std::path::Path::new(&repo_path("frontend/src/generated")))?,
+    });
     write_if_changed(FIXED_OUTPUTS[2], &format!("{desktop:#}\n"))?;
+    write_if_changed(FIXED_OUTPUTS[3], &format!("{version:#}\n"))?;
     Ok(())
 }
 

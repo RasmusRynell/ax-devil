@@ -5,7 +5,7 @@ const fs = require("node:fs/promises");
 const http = require("node:http");
 const path = require("node:path");
 const { backendExecutable, startProcess } = require("./backend.cjs");
-const { apiVersion, shellApi } = require("./generated/api.json");
+const { shellApi } = require("./generated/api.json");
 const { supportsRestoreDrag } = require("./restore-drag.cjs");
 const fit = require("./fit.cjs");
 const {
@@ -30,7 +30,14 @@ async function fakeServer(requests, shell, dropPages = false) {
     requests.push(request.url);
     if (request.url !== "/api/info" && dropPages) return request.socket.destroy();
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ app: "ax-devil", api: apiVersion, version: "9.9.9", shell }));
+    response.end(
+      JSON.stringify({
+        app: "ax-devil",
+        api: require("./generated/api-version.json").apiVersion,
+        version: "9.9.9",
+        shell,
+      }),
+    );
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   return { server, origin: `http://127.0.0.1:${server.address().port}` };
