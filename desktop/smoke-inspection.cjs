@@ -14,8 +14,21 @@ const INSPECTOR = 'section[aria-label="Object page"]';
 // The renderer's writeText promise is not a barrier for native clipboard readback.
 async function expectClipboard(text, what) {
   const hash = (value) => createHash("sha256").update(value).digest("hex");
-  const expected = hash(text);
-  await until(async () => hash(await clipboard.readText()) === expected, what);
+  // Chromium writes JSON's LF formatting as native CRLF on Windows.
+  const native = text.replace(/\n/g, os.EOL);
+  const expected = hash(native);
+  let observed = "";
+  try {
+    await until(async () => {
+      observed = await clipboard.readText();
+      return observed.length === native.length && hash(observed) === expected;
+    }, what);
+  } catch (error) {
+    throw new Error(
+      `${error.message}; native clipboard: ${Buffer.byteLength(observed)} UTF-8 bytes, SHA-256 ${hash(observed)}; expected: ${Buffer.byteLength(native)} bytes, SHA-256 ${expected}`,
+      { cause: error },
+    );
+  }
 }
 
 async function openObject(window) {
