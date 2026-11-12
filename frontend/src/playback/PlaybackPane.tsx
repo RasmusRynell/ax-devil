@@ -223,7 +223,7 @@ export function Playback({
               }}
             >
               <LaneGrid
-                session={stream}
+                stream={stream}
                 view={view}
                 name={name}
                 title={title}

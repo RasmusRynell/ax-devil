@@ -31,7 +31,7 @@ function useSize(): [React.RefObject<HTMLDivElement | null>, { width: number; he
  * With `only` the grid lays out that lane alone and the others keep being sent, so they play on out of sight.
  */
 export function LaneGrid({
-  session,
+  stream,
   view,
   name,
   title,
@@ -53,7 +53,7 @@ export function LaneGrid({
   onSelect,
   onDrawn,
 }: {
-  session: LaneDisplay;
+  stream: LaneDisplay;
   view: PlaybackView;
   name: string;
   /** The viewer's title: a single lane named the same needs no name tag. */
@@ -108,9 +108,9 @@ export function LaneGrid({
   useEffect(() => {
     lanes.forEach((lane, index) => {
       const visible = shown.includes(index);
-      if (lane.settings.visible !== visible) session.setLane(index, { visible });
+      if (lane.settings.visible !== visible) stream.setLane(index, { visible });
     });
-  }, [session, lanes, shown]);
+  }, [stream, lanes, shown]);
   return (
     <div
       ref={box}
@@ -123,7 +123,7 @@ export function LaneGrid({
       }}
     >
       <VideoCanvas
-        session={session}
+        stream={stream}
         label={name}
         anchor={anchor}
         cells={cells}
@@ -164,13 +164,13 @@ export function LaneGrid({
                 }
                 live={live}
                 stage={{ position: shown.indexOf(index) + 1, count: shown.length }}
-                onChange={(change) => session.setLane(index, change)}
+                onChange={(change) => stream.setLane(index, change)}
                 onApplyAll={
                   lanes.filter((lane) => lane.source !== null).length > 1
-                    ? () => session.applyToAll(index)
+                    ? () => stream.applyToAll(index)
                     : undefined
                 }
-                onReload={() => session.reloadCatalog(index)}
+                onReload={() => stream.reloadCatalog(index)}
                 onHide={onHide && (() => onHide(lanes[index].label))}
                 onExport={
                   onExport && {
@@ -180,7 +180,7 @@ export function LaneGrid({
                 }
               />
             </div>
-            {info && <InfoHud session={session} view={view} lane={index} />}
+            {info && <InfoHud stream={stream} view={view} lane={index} />}
           </div>
         );
       })}

@@ -52,10 +52,10 @@ describe("video canvas", () => {
       },
     );
     let surface: Surface | null = null;
-    const session = {
+    const stream = {
       setSurface: (next: Surface | null) => (surface = next),
     } as unknown as PlaybackStream;
-    const view = render(<VideoCanvas session={session} label="a.mp4" anchor="frame:a" />);
+    const view = render(<VideoCanvas stream={stream} label="a.mp4" anchor="frame:a" />);
     const anchor = () => view.container.querySelector<HTMLElement>('[data-cursor-id="frame:a"]');
     expect(anchor()).toBeNull();
 
@@ -69,7 +69,7 @@ describe("video canvas", () => {
 
   it("anchors a pointer in each lane cell to the picture as fitted there", () => {
     let surface: Surface | null = null;
-    const session = {
+    const stream = {
       setSurface: (next: Surface | null) => (surface = next),
     } as unknown as PlaybackStream;
     const cells = [
@@ -77,7 +77,7 @@ describe("video canvas", () => {
       { lane: 2, rect: { x: 300, y: 0, width: 100, height: 100 } },
     ];
     const view = render(
-      <VideoCanvas session={session} label="a.mp4" anchor="frame:a" cells={cells} />,
+      <VideoCanvas stream={stream} label="a.mp4" anchor="frame:a" cells={cells} />,
     );
     act(() => surface?.present({ width: 400, height: 200 } as VideoFrame, []));
     const at = (lane: number) =>
@@ -98,13 +98,13 @@ describe("video canvas", () => {
 
   it("lays a lane's anchor over its zoomed picture, cut to the cell", () => {
     let surface: Surface | null = null;
-    const session = {
+    const stream = {
       setSurface: (next: Surface | null) => (surface = next),
     } as unknown as PlaybackStream;
     const cells = [{ lane: 0, rect: { x: 0, y: 0, width: 400, height: 200 } }];
     const view = render(
       <VideoCanvas
-        session={session}
+        stream={stream}
         label="a.mp4"
         anchor="frame:a"
         cells={cells}
@@ -125,7 +125,7 @@ describe("video canvas", () => {
   });
 
   describe("pointer", () => {
-    const session = { setSurface: () => {} } as unknown as PlaybackStream;
+    const stream = { setSurface: () => {} } as unknown as PlaybackStream;
     const picked = (entity: string): Picked => ({
       lane: 0,
       source: 3,
@@ -141,7 +141,7 @@ describe("video canvas", () => {
     function mount(props: Partial<React.ComponentProps<typeof VideoCanvas>> = {}) {
       const handlers = { onViewport: vi.fn(), onHover: vi.fn(), onSelect: vi.fn() };
       const view = render(
-        <VideoCanvas session={session} label="a.mp4" anchor="frame:a" {...handlers} {...props} />,
+        <VideoCanvas stream={stream} label="a.mp4" anchor="frame:a" {...handlers} {...props} />,
       );
       return { ...handlers, surface: view.container.firstElementChild as HTMLElement };
     }
@@ -217,7 +217,7 @@ describe("video canvas", () => {
     it("drops the object on a zoom, and finds it again when the pointer moves or the next picture arrives", () => {
       let surface: Surface | null = null;
       const { surface: element, onHover } = mount({
-        session: { setSurface: (next: Surface | null) => (surface = next) } as never,
+        stream: { setSurface: (next: Surface | null) => (surface = next) } as never,
       });
       drawn.renderer?.pick.mockReturnValue(picked("t7"));
       drawn.renderer?.zoomAt.mockReturnValue(zoomed);

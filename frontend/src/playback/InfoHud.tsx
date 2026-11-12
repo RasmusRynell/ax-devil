@@ -10,11 +10,11 @@ import type { PlaybackView } from "./view";
  * of `…`.
  */
 export function InfoHud({
-  session,
+  stream,
   view,
   lane,
 }: {
-  session: Pick<LaneDisplay, "matched">;
+  stream: Pick<LaneDisplay, "matched">;
   view: PlaybackView;
   /** The lane's position in `view.lanes`. */
   lane: number;
@@ -28,7 +28,7 @@ export function InfoHud({
     state.source === null
       ? null
       : {
-          match: session.matched(lane),
+          match: stream.matched(lane),
           pending: state.pending,
           settings: state.settings,
           basis: basisOf(state) ?? "Time",

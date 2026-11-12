@@ -143,7 +143,7 @@ function Anchors({
 }
 
 /**
- * The picture the session presents, drawn at the screen's pixel density into each lane's cell with that lane's
+ * The picture the stream presents, drawn at the screen's pixel density into each lane's cell with that lane's
  * marks over it; without `cells`, one cell for lane 0 fills the space. A browser without WebGL2 says so instead.
  * `anchor` names the `data-cursor-id` of the elements over the pictures; with `cells` each gets `:<lane>` after it.
  *
@@ -155,7 +155,7 @@ function Anchors({
  * pointer moves or the next picture arrives.
  */
 export function VideoCanvas({
-  session,
+  stream,
   label,
   anchor,
   cells,
@@ -166,7 +166,7 @@ export function VideoCanvas({
   onSelect,
   onDrawn,
 }: {
-  session: LaneDisplay;
+  stream: LaneDisplay;
   label: string;
   anchor: string;
   cells?: readonly LaneLayout[];
@@ -251,7 +251,7 @@ export function VideoCanvas({
       };
       current.setViewport(shown.current);
       current.setCells(deviceCells(layout.current, element));
-      session.setSurface({
+      stream.setSurface({
         present: (frame, lanes) => {
           armed.current = true;
           current.present(frame, lanes);
@@ -293,7 +293,7 @@ export function VideoCanvas({
     const restored = () => {
       attach();
       current.resize(element.width, element.height);
-      session.represent();
+      stream.represent();
     };
     // Not a React handler, which is passive and could not keep the page from zooming under the pointer.
     const wheel = (event: WheelEvent) => {
@@ -313,12 +313,12 @@ export function VideoCanvas({
       element.removeEventListener("webglcontextrestored", restored);
       density.removeEventListener("change", redrawOnDensity);
       observer.disconnect();
-      session.setSurface(null);
+      stream.setSurface(null);
       renderer.current = null;
       current.onDrawn = null;
       current.dispose();
     };
-  }, [session]);
+  }, [stream]);
   if (unavailable)
     return (
       <p role="alert" className="m-auto p-xl">

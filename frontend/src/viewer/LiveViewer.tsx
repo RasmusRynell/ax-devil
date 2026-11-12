@@ -145,7 +145,7 @@ function Live({
               }}
             >
               <LaneGrid
-                session={session}
+                stream={session}
                 view={view}
                 name={name}
                 anchor={`frame:${item}`}
