@@ -107,7 +107,7 @@ pins?: Array<InspectionPin>,
  */
 path: boolean, 
 /**
- * Field ordinal for a page, UTF-8 byte offset for a text chunk.
+ * A page start this capability issued (0 or any returned `next`), or a UTF-8 byte offset for a text chunk.
  */
 offset: number, };
 

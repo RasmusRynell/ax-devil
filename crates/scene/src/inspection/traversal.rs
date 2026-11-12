@@ -98,7 +98,7 @@ impl Traversal {
             .find(|field| field.address == address)
     }
 
-    /// Reads one chunk directly at an address of the current page.
+    /// Reads one chunk directly at a resolved field address.
     pub fn chunk(
         &self,
         entity: &Entity,

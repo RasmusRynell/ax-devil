@@ -316,116 +316,6 @@ async fn a_follower_is_not_sent_what_a_presenter_who_moved_on_no_longer_shows() 
     assert!(far.is_none_or(|frames| !gate.admits(&frames)));
 }
 
-#[tokio::test]
-async fn a_cursor_cannot_cross_sockets_or_outlast_its_held_sample() {
-    let folder = tempfile::tempdir().unwrap();
-    let (mut viewer, revision) = viewer(folder.path()).await;
-    hold(&mut viewer, 10).await;
-    let mut inspections = Inspections::default();
-    inspections.ask(&viewer, 0, 0, revision, 10, "2".into());
-    let (message, _) = answer(&mut inspections).await;
-    let InspectionWire::Found {
-        continuation: Some(cursor),
-        ..
-    } = verdict(message)
-    else {
-        panic!("cursor");
-    };
-    let read = InspectionRead {
-        pins: None,
-        raw: None,
-        path: false,
-        token: cursor.token,
-        request: 1,
-        field: None,
-        offset: 0,
-    };
-    let mut other_seat = Inspections::default();
-    other_seat.continue_target(read.clone(), viewer.inspect_target(0, revision, 10));
-    let (message, frames) = answer(&mut other_seat).await;
-    assert!(matches!(
-        message,
-        ServerMessage::InspectContinued {
-            result: InspectionReadResult::Refused { .. },
-            ..
-        }
-    ));
-    assert_eq!(frames, None);
-    inspections.continue_target(read.clone(), viewer.inspect_target(0, revision, 10));
-    let (message, frames) = answer(&mut inspections).await;
-    assert!(matches!(
-        message,
-        ServerMessage::InspectContinued {
-            result: InspectionReadResult::Page { .. },
-            ..
-        }
-    ));
-    assert!(frames.is_some());
-    let position = inspections.cursor.as_ref().unwrap().5.clone();
-    assert!(position.lock().unwrap().scene.is_some());
-    let prepared = position.lock().unwrap().traversal.clone().unwrap();
-    // A delayed first reply may be retried after its worker finished, without another permutation allocation.
-    inspections.ask(&viewer, 0, 0, revision, 10, "2".into());
-    let (retry, _) = answer(&mut inspections).await;
-    let InspectionWire::Found {
-        continuation: Some(retried),
-        ..
-    } = verdict(retry)
-    else {
-        panic!("retried cursor");
-    };
-    assert_eq!(retried.token, read.token);
-    assert!(
-        Arc::ptr_eq(
-            &prepared,
-            position.lock().unwrap().traversal.as_ref().unwrap()
-        ),
-        "a retry must reuse the classification order"
-    );
-    inspections.release();
-    assert!(
-        position.lock().unwrap().traversal.is_none(),
-        "releasing the capability releases its prepared permutation"
-    );
-    assert!(
-        position.lock().unwrap().scene.is_none(),
-        "released input reference"
-    );
-    inspections.continue_target(read.clone(), viewer.inspect_target(0, revision, 10));
-    assert!(matches!(
-        answer(&mut inspections).await.0,
-        ServerMessage::InspectContinued {
-            result: InspectionReadResult::Refused { .. },
-            ..
-        }
-    ));
-    inspections.ask(&viewer, 0, 0, revision, 10, "2".into());
-    let InspectionWire::Found {
-        continuation: Some(cursor),
-        ..
-    } = verdict(answer(&mut inspections).await.0)
-    else {
-        panic!("fresh capability");
-    };
-    let read = InspectionRead {
-        pins: None,
-        token: cursor.token,
-        ..read
-    };
-    hold(&mut viewer, 40).await;
-    inspections.continue_target(read, viewer.inspect_target(0, revision, 10));
-    let (message, frames) = answer(&mut inspections).await;
-    let ServerMessage::InspectContinued {
-        result: InspectionReadResult::Refused { reason },
-        ..
-    } = message
-    else {
-        panic!("stale cursor refused");
-    };
-    assert_eq!(reason, "Inspection expired; select the object again");
-    assert_eq!(frames, None);
-}
-
 #[test]
 fn an_abbreviated_path_advertises_how_to_retrieve_its_last_byte() {
     use scene::{
@@ -471,6 +361,189 @@ fn an_abbreviated_path_advertises_how_to_retrieve_its_last_byte() {
     assert_eq!(next, None);
 }
 
+#[test]
+fn abandoned_reads_can_replay_issued_positions_and_copy_displayed_fields() {
+    use scene::{
+        BoundingBox, ClassType, Classification, Entity, EntityId, Geometry, Name, Observation,
+        SceneTime, TimeSlice, Value,
+    };
+    let time = SceneTime::Frame(0);
+    let details = (0..12_000)
+        .map(|i| {
+            (
+                Name::Owned(format!("field{i}")),
+                if i == 0 {
+                    Value::Str("x".repeat(128 * 1024).into())
+                } else {
+                    Value::Int(i)
+                },
+            )
+        })
+        .collect();
+    let observation = Observation::new(
+        time,
+        Geometry::Box(BoundingBox::new(0.0, 0.0, 1.0, 1.0).unwrap()),
+    )
+    .with_details(details, Vec::new())
+    .unwrap();
+    let mut entity = Entity::new(EntityId::from(7_i64));
+    entity.push_observation(observation);
+    let scene = Scene::new(TimeSlice::at(time))
+        .with_entities(vec![entity])
+        .unwrap();
+    let mut observation = Observation::new(
+        time,
+        Geometry::Box(BoundingBox::new(0.0, 0.0, 1.0, 1.0).unwrap()),
+    );
+    let mut class = Classification::new(ClassType::CAR);
+    class.attributes = vec![
+        ("empty".into(), Value::List(vec![Value::Null; 2_100_000])),
+        ("last".into(), Value::Str("reached".into())),
+    ];
+    observation.classifications = vec![class];
+    let mut entity = Entity::new(EntityId::from(7_i64));
+    entity.push_observation(observation);
+    let fieldless_scene = Scene::new(TimeSlice::at(time))
+        .with_entities(vec![entity])
+        .unwrap();
+    let fresh = |scene: &Scene, next| {
+        let position = PositionRef::default();
+        let InspectionWire::Found {
+            fields,
+            continuation: Some(cursor),
+            ..
+        } = inspection_at(scene, "7", "held", &position)
+        else {
+            panic!("first page");
+        };
+        assert_eq!(cursor.next, Some(next));
+        if next == 1 {
+            assert_eq!(fields.len(), 1);
+        }
+        position
+    };
+    let InspectionWire::Found { fields, .. } = inspection(&scene, "7", "held") else {
+        panic!("first page");
+    };
+    let ordinal = fields.iter().find_map(|field| field.cut).unwrap()[0] as u32;
+    let page = |offset| InspectionRead {
+        request: 1,
+        token: "held".into(),
+        field: None,
+        raw: None,
+        pins: None,
+        path: false,
+        offset,
+    };
+    let value = InspectionRead {
+        field: Some(ordinal),
+        ..page(0)
+    };
+    let path = InspectionRead {
+        path: true,
+        ..value.clone()
+    };
+    let raw = InspectionRead {
+        raw: Some(true),
+        ..page(0)
+    };
+    let mut failures = Vec::new();
+    for (name, scene, first_next, displayed, abandon, again) in [
+        (
+            "Next abandoned, Next again",
+            &scene,
+            4096,
+            0,
+            page(4096),
+            page(4096),
+        ),
+        (
+            "Next abandoned, displayed value copy",
+            &scene,
+            4096,
+            0,
+            page(4096),
+            value.clone(),
+        ),
+        (
+            "First abandoned, displayed page's Next",
+            &scene,
+            4096,
+            4096,
+            page(0),
+            page(8192),
+        ),
+        (
+            "value restarts at zero",
+            &scene,
+            4096,
+            0,
+            value.clone(),
+            value,
+        ),
+        ("path restarts at zero", &scene, 4096, 0, path.clone(), path),
+        ("Raw restarts at zero", &scene, 4096, 0, raw.clone(), raw),
+        ("never-issued offset", &scene, 4096, 0, page(0), page(1)),
+        (
+            "fieldless progress survives replaying First",
+            &fieldless_scene,
+            1,
+            1,
+            page(0),
+            page(1),
+        ),
+    ] {
+        let position = fresh(scene, first_next);
+        let fieldless = first_next == 1;
+        let expected_position = (!fieldless).then(|| fresh(scene, first_next));
+        if displayed != 0 {
+            for p in std::iter::once(&position).chain(expected_position.as_ref()) {
+                let InspectionReadResult::Page { fields, next } =
+                    continued_at(Some(scene), "7", &page(displayed), p)
+                else {
+                    panic!("displayed page");
+                };
+                assert_eq!(next, Some(if fieldless { 1 } else { 8192 }));
+                if fieldless {
+                    assert!(fields.is_empty());
+                }
+            }
+        }
+        let expected = expected_position
+            .as_ref()
+            .map(|p| continued_at(Some(scene), "7", &again, p));
+        if let Some(expected) = &expected {
+            assert_eq!(
+                matches!(expected, InspectionReadResult::Refused { .. }),
+                name == "never-issued offset",
+                "fresh capability: {name}"
+            );
+        }
+        let discarded = continued_at(Some(scene), "7", &abandon, &position);
+        assert!(
+            !matches!(discarded, InspectionReadResult::Refused { .. }),
+            "{name}"
+        );
+        drop(discarded);
+        let actual = continued_at(Some(scene), "7", &again, &position);
+        let correct = if let Some(expected) = expected {
+            actual == expected
+        } else {
+            matches!(&actual, InspectionReadResult::Page { fields, next: None }
+                if fields.first().is_some_and(|field| field.path == ["attributes", "last"]
+                    && field.value == Leaf::Text("reached".into())))
+        };
+        if !correct {
+            failures.push(name);
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "abandoned operations changed replies: {failures:?}"
+    );
+}
+
+mod identity;
 mod permission;
 mod pins;
 mod worker;

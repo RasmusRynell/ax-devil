@@ -455,13 +455,8 @@ fn inspection_at(
 #[cfg(test)]
 fn continued(scene: Option<&Scene>, entity: &str, read: &InspectionRead) -> InspectionReadResult {
     let position = Arc::default();
-    if let Some(entity) = scene.and_then(|scene| scene.entity(entity)) {
-        let traversal = Arc::new(
-            scene::inspection::Traversal::new(entity, position::validity(&position))
-                .expect("bounded test entity"),
-        );
-        remember(&position, 0, &traversal.page(entity, 0, &[]));
-        position.lock().unwrap().traversal = Some(traversal);
+    if let Some(scene) = scene {
+        inspection_at(scene, entity, "held", &position);
     }
     continued_at(scene, entity, read, &position)
 }
@@ -494,17 +489,8 @@ fn continued_at(
         return position::raw(position, entity, read.offset as usize);
     }
     if let Some(ordinal) = read.field {
-        let address = {
-            let state = position
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            state
-                .fields
-                .get(&(ordinal as usize))
-                .or_else(|| state.pins.fields.get(&(ordinal as usize)))
-                .cloned()
-        };
-        let Some(address) = address else {
+        let Some(address) = position::address(position, &traversal, entity, ordinal as usize)
+        else {
             return InspectionReadResult::Refused {
                 reason: "Inspection expired; select the object again".into(),
             };
@@ -525,22 +511,12 @@ fn continued_at(
             Err(reason) => InspectionReadResult::Refused { reason },
         }
     } else {
-        let next = position
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .next
-            .clone();
-        let page = if let Some((ordinal, address)) =
-            next.filter(|(ordinal, _)| *ordinal == read.offset as usize)
-        {
-            traversal.page(entity, ordinal, &address)
-        } else if read.offset == 0 {
-            traversal.page(entity, 0, &[])
-        } else {
+        let Some(address) = position::start(position, read.offset as usize) else {
             return InspectionReadResult::Refused {
                 reason: "Inspection expired; select the object again".into(),
             };
         };
+        let page = traversal.page(entity, read.offset as usize, &address);
         remember(position, read.offset as usize, &page);
         InspectionReadResult::Page {
             fields: page.fields.into_iter().map(page_field).collect(),

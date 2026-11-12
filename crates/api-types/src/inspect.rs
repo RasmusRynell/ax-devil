@@ -146,7 +146,7 @@ pub struct InspectionRead {
     /// Retrieve the dotted path instead of the value.
     #[serde(default)]
     pub path: bool,
-    /// Field ordinal for a page, UTF-8 byte offset for a text chunk.
+    /// A page start this capability issued (0 or any returned `next`), or a UTF-8 byte offset for a text chunk.
     pub offset: u32,
 }
 

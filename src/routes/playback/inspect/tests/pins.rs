@@ -144,17 +144,15 @@ async fn restarting_a_partial_pin_scan_preserves_resolved_copy_addresses() {
         viewer.inspect_target(0, revision, 10),
     );
     let _ = answer(&mut inspections).await;
+    {
+        let state = inspections.cursor.as_ref().unwrap().5.lock().unwrap();
+        assert!(
+            !state.pins.fields.contains_key(&(ordinal as usize)),
+            "a changed pin set drops the retained pin address"
+        );
+    }
     inspections.continue_target(copy, viewer.inspect_target(0, revision, 10));
-    assert!(
-        matches!(
-            answer(&mut inspections).await.0,
-            ServerMessage::InspectContinued {
-                result: InspectionReadResult::Refused { .. },
-                ..
-            }
-        ),
-        "a changed pin set drops the old copy address"
-    );
+    assert_chunk(answer(&mut inspections).await.0);
 }
 
 fn assert_chunk(message: ServerMessage) {

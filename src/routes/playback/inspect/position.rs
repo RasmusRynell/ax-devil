@@ -4,14 +4,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-/// Only addresses of the current page and its next boundary are retained, never a flattened list.
+/// One cached page's addresses and the starts issued so far, never a flattened field list.
 pub(super) struct Position {
     pub(super) validity: foundation::CancelToken,
     /// One shared reference to the immutable held input; no flattened fields or copied texts.
     pub(super) scene: Option<Arc<scene::Scene>>,
     pub(super) pins: super::pins::Pins,
     pub(super) fields: BTreeMap<usize, Vec<usize>>,
-    pub(super) next: Option<(usize, Vec<usize>)>,
+    pub(super) starts: BTreeMap<usize, Vec<usize>>,
     pub(super) raw: Option<scene::inspection::RawCopy>,
     pub(super) traversal: Option<Arc<scene::inspection::Traversal>>,
 }
@@ -23,7 +23,7 @@ impl Default for Position {
             scene: None,
             pins: super::pins::Pins::default(),
             fields: BTreeMap::new(),
-            next: None,
+            starts: BTreeMap::new(),
             raw: None,
             traversal: None,
         }
@@ -83,12 +83,62 @@ pub(super) fn remember(position: &PositionRef, first: usize, page: &scene::inspe
         if state.validity.is_cancelled() {
             return;
         }
-        (
-            std::mem::replace(&mut state.fields, fields),
-            std::mem::replace(&mut state.next, next),
-        )
+        let old = std::mem::replace(&mut state.fields, fields);
+        if let Some((ordinal, address)) = next {
+            // Equal ordinals have no field between their addresses; replay must never undo fieldless progress.
+            let slot = state.starts.entry(ordinal).or_default();
+            if *slot < address {
+                *slot = address;
+            }
+        }
+        old
     };
     drop(old);
+}
+
+pub(super) fn start(position: &PositionRef, offset: usize) -> Option<Vec<usize>> {
+    position
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .starts
+        .get(&offset)
+        .cloned()
+        .or_else(|| (offset == 0).then(Vec::new))
+}
+
+/// The last page is only a cache: a discarded page reply must not strand the displayed page's copy addresses.
+pub(super) fn address(
+    position: &PositionRef,
+    traversal: &scene::inspection::Traversal,
+    entity: &scene::Entity,
+    ordinal: usize,
+) -> Option<Vec<usize>> {
+    let (first, address) = {
+        let state = position
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.validity.is_cancelled() {
+            return None;
+        }
+        if let Some(address) = state
+            .fields
+            .get(&ordinal)
+            .or_else(|| state.pins.fields.get(&ordinal))
+        {
+            return Some(address.clone());
+        }
+        state.starts.range(..=ordinal).next_back().map_or_else(
+            || (0, Vec::new()),
+            |(&first, address)| (first, address.clone()),
+        )
+    };
+    let page = traversal.page(entity, first, &address);
+    let found = page
+        .fields
+        .get(ordinal - first)
+        .map(|field| field.address.clone());
+    remember(position, first, &page);
+    if traversal.cancelled() { None } else { found }
 }
 
 pub(super) fn invalidate(position: &PositionRef) {
