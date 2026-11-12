@@ -8,7 +8,7 @@ use super::{
     layout::Layout,
     state::{Seat, SeatKind},
     streams,
-    views::{View, restrict, shown_entries},
+    views::{View, restrict},
 };
 use crate::{EndReason, MAX_SEATS, Secret};
 use foundation::CancelToken;
@@ -436,7 +436,7 @@ fn keep_overlays(mut view: View, stored: &View) -> View {
     view
 }
 
-/// Entries shown now that a registered successful reload has not validated yet.
+/// Entries surviving settlement under the replacement Content that still need validation.
 pub(super) fn uncovered(
     state: &SessionState,
     job: JobId,
@@ -447,7 +447,7 @@ pub(super) fn uncovered(
     };
     let super::JobOwner::Doc { item, attempt } = entry.owner;
     let Completion::Resolved {
-        result: Ok(_),
+        result: Ok(content),
         validated,
     } = completion
     else {
@@ -457,10 +457,32 @@ pub(super) fn uncovered(
     {
         return Vec::new();
     }
-    shown_entries(state, item)
-        .into_iter()
-        .filter(|id| !validated.contains(id))
-        .collect()
+    // Preview the actual store commit so hidden refs and selection use the same state as settlement.
+    let doc = super::state::Doc {
+        workspace: complete(&state.doc.workspace, item, attempt, Ok(content.clone())),
+    };
+    let (presenter, orphaned) = restricted_presenter(&state.presenter, &doc);
+    if orphaned.contains(&item) {
+        return Vec::new();
+    }
+    let mut missing = Vec::new();
+    for view in std::iter::once(presenter).chain(
+        state
+            .seats
+            .values()
+            .filter_map(|seat| seat.view.as_ref())
+            .map(|view| restrict(view, &doc)),
+    ) {
+        for viewer in view.viewers.values().filter(|viewer| viewer.item == item) {
+            if let Some(id) = &viewer.entry
+                && !validated.contains(id)
+                && !missing.contains(id)
+            {
+                missing.push(id.clone());
+            }
+        }
+    }
+    missing
 }
 
 fn complete_job(next: &mut SessionState, job: JobId, completion: Completion) {
@@ -473,25 +495,29 @@ fn complete_job(next: &mut SessionState, job: JobId, completion: Completion) {
     }
 }
 
+/// Restricts the Presenter View and identifies items whose last presenter pane is retired.
+fn restricted_presenter(published: &View, doc: &super::state::Doc) -> (View, BTreeSet<ItemId>) {
+    let presenter = restrict(published, doc);
+    let kept: BTreeSet<_> = presenter
+        .viewers
+        .values()
+        .map(|viewer| viewer.item)
+        .collect();
+    let orphaned = published
+        .viewers
+        .values()
+        .map(|viewer| viewer.item)
+        .filter(|item| !kept.contains(item) && doc.workspace.open.contains(item))
+        .collect();
+    (presenter, orphaned)
+}
+
 /// Brings everything derived back in line with the new state: views inside the Doc, jobs that are still wanted, and
 /// tickets and grants that still pass.
 fn settle(next: &mut SessionState, fx: &mut Effects, old_doc_rev: u64) {
     if next.doc_rev != old_doc_rev {
-        let presenter = restrict(&next.presenter, &next.doc);
-        // As with closing a pane in the owner window, losing the last pane closes its item.
-        // Publish both together: an open item without a pane would be automatically placed again.
-        let kept: BTreeSet<_> = presenter
-            .viewers
-            .values()
-            .map(|viewer| viewer.item)
-            .collect();
-        let orphaned: BTreeSet<_> = next
-            .presenter
-            .viewers
-            .values()
-            .map(|viewer| viewer.item)
-            .filter(|item| !kept.contains(item) && next.doc.workspace.open.contains(item))
-            .collect();
+        // Losing the last presenter pane closes its item in the same publication.
+        let (presenter, orphaned) = restricted_presenter(&next.presenter, &next.doc);
         for item in orphaned {
             commands::content(next, fx, DocCommand::CloseViewer(item));
         }

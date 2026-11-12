@@ -1,14 +1,14 @@
 //! A change to the files of an item: an open viewer keeps its stream and is told, and every session that holds the item
 //! finds out.
 
-use crate::{GRACE, Rig, authority, resolve, stream};
+use crate::{GRACE, Rig, authority, stream};
 use foundation::CancelToken;
 use handler_api::Settings;
 use handlers::{HandlerSet, Handlers};
 use playback::Authority;
 use sessions::{
     CursorOptions,
-    session::{Command, Completion, Handle, OnRuntime, Service, Work},
+    session::{Command, Handle, OnRuntime, Service, Work},
 };
 use std::{fs, path::Path, sync::Arc, time::Duration};
 use workspace::store::{DocCommand, Resolution};
@@ -116,14 +116,8 @@ async fn what_a_superseded_job_read_is_never_recorded_for_the_item() {
         || Err::<Content, ()>(()),
     );
     done.watcher().record(id, watch.unwrap());
-    let Work::Resolve { job, shown } = &spawn.work;
-    assert!(
-        done.complete(Completion::Resolved {
-            result: resolve(job),
-            validated: shown.clone(),
-        })
-        .is_ok()
-    );
+    let Work::Resolve(job) = &spawn.work;
+    assert!(done.complete(crate::completion(job)).is_ok());
 
     fs::write(&overlay, "1,1,1,1,1,1\n").unwrap();
     rig.service.check_sources();
@@ -212,15 +206,9 @@ async fn a_read_replaces_the_files_an_item_was_recorded_from_even_with_none() {
             .command(Command::Content(DocCommand::Resolve(id)))
             .unwrap();
         for (spawn, done) in rig.jobs.take() {
-            let Work::Resolve { job, shown } = &spawn.work;
+            let Work::Resolve(job) = &spawn.work;
             done.watcher().record(id, watch.clone());
-            assert!(
-                done.complete(Completion::Resolved {
-                    result: resolve(job),
-                    validated: shown.clone(),
-                })
-                .is_ok()
-            );
+            assert!(done.complete(crate::completion(job)).is_ok());
         }
     };
     let by_edit = |watch: Watch| rig.service.record_sources(owner.session(), id, watch);

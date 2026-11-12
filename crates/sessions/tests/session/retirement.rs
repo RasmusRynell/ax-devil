@@ -113,14 +113,14 @@ fn command(state: &mut SessionState, seat: SeatId, command: DocCommand) {
     .unwrap();
     *state = next;
     for spawn in effects.spawn {
-        let Work::Resolve { job, shown } = &spawn.work;
+        let Work::Resolve(job) = &spawn.work;
         *state = transition(
             state,
             Input::Complete {
                 job: spawn.job,
                 completion: Completion::Resolved {
                     result: resolve(job),
-                    validated: shown.clone(),
+                    validated: Vec::new(),
                 },
             },
         )

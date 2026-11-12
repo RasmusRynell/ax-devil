@@ -4,7 +4,6 @@
 //! what the Doc has open by [`restrict`] after every Doc change.
 
 use super::{
-    SessionState,
     layout::{Layout, ViewerId},
     state::Doc,
 };
@@ -264,23 +263,6 @@ pub(super) fn shown_entry<'a>(
         .and_then(|id| content.entry(id))
         .or_else(|| entries.iter().find(|entry| !workspace.entry_hidden(entry)))
         .or_else(|| entries.first())
-}
-
-/// The distinct entries of `item` currently shown by the presenter or exploring seats.
-pub(super) fn shown_entries(state: &SessionState, item: ItemId) -> Vec<ContentId> {
-    let mut shown = Vec::new();
-    for view in std::iter::once(&state.presenter)
-        .chain(state.seats.values().filter_map(|seat| seat.view.as_ref()))
-    {
-        for viewer in view.viewers.values().filter(|viewer| viewer.item == item) {
-            if let Some(entry) = shown_entry(&state.doc.workspace, &item, viewer.entry.as_ref())
-                && !shown.contains(&entry.id)
-            {
-                shown.push(entry.id.clone());
-            }
-        }
-    }
-    shown
 }
 
 /// The most View changes a seat has applied per second.

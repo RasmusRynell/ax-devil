@@ -28,7 +28,7 @@ pub enum Completion {
     Resolved {
         /// The resolution and media-check outcome.
         result: Result<Content, UserError>,
-        /// Entries covered by successful checks or absent from the replacement Content.
+        /// Entries covered by successful media checks.
         validated: Vec<ContentId>,
     },
 }
@@ -37,12 +37,7 @@ pub enum Completion {
 #[derive(Clone, Debug)]
 pub enum Work {
     /// Resolve an item's recipe into its Content.
-    Resolve {
-        /// The recipe to resolve.
-        job: ResolveJob,
-        /// Entries currently shown whose replacement media must open before committing.
-        shown: Vec<ContentId>,
-    },
+    Resolve(ResolveJob),
 }
 
 /// A job to run: report its [`Completion`] to the session, and stop early once `cancel` is cancelled.

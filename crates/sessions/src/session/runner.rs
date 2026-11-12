@@ -66,7 +66,7 @@ pub struct Retry {
     pub done: Completer,
     /// The single resolved Content retained across validation rounds.
     pub content: Content,
-    /// Entries already covered by successful checks or absent from the replacement.
+    /// Entries already covered by successful media checks.
     pub validated: Vec<ContentId>,
     /// Newly shown entries still to check.
     pub missing: Vec<ContentId>,
@@ -102,11 +102,10 @@ impl Runner for OnRuntime {
             if spawn.cancel.is_cancelled() {
                 return;
             }
-            let Work::Resolve { job, shown } = spawn.work;
+            let Work::Resolve(job) = spawn.work;
             let item = job.item;
             let cancel = spawn.cancel;
             let checking = cancel.clone();
-            let opening = Arc::clone(&opens);
             // Resolving and checking media read the file system off the runtime's workers.
             let mut work = tokio::task::spawn_blocking(move || {
                 let (result, watch) = Watch::read(&job.recipe, &handlers, &checking, || {
@@ -115,7 +114,7 @@ impl Runner for OnRuntime {
                 if let Some(watch) = watch {
                     watcher.record(job.item, watch);
                 }
-                validate(result?, Vec::new(), shown, &*opening, &checking)
+                Ok((result?, Vec::new()))
             });
             let mut done = done;
             loop {
@@ -163,9 +162,13 @@ fn validate(
 ) -> Result<(Content, Vec<ContentId>), Interrupt<UserError>> {
     for id in missing {
         cancel.check()?;
-        if let Some(entry) = content.entry(&id) {
-            opens(&entry.video, cancel)?;
-        }
+        let entry = content.entry(&id).ok_or_else(|| {
+            Interrupt::Failed(UserError::new(
+                ErrorCode::Internal,
+                "Reload validation requested an entry absent from the replacement Content",
+            ))
+        })?;
+        opens(&entry.video, cancel)?;
         validated.push(id);
     }
     Ok((content, validated))

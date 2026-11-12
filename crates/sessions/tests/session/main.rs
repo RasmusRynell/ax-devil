@@ -49,14 +49,8 @@ impl Jobs {
     /// Resolves every waiting job the way the real runner would.
     pub(crate) fn finish_all(&self) {
         for (spawn, done) in self.take() {
-            let Work::Resolve { job, shown } = &spawn.work;
-            assert!(
-                done.complete(Completion::Resolved {
-                    result: resolve(job),
-                    validated: shown.clone(),
-                })
-                .is_ok()
-            );
+            let Work::Resolve(job) = &spawn.work;
+            assert!(done.complete(completion(job)).is_ok());
         }
     }
 }
@@ -73,6 +67,22 @@ pub(crate) fn resolve(job: &ResolveJob) -> Result<Content, UserError> {
         Err(Interrupt::Failed(error)) => Err(error),
         Err(Interrupt::Cancelled) => panic!("nothing cancels a test job"),
     }
+}
+
+/// A fake media boundary that accepts every entry built by the production resolver.
+pub(crate) fn completion(job: &ResolveJob) -> Completion {
+    let result = resolve(job);
+    let validated = result
+        .as_ref()
+        .map(|content| {
+            content
+                .entries()
+                .iter()
+                .map(|entry| entry.id.clone())
+                .collect()
+        })
+        .unwrap_or_default();
+    Completion::Resolved { result, validated }
 }
 
 /// The item for a video file `name` in `dir`, created.

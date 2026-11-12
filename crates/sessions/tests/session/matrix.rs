@@ -82,10 +82,10 @@ fn world(access: Access) -> World {
     };
     let effects = step(&mut state, command(owner, Command::Content(add)));
     let spawn = &effects.spawn[0];
-    let Work::Resolve { job, shown } = &spawn.work;
+    let Work::Resolve(job) = &spawn.work;
     let done = Completion::Resolved {
         result: crate::resolve(job),
-        validated: shown.clone(),
+        validated: Vec::new(),
     };
     step(
         &mut state,

@@ -41,7 +41,7 @@ pub(super) fn run(session: &mut SessionState, outcomes: &Outcomes, command: Comm
         .unwrap_or_else(|refusal| panic!("the scenario's command was refused: {refusal:?}"));
     *session = next;
     for spawn in fx.spawn {
-        let Work::Resolve { job, shown } = &spawn.work;
+        let Work::Resolve(job) = &spawn.work;
         let Some(outcome) = outcomes.answer(job) else {
             continue;
         };
@@ -49,7 +49,7 @@ pub(super) fn run(session: &mut SessionState, outcomes: &Outcomes, command: Comm
             job: spawn.job,
             completion: Completion::Resolved {
                 result: outcome,
-                validated: shown.clone(),
+                validated: Vec::new(),
             },
         };
         let (next, _) = transition(session, input)

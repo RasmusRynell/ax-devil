@@ -5,8 +5,8 @@ use playback::{Authority, ClockIntent, Priority};
 use sessions::{
     CursorOptions, SeatRole,
     session::{
-        Access, Axis, Command, Completion, ContentRef, Control, Layout, Refusal, Reply, Sidebar,
-        SidebarView, View, ViewLane, ViewerId, ViewerView,
+        Access, Axis, Command, ContentRef, Control, Layout, Refusal, Reply, Sidebar, SidebarView,
+        View, ViewLane, ViewerId, ViewerView,
     },
 };
 use std::time::Duration;
@@ -284,11 +284,8 @@ async fn a_result_that_arrives_late_or_for_a_session_that_is_gone_is_dropped() {
     assert!(!second.cancel.is_cancelled());
 
     let resolve = |spawn: &sessions::session::Spawn| {
-        let sessions::session::Work::Resolve { job, shown } = &spawn.work;
-        Completion::Resolved {
-            result: crate::resolve(job),
-            validated: shown.clone(),
-        }
+        let sessions::session::Work::Resolve(job) = &spawn.work;
+        crate::completion(job)
     };
     assert!(first_done.complete(resolve(&first)).is_ok());
     let workspace = &owner.state().doc.workspace;
