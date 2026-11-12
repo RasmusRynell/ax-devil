@@ -210,3 +210,18 @@ it("refuses an old shell snapshot shape rather than interpreting it as preferenc
   expect(store.problem()).toContain("Incompatible desktop shell");
   expect(store.readSaved()).toEqual({});
 });
+
+it("saves through the shell when the secure-context UUID API is absent", async () => {
+  vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "ax-insecure-device-"));
+  try {
+    const owner = createDeviceValues(path.join(folder, "device.json"));
+    const store = createDeviceStore(shellBacking(shell(owner)().bridge));
+    expect(await store.set("ui.theme", "dark")).toBeNull();
+    expect(owner.read().values).toEqual({ "ui.theme": "dark" });
+    expect(store.readSaved()).toEqual({ "ui.theme": "dark" });
+  } finally {
+    vi.unstubAllGlobals();
+    fs.rmSync(folder, { recursive: true, force: true });
+  }
+});

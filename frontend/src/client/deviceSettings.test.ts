@@ -100,3 +100,19 @@ describe("device settings", () => {
     },
   );
 });
+
+it("reports a synchronous backing exception and retains the choice as unsaved", async () => {
+  const store = createDeviceStore({
+    read: () => ({ "ui.theme": "auto" }),
+    subscribe: () => () => {},
+    write: () => {
+      throw new Error("IPC serialization refused");
+    },
+  });
+  expect(await store.set("ui.theme", "dark")).toEqual({
+    keys: ["ui.theme"],
+    reason: "IPC serialization refused",
+  });
+  expect(store.read()).toEqual({ "ui.theme": "dark" });
+  expect(store.readSaved()).toEqual({ "ui.theme": "auto" });
+});

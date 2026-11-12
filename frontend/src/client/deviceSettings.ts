@@ -164,7 +164,16 @@ export function createDeviceStore(backing: Backing) {
       if (!surviving.length) return null;
       update(next);
       const patch = Object.fromEntries(surviving.map(({ key, value }) => [key, value]));
-      const failure = await backing.write(patch);
+      // Backing boundary: thrown APIs and rejected IPC must settle local intent too.
+      let failure: DeviceFailure | null;
+      try {
+        failure = await backing.write(patch);
+      } catch (error) {
+        failure = {
+          keys: surviving.map(({ key }) => key),
+          reason: error instanceof Error ? error.message : String(error),
+        };
+      }
       update(settle(state, surviving, failure?.keys ?? []));
       return failure;
     };
@@ -220,37 +229,35 @@ export function shellBacking(
   } catch (error) {
     problem = error instanceof Error ? error.message : String(error);
   }
-  const mine = new Map<
-    string,
-    { keys: SettingKey[]; resolve: (failure: DeviceFailure | null) => void }
-  >();
+  let nonce: string | undefined;
+  let counter = 0;
+  const mine = new Map<string, () => void>();
   return {
     problem,
     read: () => snapshot.values,
-    write: (changes) =>
-      new Promise((resolve) => {
-        const keys = Object.keys(changes) as SettingKey[];
-        const batch = crypto.randomUUID();
-        const finish = (failure: DeviceFailure | null) => {
-          mine.delete(batch);
-          resolve(failure);
-        };
-        if (problem || !bridge.setDeviceValues)
-          return finish({
-            keys,
-            reason: problem ?? "This shell does not offer Device persistence",
-          });
-        mine.set(batch, { keys, resolve: finish });
-        void bridge
-          .setDeviceValues(changes, batch)
-          .then((reply) => {
-            if (reply.reason) finish({ keys, reason: reply.reason });
-            else if (reply.sequence !== null && reply.sequence <= snapshot.sequence) finish(null);
-          })
-          .catch((error: unknown) =>
-            finish({ keys, reason: error instanceof Error ? error.message : String(error) }),
-          );
-      }),
+    write: async (changes) => {
+      const keys = Object.keys(changes) as SettingKey[];
+      if (problem || !bridge.setDeviceValues)
+        return { keys, reason: problem ?? "This shell does not offer Device persistence" };
+      // getRandomValues is available on plain HTTP too; identity needs uniqueness, not secrecy.
+      nonce ??= Array.from(crypto.getRandomValues(new Uint32Array(4)), (value) =>
+        value.toString(16),
+      ).join("-");
+      const batch = `${nonce}:${++counter}`;
+      let delivered!: () => void;
+      const completion = new Promise<void>((resolve) => {
+        delivered = resolve;
+      });
+      mine.set(batch, delivered);
+      try {
+        const reply = await bridge.setDeviceValues(changes, batch);
+        if (reply.reason) return { keys, reason: reply.reason };
+        if (reply.sequence === null || reply.sequence > snapshot.sequence) await completion;
+        return null;
+      } finally {
+        mine.delete(batch);
+      }
+    },
     subscribe: (listener) =>
       bridge.onDeviceValuesChange?.((incoming) => {
         const next = validSnapshot(incoming);
@@ -259,7 +266,7 @@ export function shellBacking(
         const foreign = own ? [] : changedKeys(snapshot.values, next.values);
         snapshot = next;
         listener({ values: snapshot.values, foreign });
-        own?.resolve(null);
+        own?.();
       }) ?? (() => {}),
   };
 }
