@@ -23,7 +23,7 @@ export function FakeSettings({
   children: ReactNode;
 }) {
   return (
-    <SettingsContext.Provider value={{ ...state, ...through(apply) }}>
+    <SettingsContext.Provider value={{ ...state, savedValues: state.values, ...through(apply) }}>
       {children}
     </SettingsContext.Provider>
   );

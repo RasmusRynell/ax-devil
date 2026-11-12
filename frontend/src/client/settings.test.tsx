@@ -1,11 +1,16 @@
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { AccessContext } from "./access";
+import { DEFAULT_SETTINGS } from "./fakeSettings";
+import { ChangesProvider, useNoticeSink } from "./resource";
 import { deviceStore } from "./deviceSettings";
 import { SettingsProvider, useSettings } from "./settings";
 
 afterEach(() => {
   cleanup();
+  deviceStore.reset("ui.theme");
+  deviceStore.reset("ui.text_size");
   vi.unstubAllGlobals();
   window.localStorage.clear();
 });
@@ -67,3 +72,128 @@ describe("settings", () => {
     expect(window.localStorage.getItem("ax-devil.preferences")).toBeNull();
   });
 });
+
+function Choices() {
+  const { values, revision, apply, previewDevice } = useSettings();
+  const noticed = useNoticeSink();
+  const [result, setResult] = useState("");
+  return (
+    <>
+      <button
+        onClick={() =>
+          void apply({ set: { "camera.protocol": "http", "ui.theme": "light" } }).then(() =>
+            setResult("earlier finished"),
+          )
+        }
+      >
+        Earlier save
+      </button>
+      <button
+        onClick={() => {
+          previewDevice("ui.theme", "dark");
+          previewDevice("ui.text_size", "larger");
+        }}
+      >
+        Preview
+      </button>
+      <button onClick={() => noticed?.("settings", 5, false)}>Other Owner</button>
+      <button onClick={() => noticed?.("settings", 1, false)}>Own save notice</button>
+      <p>{`revision ${revision}`}</p>
+      <button
+        onClick={() =>
+          void apply({
+            set: { "ui.theme": "dark", "ui.text_size": "larger", "ui.quick_setup_done": true },
+          }).then((refusal) => setResult(refusal ? "refused" : "saved"))
+        }
+      >
+        Finish setup
+      </button>
+      <p>{`${values["ui.theme"] as string}/${values["ui.text_size"] as string}`}</p>
+      <p>{values["overlays.default_catalog"] as string}</p>
+      <p>{values["ui.quick_setup_done"] ? "complete" : "pending"}</p>
+      <p>{result}</p>
+    </>
+  );
+}
+
+it.each(["before reply", "after reply"])(
+  "keeps previews through refusal and Owner Changed when the own notice arrives %s",
+  async (noticeOrder) => {
+    let finish: (state: unknown) => void = () => {};
+    const earlier = new Promise((resolve) => {
+      finish = resolve;
+    });
+    const { "ui.theme": _theme, "ui.text_size": _size, ...values } = DEFAULT_SETTINGS.values;
+    const initial = { ...DEFAULT_SETTINGS, values: { ...values, "ui.quick_setup_done": false } };
+    let served = initial;
+    const patches: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/api/info") return { ok: false };
+        if (init?.method === "PATCH") {
+          patches.push(JSON.parse(init.body as string));
+          return patches.length === 1
+            ? { ok: true, json: () => earlier }
+            : {
+                ok: false,
+                json: async () => ({
+                  code: "Internal",
+                  params: {},
+                  reason: "disk full",
+                  location: "ui.quick_setup_done",
+                }),
+              };
+        }
+        return { ok: true, json: async () => served };
+      }),
+    );
+    render(
+      <ChangesProvider>
+        <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
+          <SettingsProvider>
+            <Choices />
+          </SettingsProvider>
+        </AccessContext.Provider>
+      </ChangesProvider>,
+    );
+    fireEvent.click(await screen.findByText("Earlier save"));
+    fireEvent.click(screen.getByText("Preview"));
+    const otherOwner = async () => {
+      served = {
+        ...initial,
+        revision: 5,
+        values: { ...initial.values, "overlays.default_catalog": "user:new.json" },
+      };
+      fireEvent.click(screen.getByText("Other Owner"));
+      await screen.findByText("user:new.json");
+      expect(screen.getByText("dark/larger")).toBeTruthy();
+    };
+    if (noticeOrder === "before reply") {
+      served = { ...initial, revision: 1 };
+      fireEvent.click(screen.getByText("Own save notice"));
+      await screen.findByText("revision 1");
+      expect(screen.getByText("dark/larger")).toBeTruthy();
+      await otherOwner();
+    }
+    fireEvent.click(screen.getByText("Finish setup"));
+    await screen.findByText("refused");
+    expect(screen.getByText("pending")).toBeTruthy();
+    expect(window.localStorage.getItem("ax-devil.device")).toBeNull();
+    await act(async () => finish({ ...initial, revision: 1 }));
+    await screen.findByText("earlier finished");
+    if (noticeOrder === "after reply") {
+      served = { ...initial, revision: 1 };
+      fireEvent.click(screen.getByText("Own save notice"));
+      await screen.findByText("revision 1");
+      expect(screen.getByText("dark/larger")).toBeTruthy();
+      await otherOwner();
+    }
+    expect(screen.getByText("dark/larger")).toBeTruthy();
+    expect(screen.getByText("user:new.json")).toBeTruthy();
+    expect(patches).toEqual([
+      { set: { "camera.protocol": "http" } },
+      { set: { "ui.quick_setup_done": true } },
+    ]);
+  },
+);

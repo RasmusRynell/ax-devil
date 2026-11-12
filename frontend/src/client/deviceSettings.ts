@@ -18,6 +18,9 @@ interface Backing {
 }
 
 const DEVICE_ROWS = SETTINGS.filter((row) => row.scope === "device");
+const DEVICE_DEFAULTS = new Map<SettingKey, unknown>(
+  DEVICE_ROWS.map((row) => [row.key, "default" in row.kind ? row.kind.default : undefined]),
+);
 
 /** Whether *value* is something *row* can hold. */
 function holds(row: (typeof DEVICE_ROWS)[number], value: unknown) {
@@ -73,26 +76,74 @@ function browserBacking(): Backing {
 
 /** The Device values of one backing: the only place they are held. */
 export function createDeviceStore(backing: Backing) {
-  let values = valid(backing.read());
+  let stored = valid(backing.read());
+  let values = stored;
+  // Save commits follow per-key submission order without invalidating later submissions, while previews, direct writes and incoming broadcasts invalidate pending saves independently.
+  const versions = new Map<SettingKey, number>();
+  const submitted = new Map<SettingKey, number>();
+  const committed = new Map<SettingKey, number>();
   const listeners = new Set<() => void>();
-  const replace = (next: DeviceValues) => {
-    values = next;
+  const publish = (key: SettingKey, value: DeviceValue | null, supersedes = true) => {
+    if (supersedes) versions.set(key, (versions.get(key) ?? 0) + 1);
+    values = { ...values };
+    if (value === null) delete values[key];
+    else values[key] = value;
     listeners.forEach((listener) => listener());
   };
-  backing.subscribe((stored) => replace(valid(stored)));
+  const write = (key: SettingKey, value: DeviceValue | null, supersedes = true) => {
+    // Confirming an already stored choice must still replace its runtime preview, without another backing write.
+    const unchanged =
+      value === null
+        ? stored[key] === undefined
+        : value === (stored[key] ?? DEVICE_DEFAULTS.get(key));
+    if (unchanged) {
+      publish(key, stored[key] ?? null, supersedes);
+      return;
+    }
+    stored = { ...stored };
+    if (value === null) delete stored[key];
+    else stored[key] = value;
+    publish(key, value, supersedes);
+    backing.write(key, value);
+  };
+  backing.subscribe((incoming) => {
+    const next = valid(incoming);
+    // A broadcast carries the whole file: only keys changed in it supersede a local preview.
+    const previous = stored;
+    stored = next;
+    for (const { key } of DEVICE_ROWS)
+      if (next[key] !== previous[key]) publish(key, next[key] ?? null);
+  });
   return {
-    /** Every Device value that differs from its default; the same object until one changes. */
+    /** The effective Device values, including unsaved Quick Setup previews. */
     read: () => values,
+    /** Last confirmed values, excluding previews; backing writes remain best effort. */
+    readSaved: () => stored,
+    /** Previews one choice without writing it. Later choices for this key supersede it. */
+    preview: (key: SettingKey, value: DeviceValue) => publish(key, value),
     /** Stores one value. */
-    set: (key: SettingKey, value: DeviceValue) => {
-      replace({ ...values, [key]: value });
-      backing.write(key, value);
-    },
+    set: (key: SettingKey, value: DeviceValue) => write(key, value),
     /** Puts one value back to its default. */
-    reset: (key: SettingKey) => {
-      const { [key]: _gone, ...rest } = values;
-      replace(rest);
-      backing.write(key, null);
+    reset: (key: SettingKey) => write(key, null),
+    /** Captures a pending write; committing it leaves any subsequently changed keys alone. */
+    prepare: (set: [SettingKey, DeviceValue][], reset: SettingKey[]) => {
+      const changes: [SettingKey, DeviceValue | null][] = [
+        ...set,
+        ...reset.map((key): [SettingKey, null] => [key, null]),
+      ];
+      const pending = changes.map(([key, value]) => {
+        const ordinal = (submitted.get(key) ?? 0) + 1;
+        submitted.set(key, ordinal);
+        return { key, value, ordinal, version: versions.get(key) ?? 0 };
+      });
+      return () => {
+        for (const { key, value, version, ordinal } of pending) {
+          if ((versions.get(key) ?? 0) !== version || ordinal <= (committed.get(key) ?? 0))
+            continue;
+          committed.set(key, ordinal);
+          write(key, value, false);
+        }
+      };
     },
     /** Calls `listener` after every change, from here or from another window; returns the way to stop. */
     subscribe: (listener: () => void) => {
@@ -120,4 +171,9 @@ export const deviceStore = createDeviceStore(
 /** The Device values, and a re-render when they change. */
 export function useDeviceValues(): DeviceValues {
   return useSyncExternalStore(deviceStore.subscribe, deviceStore.read);
+}
+
+/** Device values confirmed by a save or broadcast, without unsaved previews. */
+export function useSavedDeviceValues(): DeviceValues {
+  return useSyncExternalStore(deviceStore.subscribe, deviceStore.readSaved);
 }

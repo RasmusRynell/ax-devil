@@ -4,6 +4,7 @@ Where the [app](app.md) rows differ from the reference.
 
 | Row | Deviation | Reason |
 |-----|-----------|--------|
+| ST-01, ST-02 | [AI] Step 2: Settings keeps one horizontally scrolling tab strip; Quick Setup keeps its tile previews visible in a wrapping, scrolling body at short heights | The reference widens its non-scrolling tabs and hides short-window previews; constrained windows and 200% zoom need reachable navigation and visible choices |
 | ST-01 | Settings pages carry none of the reference's explanatory notes | Terse copy (write-ui) |
 | ST-01 | [AI] A storage folder reference that is unset, empty or not an absolute path uses the standard folder and logs a warning; the reference raised an error at startup. The Storage page has the cache and render catalog folders only: the reference's window state and logs folders are absent | The log starts before the settings load and the state files live in the XDG state folder, and the window position in the desktop shell's `window.json` under its app-data folder; a failed start over a folder setting helps nobody |
 | ST-01 | [AI] Advanced shows the config file's path and its format version only to a caller who may see this machine's files, with no note that `--config` selects the file; the reference showed both to everyone | A path on the server is host detail; terse copy |

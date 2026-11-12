@@ -16,10 +16,16 @@ const {
   setView,
   until,
 } = require("./smoke-kit.cjs");
+const { clickVisible, openSettings, settingsPage } = require("./settings-smoke-kit.cjs");
 const { fitChecker } = require("./smoke-fit.cjs");
 
 module.exports.run = async ({ window }) => {
   const { js, wait } = page(window);
+  const click = (expression) => clickVisible(window, expression);
+  const closeMenu = async () => {
+    if (await js("Boolean(document.querySelector('[role=menu]'))"))
+      await click("document.querySelector('[aria-expanded=true]')");
+  };
   const frame = () =>
     js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
   const shoot = async (name) => {
@@ -68,7 +74,7 @@ module.exports.run = async ({ window }) => {
   // The workspace is named from its title: typing is sent as it goes, Escape takes the text back, Enter keeps it.
   const title = "document.querySelector('[aria-label=Sidebar] h2')";
   const editTitle = async (text) => {
-    await js(`${title}.querySelector('button').click()`);
+    await click(`${title}.querySelector('button')`);
     await wait(`document.activeElement === ${title}.querySelector('input')`);
     for (const letter of text) window.webContents.insertText(letter);
     await wait(`${title}.querySelector('input').value === ${JSON.stringify(text)}`);
@@ -110,15 +116,13 @@ module.exports.run = async ({ window }) => {
 
   // The smallest window, at normal zoom and at 200%: the View menu, then the Settings and Keyboard Shortcuts dialogs, in both themes.
   const openShortcuts = async () => {
-    await js(
-      "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
-    );
-    await js(
-      "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'File').click()",
+    await closeMenu();
+    await click(
+      "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'File')",
     );
     await wait("document.querySelector('[role=menu]')");
-    await js(
-      "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent.startsWith('Keyboard Shortcuts')).click()",
+    await click(
+      "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent.startsWith('Keyboard Shortcuts'))",
     );
   };
   // A recent workspace in a deep folder, as a long state folder gives: the start panel still has to fit.
@@ -183,9 +187,7 @@ module.exports.run = async ({ window }) => {
     nativeTheme.themeSource = theme;
     await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
     // Nothing is open: the page must fit the window, and every control must be reachable.
-    await js(
-      "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
-    );
+    await closeMenu();
     await frame();
     // With the sidebar open, then closed (the welcome area shows).
     for (const sidebar of ["open", "closed"]) {
@@ -195,10 +197,10 @@ module.exports.run = async ({ window }) => {
         `The page must fit the 640x480 window at ${zoom * 100}% zoom, sidebar ${sidebar}`,
       );
       if (zoom === 2 || sidebar === "open") await shoot(`layout-${sidebar}-${theme}${suffix}.png`);
-      await js("document.querySelector('[aria-label=Workspace]').click()");
+      await click("document.querySelector('[aria-label=Workspace]')");
       await frame();
     }
-    await js("document.querySelector('[aria-label=Sessions]').click()");
+    await click("document.querySelector('[aria-label=Sessions]')");
     await wait(button("Start sharing"));
     assert.deepEqual(
       await js(`(${fit.page.toString()})()`),
@@ -206,7 +208,7 @@ module.exports.run = async ({ window }) => {
       `The Sessions view must fit the 640x480 window at ${zoom * 100}% zoom`,
     );
     // The Connect dialog with its password field, which a typed server address brings in.
-    await js(`${button("Connect to server")}.click()`);
+    await click(`${button("Connect to server")}`);
     await wait("document.querySelector('dialog[open] input')");
     window.webContents.insertText("http://192.168.100.200:7340");
     await wait("document.querySelector('dialog[open] input[type=password]')");
@@ -216,13 +218,13 @@ module.exports.run = async ({ window }) => {
       `The Connect dialog must fit the 640x480 window at ${zoom * 100}% zoom`,
     );
     await shoot(`connect-${theme}${suffix}.png`);
-    await js(
-      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Cancel').click()",
+    await click(
+      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Cancel')",
     );
     await wait("!document.querySelector('dialog')");
     // At 200% an owner's own session is the tallest the Sessions view gets.
     if (zoom === 2) {
-      await js(`${button("Start sharing")}.click()`);
+      await click(`${button("Start sharing")}`);
       await wait("document.querySelector('aside input[aria-label=\"Join link\"]')");
       assert.deepEqual(
         await js(`(${fit.page.toString()})()`),
@@ -230,19 +232,20 @@ module.exports.run = async ({ window }) => {
         "An owner's Sessions view must fit the 640x480 window at 200% zoom",
       );
       await shoot(`session-owner-${theme}${suffix}.png`);
-      await js(`${button("Stop sharing")}.click()`);
+      await click(`${button("Stop sharing")}`);
       await wait(button("Start sharing"));
     }
-    await js("document.querySelector('[aria-label=Workspace]').click()");
-    await js(
-      "!document.querySelector('[role=menu]') && [...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'View').click()",
-    );
+    await click("document.querySelector('[aria-label=Workspace]')");
+    if (!(await js("Boolean(document.querySelector('[role=menu]'))")))
+      await click(
+        "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'View')",
+      );
     await wait("document.querySelector('[role=menu]')");
     await shoot(`menu-${theme}${suffix}.png`);
     for (const { name, open, close = "Cancel" } of [
       {
         name: "settings",
-        open: () => js("document.querySelector('[aria-label=Settings]').click()"),
+        open: () => openSettings(window),
       },
       ...[
         ["settings-playback", "Playback"],
@@ -254,23 +257,21 @@ module.exports.run = async ({ window }) => {
       ].map(([name, tab]) => ({
         name,
         open: async () => {
-          await js("document.querySelector('[aria-label=Settings]').click()");
+          await openSettings(window);
           await wait("document.querySelector('dialog[open]')");
-          await js(
-            `[...document.querySelectorAll('[role=tab]')].find((b) => b.textContent === '${tab}').click()`,
-          );
+          await settingsPage(window, tab);
         },
       })),
       { name: "shortcuts", open: openShortcuts },
       {
         name: "about",
         open: async () => {
-          await js(
-            "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'Help').click()",
+          await click(
+            "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'Help')",
           );
           await wait("document.querySelector('[role=menu]')");
-          await js(
-            "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent === 'About').click()",
+          await click(
+            "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent === 'About')",
           );
         },
         close: "OK",
@@ -286,9 +287,7 @@ module.exports.run = async ({ window }) => {
         close: "Continue",
       },
     ]) {
-      await js(
-        "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
-      );
+      await closeMenu();
       await open();
       await wait("document.querySelector('dialog[open]')");
       assert.deepEqual(
@@ -297,8 +296,8 @@ module.exports.run = async ({ window }) => {
         `The ${name} dialog must fit the 640x480 window at ${zoom * 100}% zoom`,
       );
       await shoot(`${name}-${theme}${suffix}.png`);
-      await js(
-        `[...document.querySelectorAll('dialog button')].find((b) => b.textContent === '${close}').click()`,
+      await click(
+        `[...document.querySelectorAll('dialog button')].find((b) => b.textContent === '${close}')`,
       );
       await wait("!document.querySelector('dialog')");
     }

@@ -1,7 +1,12 @@
 import { createContext, useContext, useEffect, useLayoutEffect, type ReactNode } from "react";
 import { useAccess } from "./access";
 import { ask } from "./ask";
-import { deviceStore, useDeviceValues, type DeviceValue } from "./deviceSettings";
+import {
+  deviceStore,
+  useDeviceValues,
+  useSavedDeviceValues,
+  type DeviceValue,
+} from "./deviceSettings";
 import { reasonOf } from "./errors";
 import type { ErrorWire, LoginEdit, SettingsPatch, SettingsState } from "../generated/api";
 import { refusalOf, useResource } from "./resource";
@@ -14,7 +19,11 @@ import { type Login, secretStateOf } from "./secret";
  * now, whoever wrote it.
  */
 export interface SettingsApi extends SettingsState {
-  /** Stores one patch: several settings and shortcuts at once, as one write that is refused or taken whole. */
+  /** Baseline for edits: confirmed values without Quick Setup previews; Device persistence is best effort. */
+  savedValues: SettingsState["values"];
+  /** Previews a Device choice without storing it; Quick Setup keeps it on refusal. */
+  previewDevice: (key: SettingKey, value: DeviceValue) => void;
+  /** Saves the server part atomically, then confirms Device changes with best-effort persistence; not atomic across scopes. */
   apply: (patch: SettingsPatch) => Promise<ErrorWire | null>;
   /** Sets one setting; logins carry the passwords typed since, which the backend does not tell. */
   set: <K extends SettingKey>(
@@ -33,6 +42,9 @@ export interface SettingsApi extends SettingsState {
 export function through(apply: SettingsApi["apply"]) {
   return {
     apply,
+    previewDevice: (key: SettingKey, value: DeviceValue) => {
+      if (DEVICE_KEYS.has(key)) deviceStore.preview(key, value);
+    },
     set: (key: SettingKey, value: unknown) =>
       apply({ set: { [key]: value } as SettingsPatch["set"] }),
     reset: (key: SettingKey) => apply({ reset: [key] }),
@@ -51,11 +63,15 @@ export const isEmpty = (patch: SettingsPatch) =>
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/** The patch that takes the settings *base* to *draft*: only the keys that differ. */
-export function settingsPatch(base: SettingsState["values"], draft: SettingsState["values"]) {
+/** Chosen values that differ from the confirmed baseline or the values the dialog initially showed. */
+export function settingsPatch(
+  base: SettingsState["values"],
+  draft: SettingsState["values"],
+  shown = base,
+) {
   const set: Record<string, unknown> = {};
   for (const key of Object.keys(draft) as SettingKey[])
-    if (!same(base[key], draft[key])) set[key] = draft[key];
+    if (!same(base[key], draft[key]) || !same(shown[key], draft[key])) set[key] = draft[key];
   return (Object.keys(set).length ? { set } : {}) as SettingsPatch;
 }
 
@@ -168,6 +184,7 @@ function splitPatch(patch: SettingsPatch) {
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const { owner } = useAccess();
   const device = useDeviceValues();
+  const savedDevice = useSavedDeviceValues();
   const settings = useResource<SettingsState>("settings", owner ? "/api/settings" : null, {
     revisionOf: (state) => state.revision,
   });
@@ -193,6 +210,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const apply = async (patch: SettingsPatch): Promise<ErrorWire | null> => {
     const { device: mine, server } = splitPatch(patch);
+    const commitDevice = deviceStore.prepare(mine.set as [SettingKey, DeviceValue][], mine.reset);
     if (!isEmpty(server)) {
       if (!owner)
         return { code: "Forbidden", params: {}, reason: "Only the Owner can change this" };
@@ -201,8 +219,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       settings.apply(answer.value);
     }
     // After the backend took its part, so a refused save changes nothing here either.
-    for (const [key, value] of mine.set) deviceStore.set(key as SettingKey, value as DeviceValue);
-    for (const key of mine.reset) deviceStore.reset(key as SettingKey);
+    commitDevice();
     return null;
   };
   const shortcuts = remote?.shortcuts ?? STANDARD_SHORTCUTS;
@@ -211,6 +228,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       value={{
         revision: remote?.revision ?? 0,
         values,
+        savedValues: { ...DEFAULT_VALUES, ...remote?.values, ...savedDevice },
         resolved: remote?.resolved,
         file: remote?.file,
         shortcuts,
@@ -222,7 +240,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** The stored settings, the effective shortcuts, and the ways to store new ones; only inside a `SettingsProvider`. */
+/** The effective and confirmed settings, the effective shortcuts, and the ways to store new ones; only inside a `SettingsProvider`. */
 export function useSettings(): SettingsApi {
   const settings = useContext(SettingsContext);
   if (!settings) throw new Error("useSettings needs a SettingsProvider");

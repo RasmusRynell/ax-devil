@@ -55,7 +55,7 @@ export function SectionCaption({
   fold,
 }: Props) {
   return (
-    <div className="flex h-row items-center gap-s px-m">
+    <div className={`flex items-center gap-s px-m ${plain ? "min-h-row" : "h-row"}`}>
       {/* The button is the keyboard's way in; its click reaches the caption's, which does the folding. */}
       <div
         onClick={fold?.onToggle}
@@ -76,9 +76,9 @@ export function SectionCaption({
           aria-label={
             count === undefined ? undefined : `${heading}, ${count}${note ? `, ${note}` : ""}`
           }
-          className="m-0 flex min-w-0 text-small font-semibold tracking-caption whitespace-nowrap text-muted uppercase"
+          className={`m-0 flex min-w-0 text-small font-semibold tracking-caption text-muted uppercase ${plain ? "whitespace-normal" : "whitespace-nowrap"}`}
         >
-          <span className="shrink-0">
+          <span className={plain ? "min-w-0" : "shrink-0"}>
             {heading}
             {count !== undefined && count > 0 && (
               <>

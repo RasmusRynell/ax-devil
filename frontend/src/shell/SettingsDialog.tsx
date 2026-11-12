@@ -31,14 +31,15 @@ export function SettingsDialog({
   onClose: () => void;
   onRestartNeeded: () => void;
 }) {
-  const { values, file } = useSettings();
+  const { values, savedValues, file } = useSettings();
   // A page that holds only a join link has only the Device settings.
   const { owner, fullAccess } = useAccess();
   const shown = PAGED.filter((row) => owner || row.scope === "device");
   const pages = [...new Set(shown.flatMap((row) => row.page ?? [])), ...(file ? ["Advanced"] : [])];
   // What the dialog opened with: only the settings changed from it are sent, so another window's change to the rest stays.
-  const [base] = useState(values);
-  const [draft, setDraft] = useState(base);
+  const [base] = useState(savedValues);
+  const [opened] = useState(values);
+  const [draft, setDraft] = useState(opened);
   const [page, setPage] = useState(pages[0] ?? "");
   const [editingShortcuts, setEditingShortcuts] = useState(false);
   const { saving, refusal, submit } = useSaveDialog(onClose);
@@ -48,7 +49,7 @@ export function SettingsDialog({
     .filter((decoder) => decoder.live)
     .map((decoder) => [decoder.handler, decoder.display_name] as const);
   const ok = async () => {
-    const outcome = await submit(settingsPatch(base, draft));
+    const outcome = await submit(settingsPatch(base, draft, opened));
     if (outcome.kind === "refused") {
       const at = shown.find((row) => row.key === outcome.refusal.location);
       if (at?.page) setPage(at.page);
@@ -64,19 +65,18 @@ export function SettingsDialog({
   return (
     <>
       <Dialog title="Settings" onOk={() => void ok()} onCancel={onClose} busy={saving}>
-        {/* The pages wrap onto further rows when a narrow window or a large text size cannot hold them in one. */}
-        <div className="[&>[role=tablist]]:flex-wrap">
-          <Tabs
-            label="Settings pages"
-            tabs={pages}
-            value={page}
-            onChange={setPage}
-            panelId={panel}
-          />
-        </div>
+        <Tabs
+          label="Settings pages"
+          tabs={pages}
+          value={page}
+          onChange={setPage}
+          panelId={panel}
+          scrollable
+        />
         <div
           id={panel}
           role="tabpanel"
+          aria-label={page}
           // Positioned, so the hidden radios of a toggle further down scroll with it instead of stretching the dialog.
           className="relative flex min-h-0 flex-col gap-l overflow-y-auto"
         >

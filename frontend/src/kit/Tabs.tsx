@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { ownKeys } from "./keys";
 import { QUIET } from "./look";
 
@@ -17,6 +17,8 @@ interface Props<T extends string> {
   counts?: Partial<Record<T, number>>;
   /** Controls at the strip's far end, such as a close button. */
   trailing?: ReactNode;
+  /** Keeps one row, scrolling the selected tab into view when space is limited or changes. */
+  scrollable?: boolean;
 }
 
 /** A strip of tabs over one panel; the left and right arrow keys, Home and End move between them. */
@@ -28,8 +30,28 @@ export function Tabs<T extends string>({
   panelId,
   counts = {},
   trailing,
+  scrollable = false,
 }: Props<T>) {
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+  const strip = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const row = strip.current;
+    const tab = buttons.current[tabs.indexOf(value)];
+    if (!scrollable || !row || !tab) return;
+    const reveal = () => {
+      const box = row.getBoundingClientRect();
+      const selected = tab.getBoundingClientRect();
+      const left = box.left + row.clientLeft;
+      const right = left + row.clientWidth;
+      if (selected.left < left) row.scrollLeft -= left - selected.left;
+      else if (selected.right > right) row.scrollLeft += selected.right - right;
+    };
+    reveal();
+    const observer = new ResizeObserver(reveal);
+    observer.observe(row);
+    observer.observe(tab);
+    return () => observer.disconnect();
+  }, [scrollable, tabs, value]);
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, at: number) => {
     if (event.ctrlKey || event.altKey || event.metaKey) return;
     const last = tabs.length - 1;
@@ -50,7 +72,12 @@ export function Tabs<T extends string>({
     buttons.current[to ?? 0]?.focus();
   };
   return (
-    <div role="tablist" aria-label={label} className="flex border-b border-line">
+    <div
+      ref={strip}
+      role="tablist"
+      aria-label={label}
+      className={`flex border-b border-line ${scrollable ? "min-w-0 shrink-0 overflow-x-auto overflow-y-hidden" : ""}`}
+    >
       {tabs.map((name, at) => (
         <button
           key={name}
@@ -68,7 +95,7 @@ export function Tabs<T extends string>({
             onKeyDown(event, at);
           }}
           onKeyUp={tabKeys}
-          className={`${QUIET} [--stroke-focus:var(--spacing-hairline)] -mb-hairline border-b-edge border-transparent aria-selected:border-accent`}
+          className={`${QUIET} ${scrollable ? "shrink-0 whitespace-nowrap" : "-mb-hairline"} [--stroke-focus:var(--spacing-hairline)] border-b-edge border-transparent aria-selected:border-accent`}
         >
           {name}
           {counts[name] !== undefined && (

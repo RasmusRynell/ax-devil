@@ -10,6 +10,7 @@ module.exports = {
     "loopback",
   ],
   chrome: [
+    "appearance",
     "shell",
     "live",
     "gallery",
