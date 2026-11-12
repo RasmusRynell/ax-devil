@@ -333,7 +333,7 @@ fn geometry(detection: &Fields, context: &str) -> Result<Geometry, String> {
     let [left, top, right, bottom] = ["x_min", "y_min", "x_max", "y_max"]
         .map(|name| number(field(detection, name), &format!("{context}.{name}")));
     let (left, top, right, bottom) = (left?, top?, right?, bottom?);
-    let bounds = BoundingBox::new(left, top, right, bottom)
+    let bounds = BoundingBox::new_outside(left, top, right, bottom)
         .map_err(|_| format!("{context}: bounding-box maxima must not be below minima"))?;
     let Some(polygon) = field(detection, "polygon") else {
         return Ok(Geometry::Box(bounds));
@@ -354,7 +354,7 @@ fn geometry(detection: &Fields, context: &str) -> Result<Geometry, String> {
         .as_chunks::<2>()
         .0
         .iter()
-        .map(|&[x, y]| Point::new(x, y))
+        .map(|&[x, y]| Point::new_outside(x, y))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("{context}.polygon: {error}"))?;
     Polygon::new(points)

@@ -15,6 +15,8 @@ interface Props<T extends string> {
   panelId: string;
   /** How many a tab holds, shown after its name. */
   counts?: Partial<Record<T, number>>;
+  /** Help available even when a tab has no entries. */
+  help?: Partial<Record<T, string>>;
   /** Controls at the strip's far end, such as a close button. */
   trailing?: ReactNode;
   /** Keeps one row, scrolling the selected tab into view when space is limited or changes. */
@@ -29,6 +31,7 @@ export function Tabs<T extends string>({
   onChange,
   panelId,
   counts = {},
+  help = {},
   trailing,
   scrollable = false,
 }: Props<T>) {
@@ -86,6 +89,8 @@ export function Tabs<T extends string>({
           }}
           type="button"
           role="tab"
+          title={help[name]}
+          aria-description={help[name]}
           aria-selected={name === value}
           aria-controls={panelId}
           tabIndex={name === value ? 0 : -1}

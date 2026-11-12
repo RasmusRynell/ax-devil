@@ -1,6 +1,6 @@
 //! How Scenes are written and read: one data model, two encodings, and the presentation columns of [`columns`].
 //!
-//! - **JSON** for goldens and the plugin wire: `{"scene_version": "4.1", "scenes": [...]}`. A Scene's time is
+//! - **JSON** for goldens and the plugin wire: `{"scene_version": "4.2", "scenes": [...]}`. A Scene's time is
 //!   `{"frame": N}` or `{"us": N}`; an observation's has either key or both. A box is `{"box": [left, top, right,
 //!   bottom]}`, a polygon `{"polygon": [[x, y], ...]}`; source values are plain JSON; a picture's bytes are base64. Parts that are absent are left out (an entity's `images`, an
 //!   observation's `measurements`, `source_data` and `debug`); `end_reason`, `motion_state`, scores and confidences
@@ -30,7 +30,7 @@ fn failed(reason: impl std::fmt::Display) -> SceneError {
     SceneError::Serial(reason.to_string())
 }
 
-/// The JSON document of `scenes`: `{"scene_version": "4.1", "scenes": [...]}`.
+/// The JSON document of `scenes`: `{"scene_version": "4.2", "scenes": [...]}`.
 ///
 /// A `serde_json::Value` does not keep the order of an object's keys, so the order of source values inside a Scene is
 /// lost here; [`to_json_string`] keeps it.

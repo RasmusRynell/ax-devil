@@ -6,6 +6,7 @@ import { useSettings } from "../client/settings";
 import { effectiveDefault, judgedRevision, type LaneSettings, type LaneState } from "./lanes";
 import { DEFAULT_CATALOG, LaneCatalogActions, USER_PREFIX } from "./LaneCatalogActions";
 import { Group } from "./LaneMenuFields";
+import { SECTION_HELP } from "./sectionHelp";
 
 /** What the user reads for each feature, and what it controls. */
 const FEATURE_TEXT: Record<(typeof FEATURES)[number], { label: string; description: string }> = {
@@ -70,6 +71,7 @@ export function LaneMenuLook({
     <>
       <Select
         label="Catalog"
+        help={SECTION_HELP.catalog}
         value={settings.catalog}
         options={entries.map(({ id, label }): [string, string] => [
           id,
@@ -105,6 +107,7 @@ export function LaneMenuLook({
               <Checkbox
                 key={feature}
                 label={FEATURE_TEXT[feature].label}
+                help={SECTION_HELP.details}
                 title={supported ? FEATURE_TEXT[feature].description : UNSUPPORTED}
                 disabled={!supported}
                 checked={(settings.hidden & (1 << bit)) === 0}

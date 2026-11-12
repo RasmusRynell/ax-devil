@@ -162,10 +162,14 @@ fn the_python_plugin_gives_the_model_everything_it_covers() {
     assert!(observation.measurements.is_some());
 
     let person = run.sink.samples[2].0.entity("2").expect("entity 2");
-    assert!(matches!(
-        person.observations()[0].geometry,
-        Geometry::Polygon(_)
-    ));
+    assert_eq!(
+        person.observations()[0]
+            .geometry
+            .polygon_points()
+            .unwrap()
+            .len(),
+        3
+    );
     assert!(
         person.observations()[0].classifications[0]
             .confidence

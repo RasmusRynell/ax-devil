@@ -34,6 +34,13 @@ const rows = () =>
     .map((row) => row.textContent);
 
 describe("a live stream's Events list", () => {
+  it("offers section help even before the first live event", () => {
+    mount({ log: new EventLog() });
+    expect(
+      screen.getByRole("tab", { name: /^Objects/, description: /dims objects absent/ }),
+    ).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Events 0", description: /UTC/ })).toBeTruthy();
+  });
   it("lists what the log kept, oldest first, with a marker where samples were lost", () => {
     mount({ log: logged() });
     showEvents();

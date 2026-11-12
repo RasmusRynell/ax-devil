@@ -99,6 +99,11 @@ enum GeometryIn {
     Box([f64; 4]),
     #[serde(rename = "polygon")]
     Polygon(Vec<[f64; 2]>),
+    #[serde(rename = "shape")]
+    Shape {
+        bounds: [f64; 4],
+        outline: Option<Vec<[f64; 2]>>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -209,7 +214,7 @@ impl EntityIn {
                 let [left, top, right, bottom] = image.bounds;
                 Ok(Image {
                     timestamp: foundation::MediaTime(image.timestamp_us),
-                    bounding_box: BoundingBox::new(left, top, right, bottom)?,
+                    bounding_box: BoundingBox::new_outside(left, top, right, bottom)?,
                     data: image.data.0,
                 })
             })
@@ -226,16 +231,26 @@ impl EntityIn {
 
 impl ObservationIn {
     fn build(self) -> Result<Observation, SceneError> {
-        let geometry = match self.geometry {
-            GeometryIn::Box([left, top, right, bottom]) => {
-                Geometry::Box(BoundingBox::new(left, top, right, bottom)?)
-            }
-            GeometryIn::Polygon(points) => Geometry::Polygon(Polygon::new(
+        let polygon = |points: Vec<[f64; 2]>| {
+            Polygon::new(
                 points
                     .into_iter()
-                    .map(|[x, y]| Point::new(x, y))
+                    .map(|[x, y]| Point::new_outside(x, y))
                     .collect::<Result<_, _>>()?,
-            )?),
+            )
+        };
+        let geometry = match self.geometry {
+            GeometryIn::Shape {
+                bounds: [left, top, right, bottom],
+                outline,
+            } => Geometry::Shape {
+                bounds: BoundingBox::new_outside(left, top, right, bottom)?,
+                outline: outline.map(polygon).transpose()?,
+            },
+            GeometryIn::Box([left, top, right, bottom]) => {
+                Geometry::Box(BoundingBox::new_outside(left, top, right, bottom)?)
+            }
+            GeometryIn::Polygon(points) => Geometry::Polygon(polygon(points)?),
         };
         let time = ObservationTime::new(self.time.frame, self.time.us.map(foundation::MediaTime))?;
         let mut observation =

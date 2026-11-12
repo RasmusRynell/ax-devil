@@ -11,18 +11,37 @@ afterEach(() => {
 });
 
 describe("lane menu", () => {
-  it("has the Look, Filter and Timing tabs, opening on Look", () => {
-    setup();
+  it("exposes section help on the focusable lane controls", () => {
+    setup({}, { ...READY, bases: ["Time"], default_basis: "Time" });
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
       "Look",
       "Filter",
       "Timing",
     ]);
     expect(screen.getByRole("tab", { name: "Look" }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByRole("combobox", { name: "Catalog" })).toBeTruthy();
+    const catalog = screen.getByRole("combobox", {
+      name: "Catalog",
+      description: /How this lane draws/,
+    });
+    catalog.focus();
+    expect(document.activeElement).toBe(catalog);
+    expect(
+      screen.getByRole("checkbox", {
+        name: "Object outlines",
+        description: /Which overlay features are drawn/,
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("tab", { name: /^Filter/, description: /File scope uses classes only/ }),
+    ).toBeTruthy();
     expect(screen.queryByRole("switch", { name: "Sticky" })).toBeNull();
     tab("Timing");
-    expect(screen.getByRole("switch", { name: "Sticky" })).toBeTruthy();
+    expect(
+      screen.getByRole("switch", { name: "Sticky", description: /pausing does not use it up/ }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("combobox", { name: "Sync", description: /Exact disables this fallback/ }),
+    ).toBeTruthy();
     expect(screen.queryByRole("combobox", { name: "Catalog" })).toBeNull();
   });
 

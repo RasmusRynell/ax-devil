@@ -1,4 +1,5 @@
 use super::*;
+use crate::Geometry;
 use crate::{
     BoundingBox, ClassType, Classification, Confidence, EntityId, Fields, GeographicCoordinates,
     Image, ImageVelocity, Measurements, Name, ObservationTime, Point, Polygon, SceneTime, Score,

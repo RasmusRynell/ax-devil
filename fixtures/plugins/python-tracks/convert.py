@@ -26,7 +26,10 @@ def number(text):
 def geometry(row, width, height):
     if row["polygon"]:
         points = [point.split(":") for point in row["polygon"].split(";")]
-        return {"polygon": [[float(x) / width, float(y) / height] for x, y in points]}
+        outline = [[float(x) / width, float(y) / height] for x, y in points]
+        return {"shape": {"bounds": [min(p[0] for p in outline), min(p[1] for p in outline),
+                                     max(p[0] for p in outline), max(p[1] for p in outline)],
+                          "outline": outline}}
     left, top, right, bottom = (float(value) for value in row["box"].split(":"))
     return {"box": [left / width, top / height, right / width, bottom / height]}
 

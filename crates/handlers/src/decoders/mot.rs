@@ -265,7 +265,7 @@ fn parse_row(line: &str, extent: Extent) -> Result<Row, String> {
     }
     let left = left / extent.width;
     let top = top / extent.height;
-    let geometry = BoundingBox::new(
+    let geometry = BoundingBox::new_outside(
         left,
         top,
         left + width / extent.width,

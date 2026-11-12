@@ -13,6 +13,7 @@ import {
   type LaneState,
 } from "./lanes";
 import { Group, MakeDefault, NumberField } from "./LaneMenuFields";
+import { SECTION_HELP } from "./sectionHelp";
 
 /** The longest a sample may match back or stay kept, which the backend enforces. */
 const MAX_MS = 100_000;
@@ -122,6 +123,7 @@ export function LaneMenuTiming({
           {bases.length > 1 && (
             <Select<BasisWire>
               label="Match by"
+              help={SECTION_HELP.sync}
               value={basis ?? "Frame"}
               options={BASES.filter(([option]) => bases.includes(option))}
               onChange={(next) => onChange({ basis: next })}
@@ -130,6 +132,7 @@ export function LaneMenuTiming({
           {basis === "Time" && (
             <Select<Sync>
               label="Sync"
+              help={SECTION_HELP.sync}
               value={sync}
               options={[
                 ["exact", "Exact"],
@@ -143,6 +146,7 @@ export function LaneMenuTiming({
           {basis === "Time" && sync === "previous" && (
             <NumberField
               label="Within (ms)"
+              help={SECTION_HELP.sync}
               value={settings.tolerance_ms}
               min={0}
               max={MAX_MS}
@@ -164,6 +168,7 @@ export function LaneMenuTiming({
       <Group label="Sticky">
         <Switch
           label="Sticky"
+          help={SECTION_HELP.sticky}
           checked={sticky.enabled}
           onChange={(enabled) => onChange({ sticky: { ...sticky, enabled } })}
         />
@@ -171,6 +176,7 @@ export function LaneMenuTiming({
           <Checkbox
             leading
             label="Expire after (ms)"
+            help={SECTION_HELP.sticky}
             disabled={!sticky.enabled}
             checked={limited}
             onChange={(expires) => {
@@ -183,6 +189,7 @@ export function LaneMenuTiming({
           <NumberField
             hideLabel
             label="Timeout (ms)"
+            help={SECTION_HELP.sticky}
             value={timeout}
             min={0}
             max={MAX_MS}
@@ -196,6 +203,7 @@ export function LaneMenuTiming({
         </div>
         <NumberField
           label="Reused overlay opacity"
+          help={SECTION_HELP.sticky}
           value={sticky.opacity}
           min={0}
           max={1}

@@ -20,7 +20,7 @@ fn id(text: &str) -> EntityId {
 }
 
 fn bounds(left: f64, top: f64, right: f64, bottom: f64) -> BoundingBox {
-    BoundingBox::new(left, top, right, bottom).expect("a box")
+    BoundingBox::new_outside(left, top, right, bottom).expect("a box")
 }
 
 fn field(key: &'static str, value: Value) -> (crate::Name, Value) {
@@ -124,7 +124,7 @@ fn rich_scene() -> Scene {
     car.push_observation(first);
     let outline = Polygon::new(
         [(0.1, 0.1), (0.5, 0.1), (0.3, 0.6)]
-            .map(|(x, y)| Point::new(x, y).expect("finite"))
+            .map(|(x, y)| Point::new_outside(x, y).expect("finite"))
             .to_vec(),
     )
     .expect("three points");
@@ -381,13 +381,34 @@ fn a_document_that_breaks_a_model_rule_is_refused_with_the_reason() {
 }
 
 #[test]
+fn custom_geometry_keeps_independent_bounds_and_optional_outline_on_the_wire() {
+    for outline in ["null", "[[-0.1,0],[0.8,0],[0.3,0.6]]"] {
+        let text = format!(
+            r#"{{"scene_version":"4.2","scenes":[{{"time":{{"start":{{"frame":0}},"end":{{"frame":0}}}},"entities":[{{"id":"custom","observations":[{{"time":{{"frame":0}},"geometry":{{"shape":{{"bounds":[-0.2,0,1.2,1],"outline":{outline}}}}}}}]}}]}}]}}"#
+        );
+        let scene = from_json_str(&text).unwrap().remove(0);
+        let geometry = &scene.entities()[0].observations()[0].geometry;
+        assert_eq!(geometry.bounds(), bounds(-0.2, 0.0, 1.2, 1.0));
+        assert_eq!(
+            geometry.polygon_points().map(<[_]>::len),
+            (outline != "null").then_some(3)
+        );
+        assert_eq!(through_postcard(&scene), scene);
+        assert_eq!(
+            from_json_str(&to_json_string(std::slice::from_ref(&scene)).unwrap()).unwrap(),
+            vec![scene]
+        );
+    }
+}
+
+#[test]
 fn a_document_of_another_version_is_refused() {
     let document = |version: &str| format!(r#"{{"scene_version":"{version}","scenes":[]}}"#);
 
-    for accepted in ["4.0", "4.1"] {
+    for accepted in ["4.0", "4.1", "4.2"] {
         assert_eq!(from_json_str(&document(accepted)), Ok(Vec::new()));
     }
-    for version in ["5.0", "3.9", "4.2", "four", "4"] {
+    for version in ["5.0", "3.9", "4.3", "four", "4"] {
         assert!(from_json_str(&document(version)).is_err(), "{version}");
     }
     assert!(from_json_str(r#"{"scenes":[]}"#).is_err());

@@ -46,7 +46,7 @@ mark 0, id -1, a box past the image and an 8-column row (skipped). Reasons in `*
 
 ## Scene form (C2)
 
-`{"scene_version":"4.1","scenes":[Scene...]}`, one entity per line.
+`{"scene_version":"4.2","scenes":[Scene...]}`, one entity per line.
 
 ```
 Scene       {"time":{"start":T,"end":T},"entities":[Entity],"events":[],"relations":[{"type","source","target"}],"debug":{}}

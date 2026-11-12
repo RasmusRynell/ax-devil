@@ -1,4 +1,4 @@
-{"scene_version":"4.1","scenes":[
+{"scene_version":"4.2","scenes":[
 {"time":{"start":{"frame":0},"end":{"frame":0}},"entities":[
 {"id":"19-0","observations":[{"time":{"frame":0},"geometry":{"box":[0.1018,0.6782,0.1238,0.9670000000000001]},"classifications":[],"measurements":{"image_velocity":{"vx":-0.096,"vy":0.079}}}],"end_reason":null,"motion_state":null},
 {"id":"381-1","observations":[{"time":{"frame":0},"geometry":{"box":[0.2462,0.7606,0.3163,0.8365]},"classifications":[{"type":"truck","score":0.222,"confidence":null,"attributes":{}}]}],"end_reason":null,"motion_state":"stationary"},

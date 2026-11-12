@@ -67,8 +67,8 @@ use std::collections::HashMap;
 use self::attributes::Attributes;
 use super::failed;
 use crate::{
-    Classification, Entity, EntityRelation, FilterPolicy, Geometry, MotionState, Observation,
-    Point, Scene, SceneError,
+    Classification, Entity, EntityRelation, FilterPolicy, MotionState, Observation, Point, Scene,
+    SceneError,
 };
 
 /// The item format version; the reader refuses another.
@@ -176,10 +176,10 @@ fn class_mask(policy: &FilterPolicy, observation: &Observation) -> Vec<u32> {
 
 /// The outline of a row's polygon; a box has none.
 fn polygon<'a>(row: &Row<'a>) -> &'a [Point] {
-    match &row.observation.geometry {
-        Geometry::Polygon(polygon) => polygon.points(),
-        Geometry::Box(_) => &[],
-    }
+    row.observation
+        .geometry
+        .polygon_points()
+        .unwrap_or_default()
 }
 
 /// The sections written so far, with the offset of each.

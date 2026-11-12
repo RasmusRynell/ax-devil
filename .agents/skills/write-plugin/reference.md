@@ -34,7 +34,7 @@ Decoder handler (`"kind": "decoder"`):
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `input` | yes | `"path"`: the request carries the overlay file's path. `"records"`: the request carries none and the records follow on stdin one at a time ([Records](#records)); a file is read line by line, and with `time` in `bases` the decoder also takes live sources |
-| `scene_version` | yes | The Scene version written, `"4.1"` (`"4.0"` still loads); a different major or a newer minor does not load |
+| `scene_version` | yes | The Scene version written, `"4.2"` (`"4.0"` and `"4.1"` output still loads); a different major or a newer minor does not load |
 | `extensions` | no | File name endings the decoder opens, lowercase with the dot, such as `.acme.jsonl`. Without any, it is picked only by id |
 | `bases` | no | `["frame"]`, `["time"]` or both: what a lane may match your records to video frames by. Frame: record k belongs to frame k (or the frame number you key by); a record is a `skipped` line or the samples in a row with one start key. Time: by the records' timestamps. Default `["frame"]` |
 | `default_basis` | no | One of `bases`, the one a lane starts with; default the first listed |
@@ -190,7 +190,10 @@ order when joined.
 ```
 
 - The Scene's key is `time.start`. Emit Scenes as the file gives them, one per object or per frame; the host joins equal keys.
-- Geometry is `{"box": [left, top, right, bottom]}` or `{"polygon": [[x, y], ...]}`.
+- Geometry is `{"box": [left, top, right, bottom]}` or `{"polygon": [[x, y], ...]}`; custom shapes require Scene 4.2 and use
+  `{"shape": {"bounds": [left, top, right, bottom], "outline": [[x, y], ...]}}` for custom geometry, with
+  `outline: null` when absent. Coordinates are normalized, finite and may extend outside the frame; bounds must
+  be ordered and an outline needs at least three points. Custom bounds are independent of outline extrema.
 - `type` is any string; `score` and `confidence` are separate finite numbers or `null`. Never derive one from the other.
 - `motion_state`: `moving`, `stationary`, `unknown` or `null`. `end_reason`: text or `null`.
 - `measurements` (all optional): `image_velocity {vx, vy}`, `world_velocity {pitch, speed, yaw}`,

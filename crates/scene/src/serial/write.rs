@@ -183,6 +183,15 @@ impl Serialize for W<'_, Observation> {
 impl Serialize for W<'_, Geometry> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self.0 {
+            Geometry::Shape { bounds, outline } => {
+                let mut out = serializer.serialize_struct_variant("Geometry", 2, "shape", 2)?;
+                out.serialize_field(
+                    "bounds",
+                    &[bounds.left(), bounds.top(), bounds.right(), bounds.bottom()],
+                )?;
+                out.serialize_field("outline", &outline.as_ref().map(|p| Points(p.points())))?;
+                out.end()
+            }
             Geometry::Box(bounds) => serializer.serialize_newtype_variant(
                 "Geometry",
                 0,
