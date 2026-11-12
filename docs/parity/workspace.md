@@ -37,7 +37,7 @@ Row format: [parity](../parity.md). Deviations: [workspace deviations](workspace
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | LV-01 | RTSP video with one overlay: embedded ONVIF metadata, MQTT or DataHub | M | done | `camera/tests/it/{rtsp,mqtt,datahub}.rs`, `crates/live`, `desktop/smoke-loopback.cjs` | Loopback decoded pictures |
-| LV-02 | Per-feed status: connected, reconnecting, error, stalled; Retry | M | done | `crates/live/src/tests/retry.rs`, `live/{words,session}.test.ts`, `desktop/smoke-loopback.cjs` | Loopback recovery and terminal codec; LIV-008: bounded MQTT alternatives in Python order, projected per audience (`crates/live/src/tests/alternatives.rs`, `camera/src/mqtt/lease.rs`, `live/words.test.ts`) |
+| LV-02 | Per-feed status: connected, reconnecting, error, stalled; Retry | M | done | `crates/live/src/tests/retry.rs`, `live/{words,session}.test.ts`, `desktop/smoke-loopback.cjs` | Loopback recovery and terminal codec; LIV-008: bounded MQTT alternatives in Python order with empty keys excluded, projected per audience and escaped for safety (`crates/live/src/tests/alternatives.rs`, `camera/src/mqtt/lease.rs`, `camera/tests/it/mqtt.rs`, `live/words.test.ts`) |
 | LV-03 | Pause keeps the connection; stop is terminal | M | done | `crates/live`, `live/session.test.ts` | |
 | LV-04 | Capture-time synchronization of frames and overlays | M | done | `overlay-sync`, `crates/live` | |
 | LV-05 | Network scan with optional sign-in; add found camera | M | done | `camera/tests/it/scan.rs`, `shell/LiveView.test.tsx` | |

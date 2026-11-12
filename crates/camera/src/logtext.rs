@@ -5,7 +5,7 @@
 /// script passes. Not printable: control characters (newline, carriage return, ESC, NEL), the zero-width, line and
 /// paragraph separators and the bidirectional marks and overrides (U+200B-U+200F, U+2028-U+202E, U+2060-U+2069),
 /// and the byte order mark.
-pub(crate) fn escaped(text: &str) -> String {
+pub fn escaped(text: &str) -> String {
     text.chars()
         .map(|c| match c {
             c if c.is_control() => c.escape_default().to_string(),

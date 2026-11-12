@@ -219,7 +219,10 @@ impl Board {
         let listed = if keys.is_empty() {
             "none".to_owned()
         } else {
-            keys.join(", ")
+            keys.iter()
+                .map(|key| camera::escaped(key))
+                .collect::<Vec<_>>()
+                .join(", ")
         };
         Some(if *remaining > 0 {
             format!("{listed} (+{remaining} more)")

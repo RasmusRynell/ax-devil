@@ -22,6 +22,7 @@ pub use live::{
     AccessUnit, CaptureTime, CodecParams, DataHubStamp, Feed, LiveMessages, LiveStream, Message,
     MetadataDoc, Reconnect, Stats, Status, VideoCodec,
 };
+pub use logtext::escaped;
 pub use mqtt::{Publisher, open_mqtt};
 pub use rtsp::{RtspRoute, StreamRequest, open_stream, retina_log_layer};
 pub use scan::{Found, MAX_TARGETS, ScanFailed, ScanLoad, ScanPorts, SignIn, Targets, check, scan};

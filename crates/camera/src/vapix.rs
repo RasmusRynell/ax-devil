@@ -186,6 +186,7 @@ impl Device {
         Ok(sources
             .iter()
             .filter_map(|source| source["key"].as_str())
+            .filter(|key| !key.is_empty())
             .map(|key| SourceKey(key.to_owned()))
             .collect())
     }
