@@ -90,7 +90,21 @@ it("restarts an interrupted pin scan at zero after copying, and makes refusal te
       owner.receiveContinuation({
         type: "InspectContinued",
         request: interrupted.request,
-        result: { state: "Pins", fields: [], next: 8192 },
+        result: {
+          state: "Pins",
+          fields: [
+            [
+              0,
+              {
+                group: "debug",
+                path: ["late"],
+                identity: "late-digest",
+                value: { kind: "text", value: "discarded" },
+              },
+            ],
+          ],
+          next: null,
+        },
       }),
     );
     access(owner).copy(0);

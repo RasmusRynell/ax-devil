@@ -52,6 +52,7 @@ fn prefix(text: &str, bytes: usize) -> &str {
 }
 
 struct Page<'a> {
+    preview: bool,
     work: usize,
     digest: sha2::Sha256,
     order: &'a super::Traversal,
@@ -108,7 +109,7 @@ impl Sink for Page<'_> {
     }
 
     fn full(&mut self) -> bool {
-        self.result.next.is_some()
+        self.result.next.is_some() || (self.preview && !self.result.fields.is_empty())
     }
 
     fn wants(&mut self, _: Place, path: &[&str], _: bool, bytes: usize) -> bool {
@@ -121,7 +122,9 @@ impl Sink for Page<'_> {
             return false;
         }
         let path_size = path.iter().map(|part| part.len()).sum::<usize>();
-        let size = if path_size > PAGE_BYTES - TEXT_BYTES {
+        let size = if self.preview {
+            path_size.min(CHUNK_BYTES)
+        } else if path_size > PAGE_BYTES - TEXT_BYTES {
             CHUNK_BYTES
         } else {
             path_size
@@ -144,7 +147,12 @@ impl Sink for Page<'_> {
         }
         self.bytes += display_bytes;
         let path_bytes = path.iter().map(|part| part.len()).sum::<usize>();
-        let path_cut = (path_bytes > PAGE_BYTES - TEXT_BYTES)
+        let path_limit = if self.preview {
+            CHUNK_BYTES
+        } else {
+            PAGE_BYTES - TEXT_BYTES
+        };
+        let path_cut = (path_bytes > path_limit)
             .then_some((self.ordinal - 1, path_bytes + path.len().saturating_sub(1)));
         let mut remaining = if path_cut.is_some() {
             CHUNK_BYTES
@@ -215,9 +223,11 @@ pub(super) fn page_ordered(
     start: usize,
     resume: &[usize],
     order: &super::Traversal,
+    preview: bool,
 ) -> FieldPage {
     use sha2::Digest;
     let mut page = Page {
+        preview,
         work: 1 << 20,
         digest: sha2::Sha256::new(),
         order,
@@ -452,6 +462,11 @@ mod tests {
             )]);
             let traversal = Traversal::new(&entity).unwrap();
             let page = traversal.page(&entity, 0, &[]);
+            let preview = traversal
+                .preview(&entity, 4, &page.fields[4].address)
+                .unwrap();
+            assert_eq!(preview.field.value, Leaf::Text("x".repeat(16 * 1024)));
+            assert_eq!(preview.cut, Some((4, size)));
             let result = traversal.chunk(&entity, 4, size - 1, false, &page.fields[4].address);
             if size == 268_435_456 {
                 let chunk = result.expect("exactly the ceiling is copyable");
@@ -464,20 +479,26 @@ mod tests {
                 );
             }
         }
-        let entity = object(vec![(
-            Name::Owned("p".repeat(9 * 1024 * 1024)),
-            Value::Int(1),
-        )]);
-        let traversal = Traversal::new(&entity).unwrap();
-        let page = traversal.page(&entity, 0, &[]);
-        assert_eq!(page.next, None);
-        let (ordinal, bytes) = page.fields[4].path_cut.expect("path preview");
-        assert_eq!(bytes, 9 * 1024 * 1024);
-        let chunk = traversal
-            .chunk(&entity, ordinal, bytes - 1, true, &page.fields[4].address)
-            .expect("last path byte");
-        assert_eq!(chunk.text, "p");
-        assert_eq!(chunk.next, None);
+        for size in [128 * 1024, 9 * 1024 * 1024] {
+            let entity = object(vec![(Name::Owned("p".repeat(size)), Value::Int(1))]);
+            let traversal = Traversal::new(&entity).unwrap();
+            let page = traversal.page(&entity, 0, &[]);
+            assert_eq!(page.next, None);
+            let original = &page.fields[4];
+            let preview = traversal.preview(&entity, 4, &original.address).unwrap();
+            assert_eq!(preview.field.path[0].len(), 65_536);
+            assert_eq!(preview.path_cut, Some((4, size)));
+            assert_eq!(preview.identity, original.identity);
+            assert!(traversal.preview(&entity, 4, &[usize::MAX]).is_none());
+            if size == 9 * 1024 * 1024 {
+                assert_eq!(original.path_cut, Some((4, size)));
+            }
+            let chunk = traversal
+                .chunk(&entity, 4, size - 1, true, &original.address)
+                .expect("last path byte");
+            assert_eq!(chunk.text, "p");
+            assert_eq!(chunk.next, None);
+        }
     }
 
     #[test]

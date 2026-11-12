@@ -62,7 +62,21 @@ impl Traversal {
 
     /// Resumes a bounded page at an address returned with the preceding page.
     pub fn page(&self, entity: &Entity, start: usize, address: &[usize]) -> FieldPage {
-        super::pages::page_ordered(entity, start, address, self)
+        super::pages::page_ordered(entity, start, address, self, false)
+    }
+
+    /// Re-reads one field at its retained address with a 16 KiB text and 64 KiB path preview.
+    /// An invalid address returns no preview rather than the next field in traversal order.
+    pub fn preview(
+        &self,
+        entity: &Entity,
+        ordinal: usize,
+        address: &[usize],
+    ) -> Option<super::PageField> {
+        super::pages::page_ordered(entity, ordinal, address, self, true)
+            .fields
+            .into_iter()
+            .find(|field| field.address == address)
     }
 
     /// Reads one chunk directly at an address of the current page.

@@ -2,12 +2,12 @@
 use super::{PositionRef, page_field};
 use api_types::inspect::{InspectionPin, InspectionReadResult, MAX_INSPECTION_PINS};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 #[derive(Default)]
 pub(super) struct Pins {
     set: Option<[u8; 32]>,
     pub(super) fields: BTreeMap<usize, Vec<usize>>,
-    matched: BTreeSet<usize>,
+    matched: BTreeMap<usize, usize>,
     next: Option<(usize, Vec<usize>)>,
 }
 pub(super) fn resolve(
@@ -35,7 +35,7 @@ pub(super) fn resolve(
         };
     }
     let set = signature(wanted);
-    let address = {
+    let (address, mut matched, mut addresses) = {
         let mut state = position
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -51,7 +51,7 @@ pub(super) fn resolve(
                 return refused();
             }
         }
-        if offset == 0 {
+        let address = if offset == 0 {
             Vec::new()
         } else if let Some((next, address)) =
             state.pins.next.as_ref().filter(|(next, _)| *next == offset)
@@ -60,29 +60,44 @@ pub(super) fn resolve(
             address.clone()
         } else {
             return refused();
-        }
+        };
+        (
+            address,
+            state.pins.matched.clone(),
+            state.pins.fields.clone(),
+        )
     };
-    let mut matched = position
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .pins
-        .matched
-        .clone();
-    let page = traversal.page(entity, offset, &address);
     let mut found = Vec::new();
-    let mut addresses = BTreeMap::new();
-    for (index, mut item) in page.fields.into_iter().enumerate() {
+    if offset == 0 {
+        // A retained match says nothing about client receipt. Replay it on every restart, without caching text.
+        matched.retain(|index, ordinal| {
+            let item = addresses
+                .get(ordinal)
+                .and_then(|address| traversal.preview(entity, *ordinal, address))
+                .filter(|item| matches(&wanted[*index], item));
+            if let Some(item) = item {
+                found.push((*index as u32, pin_field(item, *ordinal)));
+                true
+            } else {
+                false
+            }
+        });
+        addresses.retain(|ordinal, _| matched.values().any(|value| value == ordinal));
+    }
+    let page = if matched.len() == wanted.len() {
+        scene::inspection::FieldPage {
+            fields: Vec::new(),
+            next: None,
+            next_address: None,
+        }
+    } else {
+        traversal.page(entity, offset, &address)
+    };
+    for (index, item) in page.fields.into_iter().enumerate() {
         let matches: Vec<_> = wanted
             .iter()
             .enumerate()
-            .filter(|(index, pin)| {
-                !matched.contains(index)
-                    && pin.group == item.field.group
-                    && pin.identity.as_ref().map_or_else(
-                        || pin.path == item.field.path,
-                        |digest| item.identity.as_ref() == Some(digest),
-                    )
-            })
+            .filter(|(index, pin)| !matched.contains_key(index) && matches(pin, &item))
             .map(|(index, _)| index)
             .collect();
         if matches.is_empty() {
@@ -90,24 +105,9 @@ pub(super) fn resolve(
         }
         let ordinal = offset + index;
         addresses.insert(ordinal, item.address.clone());
-        // Pin labels use a bounded preview even when an ordinary page can accommodate a longer path.
-        let total = item.field.path.iter().map(String::len).sum::<usize>()
-            + item.field.path.len().saturating_sub(1);
-        if total > 64 << 10 {
-            let mut left = 64 << 10;
-            for part in &mut item.field.path {
-                let mut end = left.min(part.len());
-                while !part.is_char_boundary(end) {
-                    end -= 1;
-                }
-                part.truncate(end);
-                left -= end;
-            }
-            item.path_cut.get_or_insert((ordinal, total));
-        }
-        let field = page_field(item);
+        let field = pin_field(item, ordinal);
         for index in matches {
-            matched.insert(index);
+            matched.insert(index, ordinal);
             found.push((index as u32, field.clone()));
         }
     }
@@ -117,11 +117,7 @@ pub(super) fn resolve(
     if !state.active {
         return refused();
     }
-    for (ordinal, address) in addresses {
-        if state.pins.fields.len() < MAX_INSPECTION_PINS {
-            state.pins.fields.entry(ordinal).or_insert(address);
-        }
-    }
+    state.pins.fields = addresses;
     let next = (matched.len() < wanted.len())
         .then_some(page.next)
         .flatten();
@@ -131,6 +127,36 @@ pub(super) fn resolve(
         fields: found,
         next: next.map(|n| n as u32),
     }
+}
+
+fn matches(pin: &InspectionPin, item: &scene::inspection::PageField) -> bool {
+    pin.group == item.field.group
+        && pin.identity.as_ref().map_or_else(
+            || pin.path == item.field.path,
+            |digest| item.identity.as_ref() == Some(digest),
+        )
+}
+
+fn pin_field(
+    mut item: scene::inspection::PageField,
+    ordinal: usize,
+) -> api_types::inspect::FieldWire {
+    // Pin labels use a bounded preview even when an ordinary page can accommodate a longer path.
+    let total = item.field.path.iter().map(String::len).sum::<usize>()
+        + item.field.path.len().saturating_sub(1);
+    if total > 64 << 10 {
+        let mut left = 64 << 10;
+        for part in &mut item.field.path {
+            let mut end = left.min(part.len());
+            while !part.is_char_boundary(end) {
+                end -= 1;
+            }
+            part.truncate(end);
+            left -= end;
+        }
+        item.path_cut.get_or_insert((ordinal, total));
+    }
+    page_field(item)
 }
 
 // Identify the ordered pin set without retaining its potentially large legacy paths.
