@@ -130,6 +130,7 @@ fn raw_with(
 
 #[cfg(test)]
 mod tests {
+    use super::super::tests::{ReleaseOnDrop, bounded};
     use super::*;
     #[tokio::test(flavor = "current_thread")]
     async fn release_does_not_wait_for_a_slow_raw_job_or_retain_its_result() {
@@ -137,10 +138,12 @@ mod tests {
         let held = position.clone();
         let (started, ready) = tokio::sync::oneshot::channel();
         let (release, wait) = std::sync::mpsc::channel();
+        let release = ReleaseOnDrop(release);
         let job = tokio::task::spawn_blocking(move || {
             raw_with(&held, 0, |_| {
                 started.send(()).unwrap();
-                wait.recv().unwrap();
+                wait.recv_timeout(std::time::Duration::from_secs(20))
+                    .expect("held Raw job released in time");
                 Ok(scene::inspection::FieldChunk {
                     text: "done".into(),
                     total: 4,
@@ -148,7 +151,7 @@ mod tests {
                 })
             })
         });
-        ready.await.unwrap();
+        bounded("held Raw job started", ready).await.unwrap();
         // An independent thread releases even if a regression blocks this single runtime worker; the assertion
         // below then fails instead of leaving the test process hung.
         let (did_release, released) = std::sync::mpsc::channel();
@@ -156,7 +159,7 @@ mod tests {
             let early = released
                 .recv_timeout(std::time::Duration::from_secs(2))
                 .is_ok();
-            release.send(()).unwrap();
+            drop(release);
             early
         });
         invalidate(&position);
@@ -166,7 +169,7 @@ mod tests {
             "socket release waited for Raw work"
         );
         assert!(matches!(
-            job.await.unwrap(),
+            bounded("released Raw job finished", job).await.unwrap(),
             api_types::inspect::InspectionReadResult::Refused { .. }
         ));
         assert!(position.lock().unwrap().raw.is_none());

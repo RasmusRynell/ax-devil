@@ -94,9 +94,7 @@ async fn hold(viewer: &mut ViewerOverlays, playhead: u64) -> Vec<SampleItem> {
 async fn answer(
     inspections: &mut Inspections,
 ) -> (ServerMessage, Option<std::ops::RangeInclusive<u64>>) {
-    let outgoing = tokio::time::timeout(Duration::from_secs(20), inspections.next())
-        .await
-        .expect("an answer in time");
+    let outgoing = bounded("inspection answer", inspections.next()).await;
     let Message::Text(body) = outgoing.message else {
         panic!("a text message");
     };
@@ -445,3 +443,18 @@ fn an_abbreviated_path_advertises_how_to_retrieve_its_last_byte() {
 }
 
 mod permission;
+mod pins;
+
+/// Every held worker is released on assertion failure as well as on the successful path.
+pub(super) struct ReleaseOnDrop(pub(super) std::sync::mpsc::Sender<()>);
+impl Drop for ReleaseOnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.send(());
+    }
+}
+
+pub(super) async fn bounded<T>(name: &str, future: impl std::future::Future<Output = T>) -> T {
+    tokio::time::timeout(Duration::from_secs(20), future)
+        .await
+        .unwrap_or_else(|_| panic!("{name} timed out"))
+}

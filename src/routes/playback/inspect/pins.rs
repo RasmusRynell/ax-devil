@@ -1,9 +1,11 @@
 //! Targeted pin resolution, separate from the visible page and bounded by the requested pin count.
 use super::{PositionRef, page_field};
 use api_types::inspect::{InspectionPin, InspectionReadResult, MAX_INSPECTION_PINS};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 #[derive(Default)]
 pub(super) struct Pins {
+    set: Option<[u8; 32]>,
     pub(super) fields: BTreeMap<usize, Vec<usize>>,
     matched: BTreeSet<usize>,
     next: Option<(usize, Vec<usize>)>,
@@ -32,6 +34,7 @@ pub(super) fn resolve(
             reason: "Pinned fields exceed the inspection budget".into(),
         };
     }
+    let set = signature(wanted);
     let address = {
         let mut state = position
             .lock()
@@ -39,8 +42,16 @@ pub(super) fn resolve(
         if !state.active {
             return refused();
         }
+        if state.pins.set != Some(set) {
+            state.pins = Pins {
+                set: Some(set),
+                ..Pins::default()
+            };
+            if offset != 0 {
+                return refused();
+            }
+        }
         if offset == 0 {
-            state.pins = Pins::default();
             Vec::new()
         } else if let Some((next, address)) =
             state.pins.next.as_ref().filter(|(next, _)| *next == offset)
@@ -120,4 +131,20 @@ pub(super) fn resolve(
         fields: found,
         next: next.map(|n| n as u32),
     }
+}
+
+// Identify the ordered pin set without retaining its potentially large legacy paths.
+fn signature(wanted: &[InspectionPin]) -> [u8; 32] {
+    let mut hash = Sha256::new();
+    for pin in wanted {
+        hash.update([pin.group as u8, u8::from(pin.identity.is_some())]);
+        hash.update((pin.path.len() as u64).to_le_bytes());
+        for part in std::iter::once(pin.identity.as_deref().unwrap_or(""))
+            .chain(pin.path.iter().map(String::as_str))
+        {
+            hash.update((part.len() as u64).to_le_bytes());
+            hash.update(part.as_bytes());
+        }
+    }
+    hash.finalize().into()
 }

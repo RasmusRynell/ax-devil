@@ -245,7 +245,11 @@ impl TrackRead for HeldRead {
     }
     fn scene_in(&self, snapshot: &TrackSnapshot, index: usize) -> Result<Arc<Scene>, UserError> {
         self.started.notify_one();
-        self.release.lock().unwrap().recv().unwrap();
+        self.release
+            .lock()
+            .unwrap()
+            .recv_timeout(Duration::from_secs(20))
+            .expect("held Scene read released in time");
         self.inner.scene_in(snapshot, index)
     }
     fn item_in(&self, snapshot: &TrackSnapshot, index: usize) -> Result<Arc<[u8]>, UserError> {
@@ -261,6 +265,7 @@ async fn a_blocking_inspection_finishing_after_permission_withdrawal_is_not_deli
     hold(&mut viewer, 10).await;
     let (track, snapshot, frame) = viewer.inspect_target(0, revision, 10).unwrap();
     let (release, held) = std::sync::mpsc::channel();
+    let release = ReleaseOnDrop(release);
     let track = Arc::new(HeldRead {
         inner: track,
         started: tokio::sync::Notify::new(),
@@ -290,10 +295,10 @@ async fn a_blocking_inspection_finishing_after_permission_withdrawal_is_not_deli
         "2".into(),
         Some((track.clone(), snapshot, frame)),
     );
-    track.started.notified().await;
+    bounded("held Scene read started", track.started.notified()).await;
     allowed.store(false, Ordering::SeqCst);
-    release.send(()).unwrap();
-    let outgoing = inspections.next().await;
+    drop(release);
+    let outgoing = bounded("withdrawn inspection answer", inspections.next()).await;
     let delivered = Arc::new(Mutex::new(Vec::new()));
     let socket = Box::pin(sink::unfold(
         delivered.clone(),
@@ -303,9 +308,11 @@ async fn a_blocking_inspection_finishing_after_permission_withdrawal_is_not_deli
         },
     ));
     let (outbox, writer) = crate::routes::playback::spawn_writer(socket, gate);
-    outbox.send(outgoing).await.unwrap();
+    bounded("inspection delivery queued", outbox.send(outgoing))
+        .await
+        .unwrap();
     drop(outbox);
-    writer.await.unwrap();
+    bounded("inspection writer finished", writer).await.unwrap();
     assert!(delivered.lock().unwrap().is_empty());
 }
 
@@ -316,6 +323,7 @@ async fn a_released_held_read_echoes_its_generation_without_releasing_its_replac
     hold(&mut viewer, 10).await;
     let (input, snapshot, frame) = viewer.inspect_target(0, revision, 10).unwrap();
     let (release, waiting) = std::sync::mpsc::channel();
+    let release = ReleaseOnDrop(release);
     let track = Arc::new(HeldRead {
         inner: input.clone(),
         started: tokio::sync::Notify::new(),
@@ -330,7 +338,7 @@ async fn a_released_held_read_echoes_its_generation_without_releasing_its_replac
         "2".into(),
         Some((track.clone(), snapshot.clone(), frame)),
     );
-    track.started.notified().await;
+    bounded("held Scene read started", track.started.notified()).await;
     inspections.release();
     inspections.ask_target(
         102,
@@ -340,7 +348,7 @@ async fn a_released_held_read_echoes_its_generation_without_releasing_its_replac
         "2".into(),
         Some((input, snapshot, frame)),
     );
-    release.send(()).unwrap();
+    drop(release);
     assert!(matches!(
         answer(&mut inspections).await.0,
         ServerMessage::Inspected {
