@@ -1,36 +1,27 @@
-const { spawnSync } = require("node:child_process");
 const BACKEND_INTERRUPT_MS = 3000;
 const BACKEND_STOP_MS = 2 * BACKEND_INTERRUPT_MS;
-// Observe immediately after spawn; a PID belongs to us only until exit (or a failed spawn).
-function observe(child, tree = false) {
-  let ended = false;
+
+/** Observes a child handle immediately; all callers share exit, timer and idempotent-stop ownership. */
+function observe(child, { signal: interrupt = "SIGINT", graceMs = BACKEND_INTERRUPT_MS } = {}) {
+  let ended = child.exitCode != null || child.signalCode != null;
   let stopping = false;
   const timers = new Set();
+  let finish;
   const done = new Promise((resolve) => {
-    const finish = (result) => {
+    finish = (result) => {
       ended = true;
       for (const timer of timers) clearTimeout(timer);
       timers.clear();
       resolve(result);
     };
-    child.once("exit", (code, signal) => finish({ code, signal }));
-    child.once("error", (error) => {
-      if (!child.pid) finish({ error });
-      else if (error.code !== "ESRCH") throw error;
-    });
   });
+  child.once("exit", (code, signal) => finish({ code, signal }));
+  child.once("error", (error) => finish({ error }));
+  if (ended) finish({ code: child.exitCode, signal: child.signalCode });
   const signal = (name) => {
     if (ended || child.exitCode != null || child.signalCode != null) return;
     try {
-      if (tree && process.platform !== "win32") process.kill(-child.pid, name);
-      else if (tree && child.pid) {
-        const killed = spawnSync("taskkill", ["/F", "/T", "/PID", String(child.pid)], {
-          encoding: "utf8",
-        });
-        if (killed.error) throw killed.error;
-        if (killed.status !== 0 && !/not found/i.test(killed.stderr))
-          throw new Error(`taskkill failed: ${killed.stderr}`);
-      } else child.kill(name);
+      child.kill(name);
     } catch (error) {
       if (error.code !== "ESRCH") throw error;
     }
@@ -45,8 +36,8 @@ function observe(child, tree = false) {
     stop() {
       if (!ended && !stopping) {
         stopping = true;
-        signal("SIGINT");
-        after(BACKEND_INTERRUPT_MS, "SIGKILL");
+        after(graceMs, "SIGKILL");
+        signal(interrupt);
       }
       return done;
     },

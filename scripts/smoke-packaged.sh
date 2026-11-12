@@ -21,12 +21,12 @@ logs="$PWD/artifacts/smoke-logs"
 rm -rf "$logs"
 mkdir -p "$logs"
 export AX_DEVIL_SMOKE_ROOT="$PWD"
-read -r stop_seconds grace_seconds < <(node -e 'const b = require("./desktop/smoke-budget.cjs"); console.log(b.PACKAGE_EXIT_MS / 1000, b.PACKAGE_KILL_MS / 1000)')
 
 # A path for the app and its tools: C:/... on Windows, unchanged elsewhere.
 native() { if [[ $os == win ]]; then cygpath -m "$1"; else echo "$1"; fi; }
 export AX_DEVIL_SMOKE_RESULT
 flags=(--smoke-test --enable-logging)
+read -r stop_seconds grace_seconds < <(node -e 'const b = require("./desktop/smoke-budget.cjs"); console.log(b.PACKAGE_EXIT_MS / 1000, b.PACKAGE_KILL_MS / 1000)')
 
 case "$os" in
 linux)
@@ -86,23 +86,24 @@ if ! scheme_declared; then
   exit 1
 fi
 
-# Kills the app and everything it started.
+# Signals only a job this shell still owns. Never send a delayed signal to an exited leader.
+alive() { [[ " $(jobs -pr | tr '\n' ' ') " == *" $pid "* ]]; }
+# Windows keeps its existing taskkill tree handling; POSIX uses smoke-process.cjs below.
 kill_tree() {
-  if [[ $os == win ]]; then
-    taskkill //F //T //PID "$(cat "/proc/$pid/winpid" 2>/dev/null || echo "$pid")" >/dev/null 2>&1 || true
-  else
-    kill -TERM -- "-$pid" 2>/dev/null || true
-    sleep "$grace_seconds"
-    kill -KILL -- "-$pid" 2>/dev/null || true
+  ((stopped)) && return 0
+  alive || return 0
+  stopped=1
+  local error
+  if ! error=$(taskkill //F //T //PID "$(cat "/proc/$pid/winpid" 2>/dev/null || echo "$pid")" 2>&1); then
+    echo "taskkill failed: $error" >&2
   fi
 }
-alive() { kill -0 "$pid" 2>/dev/null; }
 
 # One launch of the app for one group: its scenarios in order, a fresh home, its own logs. Returns the verdict. The app
 # fails a hung scenario by name, with its screenshot, well before the plan's deadline; the kill is only for an app that
 # cannot report. The CI step that runs this script has its own, longer cap (see ci.yml).
 run_group() {
-  local group="$1" names="$2" deadline="$3" seconds=0 expired=0 log
+  local group="$1" names="$2" deadline="$3" seconds=0 expired=0 stopped=0 log
   local result="$logs/result-$group.txt"
   AX_DEVIL_SMOKE_RESULT="$(native "$result")"
   export AX_DEVIL_SMOKE_RUN="$names"
@@ -110,6 +111,13 @@ run_group() {
   if [[ $os == linux ]]; then
     run[1]=--display
     [[ $group != native ]] || run[1]=--window-manager
+  fi
+  # POSIX launches share the source launcher's exit, pipe and process-group ownership.
+  if [[ $os != win ]]; then
+    local status=0
+    node scripts/smoke-process.cjs "$deadline" "$result" "$names" "${run[@]}" "${flags[@]}" "--log-file=$(native "$logs/electron-$group.log")" >"$logs/app-$group.log" 2>&1 || status=$?
+    cat "$logs/app-$group.log"
+    return "$status"
   fi
   # Job control gives the app its own process group, which kill_tree ends as a whole.
   set -m
@@ -142,12 +150,14 @@ run_group() {
   echo "--- result $group"
   if ((expired)); then
     echo "FAIL: no result after $seconds seconds" | tee "$result"
+  elif ((stopped)); then
+    echo "FAIL: app required forced stopping after its verdict" | tee "$result"
   elif [[ -s $result ]]; then
     cat "$result"
   else
     echo "FAIL: no result after $seconds seconds" | tee "$result"
   fi
-  ((!expired)) && [[ $(head -n 1 "$result") == PASS ]]
+  node scripts/smoke-verdict.cjs "$expired" "$stopped" "$result"
 }
 
 # Every group runs, each on a fresh launch, even after one fails; the launcher owns the groups.

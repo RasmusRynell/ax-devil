@@ -4,15 +4,14 @@ const groups = require("../desktop/smoke-groups.cjs");
 const {
   FIXTURE_BUILD_MS,
   PACKAGE_SETUP_MS,
-  PACKAGE_EXIT_MS,
-  PACKAGE_KILL_MS,
+  LAUNCH_TEARDOWN_MS,
   EXIT_GRACE_MS,
 } = require("../desktop/smoke-budget.cjs");
 const scenarios = loadScenarios(groups);
 const launches = Object.entries(groups).map(([group, names]) => ({
   group,
   deadline: deadlineMs(names, scenarios),
-  teardown: PACKAGE_EXIT_MS + PACKAGE_KILL_MS,
+  teardown: LAUNCH_TEARDOWN_MS,
 }));
 const inner =
   FIXTURE_BUILD_MS +

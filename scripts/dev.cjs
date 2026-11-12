@@ -1,5 +1,7 @@
-const { spawn } = require("node:child_process");
+const { observe, spawnOwned: spawn } = require("./child.cjs");
 const { apiVersion } = require("../desktop/generated/api.json");
+const STARTUP_TIMEOUT_MS = 60_000;
+const PROBE_TIMEOUT_MS = 1000;
 const mode = process.argv[2];
 const port = process.env.PORT || "7330";
 const uiPort = process.env.UI_PORT || "7331";
@@ -7,32 +9,10 @@ const origin = `http://127.0.0.1:${port}`;
 const ui = `http://127.0.0.1:${uiPort}`;
 const children = [];
 let stopping = false;
-function signalTree(child, signal) {
-  if (!child.pid) return;
-  try {
-    if (process.platform === "win32") child.kill(signal);
-    else process.kill(-child.pid, signal);
-  } catch (error) {
-    if (error.code !== "ESRCH") throw error;
-  }
-}
 function stop(code = 0) {
   if (stopping) return;
   stopping = true;
-  for (const child of children) signalTree(child, "SIGINT");
-  const timeout = setTimeout(() => {
-    for (const child of children) signalTree(child, "SIGKILL");
-  }, 3000);
-  void Promise.all(
-    children.map((child) =>
-      child.exitCode !== null || child.signalCode !== null
-        ? Promise.resolve()
-        : new Promise((r) => child.once("exit", r)),
-    ),
-  ).then(() => {
-    clearTimeout(timeout);
-    process.exit(code);
-  });
+  void Promise.all(children.map((owned) => owned.stop())).then(() => process.exit(code));
 }
 function start(command, args, env = {}) {
   const child = spawn(command, args, {
@@ -40,7 +20,7 @@ function start(command, args, env = {}) {
     detached: process.platform !== "win32",
     env: { ...process.env, ...env },
   });
-  children.push(child);
+  children.push(observe(child));
   child.on("error", (error) => {
     console.error(error.message);
     stop(1);
@@ -52,7 +32,9 @@ function start(command, args, env = {}) {
 }
 async function available(url) {
   try {
-    const response = await fetch(`${url}/api/info`, { signal: AbortSignal.timeout(1000) });
+    const response = await fetch(`${url}/api/info`, {
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
     const data = await response.json();
     if (!data.development)
       throw new Error(
@@ -67,15 +49,14 @@ async function available(url) {
   }
 }
 async function ready(url) {
-  for (let i = 0; i < 600; i++) {
+  const deadline = Date.now() + STARTUP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
     if (await available(url)) return;
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error(`Startup timed out: ${url}`);
 }
-process.on("SIGINT", () => stop());
-process.on("SIGTERM", () => stop());
-(async () => {
+async function main() {
   if (!(await available(origin))) {
     start(
       process.env.WATCHEXEC || ".tools/bin/watchexec", // The Makefile exports the one on PATH, else .tools/.
@@ -126,14 +107,21 @@ process.on("SIGTERM", () => stop());
       detached: process.platform !== "win32",
       env,
     });
-    children.push(child);
+    children.push(observe(child));
     child.on("error", (error) => {
       console.error(error.message);
       stop(1);
     });
     child.on("exit", (code) => stop(code || 0));
   } else setInterval(() => {}, 60000);
-})().catch((error) => {
-  console.error(error.message);
-  stop(1);
-});
+}
+if (require.main === module) {
+  process.on("SIGINT", () => stop());
+  process.on("SIGTERM", () => stop());
+  if (process.platform !== "win32") process.on("SIGHUP", () => stop());
+  void main().catch((error) => {
+    console.error(error.message);
+    stop(1);
+  });
+}
+module.exports = { STARTUP_TIMEOUT_MS, PROBE_TIMEOUT_MS };
