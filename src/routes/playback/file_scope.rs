@@ -160,7 +160,8 @@ impl From<Cancelled> for Stop {
 /// A viewer's File scope queries.
 pub(super) struct FileScopes {
     audience: Audience,
-    /// Whether the viewer had the authority over the whole file when it was last told.
+    /// Whether the viewer had the authority over the whole file at the last refresh and at every question since; a
+    /// question taken while it followed clears this, so the next refresh as the owner answers it again.
     was_own: bool,
     cache: Arc<Cache>,
     objects: Latest,
@@ -190,6 +191,7 @@ impl FileScopes {
         ask: AppearancesAsk,
     ) -> Flow<()> {
         check_lane(overlays, ask.lane)?;
+        self.was_own &= own;
         let (lane, request) = (ask.lane, ask.request);
         self.appearances.ask(
             overlays,
@@ -212,6 +214,7 @@ impl FileScopes {
         ask: EventsAsk,
     ) -> Flow<()> {
         check_lane(overlays, ask.lane())?;
+        self.was_own &= own;
         self.events.ask(overlays, &self.cache, own, ask);
         Ok(())
     }
@@ -220,6 +223,7 @@ impl FileScopes {
     /// the video does not have ends the session.
     pub(super) fn ask(&mut self, overlays: &ViewerOverlays, own: bool, ask: Ask) -> Flow<()> {
         check_lane(overlays, ask.lane)?;
+        self.was_own &= own;
         let (lane, request) = (ask.lane, ask.request);
         if ask.limit == 0 || ask.limit > MAX_LIMIT || ask.bins > MAX_BINS {
             self.objects.release(lane);

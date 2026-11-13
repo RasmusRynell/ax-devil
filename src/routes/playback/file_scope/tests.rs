@@ -214,13 +214,22 @@ async fn a_follower_is_refused_and_only_the_newest_request_of_a_lane_is_answered
     scopes.authority(&viewer, true, false);
     assert_eq!(answered(next(&mut scopes).await).0, 1);
 
-    for request in [2, 3] {
+    // An owner that follows and owns again before the next refresh is still answered for what it asked meanwhile.
+    scopes
+        .ask(&viewer, false, ask(2, None, 0, 10))
+        .ok()
+        .unwrap();
+    assert_eq!(answered(next(&mut scopes).await), (2, following()));
+    scopes.authority(&viewer, true, false);
+    assert_eq!(answered(next(&mut scopes).await).0, 2);
+
+    for request in [3, 4] {
         scopes
             .ask(&viewer, true, ask(request, None, 0, 10))
             .ok()
             .unwrap();
     }
-    assert_eq!(answered(next(&mut scopes).await).0, 3);
+    assert_eq!(answered(next(&mut scopes).await).0, 4);
     assert!(
         tokio::time::timeout(Duration::from_millis(300), scopes.next())
             .await
