@@ -4,8 +4,7 @@ use std::net::IpAddr;
 
 /// Whether `text` is a plain host name or IP address (an IPv6 one bracketed or not), valid inside a URL authority: no
 /// scheme, port, path, user info or space. Surrounding white space is ignored. The rule for showing a value that came
-/// out of a `$NAME` reference or a resolved stream, which may carry a login. `camera::Host::parse`, which cannot depend
-/// on this crate, accepts exactly the same texts: a test in `src/session/project/tests.rs` keeps the two equal.
+/// out of a `$NAME` reference or a resolved stream, which may carry a login, and what `camera::Host::parse` accepts.
 pub fn is_plain_host(text: &str) -> bool {
     let text = text.trim();
     let bare = text

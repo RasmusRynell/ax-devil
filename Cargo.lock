@@ -334,11 +334,11 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bytes",
+ "foundation",
  "futures-util",
  "getrandom 0.4.3",
  "http-auth",
  "md-5",
- "percent-encoding",
  "rcgen",
  "reqwest",
  "retina",
@@ -774,8 +774,10 @@ name = "foundation"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "percent-encoding",
  "serde",
  "ts-rs",
+ "url",
  "uuid",
 ]
 
@@ -3154,14 +3156,12 @@ dependencies = [
  "foundation",
  "handler-api",
  "handlers",
- "percent-encoding",
  "scene",
  "serde",
  "serde_json",
  "tempfile",
  "tracing",
  "ts-rs",
- "url",
 ]
 
 [[package]]

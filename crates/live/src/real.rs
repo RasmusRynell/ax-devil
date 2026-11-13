@@ -7,9 +7,9 @@ use bytes::Bytes;
 use camera::{
     Broker as CameraBroker, Camera, CameraError, Head, Host, LiveMessages, LiveStream,
     Login as CameraLogin, Reconnect, Resolution, RtspRoute, Scheme, Secret, SourceKey, Status,
-    StreamRequest, Url, VideoCodec, Web, open_datahub, open_mqtt, open_stream,
+    StreamRequest, VideoCodec, Web, open_datahub, open_mqtt, open_stream,
 };
-use foundation::{FrameId, UserError};
+use foundation::{FrameId, UserError, read_url};
 use media::{StreamCodec, StreamDecoder};
 use tokio::sync::{mpsc, watch};
 use workspace::{Login, Protocol, ResolvedCamera};
@@ -133,7 +133,7 @@ impl Connector for CameraConnector {
             let url = resolved
                 .url
                 .as_deref()
-                .map(|text| Url::parse(text).map_err(|_| unusable()))
+                .map(|text| read_url(text).map_err(|_| unusable()))
                 .transpose()?;
             let request = StreamRequest {
                 head,

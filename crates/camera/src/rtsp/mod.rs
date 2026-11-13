@@ -83,7 +83,11 @@ impl fmt::Debug for StreamRequest {
             .field("video", video)
             .field("metadata", metadata)
             .field("route", route)
-            .field("url", &url.as_ref().map(endpoint::without_password))
+            .field(
+                "url",
+                &url.as_ref()
+                    .map(|url| foundation::url_without_password(url.as_str())),
+            )
             .field("reconnect", reconnect)
             .finish()
     }

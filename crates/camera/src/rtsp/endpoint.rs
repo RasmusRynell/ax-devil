@@ -1,6 +1,6 @@
 //! Where a stream is fetched from: the generated Axis URL or a custom one, parsed once into a [`Target`].
 
-use percent_encoding::percent_decode_str;
+use foundation::{check_stream_url, login};
 use url::Url;
 
 use super::{RtspRoute, StreamRequest};
@@ -33,37 +33,6 @@ impl Target {
             Some(query) => format!("{}?{query}", self.url.path()),
             None => self.url.path().to_owned(),
         }
-    }
-}
-
-/// `url` as text for anything that prints it: without the password of its login, and as it is when it is a usable URL
-/// (`rtsp`, `http` or `https`, with a host) with none. Anything else is not printed unless it provably holds no login,
-/// and a cleaned URL that does not read back as the same URL without a password is not printed either, so a spelling no
-/// one thought of can only cost a placeholder. The app's redactor (`workspace/src/live/endpoint.rs`) follows the same
-/// rule, and both are tested on the same hostile spellings.
-pub(super) fn without_password(url: &Url) -> String {
-    const UNPRINTABLE: &str = "(unusable URL)";
-    let text = url.as_str();
-    let usable = matches!(url.scheme(), "rtsp" | "http" | "https")
-        && !url.cannot_be_a_base()
-        && url.host_str().is_some_and(|host| !host.is_empty());
-    if !usable {
-        return if text.contains('@') || text.matches(':').count() >= 2 {
-            UNPRINTABLE.to_owned()
-        } else {
-            text.to_owned()
-        };
-    }
-    if url.password().is_none() {
-        return text.to_owned();
-    }
-    let mut cleaned = url.clone();
-    if cleaned.set_password(None).is_err() {
-        return UNPRINTABLE.to_owned();
-    }
-    match Url::parse(cleaned.as_str()) {
-        Ok(back) if back.password().is_none() && back == cleaned => cleaned.into(),
-        _ => UNPRINTABLE.to_owned(),
     }
 }
 
@@ -134,46 +103,37 @@ fn custom(camera: &Camera, url: &Url) -> Result<Target, CameraError> {
             "rtsps:// streams are not supported; use an rtsp:// URL",
         ));
     }
+    check_stream_url(url).map_err(|_| {
+        CameraError::new(
+            ErrorKind::InvalidTarget,
+            "the stream URL is not an rtsp://, http:// or https:// URL with a host",
+        )
+    })?;
     let transport = match url.scheme() {
         "rtsp" => Transport::Rtsp,
         "http" => Transport::Http,
-        "https" => Transport::Https,
-        _ => {
-            return Err(CameraError::new(
-                ErrorKind::InvalidTarget,
-                "the stream URL is not an rtsp://, http:// or https:// URL with a host",
-            ));
-        }
+        // The check leaves only `https`.
+        _ => Transport::Https,
     };
-    if url.host().is_none() {
-        return Err(CameraError::new(
-            ErrorKind::InvalidTarget,
-            "the stream URL is not an rtsp://, http:// or https:// URL with a host",
-        ));
-    }
     let mut url = url.clone();
-    let login = if url.username().is_empty() && url.password().is_none() {
-        camera.login.clone()
-    } else {
-        let decode = |text: &str| percent_decode_str(text).decode_utf8_lossy().into_owned();
-        let login = Login {
-            user: decode(url.username()),
-            password: Secret::new(decode(url.password().unwrap_or_default())),
-        };
-        let unusable = |()| {
-            CameraError::new(
-                ErrorKind::InvalidTarget,
-                "the stream URL has no host to log in to",
-            )
-        };
-        url.set_username("").map_err(unusable)?;
-        url.set_password(None).map_err(unusable)?;
-        Some(login)
-    };
+    let login = login(&url).map(|(user, password)| Login {
+        user,
+        password: Secret::new(password),
+    });
+    if login.is_some() {
+        url.set_username("")
+            .and_then(|()| url.set_password(None))
+            .map_err(|()| {
+                CameraError::new(
+                    ErrorKind::InvalidTarget,
+                    "the stream URL has no host to log in to",
+                )
+            })?;
+    }
     Ok(Target {
         transport,
         url,
-        login,
+        login: login.or_else(|| camera.login.clone()),
     })
 }
 
@@ -285,66 +245,6 @@ mod tests {
             assert!(!text.contains("hunter2"), "{text}");
             assert!(text.contains("http://u@192.0.2.8/s"), "{text}");
         }
-    }
-
-    /// The list the app's redactor (`workspace/src/live/endpoint.rs`) is tested with, word for word: spellings that hold
-    /// a password `SECRET` in ways a parser reads differently. Those that do not parse never reach this crate as a `Url`.
-    const HOSTILE: [&str; 24] = [
-        "http://root:SECRET@cam/s",
-        "http:root:SECRET@cam/s",
-        "http:////u:SECRET@h",
-        "HTTP://root:SECRET@CAM:80/s",
-        "rtsp://root:SE%43RET@cam/s",
-        "rtsp://:SECRET@cam",
-        "rtsp://root:SECRET@/s",
-        "rtsp://user:SECRET@",
-        "rtsp:////root:SECRET@cam/s",
-        "rtsp:///root:SECRET@cam",
-        "rtsp:/root:SECRET@cam/s",
-        "RTSP:////u:SECRET@h",
-        "rtsp:root:SECRET@cam",
-        r"rtsp:\\root:SECRET@cam",
-        "mailto:root:SECRET@cam",
-        "ftp://root:SECRET@cam/s",
-        "rtsps://root:SECRET@cam/s",
-        "http://root:SECRET@[::1/s",
-        "http://root:SECRET@cam:99999/s",
-        "u:SECRET@",
-        ":SECRET@",
-        "  rtsp://root:SECRET@cam/s  ",
-        "rtsp:SECRET:x",
-        "not a url:SECRET@x",
-    ];
-
-    #[test]
-    fn no_spelling_of_a_url_is_printed_with_its_password() {
-        let mut parsed = 0;
-        for text in HOSTILE {
-            let Ok(url) = Url::parse(text) else { continue };
-            parsed += 1;
-            let mut request = custom_request("rtsp://cam/s");
-            request.url = Some(url.clone());
-            for printed in [
-                without_password(&url),
-                format!("{request:?}"),
-                format!("{request:#?}"),
-            ] {
-                let printed = printed.to_ascii_uppercase();
-                assert!(
-                    !printed.contains("SECRET") && !printed.contains("SE%43RET"),
-                    "{text} -> {printed}"
-                );
-            }
-        }
-        assert!(
-            parsed >= 12,
-            "the corpus must exercise the redactor, not only the parser"
-        );
-        // A usable URL keeps its user and the rest; text that might hold a login but is no usable URL is not printed.
-        let clean = |text: &str| without_password(&Url::parse(text).unwrap());
-        assert_eq!(clean("http://root:SECRET@cam/s"), "http://root@cam/s");
-        assert_eq!(clean("rtsp://cam:554/s?x=1"), "rtsp://cam:554/s?x=1");
-        assert_eq!(clean("rtsp:////root:SECRET@cam/s"), "(unusable URL)");
     }
 
     #[test]
