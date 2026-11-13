@@ -12,7 +12,7 @@ use handler_api::{
     DecodeError, DecodeSummary, Decoder, Form, Framing, Input, OnEqualKey, Record, SceneSink,
     Settings, Spec, Values,
 };
-use overlay_sync::{MatchPolicy, Sticky, Tolerance};
+use scene::matching::{MatchPolicy, Sticky, Tolerance};
 use scene::{
     BoundingBox, Coverage, Entity, EntityId, Event, FilterPolicy, Geometry, MatchBasis,
     Observation, Operation, Scene, SceneTime, TimeSlice,

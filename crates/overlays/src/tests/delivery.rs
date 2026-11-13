@@ -3,8 +3,8 @@
 use std::{fs, time::Duration};
 
 use foundation::{CancelToken, MediaTime, Timeline};
-use overlay_sync::{MatchPolicy, Sticky};
 use playback::Rank;
+use scene::matching::{MatchPolicy, Sticky};
 use scene_store::TrackRead;
 
 use super::statuses::onvif_at;

@@ -14,7 +14,7 @@ workspace = true
 
 [features]
 # The doubles of `fake.rs` (a connector that serves what a test pushes into it), for the app's tests.
-fake = ["camera/fake", "dep:scene"]
+fake = ["camera/fake"]
 
 [dependencies]
 api-types.workspace = true
@@ -25,10 +25,9 @@ futures-util = { version = "0.3", default-features = false, features = ["std"] }
 handler-api.workspace = true
 handlers.workspace = true
 media.workspace = true
-overlay-sync.workspace = true
 overlays.workspace = true
 playback.workspace = true
-scene = { workspace = true, optional = true }
+scene.workspace = true
 scene-store.workspace = true
 settings.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }
@@ -37,6 +36,5 @@ workspace.workspace = true
 
 [dev-dependencies]
 camera = { workspace = true, features = ["fake"] }
-scene.workspace = true
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }

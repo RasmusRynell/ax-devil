@@ -6,8 +6,9 @@
 //! text over the label.
 
 use foundation::{CancelToken, Cancelled, Timeline};
-use overlay_sync::{MatchBasis, SampleKeys};
+use scene::MatchBasis;
 use scene::OperationKind;
+use scene::matching::SampleKeys;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 

@@ -25,7 +25,7 @@ use crate::{Content, ItemId, Source, Workspace, WorkspaceItem};
 use batch::Batch;
 pub use changes::SourceChanges;
 use foundation::{HostPath, UserError};
-use overlay_sync::MatchPolicy;
+use scene::matching::MatchPolicy;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 

@@ -2,7 +2,7 @@
 //! entered.
 
 use foundation::ItemId;
-use overlay_sync::MatchPolicy;
+use scene::matching::MatchPolicy;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use workspace::{

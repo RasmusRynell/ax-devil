@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use foundation::{CancelToken, Interrupt};
-use overlay_sync::MatchBasis;
+use scene::MatchBasis;
 
 use super::{Env, next, overlay_at, settle, shown, want};
 use crate::{LaneStatus, OverlayEvent};
@@ -172,9 +172,9 @@ async fn a_lane_matched_by_record_order_gets_no_time_warning() {
     let mut viewer = env.open(vec![Some(overlay)], 300);
     assert!(ready_warnings(&mut viewer).await.is_empty());
 
-    let by_time = overlay_sync::MatchPolicy {
-        basis: Some(overlay_sync::MatchBasis::Time),
-        ..overlay_sync::MatchPolicy::default()
+    let by_time = scene::matching::MatchPolicy {
+        basis: Some(scene::MatchBasis::Time),
+        ..scene::matching::MatchPolicy::default()
     };
     viewer.set_policy(0, 1, Some(by_time), true);
     assert_eq!(ready_warnings(&mut viewer).await, [MISALIGNED]);
@@ -189,12 +189,12 @@ async fn a_lanes_alignment_warning_follows_its_tolerance() {
     let mut viewer = env.open(vec![Some(overlay)], 300);
     ready_warnings(&mut viewer).await;
 
-    let by_time = overlay_sync::MatchPolicy {
-        basis: Some(overlay_sync::MatchBasis::Time),
-        ..overlay_sync::MatchPolicy::default()
+    let by_time = scene::matching::MatchPolicy {
+        basis: Some(scene::MatchBasis::Time),
+        ..scene::matching::MatchPolicy::default()
     };
-    let exact = overlay_sync::MatchPolicy {
-        tolerance: overlay_sync::Tolerance::Exact,
+    let exact = scene::matching::MatchPolicy {
+        tolerance: scene::matching::Tolerance::Exact,
         ..by_time
     };
     viewer.set_policy(0, 1, Some(exact), true);
@@ -215,9 +215,9 @@ async fn a_lane_with_a_few_samples_on_no_frame_is_warned_but_one_that_is_all_on_
         "ONVIF_XML",
         &onvif_at(frames.chain([299 * 1_000_000 / 30 + 100_000])),
     );
-    let by_time = overlay_sync::MatchPolicy {
-        basis: Some(overlay_sync::MatchBasis::Time),
-        ..overlay_sync::MatchPolicy::default()
+    let by_time = scene::matching::MatchPolicy {
+        basis: Some(scene::MatchBasis::Time),
+        ..scene::matching::MatchPolicy::default()
     };
     for (overlay, expected) in [(aligned, vec![]), (stray, vec![MISALIGNED])] {
         let mut viewer = env.open(vec![Some(overlay)], 300);

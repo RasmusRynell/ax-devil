@@ -12,7 +12,7 @@ use std::{ops::RangeInclusive, path::PathBuf, sync::Arc};
 
 use foundation::{Cancelled, ErrorCode, UserError};
 use media::{EncodeFormat, FrameIndex, VideoInput};
-use overlay_sync::MatchPolicy;
+use scene::matching::MatchPolicy;
 
 pub use render::{
     FrozenSource, IN_FLIGHT, LaneStyle, NewSample, Output, Pixels, RenderJob, RenderLane,

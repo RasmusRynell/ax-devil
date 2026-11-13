@@ -201,8 +201,8 @@ fn a_lane_matching_lands_in_the_recipe_by_slot_and_resolves_nothing() {
     let id = added.id;
     let (state, jobs) = add(&WorkspaceState::default(), vec![added], false);
     let state = finish(&state, &jobs[0]);
-    let matching = overlay_sync::MatchPolicy {
-        basis: Some(overlay_sync::MatchBasis::Time),
+    let matching = scene::matching::MatchPolicy {
+        basis: Some(scene::MatchBasis::Time),
         ..Default::default()
     };
     let set = |state: &WorkspaceState, item, slot: &str| {
@@ -275,8 +275,8 @@ fn a_live_streams_matching_is_kept_under_its_one_slot() {
     let id = added.id;
     let (state, jobs) = add(&WorkspaceState::default(), vec![added], false);
     let state = finish(&state, &jobs[0]);
-    let matching = overlay_sync::MatchPolicy {
-        basis: Some(overlay_sync::MatchBasis::Time),
+    let matching = scene::matching::MatchPolicy {
+        basis: Some(scene::MatchBasis::Time),
         ..Default::default()
     };
     let set = |slot: &str| {

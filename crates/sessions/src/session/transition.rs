@@ -12,8 +12,8 @@ use super::{
 };
 use crate::{EndReason, MAX_SEATS, Secret};
 use foundation::CancelToken;
-use overlay_sync::MatchPolicy;
 use playback::Authority;
+use scene::matching::MatchPolicy;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,

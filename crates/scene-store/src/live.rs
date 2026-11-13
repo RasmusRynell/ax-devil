@@ -14,7 +14,8 @@ use handler_api::{
     DecodeError, DecodeSummary, Decoder, Form, Header, Input, OnEqualKey, Record, SceneSink,
     SkippedRecords, Values,
 };
-use overlay_sync::{KeyChunks, MatchBasis, SampleKeys};
+use scene::MatchBasis;
+use scene::matching::{KeyChunks, SampleKeys};
 use scene::{Coverage, Fields, FilterPolicy, Scene, serial::columns::encode_sample_item};
 
 use crate::{

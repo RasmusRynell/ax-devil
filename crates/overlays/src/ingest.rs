@@ -11,8 +11,9 @@ use std::{
 
 use foundation::{Timeline, UserError, Warning};
 use handler_api::{Form, OverlayRef};
-use overlay_sync::{Alignment, MatchBasis, MatchPolicy, Tolerance, Verdict, alignment};
 use scene::Coverage;
+use scene::MatchBasis;
+use scene::matching::{Alignment, MatchPolicy, Tolerance, Verdict, alignment};
 use scene_store::{Ingest, TrackRead, TrackSnapshot};
 
 use crate::{

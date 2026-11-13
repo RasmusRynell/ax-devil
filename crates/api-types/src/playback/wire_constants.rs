@@ -1,6 +1,6 @@
 //! The constants of the playback socket's messages and envelopes, defined once for Rust and for the TypeScript export.
 
-use overlay_sync::MatchKind;
+use scene::matching::MatchKind;
 
 /// Defines constants once for Rust and for `export-types`, which writes them to `api.ts`.
 macro_rules! constants {

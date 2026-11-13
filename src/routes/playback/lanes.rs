@@ -15,9 +15,10 @@ use api_types::{
 use axum::extract::ws::Message;
 use catalogs::Library;
 use foundation::{ErrorCode, HostPath, MediaTime, Timeline, UserError};
-use overlay_sync::{MatchBasis, MatchPolicy, Sticky, Tolerance, Verdict};
 use overlays::{LaneStatus, OverlayEvent, ViewerOverlays};
 use playback::{Rank, Want};
+use scene::MatchBasis;
+use scene::matching::{MatchPolicy, Sticky, Tolerance, Verdict};
 use scene_store::Ingest;
 use std::collections::{BTreeMap, BTreeSet};
 use workspace::Entry;

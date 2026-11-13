@@ -1,9 +1,8 @@
 //! How well an overlay file's samples line up with the video's frames, for a warning when they do not.
 
+use super::{MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, Tolerance, select};
+use crate::{Coverage, MatchBasis};
 use foundation::{MediaTime, Timeline};
-use scene::Coverage;
-
-use crate::{MatchBasis, MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, Tolerance, select};
 
 /// The smallest gap between the last sample and the end of the video that counts as far.
 const END_GAP_MIN: MediaTime = MediaTime(1_000_000);
@@ -150,7 +149,7 @@ pub fn alignment(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{FrameKey, KeyChunks, Tolerance};
+    use crate::matching::{FrameKey, KeyChunks, Tolerance};
 
     fn ms(values: &[i64]) -> Vec<MediaTime> {
         values.iter().map(|ms| MediaTime(ms * 1000)).collect()

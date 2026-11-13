@@ -23,7 +23,7 @@ use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
 use handler_api::{
     DecodeError, DecodeSummary, Decoder, Header, OnEqualKey, SkippedRecords, Values,
 };
-use overlay_sync::MatchBasis;
+use scene::MatchBasis;
 use scene::{Scene, SceneTime, TimeKind};
 
 use feed::{Feed, Whole};

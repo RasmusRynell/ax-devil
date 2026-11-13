@@ -20,8 +20,8 @@ use std::{
 use foundation::{CancelToken, FrameRate, Interrupt, Timeline, UserError};
 use handler_api::{Decoder, OverlayRef};
 use handlers::Handlers;
-use overlay_sync::MatchPolicy;
 use playback::{Direction, Priority, Want};
+use scene::matching::MatchPolicy;
 use scene_store::{TrackRead, TrackRegistry};
 use tempfile::TempDir;
 

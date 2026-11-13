@@ -7,7 +7,7 @@ use crate::live::LiveRecipe;
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, ItemId, Location, UserError};
 use handler_api::{FieldKind, Form, Settings, Values};
 use handlers::Handlers;
-use overlay_sync::MatchPolicy;
+use scene::matching::MatchPolicy;
 use serde_json::Value;
 use std::{collections::BTreeMap, fs, io, path::Path};
 

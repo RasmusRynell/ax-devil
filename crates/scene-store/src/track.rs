@@ -11,7 +11,8 @@ use std::{
 
 use foundation::{CancelToken, ErrorCode, FrameId, HostPath, MediaTime, UserError, Warning};
 use handler_api::{Form, Header, Spec};
-use overlay_sync::{MatchBasis, SampleKeys};
+use scene::MatchBasis;
+use scene::matching::SampleKeys;
 use scene::{
     Coverage, Fields, FilterPolicy, Scene, SceneTime, TimeKind, serial::columns::encode_sample_item,
 };

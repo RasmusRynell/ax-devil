@@ -4,7 +4,7 @@ use std::sync::{Arc, Weak};
 
 use foundation::{UserError, Warning};
 use handler_api::Form;
-use overlay_sync::MatchBasis;
+use scene::MatchBasis;
 use scene::{
     Coverage, Fields, FilterPolicy, Scene, SceneTime, TimeSlice,
     serial::columns::encode_sample_item,

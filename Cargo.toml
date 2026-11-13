@@ -22,7 +22,6 @@ members = [
   "crates/live",
   "crates/logging",
   "crates/media",
-  "crates/overlay-sync",
   "crates/overlays",
   "crates/playback",
   "crates/plugins",
@@ -69,7 +68,6 @@ handlers = { path = "crates/handlers" }
 live = { path = "crates/live" }
 logging = { path = "crates/logging" }
 media = { path = "crates/media" }
-overlay-sync = { path = "crates/overlay-sync" }
 overlays = { path = "crates/overlays" }
 playback = { path = "crates/playback" }
 plugins = { path = "crates/plugins" }
@@ -127,7 +125,6 @@ handlers.workspace = true
 live.workspace = true
 logging.workspace = true
 media.workspace = true
-overlay-sync.workspace = true
 overlays.workspace = true
 playback.workspace = true
 plugins.workspace = true

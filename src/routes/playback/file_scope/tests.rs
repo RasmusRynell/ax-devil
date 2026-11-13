@@ -56,7 +56,7 @@ pub(super) async fn viewer(folder: &Path) -> (ViewerOverlays, u32) {
             ..
         } = event
         {
-            viewer.set_policy(lane, 1, Some(overlay_sync::MatchPolicy::default()), true);
+            viewer.set_policy(lane, 1, Some(scene::matching::MatchPolicy::default()), true);
             ready |= 1 << lane;
             revision = status.data_revision;
         }
@@ -190,7 +190,7 @@ async fn a_page_lists_the_objects_the_video_shows_under_the_revisions_the_lane_h
         "a page of the listing"
     );
 
-    viewer.set_policy(0, 2, Some(overlay_sync::MatchPolicy::default()), true);
+    viewer.set_policy(0, 2, Some(scene::matching::MatchPolicy::default()), true);
     scopes.ask(&viewer, true, ask(4, None, 0, 10)).ok().unwrap();
     assert_eq!(
         rows(next(&mut scopes, true).await).1,

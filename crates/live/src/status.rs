@@ -5,9 +5,9 @@
 
 use std::{sync::Mutex, time::Duration};
 
+use crate::gate::Mono;
 use api_types::live::{LiveFeedStatus, LiveReason, LiveStatusWire};
 use camera::Status;
-use overlay_sync::Mono;
 use tokio::sync::watch;
 
 use super::connector::reason;

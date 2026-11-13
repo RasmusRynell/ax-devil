@@ -68,7 +68,6 @@ dependencies = [
  "bytes",
  "export",
  "foundation",
- "overlay-sync",
  "overlays",
  "playback",
  "scene",
@@ -156,7 +155,6 @@ dependencies = [
  "logging",
  "media",
  "mime_guess",
- "overlay-sync",
  "overlays",
  "playback",
  "plugins",
@@ -692,9 +690,9 @@ dependencies = [
  "handler-api",
  "handlers",
  "media",
- "overlay-sync",
  "overlays",
  "same-file",
+ "scene",
  "scene-store",
  "serde",
  "serde_json",
@@ -1395,7 +1393,6 @@ dependencies = [
  "handler-api",
  "handlers",
  "media",
- "overlay-sync",
  "overlays",
  "playback",
  "scene",
@@ -1607,22 +1604,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e036b411754132fd6b74e94b74e9a13c5cf606fa93d1885c35860d3060820b1"
 
 [[package]]
-name = "overlay-sync"
-version = "0.1.0"
-dependencies = [
- "foundation",
- "scene",
- "serde",
-]
-
-[[package]]
 name = "overlays"
 version = "0.1.0"
 dependencies = [
  "foundation",
  "handler-api",
  "handlers",
- "overlay-sync",
  "playback",
  "scene",
  "scene-store",
@@ -2186,7 +2173,6 @@ dependencies = [
  "handler-api",
  "handlers",
  "memchr",
- "overlay-sync",
  "postcard",
  "scene",
  "serde",
@@ -2325,8 +2311,8 @@ dependencies = [
  "getrandom 0.4.3",
  "handler-api",
  "handlers",
- "overlay-sync",
  "playback",
+ "scene",
  "serde",
  "serde_json",
  "tempfile",
@@ -3168,8 +3154,8 @@ dependencies = [
  "foundation",
  "handler-api",
  "handlers",
- "overlay-sync",
  "percent-encoding",
+ "scene",
  "serde",
  "serde_json",
  "tempfile",
@@ -3184,7 +3170,7 @@ version = "0.1.0"
 dependencies = [
  "foundation",
  "handler-api",
- "overlay-sync",
+ "scene",
  "serde",
  "serde_json",
  "tempfile",

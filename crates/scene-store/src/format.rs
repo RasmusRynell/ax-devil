@@ -4,7 +4,7 @@
 
 use std::{fs::File, io::Write};
 
-use overlay_sync::{FrameKey, KeyChunks, SampleKeys};
+use scene::matching::{FrameKey, KeyChunks, SampleKeys};
 use scene::{Scene, serial};
 use serde::{Deserialize, Serialize};
 

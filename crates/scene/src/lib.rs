@@ -1,4 +1,5 @@
-//! The Scene model decoders produce and the class filter policy that goes with it.
+//! The Scene model decoders produce, the class filter policy that goes with it, and [`matching`], the Overlay Lookup
+//! that picks the sample belonging to a frame.
 //!
 //! Values are built by value and validated on the way in: leaf values are newtypes whose `new` refuses what the
 //! model cannot show, so composites only check the rules between their parts. A [`Scene`] is shared as an `Arc` and
@@ -10,6 +11,7 @@ mod error;
 mod filter;
 mod geometry;
 pub mod inspection;
+pub mod matching;
 mod observation;
 mod order;
 #[cfg(test)]

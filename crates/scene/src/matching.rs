@@ -6,16 +6,15 @@
 
 mod alignment;
 mod keys;
-mod live;
 mod select;
 
 use foundation::MediaTime;
 use serde::{Deserialize, Serialize};
 
+use crate::MatchBasis;
+
 pub use alignment::{Alignment, Verdict, alignment};
 pub use keys::{CHUNK_KEYS, KeyChunks};
-pub use live::{LIVE_DEADLINE, LiveGate, Mono};
-pub use scene::MatchBasis;
 pub use select::select;
 
 /// The frame number a sample is found by and the sample it names.

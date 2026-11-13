@@ -16,7 +16,6 @@ workspace = true
 bytes.workspace = true
 export.workspace = true
 foundation.workspace = true
-overlay-sync.workspace = true
 overlays.workspace = true
 playback.workspace = true
 scene.workspace = true
