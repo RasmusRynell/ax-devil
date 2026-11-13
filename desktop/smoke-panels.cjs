@@ -342,7 +342,7 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
     await frames({ js });
     await shoot(`catalog-apply-refused-${theme}.png`);
   }
-  await pressAfterBlur(warnings, "Dismiss Apply error");
+  await pressAfterBlur(warnings, "Dismiss");
   await wait(`!document.querySelector('[aria-label="GT: warnings"]')`);
   await js("document.querySelector('[aria-label=Workspace]').click()");
 };

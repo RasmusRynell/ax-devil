@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { NewOverlayWire } from "../generated/api";
 import { BrowseButton, Button } from "../kit/Button";
 import { Dialog, DialogBody } from "../kit/Dialog";
-import { TextField } from "../kit/Fields";
+import { Form, FormInput } from "../kit/Form";
 import { HandlersFailure, useHandlers } from "../resolvers/useHandlers";
 import { useCommand } from "../session/session";
 import {
@@ -156,78 +156,82 @@ export function AddVideoDialog({
       }
     >
       <DialogBody>
-        <TextField
-          label="Video path"
-          value={path}
-          onChange={(text) => {
-            setPath(text);
-            setFailure(null);
-          }}
-          placeholder="Required"
-          action={
-            <>
-              {pick && (
-                <BrowseButton
-                  what="video file"
-                  onBrowse={() => void choose(VIDEO, (chosen) => setPath(chosen))}
-                />
-              )}
-              {/* The room of an overlay row's Remove button, so every path box shares its edges. */}
-              {handlers && entries.length > 0 && <span aria-hidden className="square-row" />}
-            </>
-          }
-        />
-        {handlers && (
-          <>
-            {entries.map((entry, at) => (
-              <OverlayRow
-                number={at + 1}
-                key={entry.key}
-                entry={entry}
-                decoders={decoders}
-                focus={entry.key === added}
-                problem={problems.get(entry.path.trim())}
-                tried={tried}
-                onBrowse={
-                  pick &&
-                  (() =>
-                    void choose(chooseFile(extensions), (chosen) =>
-                      edit(withPath(entry, chosen, decoders)),
-                    ))
-                }
-                onChange={edit}
-                onRemove={() => setEntries(entries.filter((one) => one.key !== entry.key))}
-                register={(key, read) =>
-                  read ? readers.current.set(key, read) : readers.current.delete(key)
-                }
-              />
-            ))}
-            <Button
-              icon="plus"
-              size="small"
-              className="self-start"
-              onClick={() => {
-                setAdded(nextKey.current);
-                setEntries([...entries, blankEntry(nextKey.current++)]);
+        <div className="flex w-form max-w-full min-w-0 flex-col gap-l">
+          <Form>
+            <FormInput
+              label="Video path"
+              value={path}
+              onChange={(text) => {
+                setPath(text);
+                setFailure(null);
               }}
-            >
-              Add overlay
-            </Button>
-          </>
-        )}
-        <TextField
-          label="Name"
-          value={name}
-          placeholder={path.trim() ? fileName(path) : "Optional"}
-          selectOnOpen={editing !== undefined}
-          onChange={setName}
-        />
-        {/* A line is kept for the reasons, so one appearing or going does not move the form. */}
-        <div className="flex min-h-lh flex-col gap-s">
-          {!path.trim() && <Refusal reason="Choose a video file to continue." />}
-          {videoProblem && <Refusal reason={videoProblem} />}
-          {unavailable && <HandlersFailure failure={unavailable} retry={retry} />}
-          {failure && <Refusal reason={failure} />}
+              placeholder="Required"
+              extra={
+                <>
+                  {pick && (
+                    <BrowseButton
+                      what="video file"
+                      onBrowse={() => void choose(VIDEO, (chosen) => setPath(chosen))}
+                    />
+                  )}
+                  {/* The room of an overlay row's Remove button, so every path box shares its edges. */}
+                  {handlers && entries.length > 0 && <span aria-hidden className="square-row" />}
+                </>
+              }
+            />
+            {handlers && (
+              <>
+                {entries.map((entry, at) => (
+                  <OverlayRow
+                    number={at + 1}
+                    key={entry.key}
+                    entry={entry}
+                    decoders={decoders}
+                    focus={entry.key === added}
+                    problem={problems.get(entry.path.trim())}
+                    tried={tried}
+                    onBrowse={
+                      pick &&
+                      (() =>
+                        void choose(chooseFile(extensions), (chosen) =>
+                          edit(withPath(entry, chosen, decoders)),
+                        ))
+                    }
+                    onChange={edit}
+                    onRemove={() => setEntries(entries.filter((one) => one.key !== entry.key))}
+                    register={(key, read) =>
+                      read ? readers.current.set(key, read) : readers.current.delete(key)
+                    }
+                  />
+                ))}
+                <Button
+                  icon="plus"
+                  size="small"
+                  className="col-span-full justify-self-start"
+                  onClick={() => {
+                    setAdded(nextKey.current);
+                    setEntries([...entries, blankEntry(nextKey.current++)]);
+                  }}
+                >
+                  Add overlay
+                </Button>
+              </>
+            )}
+            <FormInput
+              label="Name"
+              value={name}
+              placeholder={path.trim() ? fileName(path) : "Optional"}
+              selectOnOpen={editing !== undefined}
+              onChange={setName}
+            />
+          </Form>
+          {/* A line is kept for the reasons, so one appearing or going does not move the form. */}
+          <div className="flex min-h-lh flex-col gap-s">
+            {!path.trim() && <Refusal reason="Choose a video file to continue." />}
+            {videoProblem && <Refusal reason={videoProblem} />}
+            {unavailable && <HandlersFailure failure={unavailable} retry={retry} />}
+            {failure && <Refusal reason={failure} />}
+          </div>
         </div>
       </DialogBody>
     </Dialog>
