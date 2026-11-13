@@ -23,7 +23,7 @@ import { useLineFollow, type Follow } from "./lineFollow";
 import { useColumns } from "./useColumns";
 
 /** The grid every row and the header share; `--cols` is written by `useColumns`. */
-const GRID = "grid grid-cols-[var(--cols,minmax(0,1fr))] items-center";
+const GRID = "grid grid-cols-[var(--cols,minmax(0,1fr)_var(--spacing-row))] items-center";
 /** Where a row starts: the accent edge a selected row shows, then the padding before the first cell. */
 const LEAD = "border-l-edge pl-m";
 /** How long a copied row shows its check, in milliseconds. */
@@ -157,10 +157,8 @@ const TableRow = memo(function TableRow<Row>({
             event.stopPropagation();
             onCopy(index);
           }}
-          className={`absolute inset-y-0 right-0 flex cursor-pointer items-center border-0 bg-hover px-m ${
-            copied
-              ? "text-accent"
-              : "text-muted opacity-0 group-hover/row:opacity-100 hover:text-fg"
+          className={`flex h-full cursor-pointer items-center justify-center border-0 bg-transparent p-0 ${
+            copied ? "text-accent" : "text-muted group-hover/row:text-fg"
           }`}
         >
           <Icon name={copied ? "check" : "copy"} />
@@ -383,7 +381,7 @@ export function Table<Row>({
                   aria-label={`Sort by ${column.title}${on ? (sort.descending ? ", descending" : ", ascending") : ""}`}
                   aria-pressed={on}
                   onClick={() => onSort(column.key)}
-                  className={`flex min-w-0 items-center gap-xs rounded-control bg-transparent p-0 hover:text-fg focus-ring ${
+                  className={`flex min-w-0 items-center gap-xs rounded-control uppercase bg-transparent p-0 hover:text-fg focus-ring ${
                     on ? "text-fg" : ""
                   }`}
                 >
@@ -410,6 +408,7 @@ export function Table<Row>({
             </div>
           );
         })}
+        <div aria-hidden />
       </div>
       <div
         ref={ref}
