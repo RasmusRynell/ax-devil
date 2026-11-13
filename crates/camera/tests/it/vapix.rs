@@ -265,9 +265,18 @@ async fn basic_is_sent_over_https_with_an_unverified_certificate() {
     });
     let identity = device(&camera).sign_in().await.expect("sign in over HTTPS");
     assert_eq!(identity.model, "AXIS M3086");
-    // base64("root:pass-4711")
+    // The scan's check signs in the same way: a camera that offers only Basic is not left unsigned.
+    let found = camera::check(
+        std::net::Ipv4Addr::LOCALHOST,
+        camera.web,
+        camera.login.clone().expect("login"),
+    )
+    .await
+    .expect("found");
+    assert!(matches!(found.sign_in, camera::SignIn::SignedIn { .. }));
+    // base64("root:pass-4711"), once for each sign-in
     assert_eq!(
         *tls.authorizations.lock().expect("lock"),
-        ["Basic cm9vdDpwYXNzLTQ3MTE="]
+        ["Basic cm9vdDpwYXNzLTQ3MTE="; 2]
     );
 }

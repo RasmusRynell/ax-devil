@@ -53,11 +53,9 @@ depend on it (`scripts/check-architecture.cjs`). Feature `fake` adds `CameraErro
   `InvalidTarget`, so they end in `Failed`. A quiet topic is not an error (a connection with no sample after 10 s logs one warning and keeps waiting); a dead connection is found by a ping every
   30 s. Not covered by tests: the `wss://` path.
 - Scan (`scan`): a TCP probe of the web ports, then `Device::identify` on each open one; a login goes only to a host
-  that answered as an Axis camera, and only as Digest (`Device::digest_only`), never Basic. A 429, or a 403 after a
-  refusal, is asked again after 1 s, then 2 s. Dropping the receiver stops the scan. `ScanPorts` is injectable so
+  that answered as an Axis camera. A 429, or a 403 after a refusal, is asked again after 1 s, then 2 s. Dropping the receiver stops the scan. `ScanPorts` is injectable so
   tests use ephemeral ports. Not covered by tests: the blank-range default (the local /24) and the HTTPS port.
-  `check` signs in to one host with one login the app holds, with the same rules (identify first, Digest only).
-  `Device::digest_only` is public for a request that must be refused at once on a wrong login, such as a snapshot.
+  `check` signs in to one host with one login the app holds, with the same rules (identify first).
 - Redirects are not followed. HTTPS certificates are not verified (decision D12); handshake signatures are checked.
 - Raw bytes only: no pixel decoding and no XML parsing here.
 - `StreamRequest::url` replaces the generated stream URL and is used as typed: `rtsp://`, `http://` or `https://`. A

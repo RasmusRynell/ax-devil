@@ -204,7 +204,9 @@ impl Device {
             signed,
         };
         let body = self.call(&call).await.map_err(|error| match error.kind {
-            ErrorKind::NotFound | ErrorKind::Unsupported => {
+            // With a login, `Unsupported` may be the login's scheme that cannot be answered, not the device.
+            ErrorKind::NotFound => CameraError::new(ErrorKind::NotAxis, error.detail()),
+            ErrorKind::Unsupported if !signed => {
                 CameraError::new(ErrorKind::NotAxis, error.detail())
             }
             _ => error,

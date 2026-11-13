@@ -1,5 +1,5 @@
-//! A camera on HTTPS with a self-signed certificate that offers only Basic authentication, to check what the client
-//! accepts and sends over TLS.
+//! A camera on HTTPS with a self-signed certificate that offers only Basic authentication (and answers "who are you"
+//! without a login), to check what the client accepts and sends over TLS.
 
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -131,6 +131,10 @@ async fn serve<S: AsyncReadExt + AsyncWriteExt + Unpin>(mut stream: S, log: &Mut
         let reply = match authorization {
             Some(value) => {
                 log.lock().expect("lock").push(value);
+                format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{INFO}", INFO.len())
+            }
+            // As a real camera does: "who are you" needs no login.
+            None if body.contains("getAllUnrestrictedProperties") => {
                 format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{INFO}", INFO.len())
             }
             None => "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"cam\"\r\nContent-Length: 0\r\n\r\n".to_owned(),

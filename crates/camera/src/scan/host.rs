@@ -97,7 +97,7 @@ pub(super) async fn identify(addr: Ipv4Addr, open: &[Web], logins: &[Login]) -> 
     None
 }
 
-/// Tries `logins` in order on the camera, Digest only. A camera turning logins away for now is asked again after a
+/// Tries `logins` in order on the camera. A camera turning logins away for now is asked again after a
 /// wait; any other failure ends the attempt, so a broken camera is not asked again and again.
 async fn sign_in(addr: Ipv4Addr, camera: &Camera, logins: &[Login]) -> SignIn {
     let mut refusals = 0;
@@ -145,5 +145,5 @@ async fn sign_in(addr: Ipv4Addr, camera: &Camera, logins: &[Login]) -> SignIn {
 async fn try_login(camera: &Camera, login: &Login) -> Result<crate::vapix::Identity, CameraError> {
     let mut camera = camera.clone();
     camera.login = Some(login.clone());
-    Device::new(&camera)?.digest_only().sign_in().await
+    Device::new(&camera)?.sign_in().await
 }

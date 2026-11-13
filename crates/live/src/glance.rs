@@ -131,12 +131,11 @@ impl Glances {
     }
 
     /// The JPEG of `head` of `camera` (which carries its login and its timeout). Streams of one camera, login and head
-    /// share one read and one cooldown. Digest only, so a wrong login is refused at once instead of being retried with
-    /// Basic. `None` when the camera does not give one.
+    /// share one read and one cooldown. `None` when the camera does not give one.
     pub async fn snapshot(&self, camera: Camera, head: Head) -> Option<Bytes> {
         self.snapshots
             .get(&snapshot_key(&camera, head), move || async move {
-                let device = Device::new(&camera).ok()?.digest_only();
+                let device = Device::new(&camera).ok()?;
                 match device.snapshot(head).await {
                     Ok(jpeg) => Some(jpeg),
                     Err(error) => {
@@ -149,7 +148,7 @@ impl Glances {
     }
 
     /// What signing in to the camera at `addr` on `web` with `login` finds, kept under `key`; `None` when no Axis
-    /// camera answered. Nothing is sent to a host that does not answer as a camera, and only as Digest.
+    /// camera answered. Nothing is sent to a host that does not answer as a camera.
     pub async fn check(
         &self,
         key: &str,
