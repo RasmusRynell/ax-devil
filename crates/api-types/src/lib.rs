@@ -184,27 +184,3 @@ pub struct SettingsPatch {
     #[ts(optional, type = "Array<CommandId>")]
     pub shortcuts_reset: Option<Vec<String>>,
 }
-
-/// Visits every type this crate sends to the frontend, for `export-types`.
-pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<AppInfo>();
-    types.visit::<SettingsState>();
-    types.visit::<SettingsFile>();
-    types.visit::<SettingsPatch>();
-    types.visit::<SecretState>();
-    types.visit::<LoginView>();
-    types.visit::<LoginEdit>();
-    bookmarks::visit_api_types(types);
-    catalogs::visit_api_types(types);
-    content::visit_api_types(types);
-    endpoints::visit_types(types);
-    error::visit_api_types(types);
-    handlers::visit_api_types(types);
-    inspect::visit_api_types(types);
-    live::visit_api_types(types);
-    playback::visit_api_types(types);
-    render::visit_api_types(types);
-    report::visit_api_types(types);
-    session::visit_api_types(types);
-    workspace::visit_api_types(types);
-}

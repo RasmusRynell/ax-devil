@@ -8,11 +8,11 @@
 mod contract_version;
 mod modules;
 mod routes;
-mod scan;
 
 use contract_version::contract_version;
 use modules::{Constant, Registry, entry};
 use std::collections::BTreeSet;
+use ts_rs::TypeVisitor;
 
 /// The problems found, shown as plain text rather than a quoted string.
 struct Failed(String);
@@ -44,17 +44,22 @@ const FIXED_OUTPUTS: [&str; 5] = [
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut registry = Registry::default();
-    api_types::visit_api_types(&mut registry);
-    export::visit_api_types(&mut registry);
-    foundation::visit_api_types(&mut registry);
-    playback::visit_api_types(&mut registry);
-    scene::visit_api_types(&mut registry);
-    scene_store::visit_api_types(&mut registry);
-    sessions::visit_api_types(&mut registry);
-    workspace::visit_api_types(&mut registry);
+    // The roots: ts-rs follows each one's fields, so a type a root reaches needs no entry here.
+    registry.visit::<api_types::playback::ClientMessage>();
+    registry.visit::<api_types::playback::ServerMessage>();
+    registry.visit::<api_types::SessionClientMessage>();
+    registry.visit::<api_types::SessionServerMessage>();
+    registry.visit::<api_types::render::PageMessage>();
+    registry.visit::<api_types::render::HostMessage>();
+    api_types::endpoints::visit_types(&mut registry);
+    // Named only inside `#[ts(type = "...")]` strings on the settings types, which the walk cannot see.
+    registry.visit::<api_types::SecretState>();
+    registry.visit::<api_types::LoginEdit>();
+    registry.visit::<api_types::LoginView>();
+    // Not reached from a root, but the frontend imports it.
+    registry.visit::<api_types::live::NetworkSnapshot>();
     let constants = constants();
-    let found = scan::scan(std::path::Path::new(&repo_path("crates"))).map_err(Failed)?;
-    let problems = registry.problems(&found, &constants);
+    let problems = registry.problems(&constants);
     if !problems.is_empty() {
         return Err(Failed(problems.join("\n")).into());
     }

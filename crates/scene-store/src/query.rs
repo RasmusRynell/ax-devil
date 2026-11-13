@@ -458,13 +458,3 @@ fn lower(text: &str) -> Cow<'_, str> {
         Cow::Borrowed(text)
     }
 }
-
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<Op>();
-    types.visit::<Term>();
-    types.visit::<Search>();
-    types.visit::<SortKey>();
-    types.visit::<Sort>();
-    types.visit::<Row>();
-}

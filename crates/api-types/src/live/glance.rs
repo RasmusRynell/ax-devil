@@ -42,10 +42,3 @@ pub struct LiveExpansions {
     /// Whether the default broker password is set.
     pub broker_pass_set: Option<bool>,
 }
-
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<LiveCheckRequest>();
-    types.visit::<ExpansionsRequest>();
-    types.visit::<LiveExpansions>();
-}

@@ -115,11 +115,3 @@ pub struct BookmarkGroupInfo {
     /// The bookmarks by frame.
     pub bookmarks: Vec<BookmarkInfo>,
 }
-
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<BookmarkCommand>();
-    types.visit::<BookmarkInfo>();
-    types.visit::<BookmarkStanding>();
-    types.visit::<BookmarkGroupInfo>();
-}

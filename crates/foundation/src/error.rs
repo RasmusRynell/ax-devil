@@ -157,8 +157,3 @@ pub struct Warning {
     /// Whether more reasons exist than are listed.
     pub more_reasons: bool,
 }
-
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<ErrorCode>();
-}

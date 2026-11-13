@@ -451,11 +451,3 @@ impl EventQuery {
         Ok(EventMatches { total, matched })
     }
 }
-
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<EventObject>();
-    types.visit::<EventRow>();
-    types.visit::<Involved>();
-    types.visit::<EventDetail>();
-}

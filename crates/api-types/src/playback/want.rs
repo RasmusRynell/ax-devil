@@ -52,11 +52,3 @@ pub struct VideoPtsWire {
     #[ts(type = "number")]
     pub first_pts: i64,
 }
-
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<Direction>();
-    types.visit::<Want>();
-    types.visit::<CadenceWire>();
-    types.visit::<VideoPtsWire>();
-}

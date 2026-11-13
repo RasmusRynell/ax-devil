@@ -302,8 +302,3 @@ fn control(next: &mut SessionState, control: Control, fresh: &Fresh) -> Result<(
     }
     Ok(())
 }
-
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<Control>();
-}

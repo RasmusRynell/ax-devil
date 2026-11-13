@@ -19,9 +19,3 @@ pub use host::is_plain_host;
 pub use id::{BookmarkId, ItemId};
 pub use seqinfo::{SeqInfo, parse_seqinfo};
 pub use time::{FrameId, FrameRate, FrameSize, Keyframes, MediaTime, Timeline, TimelineError};
-
-/// Visits every type this crate sends to the frontend, for `export-types`.
-pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    error::visit_api_types(types);
-    time::visit_api_types(types);
-}

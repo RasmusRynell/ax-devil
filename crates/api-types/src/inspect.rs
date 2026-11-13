@@ -88,19 +88,6 @@ pub enum InspectionWire {
     Unavailable,
 }
 
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<InspectionContinuation>();
-    types.visit::<InspectionRead>();
-    types.visit::<InspectionRelease>();
-    types.visit::<InspectionPin>();
-    types.visit::<InspectionReadResult>();
-    types.visit::<FieldWire>();
-    types.visit::<ItemWire>();
-    types.visit::<ObjectItemsWire>();
-    types.visit::<InspectionWire>();
-}
-
 /// A capability valid only in the socket that issued it, for one held entity/sample revision.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 pub struct InspectionContinuation {
