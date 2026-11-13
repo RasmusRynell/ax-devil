@@ -142,76 +142,14 @@ it("restarts an interrupted pin scan at zero after copying, and makes refusal te
   }
 });
 
-it("settles unanswered first reads, pages and pin scans without a request loop", () => {
-  vi.useFakeTimers();
-  const after = (run: () => void, ms: number) => {
-    const timer = setTimeout(run, ms);
-    return () => clearTimeout(timer);
-  };
-  try {
-    const { inspections: owner, sent, reply, time } = setup(after);
-    owner.follow([frame(0)]);
-    owner.select(SELECTION);
-    // A retained overlay on a 250-Hz video must receive the same complete response window as a paused one.
-    for (let elapsed = 0; elapsed < 7999; elapsed += 4) {
-      const step = Math.min(4, 7999 - elapsed);
-      time.now += step;
-      vi.advanceTimersByTime(step);
-      owner.follow([frame(0)], true);
-    }
-    expect(owner.view.state).toBe("loading");
-    expect(sent.filter((m) => m.type === "InspectRelease")).toHaveLength(0);
-    vi.advanceTimersByTime(1);
-    const attempts = sent.filter((m) => m.type === "Inspect");
-    expect(attempts).toHaveLength(4);
-    expect(new Set(attempts.map((attempt) => attempt.request)).size).toBe(1);
-    expect(owner.view.state).toBe("unavailable");
-    vi.advanceTimersByTime(60_000);
-    expect(sent.filter((m) => m.type === "Inspect")).toHaveLength(4);
-    owner.setVisible(false);
-    owner.setVisible(true);
-    vi.advanceTimersByTime(7999);
-    owner.receive(reply(0, initial));
-    expect(owner.view.state).toBe("ready");
-    access(owner).next?.();
-    vi.advanceTimersByTime(8000);
-    expect(access(owner).error).toBe("Details are not available");
-    expect(access(owner).next).not.toBeNull();
-    owner.setPins([{ group: "debug", path: ["late"], identity: "late-digest" }]);
-    vi.advanceTimersByTime(8000);
-    const count = sent.length;
-    const view = owner.view;
-    if (view.state !== "ready") throw Error("ready");
-    expect(view.pins).toEqual(["unavailable"]);
-    vi.advanceTimersByTime(60_000);
-    expect(sent).toHaveLength(count);
-    owner.reconnect();
-    owner.follow([frame(0)]);
-    owner.receive(reply(0, initial));
-    expect(owner.view.state).toBe("ready");
-    owner.disconnect();
-  } finally {
-    vi.useRealTimers();
-  }
-}, 5000);
-
-it("settles a stalled or over-budget Raw copy before any clipboard write", () => {
-  vi.useFakeTimers();
+it("settles an over-budget Raw copy before any clipboard write", () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal("navigator", { clipboard: { writeText } });
-  const after = (run: () => void, ms: number) => {
-    const timer = setTimeout(run, ms);
-    return () => clearTimeout(timer);
-  };
   try {
-    const { inspections: owner, sent, reply } = setup(after);
+    const { inspections: owner, sent, reply } = setup();
     owner.follow([frame(0)]);
     owner.select(SELECTION);
     owner.receive(reply(0, initial));
-    access(owner).raw();
-    vi.advanceTimersByTime(8000);
-    expect(access(owner).progress).toBeNull();
-    expect(access(owner).error).toBe("Details are not available");
     for (const result of [
       { state: "Chunk" as const, text: "x", total: 268435457, next: 1 },
       { state: "Chunk" as const, text: "界".repeat(21846), total: 100000, next: 65538 },
@@ -227,7 +165,6 @@ it("settles a stalled or over-budget Raw copy before any clipboard write", () =>
     expect(writeText).not.toHaveBeenCalled();
     owner.disconnect();
   } finally {
-    vi.useRealTimers();
     vi.unstubAllGlobals();
   }
-}, 5000);
+});

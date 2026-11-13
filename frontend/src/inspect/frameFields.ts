@@ -2,8 +2,8 @@
  * The leaves of the objects of the frame a lane shows, at the field paths a search names, as the backend reads them from
  * the sample. A search of Frame scope asks per sample (`ask`) and reads the answer for exactly that sample (`view`):
  * leaves of another sample are never lent to it, for the same object may hold other values there. The backend keeps
- * only the newest request, so asking for another sample supersedes one still out. A request whose answer never comes
- * (the authority gate may drop it) is sent again while a list listens, a few times, and when a list starts to listen.
+ * only the newest request, so asking for another sample supersedes one still out. A request is answered once, with its
+ * leaves or as unavailable, and stays pending until then.
  */
 
 import {
@@ -12,7 +12,6 @@ import {
   MAX_INSPECTION_REQUEST_BYTES,
 } from "../generated/api";
 import { utf8Bytes } from "./utf8";
-import { INSPECTION_RETRY_MS, INSPECTION_RETRIES } from "./requestTiming";
 import type { LaneFrame } from "../lanes/contract";
 import type { ClientMessage, LeafWire, ServerMessage } from "../stream/protocol";
 
@@ -73,40 +72,27 @@ export class FrameFields {
   readonly #listeners = new Set<() => void>();
   /** The answers, oldest first. */
   readonly #answers = new Map<string, LeavesView>();
-  readonly #after: (callback: () => void, ms: number) => () => void;
   /** One current attempt, including its terminal refusal; abandonment drops all of it. */
   #request: {
     key: string;
     columns: unknown;
     message: Extract<ClientMessage, { type: "InspectFields" }>;
     state: "pending" | "unavailable";
-    retries: number;
   } | null = null;
-  /** Cancels the timer that sends the request out again. */
-  #cancel: (() => void) | null = null;
   #serial = 0;
   #allowed = true;
   #connected = true;
 
-  /** `send` asks the backend; `after` times the asking again. */
-  constructor(
-    send: (message: ClientMessage) => void,
-    after: (callback: () => void, ms: number) => () => void,
-  ) {
+  /** `send` asks the backend. */
+  constructor(send: (message: ClientMessage) => void) {
     this.#send = send;
-    this.#after = after;
   }
 
-  /**
-   * Calls `listener` when a view may have changed. A list that starts to listen asks again for what it wants: a request
-   * left unanswered while none did may have been dropped.
-   */
+  /** Calls `listener` when a view may have changed. */
   subscribe = (listener: () => void): (() => void) => {
-    this.#forget();
     this.#listeners.add(listener);
     return () => {
       this.#listeners.delete(listener);
-      if (this.#listeners.size === 0) this.#forget();
     };
   };
 
@@ -161,7 +147,7 @@ export class FrameFields {
       sample,
       paths: [...paths],
     };
-    this.#request = { key, columns, message, state: "pending", retries: 0 };
+    this.#request = { key, columns, message, state: "pending" };
     if (
       utf8Bytes(JSON.stringify(message), MAX_INSPECTION_REQUEST_BYTES) >
       MAX_INSPECTION_REQUEST_BYTES
@@ -170,43 +156,17 @@ export class FrameFields {
       return;
     }
     this.#send(message);
-    this.#watch();
   }
 
   #refuse(): void {
     if (!this.#request) return;
     this.#request.state = "unavailable";
-    this.#unwatch();
     this.#listeners.forEach((listener) => listener());
   }
 
-  /** Abandons the complete attempt, including a refusal, retry count and timer. */
+  /** Abandons the complete attempt, including a refusal. */
   #forget(): void {
     this.#request = null;
-    this.#unwatch();
-  }
-
-  #unwatch(): void {
-    this.#cancel?.();
-    this.#cancel = null;
-  }
-
-  /** While a list listens, sends the request out again if it stays unanswered: the authority gate may have dropped it. */
-  #watch(): void {
-    this.#unwatch();
-    const request = this.#request;
-    if (request?.state !== "pending" || this.#listeners.size === 0) return;
-    this.#cancel = this.#after(() => {
-      this.#cancel = null;
-      if (this.#request !== request) return;
-      if (request.retries >= INSPECTION_RETRIES) {
-        this.#refuse();
-        return;
-      }
-      request.retries++;
-      this.#send(request.message);
-      this.#watch();
-    }, INSPECTION_RETRY_MS);
   }
 
   /** The backend's answer. */

@@ -9,7 +9,10 @@ use overlays::OverlayEvent;
 use playback::{Authority, Direction, Priority, Session, Want, clamp_demand};
 use std::{
     ops::RangeInclusive,
-    sync::{Arc, Mutex, OnceLock, PoisonError},
+    sync::{
+        Arc, Mutex, OnceLock, PoisonError,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tokio::sync::{Notify, watch};
 
@@ -35,10 +38,12 @@ pub(super) fn revoked_close() -> Message {
     }))
 }
 
-/// Data the writer dropped because the authority no longer reached it, until the stream gives it back to the overlays.
+/// What the writer withheld because the authority no longer reached it, until the stream gives it back: data to the
+/// overlays, and whether a whole file was refused to the File scope questions.
 #[derive(Default)]
 struct Rejected {
     data: Mutex<Vec<OverlayEvent>>,
+    whole_file: AtomicBool,
     wake: Notify,
 }
 
@@ -145,6 +150,18 @@ impl Gate {
         self.rejected.wake.notify_one();
     }
 
+    /// Records that the writer refused a whole file for want of the authority over it, and wakes
+    /// [`changed`](Self::changed) so the stream answers again if the viewer owns by then.
+    pub(super) fn refuse_whole_file(&self) {
+        self.rejected.whole_file.store(true, Ordering::Release);
+        self.rejected.wake.notify_one();
+    }
+
+    /// Whether the writer refused a whole file since this was last called.
+    pub(super) fn take_refused(&self) -> bool {
+        self.rejected.whole_file.swap(false, Ordering::AcqRel)
+    }
+
     /// The data the writer dropped since this was last called.
     pub(super) fn take_rejected(&self) -> Vec<OverlayEvent> {
         std::mem::take(
@@ -179,7 +196,7 @@ impl Gate {
         self.authority.has_changed().unwrap_or(true)
     }
 
-    /// Resolves when the authority changes, its holder goes away or the writer dropped data.
+    /// Resolves when the authority changes, its holder goes away or the writer withheld something.
     pub(super) async fn changed(&mut self) {
         tokio::select! {
             _ = self.authority.changed() => {}

@@ -195,7 +195,7 @@ export function mount(
       return items.length > 0 ? [{ entity: object.id, items }] : [];
     });
     fields.receive({ ...message, type: "InspectedFields", objects });
-  }, after);
+  });
   const source = {
     files,
     fields,

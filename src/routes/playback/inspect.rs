@@ -134,30 +134,11 @@ impl Inspections {
         target: Option<Target>,
     ) {
         let allowed = self.admit();
-        let repeated = allowed && self.repeated(generation, source, data_revision, sample, &entity);
-        if repeated && target.is_none() {
-            self.release();
-        } else if repeated && self.objects.running.is_some() {
-            return;
-        }
-        if allowed && !repeated {
-            self.release();
-        }
+        self.release();
         let readable = allowed && entity.len() <= MAX_INSPECTION_ENTITY_BYTES;
-        let (token, position) = if repeated && target.is_some() {
-            // The matching cursor was established above and no invalidation ran for a held retransmission.
-            let cursor = self
-                .cursor
-                .as_ref()
-                .expect("a repeated held request has its cursor");
-            (cursor.0.clone(), cursor.5.clone())
-        } else {
-            (
-                sessions::Secret::generate().to_string(),
-                Arc::new(Mutex::new(Position::default())),
-            )
-        };
-        if readable && (!repeated || target.is_some()) {
+        let token = sessions::Secret::generate().to_string();
+        let position = Arc::new(Mutex::new(Position::default()));
+        if readable {
             self.cursor = Some((
                 token.clone(),
                 source,
@@ -358,6 +339,8 @@ fn answer(Job { request, target }: Job) -> Outgoing {
             frames: Some(frame..=frame),
             data: None,
             inspection: Some(request.validity.clone()),
+            refusal: Some(text(&reply(&request, None))),
+            whole_file: false,
         },
         Err(error) => {
             tracing::debug!("Sample {} cannot be inspected: {error:?}", request.sample);
@@ -366,13 +349,16 @@ fn answer(Job { request, target }: Job) -> Outgoing {
     }
 }
 
-/// What the viewer is told of a sample it cannot ask about: nothing, and so ungated.
+/// What the viewer is told of a sample it cannot ask about: nothing, and so ungated. It is also what the writer sends
+/// in place of an answer the viewer may no longer have.
 fn unavailable(request: &Request) -> Outgoing {
     Outgoing {
         message: text(&reply(request, None)),
         frames: None,
         data: None,
         inspection: Some(request.validity.clone()),
+        refusal: Some(text(&reply(request, None))),
+        whole_file: false,
     }
 }
 

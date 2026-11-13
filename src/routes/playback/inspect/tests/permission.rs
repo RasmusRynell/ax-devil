@@ -264,7 +264,7 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
 }
 
 #[tokio::test]
-async fn a_blocking_inspection_finishing_after_permission_withdrawal_is_not_delivered() {
+async fn a_blocking_inspection_finishing_after_permission_withdrawal_is_refused_not_delivered() {
     let folder = tempfile::tempdir().unwrap();
     let (mut viewer, revision) = viewer(folder.path()).await;
     hold(&mut viewer, 10).await;
@@ -300,7 +300,17 @@ async fn a_blocking_inspection_finishing_after_permission_withdrawal_is_not_deli
     allowed.store(false, Ordering::SeqCst);
     drop(release);
     let outgoing = bounded("withdrawn inspection answer", inspections.next()).await;
-    assert!(deliver(gate, vec![outgoing]).await.is_empty());
+    let replies = deliver(gate, vec![outgoing]).await;
+    assert!(
+        matches!(
+            replies.as_slice(),
+            [ServerMessage::Inspected {
+                inspection: InspectionWire::Unavailable,
+                ..
+            }]
+        ),
+        "the viewer is told the sample is unavailable, not given its fields"
+    );
 }
 
 async fn denied(inspections: &mut Inspections, gate: Gate) -> ServerMessage {

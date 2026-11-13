@@ -9,20 +9,6 @@ impl Inspections {
         (token == held).then_some((*source, *revision, *sample))
     }
 
-    /// Whether this is a retransmission of the current initial request.
-    pub(super) fn repeated(
-        &self,
-        generation: u32,
-        source: u16,
-        revision: u32,
-        sample: u32,
-        entity: &str,
-    ) -> bool {
-        self.cursor.as_ref().is_some_and(|c| {
-            c.6 == generation && c.1 == source && c.2 == revision && c.3 == sample && c.4 == entity
-        })
-    }
-
     /// Releases only the inspection named by its token or initial request generation; stale releases do nothing.
     pub(in crate::routes::playback) fn release_read(&mut self, identity: &InspectionRelease) {
         let current = match identity {

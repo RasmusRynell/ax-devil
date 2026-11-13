@@ -182,20 +182,21 @@ describe("a list", () => {
     expect(t.sent).toHaveLength(3);
   });
 
-  it.each([
-    ["is not asked again by a follower", false, 1],
-    ["is asked again three times by an owner, as the backend may not know it yet", true, 4],
-  ])("%s", (_, owner, asks) => {
+  it("is not asked again after a follower's answer, and takes the answer the backend gives later to the same question", () => {
     const t = rig();
-    t.setOwner(owner);
     t.list.want(0, "a");
     t.wait();
-    for (let tries = 0; tries < 6; tries++) {
-      t.list.receive(unavailable(t.last(), { state: "Following" }));
-      t.wait(1000);
-    }
-    expect(t.sent).toHaveLength(asks);
+    const request = t.last();
+    t.list.receive(unavailable(request, { state: "Following" }));
+    t.wait(5000);
+    expect(t.sent).toHaveLength(1);
     expect(t.list.view(0)).toMatchObject({ pending: false, unavailable: { state: "Following" } });
+    t.list.receive(t.rows(request));
+    expect(t.list.view(0)).toEqual({
+      pending: false,
+      page: { asked: "a", data: 1 },
+      unavailable: null,
+    });
   });
 });
 

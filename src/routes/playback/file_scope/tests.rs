@@ -91,11 +91,11 @@ fn ask(request: u32, search: Option<(&str, &str)>, offset: u32, limit: u32) -> A
     }
 }
 
-async fn next(scopes: &mut FileScopes, own: bool) -> ServerMessage {
+async fn next(scopes: &mut FileScopes) -> ServerMessage {
     let reply = tokio::time::timeout(Duration::from_secs(20), scopes.next())
         .await
         .expect("an answer in time");
-    let outgoing = reply.outgoing(own);
+    let outgoing = reply.outgoing();
     assert!(
         outgoing.frames.is_none() && outgoing.data.is_none(),
         "never held back for a frame"
@@ -157,7 +157,7 @@ async fn a_page_lists_the_objects_the_video_shows_under_the_revisions_the_lane_h
     let mut scopes = FileScopes::new(Audience::HOST);
 
     scopes.ask(&viewer, true, ask(1, None, 0, 10)).ok().unwrap();
-    let (data, policy, total, matched, listed) = rows(next(&mut scopes, true).await);
+    let (data, policy, total, matched, listed) = rows(next(&mut scopes).await);
     assert_eq!((data, policy, total, matched), (revision, 1, 2, 2));
     let ids: Vec<_> = listed.iter().map(|row| row.id.as_str()).collect();
     assert_eq!(ids, ["1", "2"]);
@@ -175,7 +175,7 @@ async fn a_page_lists_the_objects_the_video_shows_under_the_revisions_the_lane_h
         .ask(&viewer, true, ask(2, Some(("id", "2")), 0, 10))
         .ok()
         .unwrap();
-    let (_, _, total, matched, listed) = rows(next(&mut scopes, true).await);
+    let (_, _, total, matched, listed) = rows(next(&mut scopes).await);
     assert_eq!(
         (total, matched, listed.len()),
         (2, 1, 1),
@@ -183,7 +183,7 @@ async fn a_page_lists_the_objects_the_video_shows_under_the_revisions_the_lane_h
     );
 
     scopes.ask(&viewer, true, ask(3, None, 1, 1)).ok().unwrap();
-    let (_, _, _, matched, listed) = rows(next(&mut scopes, true).await);
+    let (_, _, _, matched, listed) = rows(next(&mut scopes).await);
     assert_eq!(
         (matched, listed[0].id.as_str()),
         (2, "2"),
@@ -193,7 +193,7 @@ async fn a_page_lists_the_objects_the_video_shows_under_the_revisions_the_lane_h
     viewer.set_policy(0, 2, Some(scene::matching::MatchPolicy::default()), true);
     scopes.ask(&viewer, true, ask(4, None, 0, 10)).ok().unwrap();
     assert_eq!(
-        rows(next(&mut scopes, true).await).1,
+        rows(next(&mut scopes).await).1,
         2,
         "the lane's policy revision now"
     );
@@ -209,7 +209,10 @@ async fn a_follower_is_refused_and_only_the_newest_request_of_a_lane_is_answered
         .ask(&viewer, false, ask(1, None, 0, 10))
         .ok()
         .unwrap();
-    assert_eq!(answered(next(&mut scopes, false).await), (1, following()));
+    assert_eq!(answered(next(&mut scopes).await), (1, following()));
+    // The question is held: it is answered under its own id once the viewer owns.
+    scopes.authority(&viewer, true, false);
+    assert_eq!(answered(next(&mut scopes).await).0, 1);
 
     for request in [2, 3] {
         scopes
@@ -217,17 +220,13 @@ async fn a_follower_is_refused_and_only_the_newest_request_of_a_lane_is_answered
             .ok()
             .unwrap();
     }
-    assert_eq!(answered(next(&mut scopes, true).await).0, 3);
+    assert_eq!(answered(next(&mut scopes).await).0, 3);
     assert!(
         tokio::time::timeout(Duration::from_millis(300), scopes.next())
             .await
             .is_err(),
         "the replaced request is never answered"
     );
-
-    // A viewer that became a follower while the query ran is not sent the rows.
-    scopes.ask(&viewer, true, ask(4, None, 0, 10)).ok().unwrap();
-    assert_eq!(answered(next(&mut scopes, false).await), (4, following()));
 
     let outside = Ask {
         lane: 5,
@@ -262,7 +261,7 @@ async fn a_released_lane_is_not_answered_and_keeps_nothing() {
     assert!(scopes.cache.held().is_empty(), "and keeps nothing");
 
     scopes.ask(&viewer, true, ask(2, None, 0, 10)).ok().unwrap();
-    rows(next(&mut scopes, true).await);
+    rows(next(&mut scopes).await);
     assert_eq!(scopes.cache.held().len(), 1);
     scopes.release(&viewer, 0).ok().unwrap();
     assert!(scopes.cache.held().is_empty(), "the answered lane is freed");
@@ -281,14 +280,14 @@ async fn the_lanes_keep_no_more_than_the_budget_and_the_longest_unused_goes_firs
     };
 
     scopes.ask(&viewer, true, ask(1, None, 0, 10)).ok().unwrap();
-    rows(next(&mut scopes, true).await);
+    rows(next(&mut scopes).await);
     let one = scopes.cache.held()[0].1;
     scopes.cache = Arc::new(Cache::new(one + one / 2));
 
     // Over a budget that fits one lane, the lane asked last is kept and so is its paging.
     for (request, ask) in [(2, ask(2, None, 0, 10)), (3, other(3)), (4, other(4))] {
         scopes.ask(&viewer, true, ask).ok().unwrap();
-        rows(next(&mut scopes, true).await);
+        rows(next(&mut scopes).await);
         let held = scopes.cache.held();
         assert!(held.iter().map(|(_, bytes)| bytes).sum::<usize>() <= one + one / 2);
         assert_eq!(
@@ -332,7 +331,7 @@ async fn the_spans_of_an_object_come_beside_the_list() {
         .ask_appearances(&viewer, true, spans("2"))
         .ok()
         .unwrap();
-    let mut answers = [next(&mut scopes, true).await, next(&mut scopes, true).await];
+    let mut answers = [next(&mut scopes).await, next(&mut scopes).await];
     answers.sort_by_key(|message| answered(message.clone()).0);
     let [rows_answer, spans_answer] = answers;
     assert_eq!(rows(rows_answer).4.len(), 2, "the list is still answered");
@@ -345,10 +344,7 @@ async fn the_spans_of_an_object_come_beside_the_list() {
         .ask_appearances(&viewer, true, spans("nobody"))
         .ok()
         .unwrap();
-    assert_eq!(
-        found(next(&mut scopes, true).await).3,
-        Vec::<[u64; 2]>::new()
-    );
+    assert_eq!(found(next(&mut scopes).await).3, Vec::<[u64; 2]>::new());
 
     // Of two requests for a lane in a row only the newer is answered, even though the older one ran.
     for request in [6, 7] {
@@ -358,7 +354,7 @@ async fn the_spans_of_an_object_come_beside_the_list() {
         };
         scopes.ask_appearances(&viewer, true, ask).ok().unwrap();
     }
-    assert_eq!(answered(next(&mut scopes, true).await).0, 7);
+    assert_eq!(answered(next(&mut scopes).await).0, 7);
     assert!(
         tokio::time::timeout(Duration::from_millis(300), scopes.next())
             .await
@@ -418,7 +414,7 @@ async fn event_answers_carry_their_revisions_a_follower_is_refused_and_a_newer_r
     // A MOT file has no events: the answers are empty but made under the lane's revisions.
     scopes.ask_events(&viewer, true, list(1)).ok().unwrap();
     scopes.ask_events(&viewer, true, one(2)).ok().unwrap();
-    let mut answers = [next(&mut scopes, true).await, next(&mut scopes, true).await];
+    let mut answers = [next(&mut scopes).await, next(&mut scopes).await];
     answers.sort_by_key(|message| answered(message.clone()).0);
     let [rows_answer, event_answer] = answers;
     let (data, policy, listed) = body(rows_answer);
@@ -452,7 +448,7 @@ async fn event_answers_carry_their_revisions_a_follower_is_refused_and_a_newer_r
             .ok()
             .unwrap();
     }
-    assert_eq!(answered(next(&mut scopes, true).await).0, 3);
+    assert_eq!(answered(next(&mut scopes).await).0, 3);
     assert!(
         tokio::time::timeout(Duration::from_millis(300), scopes.next())
             .await
@@ -460,12 +456,9 @@ async fn event_answers_carry_their_revisions_a_follower_is_refused_and_a_newer_r
         "the replaced request is never answered"
     );
 
-    // A follower is refused when it asks, and when it became one while the request ran.
+    // A follower is refused when it asks.
     scopes.ask_events(&viewer, false, one(4)).ok().unwrap();
-    scopes.ask_events(&viewer, true, list(5)).ok().unwrap();
-    for _ in 0..2 {
-        assert_eq!(answered(next(&mut scopes, false).await).1, following());
-    }
+    assert_eq!(answered(next(&mut scopes).await).1, following());
 }
 
 #[tokio::test]
@@ -474,7 +467,7 @@ async fn an_answer_changes_only_its_own_listing_in_the_entry_of_its_revisions() 
     let (viewer, revision) = viewer(folder.path()).await;
     let mut scopes = FileScopes::new(Audience::HOST);
     scopes.ask(&viewer, true, ask(1, None, 0, 10)).ok().unwrap();
-    rows(next(&mut scopes, true).await);
+    rows(next(&mut scopes).await);
     let kept = scopes.cache.held()[0].1;
 
     scopes

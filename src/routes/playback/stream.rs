@@ -14,14 +14,11 @@ use super::{
     lanes::{self, LaneEvent, Lanes},
     next_client,
     prepare::Preparing,
+    setup::Setup,
     stopped, text,
     wire::Wire,
 };
-use crate::{
-    exports::ExportService,
-    prepare::Preparer,
-    video_sources::{VideoSources, video_location},
-};
+use crate::video_sources::video_location;
 use api_types::{
     Audience,
     playback::{
@@ -30,17 +27,10 @@ use api_types::{
     },
 };
 use axum::extract::ws::Message;
-use catalogs::Library;
-use foundation::{ErrorCode, FrameRate, FrameSize, HostPath, UserError};
-use media::{Cadence, PtsTiming};
-use overlays::OverlayService;
+use foundation::{ErrorCode, HostPath, UserError};
 use playback::{Delivery, Direction, Priority, Session, Want};
-use scene::matching::MatchPolicy;
-use sessions::SessionId;
-use settings::Settings;
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::time::Duration;
 use tokio::{sync::watch, time::MissedTickBehavior};
-use workspace::{Content, Entry};
 
 /// Before the viewer's first `Want`, which follows its Timeline within a round trip, it gets this many frames around
 /// the one it opened on.
@@ -48,48 +38,6 @@ const INITIAL_BEHIND: u32 = 4;
 const INITIAL_AHEAD: u32 = 4;
 /// How often a stream judges again what its viewer may have, so a follower's window moves with the presenter's clock.
 const REJUDGE: Duration = Duration::from_millis(100);
-
-/// What the stream knows of the viewer and of the entry it opened.
-pub(super) struct Setup<'a> {
-    /// The entry: its video, which the session plays, and its overlays, one lane each.
-    pub(super) entry: &'a Entry,
-    /// How the workspace says each lane matches its records to frames; `None` is the default.
-    pub(super) matching: &'a BTreeMap<String, MatchPolicy>,
-    /// The frame the viewer opened on.
-    pub(super) start_frame: Option<u64>,
-    /// The most bytes of Sample Items the viewer holds at once.
-    pub(super) data_bytes: u64,
-    /// What the viewer may learn from an error, a warning or a lane problem.
-    pub(super) audience: Audience,
-    /// The Session the viewer is in, which scopes the user catalogs a Guest is shown.
-    pub(super) session: SessionId,
-    /// The size of the decoded pictures.
-    pub(super) size: FrameSize,
-    /// The form the viewer is sent frames in.
-    pub(super) wire: Wire,
-    /// The video's warnings, which name the host's files.
-    pub(super) warnings: Vec<String>,
-    /// How the video's frame times come from its timestamps; `None` for an image sequence.
-    pub(super) pts: Option<PtsTiming>,
-    /// How evenly the video's frames are spaced; `None` for a one-frame video.
-    pub(super) cadence: Option<Cadence>,
-    /// The rate the video's stream declares; `None` when it declares none.
-    pub(super) frame_rate: Option<FrameRate>,
-    /// The catalogs a lane may draw with, which the viewer asks for by id.
-    pub(super) library: &'a Library,
-    /// Opens the lanes' overlays.
-    pub(super) overlays: &'a OverlayService,
-    /// Runs the viewer's export.
-    pub(super) exports: &'a Arc<ExportService>,
-    /// The open videos, which an export reads from.
-    pub(super) videos: &'a Arc<VideoSources>,
-    /// The Content the entry belongs to, whose other entries the viewer may ask to have prepared.
-    pub(super) content: &'a Content,
-    /// Readies the entry the viewer asks for.
-    pub(super) preparer: &'a Preparer,
-    /// Says whether it is allowed.
-    pub(super) settings: &'a Settings,
-}
 
 /// What the session sends next: notices first, then whichever of a lane's data and the next frame ranks first.
 enum Next {
@@ -194,6 +142,7 @@ pub(super) async fn stream(
         failures: 0,
         data: (INITIAL_AHEAD, INITIAL_BEHIND),
     };
+    playing.refresh()?;
     // Decoding starts at the first frame the viewer shows while the messages below are on their way.
     playing.ask(Want {
         playhead: setup.start_frame.unwrap_or(0).min(last),
@@ -225,6 +174,10 @@ impl<I: Incoming> Playing<'_, I> {
         for event in self.gate.take_rejected() {
             self.lanes.undelivered(&event);
         }
+        // The held File scope questions are answered again once the viewer owns, or if the writer refused one.
+        let (own, refused) = (self.gate.is_own(), self.gate.take_refused());
+        self.file_scopes
+            .authority(self.lanes.overlays(), own, refused);
         Ok(())
     }
 
@@ -457,7 +410,7 @@ impl<I: Incoming> Playing<'_, I> {
             Next::Catalog(message) | Next::Inspection(message) | Next::Export(message) => {
                 Ok(Some(message))
             }
-            Next::FileScope(reply) => Ok(Some(reply.outgoing(self.gate.is_own()))),
+            Next::FileScope(reply) => Ok(Some(reply.outgoing())),
             Next::Cached => Ok(self.cached.message(self.session.cached())),
             Next::Lane(event) => Ok(self.lanes.encode(event)),
             Next::Delivery(delivery) => {

@@ -44,6 +44,7 @@ mod open;
 mod prepare;
 #[cfg(test)]
 mod revocation;
+mod setup;
 mod stream;
 mod wire;
 
@@ -126,22 +127,27 @@ type Flow<T> = Result<T, End>;
 
 /// A message for the viewer. A frame, or the data of frames (a sample for the frame it ranks by, a map run for the
 /// frames it covers), says which, so the writer can drop it once the viewer's authority no longer reaches all of
-/// them. Dropped data is told to the gate, which hands it back to the overlays to offer again.
+/// them. Dropped data is told to the gate, which hands it back to the overlays to offer again. The writer judges every
+/// message as the authority is when it sends it; one the viewer may no longer have is dropped, or replaced by its
+/// `refusal`, so a question the viewer asked is not left unanswered.
 struct Outgoing {
     message: Message,
     frames: Option<RangeInclusive<u64>>,
     data: Option<OverlayEvent>,
     inspection: Option<foundation::CancelToken>,
+    /// What is sent instead of `message` when the viewer may not have it. Built from the ids of the question alone,
+    /// before any content was read, so it never tells whether anything exists.
+    refusal: Option<Message>,
+    /// Whether `message` carries the whole of a file, which only a viewer that chooses its own frames may have.
+    whole_file: bool,
 }
 
 impl Outgoing {
     /// A frame, or what is about one.
     fn frame(message: Message, frame: u64) -> Self {
         Self {
-            message,
             frames: Some(frame..=frame),
-            data: None,
-            inspection: None,
+            ..Self::from(message)
         }
     }
 }
@@ -153,6 +159,8 @@ impl From<Message> for Outgoing {
             frames: None,
             data: None,
             inspection: None,
+            refusal: None,
+            whole_file: false,
         }
     }
 }
@@ -276,7 +284,8 @@ async fn refuse<S: Sink<Message> + Unpin>(sink: &mut S, ended: End) {
 /// Owns the socket's write half, so the session loop keeps reading while a large frame is being written. Whatever is
 /// queued when the authority is revoked is dropped, not sent, and the socket closes with the revoked code. A queued
 /// frame, sample or map run the authority no longer reaches is dropped too, and the overlays are told to offer it
-/// again if the viewer still needs it.
+/// again if the viewer still needs it. What the authority does not reach is sent as its refusal when it has one. A
+/// refused whole file is told to the gate, so the stream answers the question again if the viewer owns by then.
 fn spawn_writer<S>(mut sink: S, gate: Gate) -> (Outbox, JoinHandle<()>)
 where
     S: Sink<Message> + Unpin + Send + 'static,
@@ -288,6 +297,8 @@ where
             frames,
             data,
             inspection,
+            refusal,
+            whole_file,
         }) = queue.recv().await
         {
             // Wait for socket readiness before the final validity/authority checks, then submit without awaiting.
@@ -300,15 +311,33 @@ where
             if gate.is_revoked() {
                 break;
             }
-            if inspection.is_some_and(|validity| validity.is_cancelled() || !gate.can_inspect()) {
+            if inspection
+                .as_ref()
+                .is_some_and(foundation::CancelToken::is_cancelled)
+            {
                 continue;
             }
-            if frames.is_some_and(|frames| !gate.admits(&frames)) {
+            let withheld = if whole_file && !gate.is_own() {
+                gate.refuse_whole_file();
+                true
+            } else if inspection.is_some() && !gate.can_inspect() {
+                true
+            } else if frames.is_some_and(|frames| !gate.admits(&frames)) {
                 if let Some(data) = data {
                     gate.reject(data);
                 }
-                continue;
-            }
+                true
+            } else {
+                false
+            };
+            let message = if withheld {
+                let Some(refusal) = refusal else {
+                    continue;
+                };
+                refusal
+            } else {
+                message
+            };
             if sink.start_send_unpin(message).is_err() || sink.flush().await.is_err() {
                 return;
             }

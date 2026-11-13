@@ -140,6 +140,12 @@ impl Events {
         }
     }
 
+    /// Answers the held requests again, as the owner.
+    pub(super) fn ask_again(&mut self, overlays: &ViewerOverlays, cache: &Arc<Cache>) {
+        self.list.ask_again(overlays, cache);
+        self.detail.ask_again(overlays, cache);
+    }
+
     /// The lane's events are no longer wanted: its running requests stop without an answer.
     pub(super) fn release(&mut self, lane: u16) {
         self.list.release(lane);
