@@ -18,7 +18,7 @@ Where the [viewer](viewer.md) rows differ from the reference. The offline decisi
 | OF-01 | The client ends the session when the protocol version in `Opened` differs from its own | A stale window stops with a message, not misparsed frames |
 | OF-01 | Playback commands sit in a View > Playback submenu; the keys, including Left and Right for 10 frames, are the reference's | There is no Playback menu |
 | IN-03 | Hover and click pick over the lane's filtered rows, not what was drawn, so an object that draws nothing can still be hovered and selected; the reference picked from the drawing | D36: picking is frontend only, with no drawing pass to ask |
-| IN-01 | Only the Events tab shows a count; an object with no events has no Events section, where the reference showed an empty one; a row is copied by Ctrl+C, its menu or a hover icon, with no copy column | Terse layout: the Objects count is the list's own `N of M` |
+| IN-01 | Only the Events tab shows a count; an object with no events has no Events section, where the reference showed an empty one | Terse layout: the Objects count is the list's own `N of M` |
 | RC-03 | Copy is an inline Name field in the lane menu's Look page, not a dialog | The lane menu is where a catalog is chosen |
 | RC-03 | A copy records `origin` as a plain string with no base hash, so there is no "modified" note | A copy is the source text under a new name |
 | RC-03 | Copy refuses a source with a duplicate top-level key; the file name is lowercased, not casefolded | The compiler would silently keep the last key |

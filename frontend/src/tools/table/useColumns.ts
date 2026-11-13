@@ -12,6 +12,15 @@ import type { Column } from "./columns";
 import { dragWidth, fitColumns, fitWidth, rememberedWidths, type Fit, type Measure } from "./fit";
 import { fontsOf, measureColumns, type Fonts } from "./measure";
 
+/** The copy column every row ends with: one row height wide, outside the columns the fit divides the room between. */
+const COPY_COLUMN = "var(--spacing-row)";
+
+/** The width of the copy column, which is the height of the header row (its `h-row`). */
+const copyWidth = (header: HTMLElement): number => {
+  const height = parseFloat(getComputedStyle(header).height);
+  return Number.isFinite(height) ? height : 0;
+};
+
 /** A resize in progress: where the pointer went down, and the widths as they stand until it is let go. */
 type Drag = {
   index: number;
@@ -71,7 +80,7 @@ export function useColumns<Row>(
           parseFloat(style.paddingLeft) -
           parseFloat(style.paddingRight) -
           parseFloat(style.borderLeftWidth);
-        const width = Number.isFinite(room) ? room : list.clientWidth;
+        const width = (Number.isFinite(room) ? room : list.clientWidth) - copyWidth(head);
         layout.current = width > 0 ? { fonts: fontsOf(list, head), available: width } : null;
       }
       if (!layout.current) return;
@@ -84,7 +93,10 @@ export function useColumns<Row>(
       const shownChanged = !same(fit.shown, before.shown);
       const widthsChanged = !same(fit.widths, before.widths);
       if (widthsChanged || shownChanged)
-        box.style.setProperty("--cols", fit.widths.map((width) => `${width}px`).join(" "));
+        box.style.setProperty(
+          "--cols",
+          [...fit.widths.map((width) => `${width}px`), COPY_COLUMN].join(" "),
+        );
       // The dividers' values follow the fit; the render after a change of shown columns brings new dividers.
       const stale =
         settling.current ||
