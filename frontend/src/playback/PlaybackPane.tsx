@@ -166,6 +166,14 @@ export function Playback({
   useHeaderDetails(view.details);
   const addBookmark = useAddBookmark(stream, item, entry);
   useSeekRequest(stream, view.status, entry);
+  // Opening the tools shows the lane the shortcuts act on.
+  const toggleTools = useCallback(() => {
+    if (!tools) {
+      const lane = fullscreen.target();
+      if (lane !== null) chooseLane(lane);
+    }
+    setTools((open) => !open);
+  }, [tools, fullscreen.target, chooseLane]);
   const actions = useViewerActions(
     useMemo(
       () => ({
@@ -179,13 +187,7 @@ export function Playback({
         "step-back-10": () => stream.step(-10),
         "speed-up": () => stream.stepSpeed(1),
         "speed-down": () => stream.stepSpeed(-1),
-        "media-tools": () => {
-          if (!tools) {
-            const lane = fullscreen.target();
-            if (lane !== null) chooseLane(lane);
-          }
-          setTools((open) => !open);
-        },
+        "media-tools": toggleTools,
         "info-overlay": () => setInfo((shown) => !shown),
         "lane-fullscreen": fullscreen.toggle,
         "export-video": () => exportLane(null),
@@ -199,8 +201,7 @@ export function Playback({
         fullscreen.target,
         exportLane,
         addBookmark,
-        tools,
-        chooseLane,
+        toggleTools,
       ],
     ),
   );
@@ -285,7 +286,16 @@ export function Playback({
             )}
             {/* With every lane hidden there is nothing to play: no transport, so no pick or press outlives the lanes. */}
             {!allHidden(view.lanes, shown) && (
-              <Transport controls={stream} view={view} disabled={!canChange} />
+              <Transport
+                controls={stream}
+                view={view}
+                disabled={!canChange}
+                tools={{
+                  open: tools,
+                  shortcut: shortcuts["media-tools"] ?? null,
+                  onToggle: toggleTools,
+                }}
+              />
             )}
           </div>
           {tools && (

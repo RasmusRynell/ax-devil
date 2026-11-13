@@ -23,7 +23,15 @@ export function Status({
         {view.failure.location && (
           <p className="m-0 text-small break-all text-on-canvas-muted">{view.failure.location}</p>
         )}
-        {onDismiss && <IconButton icon="x" label="Dismiss" onCanvas onClick={onDismiss} />}
+        {onDismiss && (
+          <IconButton
+            icon="x"
+            label="Dismiss"
+            onCanvas
+            onClick={onDismiss}
+            className="self-center"
+          />
+        )}
       </div>
     );
   return (
