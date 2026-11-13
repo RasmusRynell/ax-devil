@@ -755,8 +755,8 @@ export const SETTINGS = [
     },
     "label": "Full access with password",
     "description": "Anyone with the server password can install plugins and read this machine's environment.",
-    "page": "Storage",
-    "section": "Folders",
+    "page": "Advanced",
+    "section": "Sharing",
     "live": true,
     "env": false,
     "secret": false,
@@ -1017,24 +1017,8 @@ export const COMMANDS = [
     "description": null
   },
   {
-    "id": "debug-metrics",
-    "label": "Debug Metrics",
-    "category": "Application",
-    "key": "Ctrl+D",
-    "repeats": false,
-    "description": null
-  },
-  {
     "id": "plugins",
     "label": "Plugins",
-    "category": "Application",
-    "key": null,
-    "repeats": false,
-    "description": null
-  },
-  {
-    "id": "collect-metrics",
-    "label": "Collect Debug Metrics",
     "category": "Application",
     "key": null,
     "repeats": false,

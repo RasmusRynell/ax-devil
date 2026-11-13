@@ -68,9 +68,9 @@ module.exports.run = async () => {
         );
         for (const mode of ["manual", "auto"]) {
           await js(
-            `(() => { const select = document.querySelector('dialog select'); select.value = '${mode}'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`,
+            `(() => { const select = document.querySelector('[role=tabpanel] select'); select.value = '${mode}'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`,
           );
-          await wait(`document.querySelector('dialog select').value === '${mode}'`);
+          await wait(`document.querySelector('[role=tabpanel] select').value === '${mode}'`);
         }
         await js(
           "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'OK').click()",
