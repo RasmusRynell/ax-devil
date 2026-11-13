@@ -1,6 +1,6 @@
 //! Finding Axis cameras on a range of addresses: a TCP probe of the web ports, then the camera's own answer to
 //! "who are you" on each open one, with no login. Only a host that answered as an Axis camera is ever sent a login,
-//! as a Digest answer to its own challenge.
+//! as an answer to its own challenge.
 
 mod host;
 mod targets;
@@ -128,7 +128,7 @@ pub struct ScanFailed;
 /// they are stopped, nothing more is sent, and the channel closes with the cameras found so far.
 ///
 /// A camera is found without a login. With `logins` it is also signed in to, in order, until one is accepted, but
-/// only once it has answered as an Axis camera, and only with Digest, never Basic. A camera that turns a login away
+/// only once it has answered as an Axis camera. A camera that turns a login away
 /// for now (429, or 403 after a refusal) is asked again after 1 s, then 2 s. A login with no user name is skipped.
 pub fn scan(
     targets: Targets,
@@ -207,7 +207,7 @@ fn report_panic(task: JoinHandle<()>, report: mpsc::Sender<Result<Found, ScanFai
 
 /// Signs in to the camera at `addr` on `web` with `login`, and tells what it said: the scan's way to one host, for a
 /// login the app already holds. Nothing is scanned. Like a scan, no login is sent until the host answered as an Axis
-/// camera, and only as Digest; `None` when nothing there did.
+/// camera; `None` when nothing there did.
 pub async fn check(addr: Ipv4Addr, web: Web, login: Login) -> Option<Found> {
     host::identify(addr, &[web], &[login]).await
 }

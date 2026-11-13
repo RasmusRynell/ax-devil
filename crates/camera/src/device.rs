@@ -18,7 +18,6 @@ use crate::tls;
 pub struct Device {
     client: Client,
     pub(crate) camera: Camera,
-    digest_only: bool,
 }
 
 /// The most bytes read from an ordinary device answer (JSON, parameter lists); they are kilobytes at most, and the
@@ -49,16 +48,7 @@ impl Device {
         Ok(Self {
             client,
             camera: camera.clone(),
-            digest_only: false,
         })
-    }
-
-    /// The same device, answering a challenge with Digest only: Basic is refused even over HTTPS, so a wrong login is
-    /// refused at once instead of being retried with Basic.
-    #[must_use]
-    pub fn digest_only(mut self) -> Self {
-        self.digest_only = true;
-        self
     }
 
     /// Sends `call` and returns the body of a 2xx answer, at most [`LARGEST_ANSWER`] bytes: a longer one is
@@ -78,7 +68,7 @@ impl Device {
     }
 
     /// Like [`call`](Self::call), but a camera that offers only Basic is answered with it over plain HTTP too, as the
-    /// DataHub session token has always been. Ignored on a [digest-only](Self::digest_only) device.
+    /// DataHub session token has always been.
     pub(crate) async fn call_basic_anywhere(&self, call: &Call<'_>) -> Result<Bytes, CameraError> {
         self.exchange(call, LARGEST_ANSWER, true).await
     }
@@ -89,8 +79,7 @@ impl Device {
         limit: usize,
         basic_anywhere: bool,
     ) -> Result<Bytes, CameraError> {
-        let basic_allowed =
-            !self.digest_only && (basic_anywhere || self.camera.web.scheme == Scheme::Https);
+        let basic_allowed = basic_anywhere || self.camera.web.scheme == Scheme::Https;
         let url = self.url(call)?;
         let body = call.json.map(|json| Bytes::from(json.to_string()));
         let mut response = self.send(call, &url, body.as_ref(), None).await?;

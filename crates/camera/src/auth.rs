@@ -18,7 +18,7 @@ pub(crate) struct Signed<'a> {
 /// The header value answering `challenges` (the `WWW-Authenticate` values of a 401) for `login`.
 ///
 /// Digest is used whenever it is offered. Basic is used only when it is the only usable scheme and `basic_allowed`
-/// (an HTTPS connection that is not digest-only), so a password is never sent in the clear.
+/// (an HTTPS connection), so a password is never sent in the clear.
 pub(crate) fn authorization(
     challenges: &[&str],
     login: &Login,
