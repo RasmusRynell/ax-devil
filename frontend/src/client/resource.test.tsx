@@ -24,7 +24,7 @@ function harness(topics: Topic | Topic[] = "plugins", versioned = true) {
   function Probe() {
     const sink = useNoticeSink();
     notice = (topic, revision, fresh) => sink?.(topic, revision, fresh);
-    const resource = useResource(topics, "/p", {
+    const resource = useResource(topics, "GET /api/plugins", {
       read,
       ...(versioned && { revisionOf: (value: Value) => value.revision }),
     });

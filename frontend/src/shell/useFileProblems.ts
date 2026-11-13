@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { ask } from "../client/ask";
-import type { FileCheck } from "../generated/api";
 
 /** How long the paths stay as typed before the backend is asked about them. */
 export const FILE_CHECK_DELAY_MS = 300;
@@ -15,9 +14,10 @@ export async function checkFiles(
   paths: readonly string[],
   signal?: AbortSignal,
 ): Promise<ReadonlyMap<string, string>> {
-  const answer = await ask<FileCheck[]>("/api/files/check", { json: { paths }, signal }).catch(
-    () => null,
-  );
+  const answer = await ask("POST /api/files/check", {
+    request: { paths: [...paths] },
+    signal,
+  }).catch(() => null);
   const checks = answer?.ok ? answer.value : [];
   return new Map(checks.flatMap((check) => (check.problem ? [[check.path, check.problem]] : [])));
 }

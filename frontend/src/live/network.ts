@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "../client/api";
-import type { NetworkRow, NetworkSignIn, NetworkSnapshot, ScanStarted } from "../generated/api";
+import type { NetworkRow, NetworkSignIn, NetworkSnapshot } from "../generated/api";
 import type { Tone } from "../kit/look";
 import { ask } from "../client/ask";
 import { reasonOf } from "../client/errors";
@@ -159,9 +159,7 @@ export type ScanProblem = { text: "Invalid IP range" | "Scan failed"; reason: st
  * the started scan's number, which its snapshots carry, else to why it was refused.
  */
 export async function rescan(range?: string, signIn?: boolean): Promise<number | ScanProblem> {
-  const answer = await ask<ScanStarted>("/api/network/scan", {
-    json: { range, sign_in: signIn },
-  });
+  const answer = await ask("POST /api/network/scan", { request: { range, sign_in: signIn } });
   if (answer.ok) return answer.value.scan;
   return {
     text: answer.error.code === "InvalidRequest" ? "Invalid IP range" : "Scan failed",

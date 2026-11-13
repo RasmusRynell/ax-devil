@@ -230,6 +230,15 @@ export type PathExists = {
 exists: boolean, };
 
 /**
+ * The query of `GET /api/files/folder` and `GET /api/files/exists`.
+ */
+export type PathQuery = { 
+/**
+ * An absolute path; the starting places only when absent.
+ */
+path?: string, };
+
+/**
  * A workspace file opened or saved lately.
  */
 export type RecentWorkspace = { 

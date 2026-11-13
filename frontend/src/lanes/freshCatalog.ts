@@ -4,9 +4,7 @@ import type { ErrorWire, FreshCatalog } from "../generated/api";
 
 /** Rereads the saved document; the action owner reconciles and compiles it before committing. */
 export async function readFreshCatalog(id: string): Promise<FreshCatalog> {
-  const answer = await ask<FreshCatalog>("/api/catalogs/reload", {
-    json: { id },
-  });
+  const answer = await ask("POST /api/catalogs/reload", { request: { id } });
   if (!answer.ok) throw answer.error;
   return answer.value;
 }

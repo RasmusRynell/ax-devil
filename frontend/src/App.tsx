@@ -1,5 +1,4 @@
 import { AccessContext } from "./client/access";
-import type { AppInfo } from "./generated/api";
 import { PathPickerProvider } from "./client/pickPath";
 import { reasonOf } from "./client/errors";
 import { ChangesProvider, refusalOf, useResource } from "./client/resource";
@@ -11,7 +10,7 @@ import { Shell } from "./shell/Shell";
 /** The backend's identity and what this window is to it: shown once the backend answers, with the reason when it does not. */
 function Backend() {
   // Full access follows `server.password_full_access`, so the info is read again when the settings change.
-  const { value: info, error } = useResource<AppInfo>("settings", "/api/info");
+  const { value: info, error } = useResource("settings", "GET /api/info");
   if (info)
     return (
       <AccessContext value={{ owner: info.owner, fullAccess: info.fullAccess }}>

@@ -1,12 +1,13 @@
 //! Writes the Rust API types and the playback constants to one file per Rust module under
 //! frontend/src/generated/types/ (re-exported by frontend/src/generated/api.ts), the settings and command
-//! tables to frontend/src/generated/settings.ts, the shell version and the reserved shortcuts to
-//! desktop/generated/api.json, and the API version (a hash of the TypeScript files, so it is not committed) to the
+//! tables to frontend/src/generated/settings.ts, the JSON route table to frontend/src/generated/routes.ts, the shell
+//! version and the reserved shortcuts to desktop/generated/api.json, and the API version (a hash of the TypeScript files, so it is not committed) to the
 //! untracked desktop/generated/api-version.json, only when they changed.
 
 #[path = "../../../contract_version.rs"]
 mod contract_version;
 mod modules;
+mod routes;
 mod scan;
 
 use contract_version::contract_version;
@@ -32,12 +33,13 @@ impl std::error::Error for Failed {}
 
 const TYPES_FOLDER: &str = "frontend/src/generated/types";
 
-/// The entry file, the settings tables and the desktop JSON, in the order they are written.
-const FIXED_OUTPUTS: [&str; 4] = [
+/// The entry file, the settings tables, the desktop JSON and the route table, in the order they are written (the route table last).
+const FIXED_OUTPUTS: [&str; 5] = [
     "frontend/src/generated/api.ts",
     "frontend/src/generated/settings.ts",
     "desktop/generated/api.json",
     "desktop/generated/api-version.json",
+    "frontend/src/generated/routes.ts",
 ];
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -70,6 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     write_if_changed(FIXED_OUTPUTS[0], &entry)?;
     write_if_changed(FIXED_OUTPUTS[1], &settings)?;
+    write_if_changed(FIXED_OUTPUTS[4], &routes::module())?;
     prune(&files.keys().map(|stem| format!("{stem}.ts")).collect())?;
     // The desktop shell and the development supervisor are CommonJS and read these from JSON. The version is
     // hashed from the files just written, as the backend hashes them when it is built; it has its own file so the

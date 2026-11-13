@@ -4,7 +4,6 @@ import { useAccess } from "../client/access";
 import { reasonOf } from "../client/errors";
 import type {
   CatalogInfoWire,
-  CopiedCatalog,
   CopyCatalogRequest,
   DeleteCatalogRequest,
   ReloadCatalogRequest,
@@ -158,7 +157,7 @@ export function LaneCatalogActions({
     const asked = selection.current;
     const request = ++reloadRequest.current;
     const body: ReloadCatalogRequest = { id: catalog };
-    void ask<undefined>("/api/catalogs/reload", { json: body }).then((answer) => {
+    void ask("POST /api/catalogs/reload", { request: body }).then((answer) => {
       if (asked !== selection.current || request !== reloadRequest.current) return;
       refresh();
       if (!answer.ok && mayChange)
@@ -173,7 +172,7 @@ export function LaneCatalogActions({
     setRefusal(null);
     const asked = selection.current;
     const request: CopyCatalogRequest = { source: catalog, revision, name: naming.trim() };
-    void ask<CopiedCatalog>("/api/catalogs/copy", { json: request }).then((answer) => {
+    void ask("POST /api/catalogs/copy", { request }).then((answer) => {
       if (asked !== selection.current) return;
       if (!answer.ok) return finish(reasonOf(answer.error), "create");
       setArriving(answer.value.id);
@@ -187,7 +186,7 @@ export function LaneCatalogActions({
     setRefusal(null);
     const asked = selection.current;
     const request: DeleteCatalogRequest = { id: catalog };
-    void ask<undefined>("/api/catalogs/delete", { json: request }).then((answer) => {
+    void ask("POST /api/catalogs/delete", { request }).then((answer) => {
       if (!answer.ok) {
         if (asked === selection.current) finish(reasonOf(answer.error), "delete");
         return;

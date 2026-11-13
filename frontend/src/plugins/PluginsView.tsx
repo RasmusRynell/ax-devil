@@ -10,7 +10,6 @@ import type {
   HandlerSummary,
   InstallRequest,
   PluginInfo,
-  PluginsInfo,
   RemoveRequest,
   SkippedHandlerInfo,
   UpdateRequest,
@@ -139,7 +138,7 @@ function Row({
 /** The sidebar's Plugins view: the plugins that failed, are installed and ship with the app, and installing, updating and removing. */
 export function PluginsView() {
   // `apply` shows a change's answer instead of any read still pending.
-  const { value: info, error, apply, reload } = useResource<PluginsInfo>("plugins", "/api/plugins");
+  const { value: info, error, apply, reload } = useResource("plugins", "GET /api/plugins");
   const failure = error ? reasonOf(error as ErrorWire) : null;
   useEffect(() => {
     if (info) reportFailedPlugins(failedIn(info));
@@ -152,11 +151,14 @@ export function PluginsView() {
   const [refused, setRefused] = useState<string | null>(null);
   const pick = usePickPath();
 
-  const change = async (url: string, body: InstallRequest | RemoveRequest | UpdateRequest) => {
+  const change = async (
+    route: `POST /api/plugins/${"install" | "remove" | "update"}`,
+    request: InstallRequest | RemoveRequest | UpdateRequest,
+  ) => {
     setBusy(true);
     setRefused(null);
     try {
-      const answer = await ask<PluginsInfo>(url, { json: body });
+      const answer = await ask(route, { request });
       if (answer.ok) {
         apply(answer.value);
         return true;
@@ -173,7 +175,7 @@ export function PluginsView() {
   };
   const install = (event: FormEvent) => {
     event.preventDefault();
-    void change("/api/plugins/install", { path: path.trim() }).then((installed) => {
+    void change("POST /api/plugins/install", { path: path.trim() }).then((installed) => {
       if (installed) setPath("");
     });
   };
@@ -237,7 +239,7 @@ export function PluginsView() {
                     onChange={
                       mayChange
                         ? (action, manifest) =>
-                            void change(`/api/plugins/${action}`, { target: manifest })
+                            void change(`POST /api/plugins/${action}`, { target: manifest })
                         : undefined
                     }
                   />

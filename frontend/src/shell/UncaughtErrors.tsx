@@ -25,8 +25,8 @@ async function copy(text: string): Promise<void> {
 
 /** Tells the backend, which logs it with who sent it. A failure to tell is dropped: it must not raise another dialog. */
 function report({ summary, details }: Uncaught): void {
-  void ask("/api/client-errors", {
-    json: {
+  void ask("POST /api/client-errors", {
+    request: {
       summary,
       details,
       // The address without its query and fragment, which may hold a credential.

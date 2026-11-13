@@ -261,6 +261,14 @@ pub struct FileCheck {
     pub problem: Option<String>,
 }
 
+/// The query of `GET /api/files/folder` and `GET /api/files/exists`.
+#[derive(Deserialize, TS)]
+pub struct PathQuery {
+    /// An absolute path; the starting places only when absent.
+    #[ts(optional)]
+    pub path: Option<String>,
+}
+
 /// What `GET /api/files/folder` answers: one folder on the backend's machine, and where a listing can start.
 #[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
 pub struct FolderListing {

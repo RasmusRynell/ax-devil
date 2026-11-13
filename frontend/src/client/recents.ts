@@ -44,9 +44,6 @@ export function usedOn(usedMs: number, now = Date.now()): string {
  */
 export function useRecents(enabled: boolean): readonly RecentWorkspace[] {
   const host = useCan("host");
-  const { value } = useResource<RecentWorkspace[]>(
-    "recents",
-    enabled && host ? "/api/workspaces/recent" : null,
-  );
+  const { value } = useResource("recents", enabled && host ? "GET /api/workspaces/recent" : null);
   return value ?? [];
 }

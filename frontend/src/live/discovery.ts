@@ -27,7 +27,7 @@ export function askResolutions(
   signal: AbortSignal,
 ): Promise<Answer<LiveResolutions>> {
   const body: ResolutionsRequest = { connection };
-  return ask("/api/live/resolutions", { json: body, signal });
+  return ask("POST /api/live/resolutions", { request: body, signal });
 }
 
 /** The `WIDTHxHEIGHT` sizes `head` offers: its own list, else the camera-wide one; none for a head below 1. */
@@ -44,7 +44,7 @@ export function askSources(
   signal: AbortSignal,
 ): Promise<Answer<SourcesAnswer>> {
   const body: SourcesRequest = { connection, overlay };
-  return ask("/api/live/sources", { json: body, signal });
+  return ask("POST /api/live/sources", { request: body, signal });
 }
 
 /** Where a question stands. */

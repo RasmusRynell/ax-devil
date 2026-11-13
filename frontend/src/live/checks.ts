@@ -16,7 +16,7 @@ const NONE: Checks = new Map();
 
 /** The row of the stream's check; none when the backend sent no content or refused. */
 const check = (item: string): Promise<NetworkRow | null> =>
-  ask<NetworkRow | undefined>("/api/live/check", { json: { item } }).then(
+  ask("POST /api/live/check", { request: { item } }).then(
     (answer) => (answer.ok && answer.value) || null,
   );
 

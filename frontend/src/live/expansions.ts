@@ -53,7 +53,7 @@ export function useExpansions(
       broker_host: brokerHost.trim() || undefined,
     };
     const wait = setTimeout(() => {
-      ask<LiveExpansions>("/api/live/expansions", { json: body, signal: request.signal }).then(
+      ask("POST /api/live/expansions", { request: body, signal: request.signal }).then(
         (answer) => setShown(answer.ok ? answer.value : null),
         () => undefined, // aborted: the form moved on
       );

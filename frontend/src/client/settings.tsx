@@ -202,7 +202,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const device = useDeviceValues();
   const savedDevice = useSavedDeviceValues();
   const recoveredDevice = useRecoveredDeviceKeys();
-  const settings = useResource<SettingsState>("settings", owner ? "/api/settings" : null, {
+  const settings = useResource("settings", owner ? "GET /api/settings" : null, {
     revisionOf: (state) => state.revision,
   });
   // A page that holds only a join link kept a copy of the Personal settings here; nothing stale stays behind.
@@ -234,7 +234,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     if (!isEmpty(server)) {
       if (!owner)
         return { code: "Forbidden", params: {}, reason: "Only the Owner can change this" };
-      const answer = await ask<SettingsState>("/api/settings", { method: "PATCH", json: server });
+      const answer = await ask("PATCH /api/settings", { request: server });
       if (!answer.ok) return answer.error;
       settings.apply(answer.value);
     }

@@ -26,7 +26,7 @@ export function useFailedPlugins(): number {
   useEffect(() => {
     if (asked) return;
     asked = true;
-    ask<PluginsInfo>("/api/plugins")
+    ask("GET /api/plugins")
       .then((answer) => {
         if (answer.ok) reportFailedPlugins(failedIn(answer.value));
       })

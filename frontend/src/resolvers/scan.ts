@@ -13,10 +13,7 @@ export function scanChoices(
   signal: AbortSignal,
 ): Promise<Answer<ChoiceInfo[]>> {
   const request: ScanRequest = { field, settings };
-  return ask<ChoiceInfo[]>(`/api/resolvers/${encodeURIComponent(resolver)}/scan`, {
-    json: request,
-    signal,
-  });
+  return ask("POST /api/resolvers/{id}/scan", { params: { id: resolver }, request, signal });
 }
 
 /** What a `Scan` field shows and keeps. */
