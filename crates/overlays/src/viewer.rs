@@ -45,7 +45,7 @@ pub enum FileScopeBlocked {
 ///
 /// Dropping it closes it, like [`ViewerOverlays::close`].
 pub struct ViewerOverlays {
-    pub(crate) shared: Arc<Shared>,
+    shared: Arc<Shared>,
     threads: Vec<thread::JoinHandle<()>>,
     sources: Vec<Option<u16>>,
 }
@@ -235,5 +235,49 @@ impl ViewerOverlays {
     /// How many encoded items of `source` wait for the consumer.
     pub(crate) fn waiting_items(&self, source: usize) -> usize {
         self.shared.lock().sources[source].ready.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use overlay_sync::{Alignment, MatchPolicy, Tolerance};
+
+    use crate::tests::{Env, until_ready};
+
+    #[tokio::test]
+    async fn a_stale_alignment_is_not_published() {
+        let env = Env::new();
+        let mut viewer = env.open(vec![Some(env.mot("a.txt", 0..5))], 5);
+        until_ready(&mut viewer, &[0]).await;
+
+        // The policy changes while the scan for the old one runs: its result is of a file placed another way.
+        let shared = &viewer.shared;
+        let exact = MatchPolicy {
+            tolerance: Tolerance::Exact,
+            ..MatchPolicy::default()
+        };
+        let old = shared.update(|state| {
+            state.set_policy(0, 1, Some(exact), true, &shared.timeline);
+            state.lanes[0].aligned = None;
+            state
+                .stale_alignments()
+                .pop()
+                .expect("the lane's alignment is out of date")
+        });
+        shared.update(|state| {
+            state.set_policy(0, 2, Some(MatchPolicy::default()), true, &shared.timeline);
+        });
+        let mut state = shared.lock();
+        let told = state.lanes[0].told.clone();
+        let (previous, _) = told.clone().expect("the lane was told its alignment");
+
+        let alignment = Alignment {
+            samples: previous.samples + 1,
+            ..previous
+        };
+        state.set_alignment(&old, alignment, None);
+
+        assert!(state.lanes[0].aligned.is_none(), "the result was stored");
+        assert_eq!(state.lanes[0].told, told, "the lane was told");
     }
 }

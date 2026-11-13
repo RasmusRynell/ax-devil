@@ -262,4 +262,47 @@ mod tests {
         .await
         .expect("whole test deadline");
     }
+
+    #[tokio::test]
+    async fn only_the_current_query_is_answered_as_failed_when_it_and_its_predecessors_panic() {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            let dir = tempfile::tempdir().unwrap();
+            let (viewer, _) = super::super::tests::viewer(dir.path()).await;
+            let cache = Arc::new(Cache::new(1 << 20));
+            let mut latest = Latest::new(Audience::HOST);
+            let (entered, started) = tokio::sync::oneshot::channel();
+            let (resume, released) = mpsc::channel();
+            latest.ask(&viewer, &cache, true, (0, 1), move |_, _, _, _| {
+                entered.send(()).unwrap();
+                released.recv_timeout(Duration::from_secs(5)).unwrap();
+                panic!("the superseded query has a defect")
+            });
+            started.await.unwrap();
+            // Request 1 is superseded while it runs; 2 is replaced before it starts; 3 runs once 1 has ended.
+            latest.ask(&viewer, &cache, true, (0, 2), |_, _, _, _| {
+                panic!("the replaced query never runs")
+            });
+            latest.ask(&viewer, &cache, true, (0, 3), |_, _, _, _| {
+                panic!("the promoted query has a defect")
+            });
+            resume.send(()).unwrap();
+            assert!(matches!(
+                latest.next().await.message,
+                api_types::playback::ServerMessage::File {
+                    request: 3,
+                    answer: FileAnswer::Unavailable {
+                        unavailable: api_types::playback::FileScopeUnavailable::Failed(_)
+                    },
+                    ..
+                }
+            ));
+            assert!(
+                tokio::time::timeout(Duration::from_millis(50), latest.next())
+                    .await
+                    .is_err()
+            );
+        })
+        .await
+        .expect("whole test deadline");
+    }
 }
