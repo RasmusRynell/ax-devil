@@ -346,19 +346,6 @@ describe("add live stream dialog", () => {
     expect(ok().disabled).toBe(false);
   });
 
-  it("judges the whole form as it changes, before OK", async () => {
-    await open();
-    await listed();
-    type("Overlay Mode", "mqtt");
-    type("MQTT Host", "broker");
-    await screen.findByRole("option", { name: "com.axis.scene.frame.v1#1" });
-    type("Data Source", "com.axis.scene.frame.v1#1");
-    expect(ok().disabled).toBe(false);
-    type("MQTT Port", "0");
-    expect(ok().disabled).toBe(true);
-    expect(screen.getByRole("alert").textContent).toBe("MQTT Port must be between 1 and 65535.");
-  });
-
   it("adds the data source or topic shown, which the camera's list has, and none else", async () => {
     await open();
     await listed();

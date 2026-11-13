@@ -107,18 +107,18 @@ function input(
 /** A number box that takes digits up to `limit` only. */
 function number(
   props: PanelProps,
-  field: "port" | "head" | "rtsp_port",
+  field: "port" | "head" | "rtsp_port" | "broker_port" | "channel",
   label: string,
   limit: number,
-  placeholder?: string,
-  disabled?: boolean,
+  more: { placeholder?: string; disabled?: boolean; title?: string } = {},
 ) {
   return (
     <FormInput
       label={label}
       value={props.form[field]}
-      placeholder={placeholder ?? hint(props, field)}
-      disabled={disabled}
+      placeholder={more.placeholder ?? hint(props, field)}
+      disabled={more.disabled}
+      title={more.title}
       onChange={(value) => {
         if (typable(value, limit)) props.set(field, value);
       }}
@@ -185,7 +185,7 @@ export function ConnectionRows({
         ]}
         onChange={(value) => set("protocol", value)}
       />
-      {number(props, "port", "Port", 65535, "Standard")}
+      {number(props, "port", "Port", 65535, { placeholder: "Standard" })}
       {number(props, "head", "Camera Head", 9999)}
       <FormSelect
         label="RTSP Route"
@@ -199,7 +199,7 @@ export function ConnectionRows({
         ]}
         onChange={(value) => set("rtsp_route", value)}
       />
-      {number(props, "rtsp_port", "RTSP Port", 65535, undefined, viaWebApi)}
+      {number(props, "rtsp_port", "RTSP Port", 65535, { disabled: viaWebApi })}
       <FormCombo
         label="Resolution"
         value={form.resolution}
@@ -352,7 +352,7 @@ export function OverlayGroup({
         {input(props, "broker_host", "MQTT Host")}
         {input(props, "broker_user", "MQTT Username")}
         {input(props, "broker_pass", "MQTT Password", { masked: true })}
-        {input(props, "broker_port", "MQTT Port")}
+        {number(props, "broker_port", "MQTT Port", 65535)}
         {choice("mqtt", "source_key", "Data Source", "data sources")}
       </>
     ),
@@ -360,7 +360,7 @@ export function OverlayGroup({
       <>
         <FormNote>{OVERLAY_TEXT.datahub}</FormNote>
         {choice("datahub", "topic", "DataHub Topic", "DataHub topics")}
-        {input(props, "channel", "Topic Channel", {
+        {number(props, "channel", "Topic Channel", 4294967295, {
           title: "Instance of the DataHub topic to subscribe to. Most devices use 1.",
         })}
       </>

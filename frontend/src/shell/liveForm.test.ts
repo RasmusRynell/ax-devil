@@ -7,9 +7,7 @@ import {
   headOf,
   hiddenSecrets,
   newLive,
-  problemOf,
   startForm,
-  type LiveForm,
 } from "./liveForm";
 
 const DECODERS = [
@@ -112,20 +110,9 @@ describe("the live form of an edited stream", () => {
     expect(hiddenSecrets({ ...wire, password: "" })).toEqual(["broker_pass"]);
   });
 
-  it("sends the route only when chosen and accepts any stream URL, which the camera checks when it connects", () => {
+  it("sends the route only when chosen", () => {
     expect(newLive(saved).rtsp_route).toBeUndefined();
     expect(newLive({ ...saved, rtsp_route: "web_api" }).rtsp_route).toBe("web_api");
     expect(formFrom(values, { rtsp_route: "web_api" }).rtsp_route).toBe("web_api");
-    for (const url of ["http://u:p@cam/s", "rtsps://cam/s", "not a url"])
-      expect(problemOf({ ...saved, url }, values, "RTSP Embedded")).toBeUndefined();
-  });
-
-  it("refuses RTSP Port 0 and a Camera Head above 9999", () => {
-    const problem = (change: Partial<LiveForm>) =>
-      problemOf({ ...saved, ...change }, values, "RTSP Embedded");
-    expect(problem({ rtsp_port: "0" })).toBe("RTSP Port must be between 1 and 65535.");
-    expect(newLive({ ...saved, rtsp_port: "0" }).rtsp_port).toBe(0);
-    expect(problem({ head: "9999" })).toBeUndefined();
-    expect(problem({ head: "10000" })).toBe("Camera Head must be at most 9999.");
   });
 });

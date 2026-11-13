@@ -28,7 +28,7 @@ import {
   savedChoices,
   isField,
   newLive,
-  problemOf,
+  unchosen,
   type FieldKey,
   type LiveForm,
   type OverlayMode,
@@ -75,10 +75,10 @@ function useListing(
 
 /**
  * Adds a live stream, in the layout of the Python app's dialog: one page of connection fields, an Overlay group
- * with the page of the chosen mode, one line saying what is wrong, and OK, which waits for a form with nothing wrong.
+ * with the page of the chosen mode, one line saying what is wrong, and OK, which waits for the host, decoder, data source and topic to be chosen.
  * Blank fields take the configured defaults, so the form shows them as placeholders; the camera is asked for its stream
  * sizes, analytics sources and topics but never connected for the stream itself: the viewer does that. The backend's
- * intake judges the form, and its refusal is the line under the groups. With `editing`, the id of a stream, `initial`
+ * intake judges every value, and its refusal is the line under the groups. With `editing`, the id of a stream, `initial`
  * is its recipe and OK replaces that stream, which keeps its id and place; the form takes no defaults, a blank
  * password is the saved one, and a saved data source or topic stays chosen until the connection changes.
  */
@@ -217,7 +217,7 @@ export function AddLiveStreamDialog({
   const unset = invalid.find((error) => !isField(error.location));
   const wrong =
     (unset && reasonOf(unset)) ??
-    problemOf(sent, values, modeName(mode)) ??
+    unchosen(sent, hostKnown, modeName(mode)) ??
     (invalid[0] && reasonOf(invalid[0])) ??
     (refusal?.judged ? refusal.reason : undefined);
   const message = wrong ?? refusal?.reason ?? "";
