@@ -114,7 +114,7 @@ export function LaneChip({
               <NoticeList notices={notices} />
               {lane.catalogActionProblem && onDismissCatalogAction && (
                 <Button size="small" onClick={onDismissCatalogAction}>
-                  Dismiss Apply error
+                  Dismiss
                 </Button>
               )}
             </div>

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { DecoderInfo, NewOverlayWire, ResolverInfo } from "../generated/api";
 import { BrowseButton, Button } from "../kit/Button";
-import { Select, TextField } from "../kit/Fields";
+import { FormInput, FormSelect } from "../kit/Form";
 import { needsValue, shown } from "../resolvers/fields";
 import { ResolverForm, useResolverForm } from "../resolvers/ResolverForm";
 import type { Settings } from "../resolvers/scan";
@@ -120,12 +120,17 @@ export function OverlayRow({
     return () => register(entry.key, null);
   });
   return (
-    <div ref={row} role="group" aria-label={`Overlay ${number}`} className="flex flex-col gap-s">
-      <TextField
+    <div
+      ref={row}
+      role="group"
+      aria-label={`Overlay ${number}`}
+      className="col-span-full grid grid-cols-subgrid gap-y-s"
+    >
+      <FormInput
         label="Overlay path"
         value={entry.path}
         onChange={(path) => onChange(withPath(entry, path, decoders))}
-        action={
+        extra={
           <>
             {onBrowse && <BrowseButton what="overlay file" onBrowse={onBrowse} />}
             <Button
@@ -137,7 +142,7 @@ export function OverlayRow({
           </>
         }
       />
-      <Select
+      <FormSelect
         label="Data handler"
         value={entry.picked}
         disabled={!named}
@@ -147,15 +152,17 @@ export function OverlayRow({
         ]}
         onChange={(picked) => onChange({ ...entry, picked })}
       />
-      {problem ? (
-        <Refusal reason={problem} />
-      ) : (
-        undecided(entry) && (
-          <Refusal reason={`Choose the data handler that reads ${fileName(entry.path)}.`} />
-        )
-      )}
-      {named && decoder && <ResolverForm form={form} />}
-      {tried && named && missing && <Refusal reason={`${missing.label} is required`} />}
+      <div className="col-span-full flex flex-col gap-s empty:hidden">
+        {problem ? (
+          <Refusal reason={problem} />
+        ) : (
+          undecided(entry) && (
+            <Refusal reason={`Choose the data handler that reads ${fileName(entry.path)}.`} />
+          )
+        )}
+        {named && decoder && <ResolverForm form={form} />}
+        {tried && named && missing && <Refusal reason={`${missing.label} is required`} />}
+      </div>
     </div>
   );
 }
