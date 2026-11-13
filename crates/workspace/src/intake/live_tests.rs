@@ -232,6 +232,14 @@ fn what_cannot_be_streamed_is_refused_naming_the_field_and_the_python_message() 
             "Data Source is required for MQTT overlay mode.",
         ),
         (
+            mqtt(&|m| {
+                (m.broker_host, m.source_key, m.broker_port) =
+                    (Some("b".into()), Some("k".into()), Some(0))
+            }),
+            "broker_port",
+            "MQTT Port must be between 1 and 65535.",
+        ),
+        (
             datahub(NewDataHub {
                 channel: Some(5),
                 ..NewDataHub::default()
