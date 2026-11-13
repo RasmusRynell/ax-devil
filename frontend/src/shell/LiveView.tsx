@@ -20,6 +20,7 @@ import { useCan, useCommand, useDoc } from "../session/session";
 import { useShow, useShownItems } from "../viewer/useViewers";
 import { useItemDialogs } from "./ItemDialogs";
 import { useKept } from "../kit/keptState";
+import { withKey } from "../kit/sets";
 import { LiveToolbar } from "../live/LiveToolbar";
 import { LiveTree } from "./LiveTree";
 import { ScanSettings } from "./ScanSettings";
@@ -130,11 +131,7 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
     if (mayAct && row.menu.includes("remove")) act(row, "remove");
   };
   const toggle = (facet: Facet) =>
-    setHidden((now) => {
-      const next = new Set(now);
-      if (!next.delete(facetKey(facet))) next.add(facetKey(facet));
-      return next;
-    });
+    setHidden((now) => withKey(now, facetKey(facet), !now.has(facetKey(facet))));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

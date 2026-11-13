@@ -1,18 +1,17 @@
-import { useCallback, useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { Button } from "../kit/Button";
-import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
-import { Popup } from "../kit/Popup";
+import type { MenuEntry } from "../kit/Menu";
 import { SectionCaption } from "../kit/SectionCaption";
-import { ACTIONS, type Row, type RowAction, type SectionView, type Shown } from "../live/rows";
-import { HoverPicture } from "./HoverPicture";
+import { ACTIONS, type Row, type RowAction, type SectionView } from "../live/rows";
 import { useKept } from "../kit/keptState";
-import { LiveList, type Listed } from "./LiveList";
+import { withKey } from "../kit/sets";
+import { placeLive } from "./livePlaced";
 import { useLiveTrack } from "./RevealShown";
-import { useHoverPicture } from "./useHoverPicture";
+import { TreeList } from "./tree/TreeList";
+import { useTreeMenu } from "./tree/useTreeMenu";
 
 type SectionId = SectionView["section"]["id"];
 
-const NOTHING_CHECKED: ReadonlySet<string> = new Set();
 const NO_FOLDED: ReadonlySet<SectionId> = new Set();
 const NO_COLLAPSED: ReadonlySet<string> = new Set();
 
@@ -48,10 +47,8 @@ interface Props {
 
 /**
  * The Live view's sections: a caption each (a click on it folds it) over its rows. A click on a row opens its info
- * lines, closing the one open before; a row with streams under it folds with its arrow; Enter and a double click open
- * it, and Delete removes it (see `LiveList` for the keys). A right click or the menu key opens the row's menu, and
- * the focus returns to the tree when the menu goes. A section opens again for a search that finds something in it,
- * and for a stream that turns open until the stream closes or the user folds it.
+ * lines, closing the one open before. A section opens again for a search that finds something in it, and for a stream
+ * that turns open until the stream closes or the user folds it.
  */
 export function LiveTree({
   views,
@@ -66,70 +63,35 @@ export function LiveTree({
   const [folded, setFolded] = useKept("live:folded", NO_FOLDED);
   const [collapsed, setCollapsed] = useKept("live:collapsed", NO_COLLAPSED);
   const [info, setInfo] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ row: Row; x: number; y: number } | null>(null);
+  const [current, setCurrent] = useState<Partial<Record<SectionId, string>>>({});
   const scroller = useRef<HTMLDivElement>(null);
-  // The tree a menu came from, which takes the focus back.
-  const menuFrom = useRef<HTMLElement | null>(null);
 
-  // The snapshot pictures on offer: a hover ends once its row is gone.
-  const pictures = useMemo(
+  const sections = useMemo(
     () =>
-      new Set(
-        views.flatMap(({ shown }) =>
-          shown.flatMap(({ row, children }) =>
-            [row, ...children.map((child) => child.row)].flatMap((own) => own.thumbnail ?? []),
-          ),
-        ),
-      ),
-    [views],
+      views
+        .filter(({ listed }) => listed)
+        .map((view) => ({
+          view,
+          rows: placeLive(view.shown, { collapsed, searching, info, mayAct }),
+        })),
+    [views, collapsed, searching, info, mayAct],
   );
-  const picture = useHoverPicture(pictures);
+  const menu = useTreeMenu(
+    (id) => sections.flatMap(({ rows }) => rows).find(({ key }) => key === id)?.row,
+    (row) => menuEntries(row, mayAct),
+    (row, id) => onAct(row, id as RowAction),
+  );
 
   // The sections a stream newly opened in has unfolded, which the window keeps up to date.
   const [track, setTrack] = useLiveTrack();
 
-  const toggle = <T,>(set: ReadonlySet<T>, value: T): Set<T> => {
-    const next = new Set(set);
-    if (!next.delete(value)) next.add(value);
-    return next;
-  };
   const fold = (id: SectionId) => {
-    setFolded((now) => toggle(now, id));
+    setFolded((now) => withKey(now, id, !now.has(id)));
     setTrack((now) => ({
       ...now,
       revealed: new Set([...now.revealed].filter((other) => other !== id)),
     }));
   };
-  const closeMenu = useCallback(() => {
-    setMenu(null);
-    menuFrom.current?.focus({ preventScroll: true });
-  }, []);
-
-  /** The rows of a section the keyboard walks: the shown ones, with those under an unfolded row. */
-  const listed = (shown: readonly Shown[]): Listed[] =>
-    shown.flatMap(({ row, children }, at) => {
-      const expanded = children.length > 0 ? searching || !collapsed.has(row.id) : null;
-      return [
-        {
-          row,
-          level: 1 as const,
-          parent: null,
-          expanded,
-          position: at + 1,
-          siblings: shown.length,
-        },
-        ...(expanded
-          ? children.map((child, index) => ({
-              row: child.row,
-              level: 2 as const,
-              parent: row.id,
-              expanded: null,
-              position: index + 1,
-              siblings: children.length,
-            }))
-          : []),
-      ];
-    });
   const toggleInfo = (row: Row) =>
     setInfo((now) => (row.info.length === 0 ? now : now === row.id ? null : row.id));
 
@@ -138,81 +100,73 @@ export function LiveTree({
       ref={scroller}
       className="flex min-h-list-least flex-1 flex-col overflow-y-auto [@media(max-height:20rem)]:min-h-row"
     >
-      {views
-        .filter(({ listed: shownSection }) => shownSection)
-        .map(({ section, shown, filteredOut, searched }) => {
-          const rows = listed(shown);
-          const unfolded = searched || !folded.has(section.id) || track.revealed.has(section.id);
-          return (
-            <section key={section.id} aria-label={section.title}>
-              <SectionCaption
-                heading={section.title}
-                count={section.rows.length}
-                note={filteredOut ? `${filteredOut} filtered out` : undefined}
-                mark={section.lit ? "live" : "muted"}
-                fold={
-                  section.rows.length > 0
-                    ? { open: unfolded, onToggle: () => fold(section.id) }
-                    : undefined
+      {sections.map(({ view: { section, filteredOut, searched }, rows }) => {
+        const go = (to: number | "first" | "last") => {
+          const index = to === "first" ? 0 : to === "last" ? rows.length - 1 : to;
+          const next = rows[Math.max(0, Math.min(rows.length - 1, index))];
+          if (next) setCurrent((now) => ({ ...now, [section.id]: next.key }));
+        };
+        const unfolded = searched || !folded.has(section.id) || track.revealed.has(section.id);
+        return (
+          <section key={section.id} aria-label={section.title}>
+            <SectionCaption
+              heading={section.title}
+              count={section.rows.length}
+              note={filteredOut ? `${filteredOut} filtered out` : undefined}
+              mark={section.lit ? "live" : "muted"}
+              fold={
+                section.rows.length > 0
+                  ? { open: unfolded, onToggle: () => fold(section.id) }
+                  : undefined
+              }
+              action={
+                section.adds && (
+                  <Button
+                    size="small"
+                    icon="plus"
+                    title="Add a camera and start its stream"
+                    data-cursor-id="live:add"
+                    disabled={!mayAct}
+                    onClick={onAddStream}
+                  >
+                    Add stream
+                  </Button>
+                )
+              }
+            />
+            {section.rows.length === 0 && section.empty && (
+              <p className="m-0 ml-l px-m pb-s text-small text-muted">{section.empty}</p>
+            )}
+            {unfolded && rows.length > 0 && (
+              <TreeList
+                variant="live"
+                label={section.title}
+                prefix={`${prefix}-${section.id}`}
+                rows={rows}
+                scroller={scroller}
+                current={current[section.id] ?? null}
+                chords={false}
+                onCurrent={(key) => setCurrent((now) => ({ ...now, [section.id]: key }))}
+                onMove={go}
+                // A section's tree starts on its first row again when it is drawn again.
+                onGone={() => setCurrent((now) => ({ ...now, [section.id]: undefined }))}
+                onFold={({ key }, collapse) =>
+                  !searching && setCollapsed((now) => withKey(now, key, collapse))
                 }
-                action={
-                  section.adds && (
-                    <Button
-                      size="small"
-                      icon="plus"
-                      title="Add a camera and start its stream"
-                      data-cursor-id="live:add"
-                      disabled={!mayAct}
-                      onClick={onAddStream}
-                    >
-                      Add stream
-                    </Button>
-                  )
-                }
+                onCommand={({ row }, command) => {
+                  if (command === "open") onOpen(row);
+                  else if (command === "info") toggleInfo(row);
+                  else if (command === "remove") onRemove(row);
+                  else onAct(row, command);
+                }}
+                onButton={({ row }, id) => onAct(row, id as RowAction)}
+                onMenu={({ key }, x, y, tree) => menu.open(key, x, y, tree)}
               />
-              {section.rows.length === 0 && section.empty && (
-                <p className="m-0 ml-l px-m pb-s text-small text-muted">{section.empty}</p>
-              )}
-              {unfolded && rows.length > 0 && (
-                <LiveList
-                  label={section.title}
-                  prefix={prefix}
-                  rows={rows}
-                  scroller={scroller}
-                  info={info}
-                  mayAct={mayAct}
-                  onInfo={toggleInfo}
-                  onOpen={onOpen}
-                  onRemove={onRemove}
-                  onFold={(row) => !searching && setCollapsed((now) => toggle(now, row.id))}
-                  onMenu={(row, x, y, tree) => {
-                    menuFrom.current = tree;
-                    picture.leave();
-                    setMenu({ row, x, y });
-                  }}
-                  onHover={(row, at) =>
-                    at ? picture.enter(row.thumbnail, at.x, at.y) : picture.leave()
-                  }
-                  onAct={onAct}
-                />
-              )}
-            </section>
-          );
-        })}
-      {picture.shown && <HoverPicture {...picture.shown} />}
-      {menu && menu.row.menu.length > 0 && (
-        <Popup at={menu} onClose={closeMenu} className="z-20 min-w-max">
-          <Menu
-            entries={menuEntries(menu.row, mayAct)}
-            checked={NOTHING_CHECKED}
-            onSelect={(choice: MenuCommand) => {
-              const { row } = menu;
-              closeMenu();
-              onAct(row, choice.id as RowAction);
-            }}
-          />
-        </Popup>
-      )}
+            )}
+          </section>
+        );
+      })}
+      {menu.popup}
     </div>
   );
 }

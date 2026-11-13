@@ -166,7 +166,8 @@ module.exports.run = async ({ window }) => {
     // Offline lists what to add under its sections: a video, then a row per playlist source, which opens its dialog.
     await setView(window, [1200, 800], 1);
     await js("document.querySelector('[aria-label=Offline]').click()");
-    const add = "[...document.querySelectorAll('[aria-label=Sidebar] [data-cursor-id^=\"row:\"]')]";
+    const add =
+      "[...document.querySelectorAll('[aria-label=Sidebar] [data-cursor-id^=\"row:\"]:not([role=treeitem])')]";
     await wait(
       `${add}.map((b) => b.textContent).join() === 'Single video,Folder Pair,MOT Challenge'`,
     );

@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SidebarView } from "../generated/api";
 import { MenuButton } from "../kit/Button";
 import { SearchField } from "../kit/Fields";
 import { IconToggle } from "../kit/IconToggle";
-import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
-import { Popup } from "../kit/Popup";
+import type { MenuCommand, MenuEntry } from "../kit/Menu";
+import { withKey } from "../kit/sets";
 import { SectionCaption } from "../kit/SectionCaption";
+import { useCan, useSession } from "../session/session";
 import { exportOf, useExportTargets } from "../viewer/exportTargets";
-import { HoverPicture } from "./HoverPicture";
 import { useKept } from "../kit/keptState";
 import { useFolds } from "./RevealShown";
 import { unfold } from "./reveal";
@@ -21,31 +21,19 @@ import {
   type TreeRow,
 } from "./treeModel";
 import { useRowActions } from "./useRowActions";
-import { useRowThumbnail } from "./useRowThumbnail";
-import { WorkspaceList } from "./WorkspaceList";
+import { TreeList } from "./tree/TreeList";
+import { useTreeMenu } from "./tree/useTreeMenu";
+import { placeWorkspace } from "./workspaceLook";
 
-const NOTHING_CHECKED: ReadonlySet<string> = new Set();
 const NO_CLOSED: ReadonlySet<string> = new Set();
 const NO_FOLDED: ReadonlySet<SectionId> = new Set();
-/** `now` with `key` added or removed. */
-function withKey<T>(now: ReadonlySet<T>, key: T, on: boolean): Set<T> {
-  const next = new Set(now);
-  if (on) next.add(key);
-  else next.delete(key);
-  return next;
-}
 
 /**
- * The workspace's items as a tree in the `listed` sections (Live, Videos, Playlists, Other; a click on a caption folds
- * it): each item, then its entries and their lanes, from the backend's rows. A click selects a row; a double click or
- * Enter opens it in its viewer, and with Ctrl to the side of the front pane; the arrow keys move, expand and collapse;
- * the row menu (right click, Shift+F10 or the Menu key) opens it (to the side too), exports it from the viewer that shows it, or hides and unhides it. The rows of
- * the item the front viewer shows are revealed, and a row the
- * viewer moves on from closes. Search, Sort, Show hidden and folds are kept per `view` by the window. Above the tree,
- * Search (`search` is its placeholder), Sort (by the `orders`) and Show hidden items: hidden rows
- * show, dimmed, only with Show hidden, and a section says how many that and the search leave out. While searching,
- * every row with a match inside is expanded, and clearing the search brings the user's folds back. `empty` is said
- * when the workspace has nothing to list.
+ * The workspace's items as a tree in the `listed` sections: each item, then its entries and their lanes. The rows of the
+ * item the front viewer shows are revealed, and a row the viewer moves on from closes. Search (`search` is its
+ * placeholder), Sort (by the `orders`), Show hidden and folds are kept per `view` by the window. While searching, every
+ * row with a match inside is expanded, and clearing the search brings the user's folds back. `empty` is said when the
+ * workspace has nothing to list.
  */
 export function WorkspaceTree({
   view,
@@ -61,6 +49,9 @@ export function WorkspaceTree({
   empty: string;
 }) {
   const actions = useRowActions();
+  // Pictures need the Files grant, which the backend checks too.
+  const files = useCan("host");
+  const session = useSession().session?.id;
   const {
     tree,
     statuses,
@@ -86,15 +77,12 @@ export function WorkspaceTree({
   const [closed, setClosed] = useKept(`${view}:closed`, NO_CLOSED);
   const [folded, setFolded] = useKept(`${view}:folded`, NO_FOLDED);
   const [current, setCurrent] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ key: string; x: number; y: number } | null>(null);
   const prefix = useId();
   const root = useRef<HTMLElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const lastAt = useRef(0);
   // The section whose tree went away with the focus in it, until the focus is placed again.
   const lost = useRef<SectionId | null>(null);
-  // The tree a menu came from, which takes the focus back.
-  const menuFrom = useRef<HTMLElement | null>(null);
 
   const live = useMemo(
     () => new Set([...statuses].flatMap(([item, { anyLive }]) => (anyLive ? [item] : []))),
@@ -119,9 +107,17 @@ export function WorkspaceTree({
   );
   const noMatches =
     searching && sections.length > 0 && sections.every(({ shown, out }) => !shown.length && !out);
-  // Only the rows on screen can be hovered: a folded section's rows have no picture to show.
-  const thumbnail = useRowThumbnail(
-    useMemo(() => sections.flatMap(({ shown, unfolded }) => (unfolded ? shown : [])), [sections]),
+  const placed = useMemo(
+    () =>
+      sections.map(({ shown }) =>
+        placeWorkspace(shown, {
+          collapsed: folds,
+          open: openKeys,
+          hides: powers.content,
+          session: (files && session) || null,
+        }),
+      ),
+    [sections, folds, openKeys, powers.content, files, session],
   );
 
   // The rows of the unfolded sections in the order the keyboard walks them, and where each section's begin.
@@ -150,9 +146,6 @@ export function WorkspaceTree({
     const next = walk.rows[Math.max(0, Math.min(walk.rows.length - 1, index))];
     if (next) setCurrent(next.key);
   };
-  const onLose = useCallback((id: SectionId) => {
-    lost.current = id;
-  }, []);
   // The focus follows the keyboard's row: if it was on one of the trees (or left with one that went away), it goes to
   // the tree of the row the keyboard is on, else to the caption of the section that lost its rows.
   useLayoutEffect(() => {
@@ -193,18 +186,15 @@ export function WorkspaceTree({
       setHeld((now) => ({ ...now, revealed: withKey(now.revealed, id, false) }));
     }
   };
-  const closeMenu = useCallback(() => {
-    setMenu(null);
-    menuFrom.current?.focus({ preventScroll: true });
-  }, []);
 
-  const menuRow = menu && tree.find((row) => row.info.key === menu.key);
   // The export of the viewer showing the row: an entry's own, or any entry of a video item.
   const exportOfRow = (row: TreeRow) =>
     exportOf(row.item, row.info.kind === "entry" ? (row.info.entry ?? undefined) : undefined);
-  const menuEntries = menuRow ? actions.menuOf(menuRow, exportOfRow(menuRow)) : [];
-  const choose = (choice: MenuCommand) =>
-    menuRow && actions.choose(menuRow, choice.id, exportOfRow(menuRow));
+  const menu = useTreeMenu(
+    (key) => tree.find((row) => row.info.key === key),
+    (row) => actions.menuOf(row, exportOfRow(row)),
+    (row, id) => actions.choose(row, id, exportOfRow(row)),
+  );
 
   return (
     <section
@@ -253,7 +243,7 @@ export function WorkspaceTree({
         <p className="m-0 px-m text-muted">{empty}</p>
       ) : (
         <div ref={scroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {sections.map(({ section, shown, out, unfolded }) => {
+          {sections.map(({ section, shown, out, unfolded }, index) => {
             if (shown.length === 0 && out === 0) return null;
             return (
               <section key={section.id} data-section={section.id} aria-label={section.title}>
@@ -265,32 +255,36 @@ export function WorkspaceTree({
                   fold={{ open: unfolded, onToggle: () => toggleFolded(section.id) }}
                 />
                 {unfolded && shown.length > 0 && (
-                  <WorkspaceList
-                    id={section.id}
+                  <TreeList
+                    variant="workspace"
                     label={section.title}
                     prefix={`${prefix}-${section.id}`}
-                    rows={shown}
-                    offset={walk.starts.get(section.id) ?? 0}
-                    current={onRow}
-                    collapsed={folds}
-                    open={openKeys}
+                    rows={placed[index]}
                     scroller={scroller}
-                    hides={powers.content}
-                    onOpen={(row, side) => void open(row, side)}
-                    onStop={stop}
-                    onReveal={reveal}
+                    current={onRow}
+                    chords
                     onCurrent={setCurrent}
-                    onGo={go}
-                    onLose={onLose}
-                    onFold={setCollapsedState}
-                    onHide={toggleHidden}
-                    onEdit={editRow}
-                    onRemove={removeRow}
-                    onMenu={(row, x, y, from) => {
-                      menuFrom.current = from;
-                      setMenu({ key: row.info.key, x, y });
+                    onMove={(to) => {
+                      const start = walk.starts.get(section.id) ?? 0;
+                      go(to === "first" ? 0 : to === "last" ? Number.MAX_SAFE_INTEGER : start + to);
                     }}
-                    thumbnail={thumbnail}
+                    onFold={({ key }, collapse) => setCollapsedState(key, collapse)}
+                    onCommand={({ row }, command, { side, pointer }) => {
+                      if (command === "open") {
+                        if (pointer) reveal(row);
+                        void open(row, side);
+                      } else if (command === "edit") editRow(row);
+                      else if (command === "remove") removeRow(row);
+                    }}
+                    onButton={({ row }, id) => {
+                      if (id === "start") void open(row);
+                      else if (id === "stop") stop(row);
+                      else toggleHidden(row);
+                    }}
+                    onMenu={({ key }, x, y, from) => menu.open(key, x, y, from)}
+                    onGone={(focused) => {
+                      if (focused) lost.current = section.id;
+                    }}
                   />
                 )}
               </section>
@@ -298,20 +292,8 @@ export function WorkspaceTree({
           })}
         </div>
       )}
-      {thumbnail.shown && <HoverPicture {...thumbnail.shown} />}
       {dialogs}
-      {menu && (
-        <Popup at={menu} onClose={closeMenu} className="z-20 min-w-max">
-          <Menu
-            entries={menuEntries}
-            checked={NOTHING_CHECKED}
-            onSelect={(choice) => {
-              closeMenu();
-              choose(choice);
-            }}
-          />
-        </Popup>
-      )}
+      {menu.popup}
     </section>
   );
 }

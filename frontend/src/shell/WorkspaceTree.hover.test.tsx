@@ -2,16 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { scenario } from "../session/fakeScenario";
 import { FakeSocket } from "../session/fakeSession";
-import { KINDS, labels, renderTree, TREE } from "./WorkspaceTree.fixture";
+import { KINDS, labels, renderTree, TREE, useTreeHarness } from "./WorkspaceTree.fixture";
 
-beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
-afterEach(() => {
-  cleanup();
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-  window.sessionStorage.clear();
-  FakeSocket.reset();
-});
+useTreeHarness();
 
 describe("hover card", () => {
   const bitmaps: { width: number; height: number; close: ReturnType<typeof vi.fn> }[] = [];
@@ -64,15 +57,7 @@ describe("hover card", () => {
     expect(bitmaps[0].close).toHaveBeenCalled();
   });
 
-  it("asks for a live stream's picture by its item, which has no entry", async () => {
-    const room = await renderTree(KINDS);
-    fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /^Lobby/ }));
-    expect(fetched.mock.calls[0][0]).toBe(
-      `/api/thumbnail?session=${room.id}&entry=${KINDS.ids.cam}`,
-    );
-  });
-
-  it("drops the card when its row goes away under a still pointer", async () => {
+  it("drops the card when its row goes away or its section folds under a still pointer", async () => {
     const room = await renderTree();
     const row = screen.getByRole("treeitem", { name: /^v\.mp4/ });
     fireEvent.pointerEnter(row);
@@ -88,17 +73,13 @@ describe("hover card", () => {
     expect(card()).toBeNull();
     expect(requests[1].signal.aborted).toBe(true);
     expect(bitmaps[bitmaps.length - 1].close).toHaveBeenCalled();
-  });
 
-  it("drops the card when its section folds under a still pointer", async () => {
-    await renderTree();
+    act(() => room.show(TREE));
     fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
     await elapse(80);
-    expect(card()).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Videos/ }));
-    expect(screen.queryByRole("treeitem", { name: /^v\.mp4/ })).toBeNull();
     expect(card()).toBeNull();
-    expect(requests[0].signal.aborted).toBe(true);
+    expect(requests[2].signal.aborted).toBe(true);
   });
 
   it("refreshes a resting card without overlapping requests, keeping the picture while it is unchanged", async () => {
@@ -168,7 +149,7 @@ describe("hover card", () => {
     expect(newer.close).not.toHaveBeenCalled();
   });
 
-  it("asks for no picture of a playlist or a lane, and each entry's own for an entry", async () => {
+  it("asks for no picture of a playlist or a lane, each entry's own for an entry, and a live stream's by its item", async () => {
     const runs = scenario("runs");
     const room = await renderTree(runs);
     const rows = screen.getAllByRole("treeitem");
@@ -189,5 +170,12 @@ describe("hover card", () => {
       expect(fetched).toHaveBeenLastCalledWith(`/api/thumbnail?${url}`, expect.anything());
     }
     expect(fetched).toHaveBeenCalledTimes(2);
+
+    cleanup();
+    FakeSocket.reset();
+    const live = await renderTree(KINDS);
+    fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /^Lobby/ }));
+    const url = new URLSearchParams({ session: live.id, entry: KINDS.ids.cam });
+    expect(fetched).toHaveBeenLastCalledWith(`/api/thumbnail?${url}`, expect.anything());
   });
 });
