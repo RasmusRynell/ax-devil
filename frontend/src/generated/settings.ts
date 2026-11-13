@@ -772,6 +772,7 @@ export const COMMANDS = [
     "id": "new-workspace",
     "label": "New Workspace",
     "category": "Application",
+    "scope": "host",
     "key": null,
     "repeats": false,
     "description": null
@@ -780,6 +781,7 @@ export const COMMANDS = [
     "id": "open-workspace",
     "label": "Open Workspace",
     "category": "Application",
+    "scope": "host",
     "key": "Ctrl+O",
     "repeats": false,
     "description": null
@@ -788,6 +790,7 @@ export const COMMANDS = [
     "id": "save-workspace",
     "label": "Save Workspace",
     "category": "Application",
+    "scope": "host",
     "key": "Ctrl+S",
     "repeats": false,
     "description": null
@@ -796,6 +799,7 @@ export const COMMANDS = [
     "id": "save-workspace-as",
     "label": "Save Workspace As",
     "category": "Application",
+    "scope": "host",
     "key": "Ctrl+Shift+S",
     "repeats": false,
     "description": null
@@ -804,6 +808,7 @@ export const COMMANDS = [
     "id": "add-video",
     "label": "Add Video",
     "category": "Application",
+    "scope": "host",
     "key": "Ctrl+N",
     "repeats": false,
     "description": null
@@ -812,6 +817,7 @@ export const COMMANDS = [
     "id": "add-live-stream",
     "label": "Add Live Stream",
     "category": "Application",
+    "scope": "content",
     "key": "Ctrl+L",
     "repeats": false,
     "description": null
@@ -820,6 +826,7 @@ export const COMMANDS = [
     "id": "add-playlist",
     "label": "Add Playlist",
     "category": "Application",
+    "scope": "host",
     "key": "Ctrl+Shift+N",
     "repeats": false,
     "description": null
@@ -828,6 +835,7 @@ export const COMMANDS = [
     "id": "keyboard-shortcuts",
     "label": "Keyboard Shortcuts",
     "category": "Application",
+    "scope": "app",
     "key": "Ctrl+K",
     "repeats": false,
     "description": null
@@ -836,6 +844,7 @@ export const COMMANDS = [
     "id": "settings",
     "label": "Settings",
     "category": "Application",
+    "scope": "app",
     "key": "Ctrl+,",
     "repeats": false,
     "description": null
@@ -844,6 +853,7 @@ export const COMMANDS = [
     "id": "exit",
     "label": "Exit",
     "category": "Application",
+    "scope": "app",
     "key": "Ctrl+Q",
     "repeats": false,
     "description": null
@@ -852,6 +862,7 @@ export const COMMANDS = [
     "id": "fullscreen",
     "label": "Fullscreen",
     "category": "View",
+    "scope": "app",
     "key": "F11",
     "repeats": false,
     "description": null
@@ -860,6 +871,7 @@ export const COMMANDS = [
     "id": "lane-fullscreen",
     "label": "Toggle Lane Fullscreen",
     "category": "View",
+    "scope": "view",
     "key": "F",
     "repeats": false,
     "description": null
@@ -868,6 +880,7 @@ export const COMMANDS = [
     "id": "zoom-in",
     "label": "Zoom In",
     "category": "View",
+    "scope": "view",
     "key": "=",
     "repeats": true,
     "description": null
@@ -876,6 +889,7 @@ export const COMMANDS = [
     "id": "zoom-out",
     "label": "Zoom Out",
     "category": "View",
+    "scope": "view",
     "key": "-",
     "repeats": true,
     "description": null
@@ -884,6 +898,7 @@ export const COMMANDS = [
     "id": "zoom-reset",
     "label": "Reset Zoom",
     "category": "View",
+    "scope": "view",
     "key": "0",
     "repeats": false,
     "description": null
@@ -892,6 +907,7 @@ export const COMMANDS = [
     "id": "media-tools",
     "label": "Toggle Media Tools Panel",
     "category": "View",
+    "scope": "view",
     "key": "Ctrl+B",
     "repeats": false,
     "description": null
@@ -900,6 +916,7 @@ export const COMMANDS = [
     "id": "sidebar",
     "label": "Sidebar",
     "category": "View",
+    "scope": "view",
     "key": "Ctrl+\\",
     "repeats": false,
     "description": null
@@ -908,6 +925,7 @@ export const COMMANDS = [
     "id": "play-pause",
     "label": "Play / Pause",
     "category": "Playback",
+    "scope": "view",
     "key": "Space",
     "repeats": false,
     "description": null
@@ -916,6 +934,7 @@ export const COMMANDS = [
     "id": "step-forward",
     "label": "Step Forward 1 Frame",
     "category": "Playback",
+    "scope": "view",
     "key": ".",
     "repeats": true,
     "description": null
@@ -924,6 +943,7 @@ export const COMMANDS = [
     "id": "step-back",
     "label": "Step Backward 1 Frame",
     "category": "Playback",
+    "scope": "view",
     "key": ",",
     "repeats": true,
     "description": null
@@ -932,6 +952,7 @@ export const COMMANDS = [
     "id": "step-forward-10",
     "label": "Step Forward 10 Frames",
     "category": "Playback",
+    "scope": "view",
     "key": "Right",
     "repeats": true,
     "description": null
@@ -940,6 +961,7 @@ export const COMMANDS = [
     "id": "step-back-10",
     "label": "Step Backward 10 Frames",
     "category": "Playback",
+    "scope": "view",
     "key": "Left",
     "repeats": true,
     "description": null
@@ -948,6 +970,7 @@ export const COMMANDS = [
     "id": "previous-entry",
     "label": "Previous Playlist Entry",
     "category": "Navigation",
+    "scope": "view",
     "key": "Ctrl+Left",
     "repeats": false,
     "description": null
@@ -956,6 +979,7 @@ export const COMMANDS = [
     "id": "next-entry",
     "label": "Next Playlist Entry",
     "category": "Navigation",
+    "scope": "view",
     "key": "Ctrl+Right",
     "repeats": false,
     "description": null
@@ -964,6 +988,7 @@ export const COMMANDS = [
     "id": "speed-up",
     "label": "Playback Speed Up",
     "category": "Playback",
+    "scope": "view",
     "key": "]",
     "repeats": true,
     "description": null
@@ -972,6 +997,7 @@ export const COMMANDS = [
     "id": "speed-down",
     "label": "Playback Speed Down",
     "category": "Playback",
+    "scope": "view",
     "key": "[",
     "repeats": true,
     "description": null
@@ -980,6 +1006,7 @@ export const COMMANDS = [
     "id": "lane-names",
     "label": "Show Lane Names",
     "category": "View",
+    "scope": "view",
     "key": null,
     "repeats": false,
     "description": "Name each video lane; names hide while frame info is shown."
@@ -988,6 +1015,7 @@ export const COMMANDS = [
     "id": "object-details",
     "label": "Object Hover and Click Details",
     "category": "View",
+    "scope": "view",
     "key": null,
     "repeats": false,
     "description": "Name the object under the pointer; click to select it and open its page."
@@ -996,6 +1024,7 @@ export const COMMANDS = [
     "id": "info-overlay",
     "label": "Toggle Info Overlay",
     "category": "View",
+    "scope": "view",
     "key": "I",
     "repeats": false,
     "description": null
@@ -1004,6 +1033,7 @@ export const COMMANDS = [
     "id": "add-bookmark",
     "label": "Add Bookmark",
     "category": "View",
+    "scope": "content",
     "key": "M",
     "repeats": false,
     "description": null
@@ -1012,6 +1042,7 @@ export const COMMANDS = [
     "id": "export-video",
     "label": "Export Video",
     "category": "View",
+    "scope": "host",
     "key": "Ctrl+E",
     "repeats": false,
     "description": null
@@ -1020,6 +1051,7 @@ export const COMMANDS = [
     "id": "plugins",
     "label": "Plugins",
     "category": "Application",
+    "scope": "view",
     "key": null,
     "repeats": false,
     "description": null
@@ -1028,6 +1060,7 @@ export const COMMANDS = [
     "id": "quick-setup",
     "label": "Quick Setup",
     "category": "Application",
+    "scope": "app",
     "key": null,
     "repeats": false,
     "description": null
@@ -1036,6 +1069,7 @@ export const COMMANDS = [
     "id": "about",
     "label": "About",
     "category": "Application",
+    "scope": "app",
     "key": null,
     "repeats": false,
     "description": null

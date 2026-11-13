@@ -3,14 +3,11 @@ import type { RecentWorkspace } from "../generated/api";
 import type { MenuEntry } from "../kit/Menu";
 import { RECENT_ID, recentLabel } from "./recents";
 
-/**
- * What a command needs of the seat, as the backend's `Can` names it: `host` (read the host's files), `content` (change
- * the workspace), `view` (change what this window shows), or `app` (how this app behaves: always allowed).
- */
-export type Scope = "host" | "content" | "view" | "app";
-
 /** What the backend knows of a command: its label, default key and whether holding the key repeats it. */
 export type Command = (typeof COMMANDS)[number];
+
+/** What a command needs of the seat: `host`, `content`, `view`, or `app` (always allowed). */
+export type Scope = Command["scope"];
 
 /** The command with this id. */
 export function command(id: CommandId): Command {
@@ -21,45 +18,6 @@ export function command(id: CommandId): Command {
 
 /** The effective key of every command, as the backend reports it. */
 export type Shortcuts = Record<CommandId, string | null>;
-
-/** What each command needs of the seat. */
-const SCOPES: Record<CommandId, Scope> = {
-  "new-workspace": "host",
-  "open-workspace": "host",
-  "save-workspace": "host",
-  "save-workspace-as": "host",
-  "add-video": "host",
-  "add-live-stream": "content",
-  "add-playlist": "host",
-  "keyboard-shortcuts": "app",
-  settings: "app",
-  exit: "app",
-  fullscreen: "app",
-  "lane-fullscreen": "view",
-  "zoom-in": "view",
-  "zoom-out": "view",
-  "zoom-reset": "view",
-  "media-tools": "view",
-  sidebar: "view",
-  "play-pause": "view",
-  "step-forward": "view",
-  "step-back": "view",
-  "step-forward-10": "view",
-  "step-back-10": "view",
-  "previous-entry": "view",
-  "next-entry": "view",
-  "speed-up": "view",
-  "speed-down": "view",
-  "lane-names": "view",
-  "object-details": "view",
-  "info-overlay": "view",
-  "add-bookmark": "content",
-  "export-video": "host",
-  // The Plugins button of the activity bar is a view like any other, so the command asks the same of the seat.
-  plugins: "view",
-  "quick-setup": "app",
-  about: "app",
-};
 
 type Layout =
   | { kind: "separator" }
@@ -137,9 +95,7 @@ export const MENUS: readonly { label: string; items: readonly Layout[] }[] = [
 
 /** The scope of the command `id`; an unknown id is a programming error. */
 export function scopeOf(id: string): Scope {
-  const found = (SCOPES as Record<string, Scope | undefined>)[id];
-  if (!found) throw new Error(`unknown command ${id}`);
-  return found;
+  return command(id as CommandId).scope;
 }
 
 /** Drops a separator that would lead, trail or follow another. */
@@ -199,7 +155,7 @@ export function menusFor(
             label: command(item.id).label,
             tip: command(item.id).description ?? undefined,
             shortcut: shortcuts[item.id] ?? undefined,
-            disabled: !wired.has(item.id) || !allowed[SCOPES[item.id]],
+            disabled: !wired.has(item.id) || !allowed[command(item.id).scope],
           },
         ];
       }),
