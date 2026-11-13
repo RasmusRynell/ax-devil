@@ -9,8 +9,8 @@ use crate::{
         CopiedCatalog, CopyCatalogRequest, DeleteCatalogRequest, FreshCatalog, ReloadCatalogRequest,
     },
     handlers::{
-        ChoiceInfo, HandlersInfo, InstallRequest, PluginsInfo, RemoveRequest, ResolveRequest,
-        ResolvedInfo, ScanRequest, UpdateRequest,
+        HandlersInfo, InstallRequest, PluginsInfo, RemoveRequest, ResolveRequest, ResolvedInfo,
+        ScanRequest, UpdateRequest,
     },
     live::{
         ExpansionsRequest, LiveCheckRequest, LiveExpansions, LiveResolutions, NetworkRow,
@@ -21,6 +21,7 @@ use crate::{
         CheckFilesRequest, FileCheck, FolderListing, PathExists, PathQuery, RecentWorkspace,
     },
 };
+use handler_api::Choice;
 use ts_rs::{Dependency, TS, TypeVisitor};
 
 /// An HTTP method of a JSON route.
@@ -130,7 +131,7 @@ endpoints! {
     CopyCatalog: POST "/api/catalogs/copy", CopyCatalogRequest => CopiedCatalog;
     ReloadCatalog: POST "/api/catalogs/reload", ReloadCatalogRequest => FreshCatalog;
     DeleteCatalog: POST "/api/catalogs/delete", DeleteCatalogRequest => ();
-    ScanResolver: POST "/api/resolvers/{id}/scan", ScanRequest => Vec<ChoiceInfo>;
+    ScanResolver: POST "/api/resolvers/{id}/scan", ScanRequest => Vec<Choice>;
     ResolveResolver: POST "/api/resolvers/{id}/resolve", ResolveRequest => ResolvedInfo;
     ListResolutions: POST "/api/live/resolutions", ResolutionsRequest => LiveResolutions;
     ListSources: POST "/api/live/sources", SourcesRequest => SourcesAnswer;

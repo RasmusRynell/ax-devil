@@ -2,7 +2,7 @@
 
 use super::{CancelOnDrop, handlers::refuse};
 use crate::{AppState, Failure};
-use api_types::handlers::{ChoiceInfo, ScanRequest};
+use api_types::handlers::ScanRequest;
 use axum::{
     Json,
     extract::{Path, State},
@@ -77,7 +77,7 @@ pub(crate) async fn scan(
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(request): Json<ScanRequest>,
-) -> Result<Json<Vec<ChoiceInfo>>, Failure> {
+) -> Result<Json<Vec<Choice>>, Failure> {
     let handlers = state.plugins.handlers();
     let Some(resolver) = handlers.resolver(&id).cloned() else {
         return Err(refuse(
@@ -86,16 +86,7 @@ pub(crate) async fn scan(
         ));
     };
     match scan_choices(&handlers, resolver, request.field, request.settings).await {
-        Ok(choices) => Ok(Json(
-            choices
-                .into_iter()
-                .map(|choice| ChoiceInfo {
-                    value: choice.value,
-                    label: choice.label,
-                    detail: choice.detail,
-                })
-                .collect(),
-        )),
+        Ok(choices) => Ok(Json(choices)),
         Err(Interrupt::Failed(error)) => Err(refuse(StatusCode::UNPROCESSABLE_ENTITY, &error)),
         // Only a dropped request cancels a scan, so nobody reads this answer.
         Err(Interrupt::Cancelled) => Err(refuse(

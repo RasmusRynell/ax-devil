@@ -4,6 +4,8 @@ import { useAccess } from "./access";
 import { ask } from "./ask";
 import { reasonOf } from "./errors";
 import type { FolderListing } from "../generated/api";
+import { BrowseButton } from "../kit/Button";
+import { TextField } from "../kit/Fields";
 import { FolderProblem, PathPicker, type CheckExists } from "../kit/PathPicker";
 import { SUFFIX } from "./recents";
 import { type WindowBridge } from "./windowBridge";
@@ -140,4 +142,38 @@ export function usePickPath(): PickPath | undefined {
   return bridge && Object.keys(bridge).some((name) => name.startsWith("pick"))
     ? (request) => request.native(bridge) ?? Promise.resolve(null)
     : served;
+}
+
+/**
+ * A text box for a path on the backend's machine, with a button to choose it wherever {@link usePickPath} offers a
+ * way. `onChange` says whether the path was picked rather than typed, so it is final.
+ */
+export function PathField(props: {
+  label: ReactNode;
+  what: string;
+  value: string;
+  placeholder?: string;
+  request: PathRequest;
+  onChange: (path: string, picked: boolean) => void;
+}): ReactNode {
+  const { what, request, onChange, ...box } = props;
+  const pick = usePickPath();
+  return (
+    <TextField
+      {...box}
+      onChange={(path) => onChange(path, false)}
+      action={
+        pick && (
+          <BrowseButton
+            what={what}
+            onBrowse={() =>
+              void pick(request).then((path) => {
+                if (path !== null) onChange(path, true);
+              })
+            }
+          />
+        )
+      }
+    />
+  );
 }

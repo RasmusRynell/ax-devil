@@ -1,21 +1,6 @@
 // Generated from api_types::handlers by make; do not edit.
 
-/**
- * One value a scan found.
- */
-export type ChoiceInfo = { 
-/**
- * What is stored in the settings.
- */
-value: string, 
-/**
- * What the user reads.
- */
-label: string, 
-/**
- * A second line about the value; may be empty.
- */
-detail: string, };
+import type { Field } from "./handler_api.form";
 
 /**
  * An overlay file decoder.
@@ -40,61 +25,11 @@ extensions: Array<string>,
 /**
  * The options it takes, in the order they are shown; empty for a decoder without any.
  */
-options: Array<FieldInfo>, 
+options: Array<Field>, 
 /**
  * Whether it can decode a live stream's overlay, not only a file.
  */
 live: boolean, };
-
-/**
- * One setting of a resolver or option of a decoder.
- */
-export type FieldInfo = { 
-/**
- * The key in the settings.
- */
-key: string, 
-/**
- * What the user reads.
- */
-label: string, 
-/**
- * What kind of value it holds, and so which control it gets.
- */
-kind: FieldKindWire, 
-/**
- * Whether resolving fails without it, once the default is filled in.
- */
-required: boolean, 
-/**
- * The value used when none is given; absent when there is none.
- */
-default?: unknown, };
-
-/**
- * What kind of value a setting holds.
- */
-export type FieldKindWire = { "kind": "Folder" } | { "kind": "File", 
-/**
- * Lowercase, with the dot.
- */
-extensions: Array<string>, } | { "kind": "Text" } | { "kind": "Integer", 
-/**
- * The smallest value allowed.
- */
-min: bigint, } | { "kind": "Handler" } | { "kind": "DecoderOptions", 
-/**
- * The key of the `Handler` field.
- */
-handler_field: string, } | { "kind": "Scan", 
-/**
- * The settings the scan reads, whose change invalidates its result.
- */
-depends_on: Array<string>, 
-/**
- * What a count-only scan says; absent for a scan whose values are picked.
- */
-count?: ScanCountInfo, };
 
 /**
  * What a handler does.
@@ -266,24 +201,7 @@ plugin?: string,
 /**
  * The settings, in the order they are shown.
  */
-fields: Array<FieldInfo>, };
-
-/**
- * The sentences of a count-only scan.
- */
-export type ScanCountInfo = { 
-/**
- * Shown while a setting the scan reads is empty.
- */
-missing: string, 
-/**
- * Shown when the scan found something; `{count}` stands for how many.
- */
-found: string, 
-/**
- * Shown when the scan found nothing.
- */
-none: string, };
+fields: Array<Field>, };
 
 /**
  * The body of `POST /api/resolvers/{id}/scan`.

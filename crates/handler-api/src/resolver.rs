@@ -3,6 +3,8 @@
 use std::path::PathBuf;
 
 use foundation::{CancelToken, Interrupt, UserError, Warning};
+use serde::Serialize;
+use ts_rs::TS;
 
 use crate::{Form, OverlayRef, Settings, Values, VideoRef, invalid_field};
 
@@ -22,7 +24,7 @@ pub struct ResolverSpec {
 }
 
 /// One value a scan found.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
 pub struct Choice {
     /// What is stored in the settings.
     pub value: String,
