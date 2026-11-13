@@ -1,7 +1,7 @@
 //! The keys of the samples written so far: the published ones in shared chunks, the rest waiting for a publication.
 
 use foundation::MediaTime;
-use overlay_sync::{FrameKey, KeyChunks, SampleKeys};
+use scene::matching::{FrameKey, KeyChunks, SampleKeys};
 use scene::{SceneTime, TimeKind};
 
 use crate::format::Keys;

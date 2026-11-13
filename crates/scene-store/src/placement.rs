@@ -2,8 +2,8 @@
 //! samples becomes the frames it is on screen.
 
 use foundation::{CancelToken, Cancelled, Timeline};
-use overlay_sync::{MatchPolicy, SampleKeys, Selection, select};
 use scene::Coverage;
+use scene::matching::{MatchPolicy, SampleKeys, Selection, select};
 
 /// How many frames between two checks of the cancel token.
 const CANCEL_EVERY: u32 = 4096;

@@ -25,7 +25,8 @@ use handler_api::{
     DecodeError, DecodeSummary, Decoder, Form, Framing, Header, Input, OnEqualKey, SceneSink, Spec,
     Values,
 };
-use overlay_sync::{MatchBasis as Basis, MatchPolicy, Sticky};
+use scene::MatchBasis as Basis;
+use scene::matching::{MatchPolicy, Sticky};
 use scene::{
     BoundingBox, ClassRule, Coverage, Entity, EntityId, Event, FilterOption, FilterPolicy,
     Geometry, MatchBasis, Observation, Operation, Scene, SceneTime, TimeSlice,

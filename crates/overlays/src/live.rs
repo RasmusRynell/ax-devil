@@ -11,7 +11,8 @@ use std::{
 };
 
 use foundation::{FrameId, MediaTime, Timeline};
-use overlay_sync::{MatchBasis, MatchKind, MatchPolicy, Selection, Sticky, select};
+use scene::MatchBasis;
+use scene::matching::{MatchKind, MatchPolicy, Selection, Sticky, select};
 use scene::{Event, Scene};
 use scene_store::{TrackRead, TrackSnapshot};
 use tracing::warn;

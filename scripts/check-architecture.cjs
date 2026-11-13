@@ -15,8 +15,8 @@ const TOOLKIT_FREE = new Set(["foundation", "domain", "services"]);
 const SERVER_CRATES = new Set(["axum", "axum-core", "hyper", "tower", "tower-http", "rust-embed"]);
 
 // Rules the layers alone do not say. `from` is a crate name, or "*" for every crate except those in `except`; `to` is
-// a dependency, workspace or not, or `{ anyWorkspaceCrate: true }` for every workspace crate. Dev-dependencies are
-// exempt, like in the layer rule.
+// a dependency, workspace or not, or `{ anyWorkspaceCrate: true, except }` for every workspace crate not in `except`.
+// Dev-dependencies are exempt, like in the layer rule.
 const FORBIDDEN = [
   {
     from: "playback",
@@ -36,8 +36,8 @@ const FORBIDDEN = [
   },
   {
     from: "camera",
-    to: { anyWorkspaceCrate: true },
-    why: "camera is usable and testable without the app, so it depends on no workspace crate",
+    to: { anyWorkspaceCrate: true, except: ["foundation"] },
+    why: "camera is usable and testable without the app, so it depends on no app crate except foundation",
   },
   ...["retina", "rumqttc", "reqwest", "http-auth", "tokio-tungstenite"].map((to) => ({
     from: "*",
@@ -93,7 +93,9 @@ function check(metadata) {
       for (const rule of FORBIDDEN) {
         const named =
           rule.to === dependency.name ||
-          (rule.to.anyWorkspaceCrate && layerOf.has(dependency.name));
+          (rule.to.anyWorkspaceCrate &&
+            layerOf.has(dependency.name) &&
+            !(rule.to.except ?? []).includes(dependency.name));
         const applies =
           named &&
           (rule.from === pkg.name ||

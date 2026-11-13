@@ -2,7 +2,8 @@
 //! what is held (`Evict`), which map cells are kept (`Window`) and stays within the byte budget.
 
 use foundation::{MediaTime, Timeline};
-use overlay_sync::{MatchBasis, MatchPolicy};
+use scene::MatchBasis;
+use scene::matching::MatchPolicy;
 
 use super::{
     Env, shown,

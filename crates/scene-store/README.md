@@ -78,7 +78,7 @@ ingests, stay shared in memory for the track's lifetime. An oversized history is
 reusable digest, so reopening rebuilds it. While the ingest runs there is no history (`Reading`).
 
 `query.rs` evaluates a parsed search over it (toggles, search, sort, pages; `>` `<` `>=` `<=` never match a text
-value, as in the reference app) and `placement.rs` puts runs on a video's frames by asking `overlay_sync::select` once
+value, as in the reference app) and `placement.rs` puts runs on a video's frames by asking `scene::matching::select` once
 per frame.
 
 `events.rs` places the events on a video's frames by the lane's basis alone (matching tolerance and sticky do not move

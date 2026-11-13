@@ -2,7 +2,7 @@
 
 use foundation::{BookmarkId, HostPath, ItemId, MediaTime};
 use handler_api::Settings;
-use overlay_sync::{MatchPolicy, Sticky};
+use scene::matching::{MatchPolicy, Sticky};
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 use workspace::{

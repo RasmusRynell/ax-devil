@@ -27,7 +27,7 @@ const problemsOf = (crates) => check(workspace(crates)).problems;
 void test("a clean workspace passes", () => {
   assert.deepEqual(
     problemsOf([
-      { name: "foundation", layer: "foundation" },
+      { name: "scene", layer: "domain" },
       { name: "media", layer: "services", deps: ["foundation", "ffmpeg-next"] },
       { name: "playback", layer: "services", deps: ["foundation"] },
     ]),
@@ -53,7 +53,7 @@ void test("only media may depend on ffmpeg-next", () => {
   assert.match(problems[0], /export depends on ffmpeg-next/);
 });
 
-void test("camera depends on no workspace crate, and only camera may use the camera-side clients", () => {
+void test("camera depends on no app crate but foundation, and only camera may use the camera-side clients", () => {
   assert.deepEqual(
     problemsOf([
       {
@@ -65,12 +65,12 @@ void test("camera depends on no workspace crate, and only camera may use the cam
     [],
   );
   const problems = problemsOf([
-    { name: "foundation", layer: "foundation" },
-    { name: "camera", layer: "services", deps: ["foundation"] },
+    { name: "scene", layer: "domain" },
+    { name: "camera", layer: "services", deps: ["scene"] },
     { name: "sessions", layer: "services", deps: ["reqwest", "rumqttc", "tokio-tungstenite"] },
   ]);
   assert.equal(problems.length, 4);
-  assert.match(problems[0], /camera depends on foundation/);
+  assert.match(problems[0], /camera depends on scene/);
   assert.match(problems[1], /sessions depends on reqwest/);
   assert.match(problems[2], /sessions depends on rumqttc/);
   assert.match(problems[3], /sessions depends on tokio-tungstenite/);

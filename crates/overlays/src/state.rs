@@ -14,8 +14,8 @@ use std::{
 
 use foundation::{CancelToken, MediaTime, Timeline, UserError, Warning};
 use handler_api::OverlayRef;
-use overlay_sync::{Alignment, SampleKeys};
 use playback::{FrameSet, Want};
+use scene::matching::{Alignment, SampleKeys};
 use scene_store::{TrackRead, TrackSnapshot};
 use tokio::sync::Notify;
 

@@ -1,10 +1,8 @@
-use foundation::{FrameId, MediaTime, Timeline};
-use scene::Coverage;
-
-use crate::{
-    FrameKey, KeyChunks, MatchBasis, MatchKind, MatchPolicy, SampleKeys, Selection, Sticky,
-    Tolerance,
+use super::{
+    FrameKey, KeyChunks, MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, Tolerance,
 };
+use crate::{Coverage, MatchBasis};
+use foundation::{FrameId, MediaTime, Timeline};
 
 /// Selects the sample of an overlay file that belongs to `frame`, by the policy's [`MatchBasis`].
 ///

@@ -9,10 +9,10 @@ use std::{
     },
 };
 
+use crate::gate::Mono;
 use foundation::{ErrorCode, FrameId, UserError};
 use futures_util::future::join_all;
 use handler_api::{Decoder, Settings};
-use overlay_sync::Mono;
 use playback::SharedFrame;
 use scene_store::{LiveTrack, TrackRead, TrackSnapshot};
 use tokio::{

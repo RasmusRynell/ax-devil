@@ -4,8 +4,8 @@ use std::{sync::atomic::Ordering, time::Duration};
 
 use api_types::live::LiveFeedStatus;
 use camera::{CameraError, ErrorKind, Status};
-use overlay_sync::{MatchPolicy, Sticky};
 use overlays::NONE_CELL;
+use scene::matching::{MatchPolicy, Sticky};
 use tokio::time::timeout;
 use workspace::LiveOverlay;
 

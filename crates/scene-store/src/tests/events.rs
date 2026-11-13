@@ -1,7 +1,8 @@
 //! Listing the events of a file on a video: where each sits, what a search keeps, and what one event shows.
 
 use foundation::{MediaTime, Timeline};
-use overlay_sync::{MatchBasis, MatchPolicy};
+use scene::MatchBasis;
+use scene::matching::MatchPolicy;
 use scene::{Event, Operation, OperationKind};
 
 use super::{

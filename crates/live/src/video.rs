@@ -7,10 +7,11 @@
 
 use std::sync::{Arc, atomic::Ordering};
 
+use crate::gate::{LIVE_DEADLINE, LiveGate};
 use camera::{AccessUnit, Status};
 use foundation::{FrameId, MediaTime, VideoFrame};
-use overlay_sync::{LIVE_DEADLINE, LiveGate, MatchBasis};
 use playback::SharedFrame;
+use scene::MatchBasis;
 use scene_store::{TrackRead, TrackSnapshot};
 use tokio::{
     sync::{mpsc, watch},

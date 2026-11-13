@@ -8,7 +8,7 @@ use std::{
 
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError, Warning};
 use handler_api::Spec;
-use overlay_sync::SampleKeys;
+use scene::matching::SampleKeys;
 
 use crate::{
     history::{HistoryUnavailable, Slot},

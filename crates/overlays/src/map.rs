@@ -2,8 +2,8 @@
 //! [`cell`], so the two never disagree.
 
 use foundation::Timeline;
-use overlay_sync::{MatchPolicy, Selection, select};
 use scene::Coverage;
+use scene::matching::{MatchPolicy, Selection, select};
 use scene_store::{TrackRead, TrackSnapshot};
 
 use crate::window::{EMPTY_CELL, NONE_CELL};

@@ -19,14 +19,14 @@ fake = []
 [dependencies]
 base64 = "0.22"
 bytes.workspace = true
+# The one reading of a stream URL, shared with the app (rtsp/endpoint.rs).
+foundation.workspace = true
 futures-util = { version = "0.3", default-features = false }
 # The tunnel's session cookie.
 getrandom = "0.4"
 http-auth = { version = "0.1", default-features = false, features = ["basic-scheme", "digest-scheme"] }
 # TLS is rustls on the ring provider with certificates unverified (device.rs), so no default provider is installed.
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
-# A custom stream URL's login is percent-decoded (rtsp/endpoint.rs).
-percent-encoding = "2"
 # Pinned: the RTSP session, auth and RTCP come from retina; packet assembly is ours (rtsp/assemble.rs), because retina's depacketizers drop the RTP header extension.
 retina = "=0.4.21"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

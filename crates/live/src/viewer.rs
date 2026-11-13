@@ -8,9 +8,10 @@ use std::{
 
 use api_types::live::LiveStatusWire;
 use foundation::MediaTime;
-use overlay_sync::{MatchBasis, MatchPolicy};
 use overlays::{LanePolicy, LaneReady, LiveEvents, LiveLane, LiveOut};
 use playback::SharedFrame;
+use scene::MatchBasis;
+use scene::matching::MatchPolicy;
 use scene_store::{Ingest, TrackRead, TrackSnapshot};
 use tokio::sync::watch;
 

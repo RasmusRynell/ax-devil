@@ -53,7 +53,7 @@ async fn open_overlay(overlay: OverlayRef) -> (ViewerOverlays, u32) {
                 status: LaneStatus::Ready(ready),
                 ..
             } => {
-                let policy = overlay_sync::MatchPolicy::default();
+                let policy = scene::matching::MatchPolicy::default();
                 viewer.set_policy(0, 1, Some(policy), true);
                 return (viewer, ready.data_revision);
             }

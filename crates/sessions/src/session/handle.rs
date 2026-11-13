@@ -9,8 +9,8 @@ use super::{
     views::View,
 };
 use crate::{CursorOptions, Cursors, EndReason, Secret, SessionId};
-use overlay_sync::MatchPolicy;
 use playback::Authority;
+use scene::matching::MatchPolicy;
 use std::{
     collections::BTreeMap,
     sync::{

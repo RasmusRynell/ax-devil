@@ -187,13 +187,13 @@ pub enum Kind {
     },
     /// How time-keyed samples are matched in a new view.
     Sync {
-        /// The value when the config has none. Must equal `overlay_sync::Tolerance::default()`, which a lane the
+        /// The value when the config has none. Must equal `scene::matching::Tolerance::default()`, which a lane the
         /// backend opens starts with.
         default: SyncValue,
     },
     /// How sticky overlays start in a new view.
     Sticky {
-        /// The value when the config has none. Must equal `overlay_sync::Sticky::default()`, which a lane the
+        /// The value when the config has none. Must equal `scene::matching::Sticky::default()`, which a lane the
         /// backend opens starts with, plus full opacity.
         default: StickyValue,
     },

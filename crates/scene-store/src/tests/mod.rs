@@ -24,7 +24,7 @@ use handler_api::{
     DecodeError, DecodeSummary, Decoder, Field, FieldKind, Form, Framing, Input, OnEqualKey,
     OverlayRef, SceneSink, Settings, Spec, Values,
 };
-use overlay_sync::{FrameKey, KeyChunks, SampleKeys};
+use scene::matching::{FrameKey, KeyChunks, SampleKeys};
 use scene::{
     BoundingBox, ClassType, Classification, Coverage, Entity, EntityId, FilterPolicy, Geometry,
     MatchBasis, Observation, Scene, SceneTime, TimeSlice, Value,

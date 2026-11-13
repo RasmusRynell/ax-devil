@@ -4,7 +4,7 @@
 //!
 //! [`OverlayService::open_viewer`] gives a [`ViewerOverlays`]. Lanes on the same file share a source: its track is
 //! loaded once and each of its samples is encoded once (`scene-store` caches the encoding across viewers) and sent
-//! once. A lane adds only its Frame Map, which `overlay-sync` selects under the lane's [`LanePolicy`]. The viewer
+//! once. A lane adds only its Frame Map, which `scene::matching` selects under the lane's [`LanePolicy`]. The viewer
 //! follows the data window of the video's [`Want`]: maps and samples go only inside it, the samples as
 //! [`sample_window`] defines, nearest the playhead first. The viewer keeps what it was sent until told otherwise: the
 //! backend sends its data window and an eviction for every sample it stops counting as held, and keeps the held

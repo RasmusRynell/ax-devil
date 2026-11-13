@@ -284,7 +284,7 @@ mod tests {
     use foundation::{ErrorCode, ItemId, UserError};
     use handlers::Handlers;
     use live::{Connector, Inputs, Transport, UnitDecoder};
-    use overlay_sync::MatchPolicy;
+    use scene::matching::MatchPolicy;
     use std::sync::atomic::{AtomicBool, Ordering};
     use workspace::{
         ContentId, LIVE_SLOT, LiveOverlay, LiveVideoContent, Protocol, ResolvedCamera,

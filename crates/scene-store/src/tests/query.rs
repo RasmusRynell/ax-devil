@@ -1,9 +1,8 @@
 //! Querying the history over a placement: class toggles, search, order, pages and where objects are on screen.
 
 use foundation::{MediaTime, Timeline};
-use overlay_sync::{
-    KeyChunks, MatchBasis, MatchPolicy, SampleKeys, Selection, Sticky, Tolerance, select,
-};
+use scene::MatchBasis;
+use scene::matching::{KeyChunks, MatchPolicy, SampleKeys, Selection, Sticky, Tolerance, select};
 
 use super::{
     history::{history_of, policy_of, scene_of, scenes},

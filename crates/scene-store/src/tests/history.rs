@@ -276,7 +276,7 @@ fn a_history_over_the_cache_cap_still_answers_file_queries() {
         &track.snapshot().keys,
         Coverage::Sparse,
         &timeline,
-        &overlay_sync::MatchPolicy::default(),
+        &scene::matching::MatchPolicy::default(),
         &cancel,
     )
     .expect("placement");
@@ -344,7 +344,7 @@ fn a_history_larger_than_256_mib_answers_a_file_query() {
         &keys,
         Coverage::Sparse,
         &timeline,
-        &overlay_sync::MatchPolicy::default(),
+        &scene::matching::MatchPolicy::default(),
         &cancel,
     )
     .expect("placement");

@@ -16,6 +16,7 @@ mod connector;
 #[cfg(any(test, feature = "fake"))]
 pub mod fake;
 mod feed;
+mod gate;
 pub mod glance;
 pub mod network;
 mod overlay;

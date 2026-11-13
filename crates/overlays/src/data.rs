@@ -2,7 +2,7 @@
 //!
 //! The data window is the playhead with `ahead` and `behind` frames of the viewer's `want`, clamped to the video.
 //! Every change of the want, of a lane's policy, of a load or of what an ingest has published recomputes the lane
-//! maps of the window (one [`overlay_sync::select`] per new frame) and the sample window of each source
+//! maps of the window (one [`scene::matching::select`] per new frame) and the sample window of each source
 //! ([`crate::sample_window`]). A lane's map holds only the frames its track has decided; the rest of the window has
 //! no cells, so nothing is selected, sent or counted for them until the ingest decides them. Maps that left the
 //! window are forgotten and sent again when they return; samples that left it are told to the viewer as evictions
@@ -11,8 +11,8 @@
 use std::{collections::BTreeMap, ops::RangeInclusive};
 
 use foundation::Timeline;
-use overlay_sync::MatchBasis;
 use playback::Want;
+use scene::MatchBasis;
 
 use crate::{
     map::cell_in,
@@ -118,7 +118,7 @@ impl State {
         &mut self,
         lane: usize,
         revision: u32,
-        matching: Option<overlay_sync::MatchPolicy>,
+        matching: Option<scene::matching::MatchPolicy>,
         subscribed: bool,
         timeline: &Timeline,
     ) {

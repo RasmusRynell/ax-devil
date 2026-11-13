@@ -18,7 +18,8 @@ use handlers::Handlers;
 use media::{
     Decoder, EncodeFormat, Encoder, FrameIndex, ImageSequenceInput, Picture, Quality, VideoInput,
 };
-use overlay_sync::{MatchBasis, MatchPolicy, Sticky};
+use scene::MatchBasis;
+use scene::matching::{MatchPolicy, Sticky};
 use scene_store::{Track, TrackRead, TrackRegistry};
 
 const WIDTH: u32 = 64;

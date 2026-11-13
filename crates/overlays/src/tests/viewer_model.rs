@@ -9,8 +9,9 @@ use std::{
 
 use foundation::{CancelToken, MediaTime, Timeline};
 use handler_api::OverlayRef;
-use overlay_sync::{MatchBasis, MatchPolicy, Sticky, Tolerance};
 use playback::{Direction, Priority, Want, rank};
+use scene::MatchBasis;
+use scene::matching::{MatchPolicy, Sticky, Tolerance};
 use scene_store::TrackRead;
 
 use super::{Env, timeline, want};

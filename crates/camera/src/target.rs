@@ -4,6 +4,8 @@ use std::fmt;
 use std::net::IpAddr;
 use std::time::Duration;
 
+use foundation::is_plain_host;
+
 use crate::error::{CameraError, ErrorKind};
 
 /// A password. Debug prints `***`; there is no `Display` and no serialization, so it cannot reach a log or a file by
@@ -46,30 +48,22 @@ pub struct Host(String);
 impl Host {
     /// Parses a host name or IP address; a scheme, port, path, user info or space is [`ErrorKind::InvalidTarget`].
     pub fn parse(text: &str) -> Result<Self, CameraError> {
+        if !is_plain_host(text) {
+            return Err(CameraError::new(
+                ErrorKind::InvalidTarget,
+                "the host is not a host name or IP address",
+            ));
+        }
         let text = text.trim();
         let bare = text
             .strip_prefix('[')
             .and_then(|rest| rest.strip_suffix(']'))
             .unwrap_or(text);
-        if let Ok(ip) = bare.parse::<IpAddr>() {
-            return Ok(Self(match ip {
-                IpAddr::V4(v4) => v4.to_string(),
-                IpAddr::V6(v6) => format!("[{v6}]"),
-            }));
-        }
-        let name_ok = !text.is_empty()
-            && text.len() <= 253
-            && text
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_'));
-        if name_ok {
-            Ok(Self(text.to_ascii_lowercase()))
-        } else {
-            Err(CameraError::new(
-                ErrorKind::InvalidTarget,
-                "the host is not a host name or IP address",
-            ))
-        }
+        Ok(Self(match bare.parse::<IpAddr>() {
+            Ok(IpAddr::V4(v4)) => v4.to_string(),
+            Ok(IpAddr::V6(v6)) => format!("[{v6}]"),
+            Err(_) => text.to_ascii_lowercase(),
+        }))
     }
 
     /// The host as written in a URL.

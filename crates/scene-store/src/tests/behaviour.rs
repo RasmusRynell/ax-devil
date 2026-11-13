@@ -4,7 +4,7 @@ use std::{sync::mpsc, thread, time::Duration};
 
 use foundation::Timeline;
 use handlers::Handlers;
-use overlay_sync::{MatchPolicy, Selection, Sticky, Tolerance, select};
+use scene::matching::{MatchPolicy, Selection, Sticky, Tolerance, select};
 
 use super::*;
 

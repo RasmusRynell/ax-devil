@@ -3,8 +3,8 @@
 use std::{sync::Arc, thread};
 
 use foundation::{ErrorCode, Timeline, UserError};
-use overlay_sync::MatchPolicy;
 use playback::{Rank, Want};
+use scene::matching::MatchPolicy;
 
 use scene_store::{Ingest, TrackRead, TrackSnapshot};
 

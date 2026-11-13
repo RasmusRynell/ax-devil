@@ -14,8 +14,8 @@ use std::{
 use foundation::{ErrorCode, UserError};
 use futures_util::future::{join, join_all};
 use handlers::Handlers;
-use overlay_sync::MatchPolicy;
 use playback::SharedFrame;
+use scene::matching::MatchPolicy;
 use tokio::{runtime::Handle, sync::watch};
 use workspace::{LiveOverlay, LiveVideoContent, ResolvedCamera, url_without_password};
 

@@ -10,7 +10,8 @@ use api_types::playback::{
     LaneStatusWire, MATCH_EXACT, ServerMessage, StickyWire,
 };
 use common::{Backend, Event, Viewer, fixture};
-use overlay_sync::{MatchBasis, MatchPolicy, Sticky, Tolerance};
+use scene::MatchBasis;
+use scene::matching::{MatchPolicy, Sticky, Tolerance};
 use sessions::{
     CursorOptions,
     session::{Access, Command, Control, Reply},

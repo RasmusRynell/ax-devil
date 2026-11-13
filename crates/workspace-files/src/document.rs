@@ -3,7 +3,7 @@
 
 use foundation::{BookmarkId, HostPath, ItemId, MediaTime};
 use handler_api::Settings;
-use overlay_sync::MatchPolicy;
+use scene::matching::MatchPolicy;
 use serde::{Deserialize, Serialize, de::DeserializeOwned, de::IgnoredAny};
 use serde_json::{Value, json};
 

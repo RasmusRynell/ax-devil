@@ -68,7 +68,6 @@ dependencies = [
  "bytes",
  "export",
  "foundation",
- "overlay-sync",
  "overlays",
  "playback",
  "scene",
@@ -156,7 +155,6 @@ dependencies = [
  "logging",
  "media",
  "mime_guess",
- "overlay-sync",
  "overlays",
  "playback",
  "plugins",
@@ -336,11 +334,11 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bytes",
+ "foundation",
  "futures-util",
  "getrandom 0.4.3",
  "http-auth",
  "md-5",
- "percent-encoding",
  "rcgen",
  "reqwest",
  "retina",
@@ -692,9 +690,9 @@ dependencies = [
  "handler-api",
  "handlers",
  "media",
- "overlay-sync",
  "overlays",
  "same-file",
+ "scene",
  "scene-store",
  "serde",
  "serde_json",
@@ -776,8 +774,10 @@ name = "foundation"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "percent-encoding",
  "serde",
  "ts-rs",
+ "url",
  "uuid",
 ]
 
@@ -1395,7 +1395,6 @@ dependencies = [
  "handler-api",
  "handlers",
  "media",
- "overlay-sync",
  "overlays",
  "playback",
  "scene",
@@ -1607,22 +1606,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e036b411754132fd6b74e94b74e9a13c5cf606fa93d1885c35860d3060820b1"
 
 [[package]]
-name = "overlay-sync"
-version = "0.1.0"
-dependencies = [
- "foundation",
- "scene",
- "serde",
-]
-
-[[package]]
 name = "overlays"
 version = "0.1.0"
 dependencies = [
  "foundation",
  "handler-api",
  "handlers",
- "overlay-sync",
  "playback",
  "scene",
  "scene-store",
@@ -2186,7 +2175,6 @@ dependencies = [
  "handler-api",
  "handlers",
  "memchr",
- "overlay-sync",
  "postcard",
  "scene",
  "serde",
@@ -2325,8 +2313,8 @@ dependencies = [
  "getrandom 0.4.3",
  "handler-api",
  "handlers",
- "overlay-sync",
  "playback",
+ "scene",
  "serde",
  "serde_json",
  "tempfile",
@@ -3168,14 +3156,12 @@ dependencies = [
  "foundation",
  "handler-api",
  "handlers",
- "overlay-sync",
- "percent-encoding",
+ "scene",
  "serde",
  "serde_json",
  "tempfile",
  "tracing",
  "ts-rs",
- "url",
 ]
 
 [[package]]
@@ -3184,7 +3170,7 @@ version = "0.1.0"
 dependencies = [
  "foundation",
  "handler-api",
- "overlay-sync",
+ "scene",
  "serde",
  "serde_json",
  "tempfile",

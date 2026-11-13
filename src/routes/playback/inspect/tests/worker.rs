@@ -2,7 +2,7 @@
 use super::*;
 use foundation::UserError;
 use handler_api::Form;
-use overlay_sync::MatchBasis;
+use scene::MatchBasis;
 use scene::{Coverage, Fields, FilterPolicy};
 use scene_store::{History, HistoryUnavailable};
 use std::sync::{Weak, atomic::Ordering};

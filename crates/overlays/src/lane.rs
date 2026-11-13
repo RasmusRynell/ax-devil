@@ -3,8 +3,9 @@
 use std::{ops::RangeInclusive, sync::Arc};
 
 use foundation::{MediaTime, UserError, Warning};
-use overlay_sync::{Alignment, MatchBasis, MatchPolicy};
 use scene::FilterPolicy;
+use scene::MatchBasis;
+use scene::matching::{Alignment, MatchPolicy};
 use scene_store::{Ingest, TrackRead, TrackSnapshot};
 
 /// How a lane selects samples for frames, and whether it wants any; the part of a lane's settings the backend needs.
