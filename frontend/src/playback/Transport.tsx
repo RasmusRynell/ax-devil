@@ -1,6 +1,7 @@
 import { type CSSProperties, useState } from "react";
 import { TextField } from "../kit/Fields";
 import { IconButton } from "../kit/IconButton";
+import { ownKeys } from "../kit/keys";
 import { Menu, type MenuEntry } from "../kit/Menu";
 import { Popover } from "../kit/Popover";
 import { useScrub } from "./scrub";
@@ -16,6 +17,8 @@ export type Controls = Pick<
 >;
 
 const BUTTON = "size-row rounded-control";
+// Space and Enter activate the focused button, not the shell's play-pause.
+const BUTTON_KEYS = ownKeys(new Set([" ", "Enter"]));
 
 // The controls fade with the pointer's rest (see chromeVisibility) and stay while a control has the keyboard focus ring.
 const CONTROLS =
@@ -136,6 +139,8 @@ interface Props {
   view: PlaybackView;
   /** For a seat that may not change what the window shows: the controls report the video and do nothing. */
   disabled?: boolean;
+  /** The Media tools button, with the key that does the same; it stays enabled for a seat that may not change the video, since the panel is a view-scope command. */
+  tools?: { open: boolean; shortcut: string | null; onToggle: () => void };
 }
 
 /**
@@ -143,7 +148,7 @@ interface Props {
  * frame on screen, and the speed. The frame count and time describe the frame shown, or the frame picked while the seek bar is held; the seek bar the
  * position asked for. A frame that failed to decode says why.
  */
-export function Transport({ controls, view, disabled = false }: Props) {
+export function Transport({ controls, view, disabled = false, tools }: Props) {
   const last = Math.max(0, view.frameCount - 1);
   const { shown, playing, frameError } = view;
   const scrub = useScrub(controls, view);
@@ -252,6 +257,20 @@ export function Transport({ controls, view, disabled = false }: Props) {
             disabled={disabled}
             onChange={(speed) => controls.setSpeed(speed)}
           />
+          {tools && (
+            <IconButton
+              onCanvas
+              icon="layers"
+              label="Media tools"
+              shortcut={tools.shortcut}
+              data-cursor-id="transport:media-tools"
+              aria-pressed={tools.open}
+              onClick={tools.onToggle}
+              onKeyDown={BUTTON_KEYS}
+              onKeyUp={BUTTON_KEYS}
+              className={BUTTON}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -264,6 +264,20 @@ describe("video viewer objects", () => {
     run("media-tools");
     fireEvent.click(screen.getByRole("button", { name: "Close media tools" }));
     expect(shown()).toBeNull();
+    const button = screen.getByRole("button", { name: "Media tools" });
+    fireEvent.click(button);
+    expect(shown()).toBeTruthy();
+    // Space and Enter on it stay with the button; the shell's play-pause listens on the document.
+    const shell = vi.fn();
+    document.addEventListener("keydown", shell);
+    document.addEventListener("keyup", shell);
+    for (const key of [" ", "Enter"]) {
+      fireEvent.keyDown(button, { key });
+      fireEvent.keyUp(button, { key });
+    }
+    document.removeEventListener("keydown", shell);
+    document.removeEventListener("keyup", shell);
+    expect(shell).not.toHaveBeenCalled();
   });
 
   it("shows the hover chip of the object under the pointer", async () => {
