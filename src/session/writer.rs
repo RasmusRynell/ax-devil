@@ -9,7 +9,7 @@
 use super::exit::{Exit, send, send_frame};
 use super::topics::Topics;
 use crate::AppState;
-use api_types::{Audience, CursorPoint, SeatAccess, SessionServerMessage, SharingInfo, Topic};
+use api_types::{Audience, SeatAccess, SessionServerMessage, SharingInfo, Topic};
 use axum::extract::ws::Message;
 use futures_util::Sink;
 use sessions::{
@@ -52,7 +52,7 @@ struct Sent {
 pub(super) async fn run<S: Sink<Message> + Unpin>(
     state: &AppState,
     sink: &mut S,
-    handle: &Handle<CursorPoint>,
+    handle: &Handle,
     mut replies: mpsc::Receiver<SessionServerMessage>,
     owner: bool,
 ) -> Result<Infallible, Exit> {
@@ -144,7 +144,7 @@ pub(super) async fn run<S: Sink<Message> + Unpin>(
 async fn send_parts<S: Sink<Message> + Unpin>(
     state: &AppState,
     sink: &mut S,
-    handle: &Handle<CursorPoint>,
+    handle: &Handle,
     session: &SessionState,
     audience: Audience,
     sent: &mut Sent,

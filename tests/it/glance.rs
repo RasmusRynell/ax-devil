@@ -85,7 +85,7 @@ struct World {
     state: AppState,
     _folder: tempfile::TempDir,
     _stop: tokio::sync::watch::Sender<bool>,
-    handle: sessions::session::Handle<api_types::CursorPoint>,
+    handle: sessions::session::Handle,
 }
 
 impl World {

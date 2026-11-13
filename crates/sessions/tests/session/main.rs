@@ -115,7 +115,7 @@ pub(crate) fn playlist_in(dir: &std::path::Path, names: &[&str]) -> WorkspaceIte
 }
 
 pub(crate) struct Rig {
-    pub(crate) service: Service<u8>,
+    pub(crate) service: Service,
     pub(crate) jobs: Jobs,
     pub(crate) dir: TempDir,
 }
@@ -135,7 +135,7 @@ impl Rig {
     }
 
     /// An owner that shares with `access`, and a guest that joined.
-    pub(crate) fn shared(&self, access: Access) -> (Handle<u8>, Handle<u8>) {
+    pub(crate) fn shared(&self, access: Access) -> (Handle, Handle) {
         let owner = self
             .service
             .create(true, CursorOptions::default(), Default::default())
@@ -147,19 +147,19 @@ impl Rig {
         (owner, guest)
     }
 
-    pub(crate) fn join(&self, owner: &Handle<u8>) -> Handle<u8> {
+    pub(crate) fn join(&self, owner: &Handle) -> Handle {
         let link = link(owner);
         self.service.join(&link, CursorOptions::default()).unwrap()
     }
 
     /// Adds a video, opens its viewer and finishes resolving it, with the owner showing it in viewer 1.
-    pub(crate) fn open_video(&self, owner: &Handle<u8>, name: &str) -> (ItemId, ContentRef) {
+    pub(crate) fn open_video(&self, owner: &Handle, name: &str) -> (ItemId, ContentRef) {
         self.open(owner, self.video(name))
     }
 
     /// Adds `item`, opens its viewer and finishes resolving it, with the owner showing it in viewer 1 (its view number
     /// 1); the key names viewer 1 and the first entry.
-    pub(crate) fn open(&self, owner: &Handle<u8>, item: WorkspaceItem) -> (ItemId, ContentRef) {
+    pub(crate) fn open(&self, owner: &Handle, item: WorkspaceItem) -> (ItemId, ContentRef) {
         let id = item.id;
         owner
             .command(Command::Content(DocCommand::AddItems {
@@ -173,7 +173,18 @@ impl Rig {
     }
 }
 
-pub(crate) fn link(owner: &Handle<u8>) -> sessions::JoinLink {
+/// Any cursor position.
+pub(crate) fn point() -> sessions::CursorPoint {
+    sessions::CursorPoint {
+        region: sessions::CursorRegion::Main,
+        scope: String::new(),
+        x: 0.5,
+        y: 0.5,
+        element: None,
+    }
+}
+
+pub(crate) fn link(owner: &Handle) -> sessions::JoinLink {
     owner.state().sharing.as_ref().unwrap().link.clone()
 }
 
@@ -229,8 +240,8 @@ pub(crate) fn entry_key(state: &SessionState, item: ItemId, index: usize) -> Con
 
 /// Asks `seat` for a ticket for `key` and redeems it.
 pub(crate) fn stream(
-    service: &Service<u8>,
-    seat: &Handle<u8>,
+    service: &Service,
+    seat: &Handle,
     key: &ContentRef,
 ) -> Result<StreamLease, sessions::session::Refusal> {
     let Reply::Ticket(ticket) = seat.command(Command::RequestTicket(key.clone(), vec![]))? else {

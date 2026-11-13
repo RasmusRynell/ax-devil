@@ -35,7 +35,7 @@ fn with_overlay(dir: &Path) -> (WorkspaceItem, std::path::PathBuf) {
     )
 }
 
-fn changed(owner: &Handle<u8>, item: ItemId) -> Option<u32> {
+fn changed(owner: &Handle, item: ItemId) -> Option<u32> {
     owner
         .state()
         .doc
@@ -140,7 +140,7 @@ async fn resolving_records_the_files_and_each_window_with_the_item_is_told() {
     let dir = tempfile::tempdir().unwrap();
     let (item, overlay_file) = with_overlay(dir.path());
     let id = item.id;
-    let service: Service<u8> = Service::new(
+    let service = Service::new(
         GRACE,
         Arc::new(OnRuntime {
             runtime: tokio::runtime::Handle::current(),
@@ -150,7 +150,7 @@ async fn resolving_records_the_files_and_each_window_with_the_item_is_told() {
         }),
     );
     // The same saved workspace open in two windows: one item id in two sessions.
-    let owners: Vec<Handle<u8>> = (0..2)
+    let owners: Vec<Handle> = (0..2)
         .map(|_| {
             let owner = service
                 .create(true, CursorOptions::default(), Default::default())
@@ -248,7 +248,7 @@ async fn a_read_replaces_the_files_an_item_was_recorded_from_even_with_none() {
 /// typed in the session of a remote holder of the server password.
 #[tokio::test]
 async fn a_reference_is_read_for_a_local_owner_and_kept_literal_for_a_remote_one() {
-    let service: Service<u8> = Service::new(
+    let service = Service::new(
         GRACE,
         Arc::new(OnRuntime {
             runtime: tokio::runtime::Handle::current(),

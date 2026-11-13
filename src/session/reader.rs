@@ -14,9 +14,7 @@ use super::{
     wire::{self, Bucket, Request},
 };
 use crate::AppState;
-use api_types::{
-    AckOutcome, CursorPoint, SessionClientMessage, SessionCommand, SessionServerMessage,
-};
+use api_types::{AckOutcome, SessionClientMessage, SessionCommand, SessionServerMessage};
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{StreamExt, stream::SplitStream};
 use sessions::session::{
@@ -39,7 +37,7 @@ const VIEWPORTS_PER_SECOND: u32 = 20;
 pub(super) async fn run(
     state: &AppState,
     stream: &mut SplitStream<WebSocket>,
-    handle: &Handle<CursorPoint>,
+    handle: &Handle,
     replies: mpsc::Sender<SessionServerMessage>,
 ) -> Result<Infallible, Exit> {
     let mut cursors = Bucket::new(CURSORS_PER_SECOND);
@@ -119,7 +117,7 @@ pub(super) async fn run(
 
 /// Applies a view from the View lane. A refusal settles the view's sequence number inside the session; nothing else
 /// to do.
-fn apply_view(handle: &Handle<CursorPoint>, (seq, view): (u64, View)) {
+fn apply_view(handle: &Handle, (seq, view): (u64, View)) {
     let _ = handle.view(view, seq);
 }
 
@@ -142,7 +140,7 @@ fn take_command(commands: &mut Bucket) -> Result<(), Exit> {
 /// Runs one command and words the result: an `Ack`, or the `Ticket` that answers a ticket request.
 async fn answer(
     state: &AppState,
-    handle: &Handle<CursorPoint>,
+    handle: &Handle,
     seq: u64,
     cmd: api_types::SessionCommand,
 ) -> SessionServerMessage {

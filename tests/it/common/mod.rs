@@ -10,7 +10,7 @@ pub use envelope::Event;
 use envelope::parse_envelope;
 
 use api_types::{
-    CursorPoint, ErrorWire,
+    ErrorWire,
     playback::{ClientMessage, Direction, LaneInfo, PLAYBACK_PROTOCOL, ServerMessage, Want},
 };
 use ax_devil::{AppState, access::Policy, app, plugins::Plugins, video_sources::VideoSources};
@@ -75,7 +75,7 @@ pub struct Backend {
 
 /// An item in a session of its own, ready to be streamed: whoever holds it can ask for tickets.
 pub struct Added {
-    pub owner: Handle<CursorPoint>,
+    pub owner: Handle,
     /// The stream of the item's first entry: the one entry of a video.
     pub key: ContentRef,
     /// What the item resolved to.

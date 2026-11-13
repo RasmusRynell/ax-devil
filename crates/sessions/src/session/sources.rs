@@ -204,7 +204,7 @@ pub(super) fn changed_entries(
     DocCommand::SourceChanged(item, entries, whole_item)
 }
 
-impl<C: Clone + Send + 'static> Service<C> {
+impl Service {
     /// Records that `item` of `session` was read from what `watch` says, so a change to it is noticed: a resolved
     /// item that was added without a job records what it was read from here. Replaces what was recorded for the item.
     pub fn record_sources(&self, session: SessionId, item: ItemId, watch: Watch) {
@@ -242,10 +242,7 @@ impl<C: Clone + Send + 'static> Service<C> {
 
 /// Looks at the files of every item every [`INTERVAL`] and tells the sessions about the ones that changed, until
 /// `stopping` is set.
-pub async fn poll<C: Clone + Send + 'static>(
-    service: Service<C>,
-    mut stopping: watch::Receiver<bool>,
-) {
+pub async fn poll(service: Service, mut stopping: watch::Receiver<bool>) {
     let mut tick = interval(INTERVAL);
     tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
     loop {

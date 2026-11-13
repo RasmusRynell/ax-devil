@@ -25,11 +25,10 @@ pub use launch::{HandOff, Launch, LaunchQueue};
 pub(crate) use list::list;
 pub(crate) use socket::socket;
 
-use api_types::CursorPoint;
 use std::time::Duration;
 
-/// Every session of one backend, whichever listener its socket arrives on. Cursor positions are wire values.
-pub type Sessions = ::sessions::session::Service<CursorPoint>;
+/// Every session of one backend, whichever listener its socket arrives on.
+pub type Sessions = ::sessions::session::Service;
 
 /// How long a new socket has to send its first message: `Hello` on the Session socket, `Open` on the playback socket.
 pub(crate) const FIRST_MESSAGE_TIMEOUT: Duration = Duration::from_secs(5);

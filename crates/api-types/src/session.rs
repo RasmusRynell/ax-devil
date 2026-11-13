@@ -8,6 +8,7 @@
 mod commands;
 
 pub use commands::*;
+pub use sessions::{CURSOR_NAME_MAX, CursorElement, CursorPoint};
 
 use crate::{ErrorWire, workspace::WorkspaceState};
 use serde::{Deserialize, Serialize};
@@ -16,9 +17,6 @@ use sessions::{
     session::{Access, Can, Refusal, RosterEntry, View},
 };
 use ts_rs::TS;
-
-/// Longest element id or scope a cursor may carry, in characters.
-pub const CURSOR_NAME_MAX: usize = 64;
 
 /// How a client asks to be admitted; part of the first message of every socket.
 #[derive(Deserialize, TS, Clone, Debug, PartialEq, Eq)]
@@ -49,49 +47,6 @@ pub enum SessionAuth {
         /// The link's `<id>.<secret>`.
         link: String,
     },
-}
-
-/// The part of the window a cursor position belongs to.
-#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum CursorRegion {
-    /// The title bar.
-    TitleBar,
-    /// The activity bar.
-    ActivityBar,
-    /// The sidebar.
-    Sidebar,
-    /// The central area.
-    Main,
-}
-
-/// A position inside one element, which receivers find by its id.
-#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
-pub struct CursorElement {
-    /// The element's `data-cursor-id`, at most [`CURSOR_NAME_MAX`] characters.
-    pub id: String,
-    /// Left to right, a fraction of the element's width.
-    pub x: f32,
-    /// Top to bottom, a fraction of the element's height.
-    pub y: f32,
-}
-
-/// A cursor position. Every `x` and `y` is a fraction in `[0, 1]`, clamped by the backend, so windows of any size
-/// agree.
-#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
-pub struct CursorPoint {
-    /// What `x` and `y` are measured in.
-    pub region: CursorRegion,
-    /// What the region shows right now: the sidebar view id, or the open viewer's id or `welcome`.
-    pub scope: String,
-    /// Left to right, a fraction of the region's width.
-    pub x: f32,
-    /// Top to bottom, a fraction of the region's height.
-    pub y: f32,
-    /// The element under the pointer, when it has an id.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub element: Option<CursorElement>,
 }
 
 /// What a client sends over the Session socket. Anything a seat's standing does not allow is answered with a refused
@@ -399,9 +354,6 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<DocCommand>();
     types.visit::<SessionCommand>();
     types.visit::<WorkspaceCommand>();
-    types.visit::<CursorRegion>();
-    types.visit::<CursorElement>();
-    types.visit::<CursorPoint>();
     types.visit::<SessionClientMessage>();
     types.visit::<SeatAccess>();
     types.visit::<SharingInfo>();

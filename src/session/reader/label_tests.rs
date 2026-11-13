@@ -1,6 +1,5 @@
 use super::*;
 use crate::{access::Policy, plugins::Plugins};
-use api_types::CursorPoint;
 use serde_json::json;
 use sessions::CursorOptions;
 use sessions::session::Handle;
@@ -109,7 +108,7 @@ fn app(folder: &std::path::Path) -> AppState {
     )
 }
 
-fn items_of(handle: &Handle<CursorPoint>) -> Vec<(String, String)> {
+fn items_of(handle: &Handle) -> Vec<(String, String)> {
     let doc = handle.state().doc.clone();
     doc.workspace
         .parts()

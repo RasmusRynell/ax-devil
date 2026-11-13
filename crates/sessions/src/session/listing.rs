@@ -40,7 +40,7 @@ impl Default for Listed {
     }
 }
 
-fn listings<C>(sessions: &Sessions<C>, full_access: bool) -> Vec<Listing> {
+fn listings(sessions: &Sessions, full_access: bool) -> Vec<Listing> {
     let mut list: Vec<Listing> = sessions
         .iter()
         .filter_map(|(id, live)| {
@@ -62,7 +62,7 @@ fn listings<C>(sessions: &Sessions<C>, full_access: bool) -> Vec<Listing> {
     list
 }
 
-impl<C: Clone + Send + 'static> Service<C> {
+impl Service {
     /// Whether there is no session.
     pub fn is_empty(&self) -> bool {
         common::locked(&self.inner.sessions).is_empty()
@@ -82,13 +82,13 @@ impl<C: Clone + Send + 'static> Service<C> {
     /// Like `locked` for a seat's view, which no line of the list shows, so the list is not looked at again.
     pub(super) fn locked_view<R>(
         &self,
-        change: impl FnOnce(&mut Sessions<C>, &mut Deferred) -> R,
+        change: impl FnOnce(&mut Sessions, &mut Deferred) -> R,
     ) -> R {
         self.changing(false, change)
     }
 
     /// Reads the sessions under the lock for a step that changes none of them, so the list is not looked at again.
-    pub(super) fn quietly<R>(&self, step: impl FnOnce(&Sessions<C>) -> R) -> R {
+    pub(super) fn quietly<R>(&self, step: impl FnOnce(&Sessions) -> R) -> R {
         step(&common::locked(&self.inner.sessions))
     }
 
@@ -102,7 +102,7 @@ impl<C: Clone + Send + 'static> Service<C> {
     }
 
     /// Raises the listing's revision if the list changed; called under the lock after every change of a session.
-    pub(super) fn publish_listing(&self, sessions: &Sessions<C>) {
+    pub(super) fn publish_listing(&self, sessions: &Sessions) {
         let next = (listings(sessions, true), listings(sessions, false));
         let mut last = common::locked(&self.inner.listed.last);
         if *last != next {

@@ -116,7 +116,7 @@ async fn a_reload_validates_entries_shown_meanwhile_before_it_commits() {
                 let opened = Arc::clone(&calls);
                 let media_fails = Arc::new(AtomicBool::new(broken));
                 let media = Arc::clone(&media_fails);
-                let service: Service<u8> = Service::new(GRACE, Arc::new(OnRuntime {
+                let service = Service::new(GRACE, Arc::new(OnRuntime {
                     runtime: tokio::runtime::Handle::current(),
                     handlers: HandlerSet::new(handlers),
                     environment: Arc::new(workspace::Environment::of_process),
@@ -294,8 +294,8 @@ async fn a_reload_validates_entries_shown_meanwhile_before_it_commits() {
 }
 
 fn edit_offer(
-    service: &Service<u8>,
-    owner: &sessions::session::Handle<u8>,
+    service: &Service,
+    owner: &sessions::session::Handle,
     item: workspace::ItemId,
     file: &std::path::Path,
     stamp: &mut usize,

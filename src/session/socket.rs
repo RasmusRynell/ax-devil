@@ -11,7 +11,7 @@ use crate::{
     AppState,
     access::{Principal, Slot},
 };
-use api_types::{CursorPoint, SessionAuth, SessionClientMessage};
+use api_types::{SessionAuth, SessionClientMessage};
 use axum::{
     extract::{ConnectInfo, State, WebSocketUpgrade, ws::Message, ws::WebSocket},
     http::StatusCode,
@@ -109,7 +109,7 @@ async fn hello(
     state: &AppState,
     slot: &mut Slot,
     stream: &mut SplitStream<WebSocket>,
-) -> Result<(Handle<CursorPoint>, bool), Exit> {
+) -> Result<(Handle, bool), Exit> {
     let first = timeout(FIRST_MESSAGE_TIMEOUT, async {
         loop {
             match stream.next().await {

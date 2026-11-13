@@ -34,6 +34,7 @@ export * from "./types/scene.time";
 export * from "./types/scene_store.events";
 export * from "./types/scene_store.query";
 export * from "./types/sessions";
+export * from "./types/sessions.cursors";
 export * from "./types/sessions.session";
 export * from "./types/sessions.session.authorize";
 export * from "./types/sessions.session.commands";

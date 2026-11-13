@@ -8,7 +8,7 @@ use super::{
     transition::{Fresh, Input, Outcome},
     views::View,
 };
-use crate::{CursorOptions, Cursors, EndReason, Secret, SessionId};
+use crate::{CursorOptions, CursorPoint, Cursors, EndReason, Secret, SessionId};
 use playback::Authority;
 use scene::matching::MatchPolicy;
 use std::{
@@ -42,8 +42,8 @@ pub enum Reply {
 }
 
 /// One seat's connection. Dropping it disconnects the seat: it is away for the grace period.
-pub struct Handle<C: Clone + Send + 'static> {
-    service: Service<C>,
+pub struct Handle {
+    service: Service,
     session: SessionId,
     seat: SeatId,
     lease: Lease,
@@ -54,8 +54,8 @@ pub struct Handle<C: Clone + Send + 'static> {
     roster: watch::Receiver<Arc<Vec<RosterEntry>>>,
 }
 
-impl<C: Clone + Send + 'static> Handle<C> {
-    pub(super) fn new(service: Service<C>, session: SessionId, seat: SeatId, entry: Entry) -> Self {
+impl Handle {
+    pub(super) fn new(service: Service, session: SessionId, seat: SeatId, entry: Entry) -> Self {
         Self {
             service,
             session,
@@ -175,7 +175,7 @@ impl<C: Clone + Send + 'static> Handle<C> {
     }
 
     /// Other seats' cursor events, filtered by this seat's "show" option.
-    pub fn cursors(&self) -> Cursors<C> {
+    pub fn cursors(&self) -> Cursors {
         let rx = self
             .service
             .locked(|sessions, _| {
@@ -193,7 +193,7 @@ impl<C: Clone + Send + 'static> Handle<C> {
     }
 
     /// Tells the others where this seat's cursor is, or hides it (`None`). Nothing is sent while "share" is off.
-    pub fn move_cursor(&self, at: Option<C>) {
+    pub fn move_cursor(&self, at: Option<CursorPoint>) {
         if !self.share.load(Ordering::Relaxed) {
             return;
         }
@@ -241,7 +241,7 @@ impl<C: Clone + Send + 'static> Handle<C> {
     }
 }
 
-impl<C: Clone + Send + 'static> Drop for Handle<C> {
+impl Drop for Handle {
     fn drop(&mut self) {
         self.service.disconnect(self.session, self.seat, self.lease);
     }
