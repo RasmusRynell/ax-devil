@@ -187,11 +187,7 @@ impl WorkspaceFiles {
     }
 
     /// Runs `command` for the seat of `handle`.
-    pub async fn run(
-        &self,
-        handle: &Handle<api_types::CursorPoint>,
-        command: WorkspaceCommand,
-    ) -> AckOutcome {
+    pub async fn run(&self, handle: &Handle, command: WorkspaceCommand) -> AckOutcome {
         let Some(mut files) = self.lock(handle).await else {
             return AckOutcome::Refused {
                 code: Refusal::NotAllowed,
@@ -231,7 +227,7 @@ impl WorkspaceFiles {
     }
 
     /// Starts the first Local session from `launch`. A restore that cannot happen is only logged.
-    pub async fn launch(&self, handle: &Handle<api_types::CursorPoint>, launch: Launch) {
+    pub async fn launch(&self, handle: &Handle, launch: Launch) {
         let Some(mut files) = self.lock(handle).await else {
             return;
         };
@@ -265,10 +261,7 @@ impl WorkspaceFiles {
         }
     }
 
-    async fn lock(
-        &self,
-        handle: &Handle<api_types::CursorPoint>,
-    ) -> Option<OwnedMutexGuard<SessionFiles>> {
+    async fn lock(&self, handle: &Handle) -> Option<OwnedMutexGuard<SessionFiles>> {
         let files = self
             .sessions
             .lock()

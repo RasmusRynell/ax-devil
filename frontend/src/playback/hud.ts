@@ -6,7 +6,7 @@ import type { LaneMatch } from "../lanes/laneData";
 import {
   MATCH_EXACT,
   MATCH_TOLERATED,
-  type BasisWire,
+  type MatchBasis,
   type VideoPtsWire,
 } from "../stream/protocol";
 
@@ -16,7 +16,7 @@ export type HudLane = {
   pending: boolean;
   settings: Pick<LaneSettings, "tolerance_ms">;
   /** The basis the lane matches by, after the file's default. */
-  basis: BasisWire;
+  basis: MatchBasis;
 };
 
 /** A titled block of `[label, value]` rows. */

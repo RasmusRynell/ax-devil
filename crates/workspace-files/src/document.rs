@@ -70,16 +70,6 @@ struct PlaylistItem {
     lane_matching: BTreeMap<String, MatchPolicy>,
 }
 
-#[derive(Serialize, Deserialize, Default, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-enum KindDto {
-    #[default]
-    Note,
-    Issue,
-    Example,
-    Question,
-}
-
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BookmarkDto {
@@ -90,7 +80,7 @@ struct BookmarkDto {
     frame: u64,
     time_us: i64,
     #[serde(default)]
-    kind: KindDto,
+    kind: BookmarkKind,
     #[serde(default)]
     note: String,
 }
@@ -232,12 +222,6 @@ pub(crate) fn to_document(
     base: Option<&Path>,
     recovers: Option<Option<&Path>>,
 ) -> Value {
-    let kind = |kind: BookmarkKind| match kind {
-        BookmarkKind::Note => KindDto::Note,
-        BookmarkKind::Issue => KindDto::Issue,
-        BookmarkKind::Example => KindDto::Example,
-        BookmarkKind::Question => KindDto::Question,
-    };
     let names: HashMap<ItemId, String> = workspace
         .items
         .iter()
@@ -254,7 +238,7 @@ pub(crate) fn to_document(
             entry: bookmark.target.entry.clone(),
             frame: bookmark.frame,
             time_us: bookmark.time.as_us(),
-            kind: kind(bookmark.kind),
+            kind: bookmark.kind,
             note: bookmark.note.clone(),
         })).collect::<Vec<_>>(),
         "reviewed": workspace.reviewed.iter().map(|target| value(&TargetDto {
@@ -420,12 +404,7 @@ pub(crate) fn from_document(
             },
             frame: dto.frame,
             time: MediaTime::from_us(dto.time_us),
-            kind: match dto.kind {
-                KindDto::Note => BookmarkKind::Note,
-                KindDto::Issue => BookmarkKind::Issue,
-                KindDto::Example => BookmarkKind::Example,
-                KindDto::Question => BookmarkKind::Question,
-            },
+            kind: dto.kind,
             note: dto.note,
         });
     }

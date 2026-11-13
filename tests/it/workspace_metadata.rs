@@ -52,7 +52,7 @@ async fn all_accepted_metadata_remains_readable() {
         view,
         "both Owners drive the Presenter View"
     );
-    let shown = |seat: &sessions::session::Handle<api_types::CursorPoint>| {
+    let shown = |seat: &sessions::session::Handle| {
         let state = seat.state();
         serde_json::to_value(project(
             &state.doc,

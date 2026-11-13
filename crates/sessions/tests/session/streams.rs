@@ -415,7 +415,7 @@ async fn the_listing_revision_rises_with_the_list_and_not_with_a_cursor() {
         "a session, shared and joined"
     );
     listed.borrow_and_update();
-    guest.move_cursor(Some(1));
+    guest.move_cursor(Some(crate::point()));
     assert!(!listed.has_changed().unwrap());
     guest.leave();
     assert!(listed.has_changed().unwrap(), "a seat left");

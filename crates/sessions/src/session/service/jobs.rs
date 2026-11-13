@@ -8,7 +8,7 @@ use workspace::store::Reload;
 
 // Retry transfers the single resolved Content by value between rounds, without an extra heap owner.
 #[allow(clippy::result_large_err)]
-impl<C: Clone + Send + 'static> Service<C> {
+impl Service {
     pub(super) fn run(&self, deferred: Deferred) {
         for (session, spawn) in deferred.spawn {
             let done = self.completer(session, spawn.job, Watcher::default());

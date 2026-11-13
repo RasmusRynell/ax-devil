@@ -3,7 +3,7 @@ import type {
   BookmarkCommand,
   BookmarkGroupInfo,
   BookmarkInfo,
-  BookmarkKindWire,
+  BookmarkKind,
 } from "../generated/api";
 import { ChoiceChips } from "../kit/Chips";
 import { SearchField } from "../kit/Fields";
@@ -17,7 +17,7 @@ import { countOf, filterGroups, KINDS, labelOf, marksOf } from "./groups";
 import { RenameBookmark } from "./RenameBookmark";
 import { useAskSeek } from "./viewerLink";
 
-type Filter = "all" | BookmarkKindWire;
+type Filter = "all" | BookmarkKind;
 
 const FILTERS: readonly (readonly [Filter, string])[] = [
   ["all", "All"],

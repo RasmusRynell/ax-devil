@@ -1,5 +1,6 @@
 use foundation::MediaTime;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::SceneError;
 
@@ -98,7 +99,7 @@ pub enum Coverage {
 
 /// What a lane matches records to video frames by. The host chooses it per lane; a decoder only declares which
 /// bases it supports and which it recommends.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 pub enum MatchBasis {
     /// By frame number. A time-keyed file's frame number is the record's position in the file: record k belongs to
     /// frame k.
@@ -176,6 +177,11 @@ impl TimeSlice {
     pub fn kind(&self) -> TimeKind {
         self.start.kind()
     }
+}
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<MatchBasis>();
 }
 
 #[cfg(test)]

@@ -33,7 +33,7 @@ async fn a_resolver_that_panics_fails_its_item_instead_of_leaving_it_resolving()
     recipe.resolver = "panics".into();
     let id = item.id;
     let handlers = Handlers::built_in().with_resolvers([Arc::new(Panics(spec)) as Arc<_>]);
-    let service: Service<u8> = Service::new(
+    let service = Service::new(
         GRACE,
         Arc::new(OnRuntime {
             runtime: tokio::runtime::Handle::current(),
@@ -81,7 +81,7 @@ async fn a_reload_checks_the_shown_entry_and_keeps_its_generation_on_open_failur
     let id = item.id;
     let checked = Arc::new(AtomicUsize::new(0));
     let calls = Arc::clone(&checked);
-    let service: Service<u8> = Service::new(
+    let service = Service::new(
         GRACE,
         Arc::new(OnRuntime {
             runtime: tokio::runtime::Handle::current(),

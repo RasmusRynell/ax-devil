@@ -3,7 +3,7 @@
 
 use super::{Added, Backend, Event, Handlers, Plugins, Viewer};
 use api_types::playback::{
-    BasisWire, CatalogRefWire, ClientMessage, ExportFormatWire, ExportLaneWire, ExportStateWire,
+    CatalogRefWire, ClientMessage, ExportFormatWire, ExportLaneWire, ExportStateWire,
     FilterOptionInfo, LanePolicyWire, LaneStatusWire, ServerMessage, StickyWire,
 };
 use ax_devil::exports::ExportService;
@@ -12,6 +12,7 @@ use export::LaneStyle;
 use foundation::{CancelToken, VideoFrame};
 use handler_api::Settings;
 use media::{Decoder, FrameIndex, VideoInput};
+use scene::MatchBasis;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -46,7 +47,7 @@ pub async fn serve_lanes(viewer: &mut Viewer, sticky: bool, lanes: &[(u16, &str)
                 lane: *lane,
                 revision: 1,
                 policy: LanePolicyWire {
-                    basis: Some(BasisWire::Time),
+                    basis: Some(MatchBasis::Time),
                     tolerance_ms: None,
                     sticky: StickyWire {
                         enabled: sticky,

@@ -39,7 +39,7 @@ impl WorkspaceFiles {
     /// Makes `workspace` current for `command`, keeping the copy of the work it replaces.
     pub(super) async fn replace(
         &self,
-        handle: &Handle<api_types::CursorPoint>,
+        handle: &Handle,
         files: &mut SessionFiles,
         command: &WorkspaceCommand,
         workspace: Workspace,
@@ -52,7 +52,7 @@ impl WorkspaceFiles {
     /// Sends `replace`, a command that replaces the workspace, after keeping the copy of the work it replaces.
     async fn swap(
         &self,
-        handle: &Handle<api_types::CursorPoint>,
+        handle: &Handle,
         files: &mut SessionFiles,
         replace: Command,
     ) -> Result<(), Failure> {
@@ -84,7 +84,7 @@ impl WorkspaceFiles {
     /// once it is this window's.
     pub(super) async fn open(
         &self,
-        handle: &Handle<api_types::CursorPoint>,
+        handle: &Handle,
         files: &mut SessionFiles,
         path: PathBuf,
         loaded: Option<Workspace>,
@@ -120,7 +120,7 @@ impl WorkspaceFiles {
     /// Takes over the recovery copy `path`: modified until saved, with Keep and Discard on offer.
     pub(super) async fn restore(
         &self,
-        handle: &Handle<api_types::CursorPoint>,
+        handle: &Handle,
         files: &mut SessionFiles,
         path: PathBuf,
     ) -> Result<(), Failure> {
@@ -176,7 +176,7 @@ impl WorkspaceFiles {
 
     pub(super) async fn save(
         &self,
-        handle: &Handle<api_types::CursorPoint>,
+        handle: &Handle,
         files: &mut SessionFiles,
         command: &WorkspaceCommand,
         path: Option<PathBuf>,
@@ -218,7 +218,7 @@ impl WorkspaceFiles {
     /// overwrite a file that is not a CSV.
     pub(super) async fn export_bookmarks(
         &self,
-        handle: &Handle<api_types::CursorPoint>,
+        handle: &Handle,
         files: &SessionFiles,
         path: PathBuf,
     ) -> Result<(), Failure> {
@@ -243,7 +243,7 @@ impl WorkspaceFiles {
     /// cannot be reopened fails the Discard and keeps both the edits and their copy.
     pub(super) async fn discard(
         &self,
-        handle: &Handle<api_types::CursorPoint>,
+        handle: &Handle,
         files: &mut SessionFiles,
         command: &WorkspaceCommand,
     ) -> Result<(), Failure> {

@@ -40,5 +40,7 @@ pub use workspace::Workspace;
 
 /// Visits every type this crate sends to the frontend, for `export-types`.
 pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    bookmark::visit_api_types(types);
     live::visit_api_types(types);
+    store::visit_api_types(types);
 }

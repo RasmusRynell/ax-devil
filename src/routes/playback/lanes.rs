@@ -6,9 +6,9 @@ use super::{End, Flow, Outgoing, stream::Setup, text};
 use api_types::{
     Audience,
     playback::{
-        AlignmentVerdictWire, AlignmentWire, BasisWire, FilterOptionInfo, IngestWire,
-        LaneDefaultsWire, LaneInfo, LanePolicyWire, LaneStatusWire, MAX_DATA_WINDOW_FRAMES,
-        ServerMessage, StickyWire, WarningInfo, envelope,
+        AlignmentVerdictWire, AlignmentWire, FilterOptionInfo, IngestWire, LaneDefaultsWire,
+        LaneInfo, LanePolicyWire, LaneStatusWire, MAX_DATA_WINDOW_FRAMES, ServerMessage,
+        StickyWire, WarningInfo, envelope,
     },
     project,
 };
@@ -17,7 +17,6 @@ use catalogs::Library;
 use foundation::{ErrorCode, HostPath, MediaTime, Timeline, UserError};
 use overlays::{LaneStatus, OverlayEvent, ViewerOverlays};
 use playback::{Rank, Want};
-use scene::MatchBasis;
 use scene::matching::{MatchPolicy, Sticky, Tolerance, Verdict};
 use scene_store::Ingest;
 use std::collections::{BTreeMap, BTreeSet};
@@ -296,17 +295,10 @@ fn tolerance_ms(tolerance: Tolerance) -> Option<u32> {
     }
 }
 
-fn basis_wire(basis: MatchBasis) -> BasisWire {
-    match basis {
-        MatchBasis::Frame => BasisWire::Frame,
-        MatchBasis::Time => BasisWire::Time,
-    }
-}
-
 /// The wire form of a lane's matching.
 pub(super) fn policy_wire(policy: &MatchPolicy) -> LanePolicyWire {
     LanePolicyWire {
-        basis: policy.basis.map(basis_wire),
+        basis: policy.basis,
         tolerance_ms: tolerance_ms(policy.tolerance),
         sticky: StickyWire {
             enabled: policy.sticky.enabled,
@@ -328,10 +320,7 @@ pub(crate) fn policy_from_wire(wire: LanePolicyWire) -> Result<MatchPolicy, Stri
         None => None,
     };
     Ok(MatchPolicy {
-        basis: wire.basis.map(|basis| match basis {
-            BasisWire::Frame => MatchBasis::Frame,
-            BasisWire::Time => MatchBasis::Time,
-        }),
+        basis: wire.basis,
         tolerance: match wire.tolerance_ms {
             None => Tolerance::Exact,
             Some(ms) => Tolerance::PreviousWithin(MediaTime::from_us(i64::from(ms) * 1000)),
@@ -349,8 +338,8 @@ pub(super) fn status_wire(status: LaneStatus, audience: Audience) -> LaneStatusW
     match status {
         LaneStatus::Loading => LaneStatusWire::Loading,
         LaneStatus::Ready(ready) => LaneStatusWire::Ready {
-            bases: ready.bases.iter().copied().map(basis_wire).collect(),
-            default_basis: basis_wire(ready.default_basis),
+            bases: ready.bases.clone(),
+            default_basis: ready.default_basis,
             filter: ready
                 .filter
                 .options
@@ -368,7 +357,7 @@ pub(super) fn status_wire(status: LaneStatus, audience: Audience) -> LaneStatusW
                 .map(WarningInfo::from)
                 .collect(),
             alignment: ready.alignment.map(|alignment| AlignmentWire {
-                basis: basis_wire(alignment.basis),
+                basis: alignment.basis,
                 tolerance_ms: tolerance_ms(alignment.tolerance),
                 samples: alignment.samples as u64,
                 matched: alignment.matched as u64,
@@ -398,10 +387,11 @@ pub(super) fn status_wire(status: LaneStatus, audience: Audience) -> LaneStatusW
 #[cfg(test)]
 mod tests {
     use super::*;
+    use scene::MatchBasis;
 
     fn wire() -> LanePolicyWire {
         LanePolicyWire {
-            basis: Some(BasisWire::Time),
+            basis: Some(MatchBasis::Time),
             tolerance_ms: Some(40),
             sticky: StickyWire {
                 enabled: true,

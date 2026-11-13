@@ -5,6 +5,7 @@ import type { ContentInfo } from "./api_types.content";
 import type { ErrorWire } from "./api_types.error";
 import type { NewLiveWire } from "./api_types.live.new_live";
 import type { WarningInfo } from "./api_types.playback.lane";
+import type { RowKind } from "./workspace.store.rows";
 
 /**
  * The body of `POST /api/files/check`: the files a form is about to add, as typed.
@@ -286,7 +287,7 @@ item: string,
 /**
  * What the row stands for.
  */
-kind: RowKindWire, 
+kind: RowKind, 
 /**
  * What the user reads.
  */
@@ -317,11 +318,6 @@ entry: string | null,
  * What resolving left out of an item's Content; empty for entries and lanes.
  */
 warnings: Array<WarningInfo>, };
-
-/**
- * What a row stands for.
- */
-export type RowKindWire = "item" | "playlist" | "entry" | "lane";
 
 /**
  * Whether what a row stands for can be opened.

@@ -60,17 +60,17 @@ pub(super) struct Applied {
 }
 
 /// One session as the service holds it.
-pub(super) struct Live<C> {
+pub(super) struct Live {
     pub state: Arc<SessionState>,
     tx: watch::Sender<Arc<SessionState>>,
-    pub cursors: broadcast::Sender<CursorEvent<C>>,
+    pub cursors: broadcast::Sender<CursorEvent>,
     roster: watch::Sender<Arc<Vec<RosterEntry>>>,
     private: BTreeMap<SeatId, Private>,
     /// Tells each open stream's holder what it may demand. Gone once the grant is released or revoked.
     streams: BTreeMap<GrantId, watch::Sender<Authority>>,
 }
 
-impl<C: Clone> Live<C> {
+impl Live {
     /// Runs the transition and installs its state. Revocations, new authority and cancellations take effect before
     /// the state is published, still under the lock, so nobody sees the new state while a stream or a job still
     /// follows the old one; only the starts of jobs are deferred.
@@ -193,8 +193,8 @@ impl<C: Clone> Live<C> {
     }
 }
 
-pub(super) struct Inner<C> {
-    pub(super) sessions: Mutex<HashMap<SessionId, Live<C>>>,
+pub(super) struct Inner {
+    pub(super) sessions: Mutex<HashMap<SessionId, Live>>,
     grace: Duration,
     runner: Arc<dyn Runner>,
     epoch: Instant,
@@ -204,11 +204,11 @@ pub(super) struct Inner<C> {
 }
 
 /// Every session of one backend.
-pub struct Service<C: Clone + Send + 'static> {
-    pub(super) inner: Arc<Inner<C>>,
+pub struct Service {
+    pub(super) inner: Arc<Inner>,
 }
 
-impl<C: Clone + Send + 'static> Clone for Service<C> {
+impl Clone for Service {
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
@@ -216,11 +216,11 @@ impl<C: Clone + Send + 'static> Clone for Service<C> {
     }
 }
 
-pub(super) type Sessions<C> = HashMap<SessionId, Live<C>>;
+pub(super) type Sessions = HashMap<SessionId, Live>;
 
 /// Applies `input` to session `id`, and takes the session out of the service once it has ended.
-pub(super) fn apply<C: Clone>(
-    sessions: &mut Sessions<C>,
+pub(super) fn apply(
+    sessions: &mut Sessions,
     id: SessionId,
     input: Input,
     deferred: &mut Deferred,
@@ -233,7 +233,7 @@ pub(super) fn apply<C: Clone>(
     Ok(applied)
 }
 
-impl<C: Clone + Send + 'static> Service<C> {
+impl Service {
     /// An empty service. Seats keep their place for `grace` after their connection drops; `runner` runs the jobs
     /// sessions ask for.
     pub fn new(grace: Duration, runner: Arc<dyn Runner>) -> Self {
@@ -256,14 +256,14 @@ impl<C: Clone + Send + 'static> Service<C> {
     }
 
     /// Runs `change` on the sessions under the lock, then the effects it deferred once the lock is released.
-    pub(super) fn locked<R>(&self, change: impl FnOnce(&mut Sessions<C>, &mut Deferred) -> R) -> R {
+    pub(super) fn locked<R>(&self, change: impl FnOnce(&mut Sessions, &mut Deferred) -> R) -> R {
         self.changing(true, change)
     }
 
     pub(super) fn changing<R>(
         &self,
         listed: bool,
-        change: impl FnOnce(&mut Sessions<C>, &mut Deferred) -> R,
+        change: impl FnOnce(&mut Sessions, &mut Deferred) -> R,
     ) -> R {
         let mut deferred = Deferred::default();
         let mut sessions = common::locked(&self.inner.sessions);
@@ -310,7 +310,7 @@ impl<C: Clone + Send + 'static> Service<C> {
         expands: bool,
         cursors: CursorOptions,
         overlays: Overlays,
-    ) -> Result<Handle<C>, Refusal> {
+    ) -> Result<Handle, Refusal> {
         let mut sessions = common::locked(&self.inner.sessions);
         if sessions.len() >= MAX_SESSIONS {
             return Err(Refusal::Full);
@@ -344,7 +344,7 @@ impl<C: Clone + Send + 'static> Service<C> {
     }
 
     /// Seats a Guest in the session the link opens, if its secret is the current one.
-    pub fn join(&self, link: &JoinLink, cursors: CursorOptions) -> Result<Handle<C>, Refusal> {
+    pub fn join(&self, link: &JoinLink, cursors: CursorOptions) -> Result<Handle, Refusal> {
         self.seat(
             link.session,
             Input::Join {
@@ -360,16 +360,11 @@ impl<C: Clone + Send + 'static> Service<C> {
         id: SessionId,
         full_access: bool,
         cursors: CursorOptions,
-    ) -> Result<Handle<C>, Refusal> {
+    ) -> Result<Handle, Refusal> {
         self.seat(id, Input::Attach { full_access }, cursors)
     }
 
-    fn seat(
-        &self,
-        id: SessionId,
-        input: Input,
-        cursors: CursorOptions,
-    ) -> Result<Handle<C>, Refusal> {
+    fn seat(&self, id: SessionId, input: Input, cursors: CursorOptions) -> Result<Handle, Refusal> {
         self.locked(|sessions, deferred| {
             let applied = apply(sessions, id, input, deferred)?;
             let Outcome::Seated { seat, lease } = applied.outcome else {
@@ -385,7 +380,7 @@ impl<C: Clone + Send + 'static> Service<C> {
     /// Takes back the seat that holds `token`, within its grace period or while another connection still has it.
     /// The old connection is replaced, its streams end, the old token dies, and the returned handle carries the new
     /// one.
-    pub fn resume(&self, token: &Secret) -> Result<Handle<C>, Refusal> {
+    pub fn resume(&self, token: &Secret) -> Result<Handle, Refusal> {
         self.locked(|sessions, deferred| {
             // Compares every token, so the time taken does not say how many leading digits matched.
             let mut found = None;

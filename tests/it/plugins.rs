@@ -6,8 +6,8 @@
 use crate::common;
 
 use api_types::playback::{
-    BasisWire, ClientMessage, Direction, FRAME_MAP_NONE, IngestWire, LanePolicyWire,
-    LaneStatusWire, MATCH_EXACT, ServerMessage, StickyWire,
+    ClientMessage, Direction, FRAME_MAP_NONE, IngestWire, LanePolicyWire, LaneStatusWire,
+    MATCH_EXACT, ServerMessage, StickyWire,
 };
 use ax_devil::plugins::Plugins;
 use common::{Backend, Event, fixture};
@@ -15,6 +15,7 @@ use foundation::{CancelToken, ErrorCode};
 use handler_api::OverlayRef;
 use handlers::Handlers;
 use plugins::{Registry, Reserved};
+use scene::MatchBasis;
 use scene_store::{TrackRead, TrackRegistry};
 use std::{
     io::Read,
@@ -507,7 +508,7 @@ async fn a_lane_over_a_plugin_that_defaults_to_time_is_matched_by_time_without_b
     }
     assert_eq!(
         bases,
-        Some((vec![BasisWire::Time, BasisWire::Frame], BasisWire::Time))
+        Some((vec![MatchBasis::Time, MatchBasis::Frame], MatchBasis::Time))
     );
     assert_eq!(cells[&1].0, FRAME_MAP_NONE);
     assert_eq!(cells[&3], (1, MATCH_EXACT));

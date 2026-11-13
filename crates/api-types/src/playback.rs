@@ -421,6 +421,3 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     lane::visit_api_types(types);
     want::visit_api_types(types);
 }
-
-#[cfg(test)]
-mod tests;

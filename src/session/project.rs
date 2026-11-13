@@ -11,14 +11,14 @@
 
 use api_types::{
     Audience, DocWire,
-    bookmarks::{BookmarkGroupInfo, BookmarkInfo, BookmarkKindWire, BookmarkStanding},
+    bookmarks::{BookmarkGroupInfo, BookmarkInfo, BookmarkStanding},
     content::{ContentInfo, EntryInfo, PlaylistSpanInfo},
     live::{LiveOverlayKind, NewLiveWire},
     playback::WarningInfo,
     project as project_error,
     workspace::{
         ItemKind, ItemRecipe, ItemState, LiveShown, NewOverlayWire, ReloadFailure, ResolutionState,
-        RowInfo, RowKindWire, RowStatusInfo, WorkspaceState,
+        RowInfo, RowStatusInfo, WorkspaceState,
     },
 };
 use sessions::session::{Doc, SessionState, can};
@@ -28,8 +28,8 @@ use workspace::store::{
     WorkspaceParts, bookmark_groups, details, rows,
 };
 use workspace::{
-    BookmarkKind, Content, Entry, Environment, LiveVideoContent, SeekableVideoContent, Source,
-    Workspace, WorkspaceItem, metadata_fields, playlist_label,
+    Content, Entry, Environment, LiveVideoContent, SeekableVideoContent, Source, Workspace,
+    WorkspaceItem, metadata_fields, playlist_label,
 };
 
 /// The audience of a seat: it learns the host's details when its standing may. The one rule for what a seat is shown
@@ -232,12 +232,7 @@ fn group_info(group: BookmarkGroup) -> BookmarkGroupInfo {
                 id: bookmark.id.to_string(),
                 frame: bookmark.frame,
                 time_us: bookmark.time.as_us(),
-                kind: match bookmark.kind {
-                    BookmarkKind::Note => BookmarkKindWire::Note,
-                    BookmarkKind::Issue => BookmarkKindWire::Issue,
-                    BookmarkKind::Example => BookmarkKindWire::Example,
-                    BookmarkKind::Question => BookmarkKindWire::Question,
-                },
+                kind: bookmark.kind,
                 note: bookmark.note,
             })
             .collect(),
@@ -259,12 +254,7 @@ fn row_info(row: Row, detail: String, audience: Audience) -> RowInfo {
     RowInfo {
         key,
         item: item.to_string(),
-        kind: match kind {
-            RowKind::Item => RowKindWire::Item,
-            RowKind::Playlist => RowKindWire::Playlist,
-            RowKind::Entry => RowKindWire::Entry,
-            RowKind::Lane => RowKindWire::Lane,
-        },
+        kind,
         label,
         detail,
         // Names the host's files and cameras, so only an audience with host details learns it.

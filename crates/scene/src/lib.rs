@@ -69,6 +69,7 @@ impl fmt::Display for SceneVersion {
 pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     inspection::visit_api_types(types);
     scene::visit_api_types(types);
+    time::visit_api_types(types);
 }
 
 #[cfg(test)]

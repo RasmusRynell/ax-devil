@@ -2,24 +2,16 @@
 
 use crate::ErrorWire;
 use foundation::Warning;
+use scene::MatchBasis;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-
-/// What a lane matches a file's records to video frames by.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub enum BasisWire {
-    /// By frame number: a time-keyed file's record k belongs to frame k.
-    Frame,
-    /// By the records' timestamps.
-    Time,
-}
 
 /// How a lane selects samples for frames: the part of a lane's settings the backend needs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct LanePolicyWire {
     /// What records are matched to frames by; `null` is the decoder's default. A basis the file does not offer is
     /// reported as a problem and the decoder's default is used.
-    pub basis: Option<BasisWire>,
+    pub basis: Option<MatchBasis>,
     /// How far back a sample may be under the time basis, in milliseconds; `null` is exact.
     pub tolerance_ms: Option<u32>,
     /// Whether old samples stay on screen.
@@ -104,9 +96,9 @@ pub enum LaneStatusWire {
     /// The overlay is ready to draw.
     Ready {
         /// The bases the file's records can be matched by.
-        bases: Vec<BasisWire>,
+        bases: Vec<MatchBasis>,
         /// The basis the decoder recommends, one of `bases`.
-        default_basis: BasisWire,
+        default_basis: MatchBasis,
         /// The class filters the file's content calls for.
         filter: Vec<FilterOptionInfo>,
         /// Problems the decoder reported, and a misalignment with the video's frames.
@@ -134,7 +126,7 @@ pub enum LaneStatusWire {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct AlignmentWire {
     /// What the samples were matched by.
-    pub basis: BasisWire,
+    pub basis: MatchBasis,
     /// How far back a sample matched a frame under time, in milliseconds; `null` for exact. The tolerance the counts
     /// were computed with, which the lane's own may have moved on from.
     pub tolerance_ms: Option<u32>,
@@ -184,7 +176,6 @@ pub enum IngestWire {
 
 /// Visits the types this module sends to the frontend.
 pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<BasisWire>();
     types.visit::<LanePolicyWire>();
     types.visit::<StickyWire>();
     types.visit::<LaneDefaultsWire>();

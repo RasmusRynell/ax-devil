@@ -8,14 +8,16 @@
 //!
 //! The session's state and the rules that change it are in [`session`]. The plain data that crosses to a client, such
 //! as a view or a seat's role, is defined here once and carries its own wire form; the messages are not this crate's,
-//! and nor is the UI. The cursor position type `C` is opaque.
+//! and nor is the UI. A seat's cursor position is [`CursorPoint`].
 
 mod common;
 mod cursors;
 mod secret;
 pub mod session;
 
-pub use cursors::{CursorEvent, Cursors};
+pub use cursors::{
+    CURSOR_NAME_MAX, CursorElement, CursorEvent, CursorPoint, CursorRegion, Cursors,
+};
 pub use secret::{JoinLink, Secret, SessionId};
 
 use serde::{Deserialize, Serialize};
@@ -88,5 +90,8 @@ pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<SeatRole>();
     types.visit::<SeatMode>();
     types.visit::<CursorOptions>();
+    types.visit::<CursorRegion>();
+    types.visit::<CursorElement>();
+    types.visit::<CursorPoint>();
     session::visit_api_types(types);
 }
