@@ -545,8 +545,8 @@ pub const TABLE: &[Setting] = &[
         description: Some(
             "Anyone with the server password can install plugins and read this machine's environment.",
         ),
-        page: Some("Storage"),
-        section: "Folders",
+        page: Some("Advanced"),
+        section: "Sharing",
         env: false,
         full_access: true,
         scope: Scope::Server,

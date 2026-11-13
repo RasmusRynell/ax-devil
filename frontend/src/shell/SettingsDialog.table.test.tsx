@@ -34,6 +34,7 @@ describe("settings dialog, real table", () => {
       "Analytics",
       "Network scan",
       "Storage",
+      "Advanced",
     ]);
     // Each row's tooltip is its setting key, so the keys give the order, and the headings the groups.
     const rows = (page: string) => {
@@ -81,6 +82,8 @@ describe("settings dialog, real table", () => {
       ["Discovery", "Network scan", "Sign-in logins"],
       ["scan.on_startup", "scan.sign_in", "scan.range", "scan.logins"],
     ]);
+    // Full access with password sits in Advanced, under Sharing; its tooltip is a sentence, not the key.
+    expect(rows("Advanced")[0]).toEqual(["Sharing"]);
   });
 
   it("masks a literal password and warns about it, and shows a $VARIABLE reference as it is", () => {
@@ -90,12 +93,14 @@ describe("settings dialog, real table", () => {
       ["Analytics", "Broker password"],
     ]) {
       fireEvent.click(screen.getByRole("tab", { name: page }));
-      const password = screen.getByLabelText(label) as HTMLInputElement;
+      // Every page stays in the DOM, hidden, so look in the shown one.
+      const panel = within(screen.getByRole("tabpanel"));
+      const password = panel.getByLabelText(label) as HTMLInputElement;
       expect(password.type).toBe("text");
-      expect(screen.queryByText(/^Saved as plain text/)).toBeNull();
+      expect(panel.queryByText(/^Saved as plain text/)).toBeNull();
       fireEvent.change(password, { target: { value: "hunter2" } });
       expect(password.type).toBe("password");
-      expect(screen.getByText(/^Saved as plain text/).id).toBe(
+      expect(panel.getByText(/^Saved as plain text/).id).toBe(
         password.getAttribute("aria-describedby"),
       );
     }

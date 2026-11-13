@@ -256,21 +256,7 @@ pub const COMMANDS: &[Command] = &[
         Some("Ctrl+E"),
         false,
     ),
-    command(
-        "debug-metrics",
-        "Debug Metrics",
-        Category::Application,
-        Some("Ctrl+D"),
-        false,
-    ),
     command("plugins", "Plugins", Category::Application, None, false),
-    command(
-        "collect-metrics",
-        "Collect Debug Metrics",
-        Category::Application,
-        None,
-        false,
-    ),
     command(
         "quick-setup",
         "Quick Setup",
