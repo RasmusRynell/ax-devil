@@ -3,7 +3,7 @@
 use crate::ErrorWire;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use workspace::ContentId;
+use workspace::{ContentId, store::RowKind};
 
 use crate::{
     bookmarks::BookmarkGroupInfo, content::ContentInfo, live::NewLiveWire, playback::WarningInfo,
@@ -64,7 +64,7 @@ pub struct RowInfo {
     /// The item the row belongs to, which a viewer is opened on.
     pub item: String,
     /// What the row stands for.
-    pub kind: RowKindWire,
+    pub kind: RowKind,
     /// What the user reads.
     pub label: String,
     /// What tells it from a sibling with the same label: where it comes from, or its number; empty for most rows. The
@@ -81,20 +81,6 @@ pub struct RowInfo {
     pub entry: Option<String>,
     /// What resolving left out of an item's Content; empty for entries and lanes.
     pub warnings: Vec<WarningInfo>,
-}
-
-/// What a row stands for.
-#[derive(Clone, Copy, Serialize, Deserialize, TS)]
-#[serde(rename_all = "lowercase")]
-pub enum RowKindWire {
-    /// A video item, or an item with no Content yet.
-    Item,
-    /// One playlist of a playlist item.
-    Playlist,
-    /// An entry of an item.
-    Entry,
-    /// A lane of an entry.
-    Lane,
 }
 
 /// Whether what a row stands for can be opened.
@@ -335,7 +321,6 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<RecentWorkspace>();
     types.visit::<SourceChangesInfo>();
     types.visit::<RowInfo>();
-    types.visit::<RowKindWire>();
     types.visit::<RowStatusInfo>();
     types.visit::<ItemState>();
     types.visit::<LiveShown>();

@@ -1,6 +1,7 @@
 // Generated from api_types::playback::lane by make; do not edit.
 
 import type { ErrorWire } from "./api_types.error";
+import type { MatchBasis } from "./scene.time";
 
 /**
  * How well an overlay lines up with the video, worst first.
@@ -14,7 +15,7 @@ export type AlignmentWire = {
 /**
  * What the samples were matched by.
  */
-basis: BasisWire, 
+basis: MatchBasis, 
 /**
  * How far back a sample matched a frame under time, in milliseconds; `null` for exact. The tolerance the counts
  * were computed with, which the lane's own may have moved on from.
@@ -44,11 +45,6 @@ ends_far: boolean,
  * How well the file lines up, by its worst trait.
  */
 verdict: AlignmentVerdictWire, };
-
-/**
- * What a lane matches a file's records to video frames by.
- */
-export type BasisWire = "Frame" | "Time";
 
 /**
  * One class filter a lane offers.
@@ -115,7 +111,7 @@ export type LanePolicyWire = {
  * What records are matched to frames by; `null` is the decoder's default. A basis the file does not offer is
  * reported as a problem and the decoder's default is used.
  */
-basis: BasisWire | null, 
+basis: MatchBasis | null, 
 /**
  * How far back a sample may be under the time basis, in milliseconds; `null` is exact.
  */
@@ -132,11 +128,11 @@ export type LaneStatusWire = { "status": "Loading" } | { "status": "Ready",
 /**
  * The bases the file's records can be matched by.
  */
-bases: Array<BasisWire>, 
+bases: Array<MatchBasis>, 
 /**
  * The basis the decoder recommends, one of `bases`.
  */
-default_basis: BasisWire, 
+default_basis: MatchBasis, 
 /**
  * The class filters the file's content calls for.
  */

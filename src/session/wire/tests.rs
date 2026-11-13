@@ -247,3 +247,26 @@ async fn the_wire_scope_is_the_scope_the_converted_command_needs() {
     assert_eq!(named.len(), VARIANTS.len(), "a variant is named twice");
     assert_eq!(seen, named);
 }
+
+#[test]
+fn a_new_live_stream_arrives_with_what_the_user_entered_and_its_password_never_prints() {
+    let wire = json!({"type": "Live", "host": "$AX_DEVIL_TARGET_ADDR", "password": "hunter2",
+        "overlay": {"mode": "datahub", "topic": "t"}});
+    let item: NewItem = serde_json::from_value(wire).unwrap();
+    assert!(!format!("{item:?}").contains("hunter2"), "{item:?}");
+    let NewItem::Live(new) = item else {
+        panic!("a live stream");
+    };
+    let new = workspace::intake::NewLive::from(*new);
+    assert_eq!(new.host.as_deref(), Some("$AX_DEVIL_TARGET_ADDR"));
+    assert_eq!(new.password.unwrap().expose(), "hunter2");
+    assert_eq!(
+        new.overlay,
+        Some(workspace::intake::NewLiveOverlay::DataHub(
+            workspace::intake::NewDataHub {
+                topic: Some("t".into()),
+                ..Default::default()
+            }
+        ))
+    );
+}

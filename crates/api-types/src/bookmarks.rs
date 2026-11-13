@@ -3,21 +3,7 @@
 use foundation::ItemId;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use workspace::{BookmarkId, ContentId};
-
-/// What a bookmark marks.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "lowercase")]
-pub enum BookmarkKindWire {
-    /// A remark.
-    Note,
-    /// A problem to fix.
-    Issue,
-    /// A good example.
-    Example,
-    /// Something to ask about.
-    Question,
-}
+use workspace::{BookmarkId, BookmarkKind, ContentId};
 
 /// A change to the bookmarks or reviewed marks.
 #[derive(Deserialize, TS, Clone, Debug, PartialEq, Eq)]
@@ -55,7 +41,7 @@ pub enum BookmarkCommand {
         /// The new kind; unchanged when absent.
         #[serde(default)]
         #[ts(optional)]
-        kind: Option<BookmarkKindWire>,
+        kind: Option<BookmarkKind>,
     },
     /// Deletes a bookmark.
     Remove {
@@ -89,7 +75,7 @@ pub struct BookmarkInfo {
     #[ts(type = "number")]
     pub time_us: i64,
     /// What it marks.
-    pub kind: BookmarkKindWire,
+    pub kind: BookmarkKind,
     /// The user's text; empty when there is none.
     pub note: String,
 }
@@ -132,7 +118,6 @@ pub struct BookmarkGroupInfo {
 
 /// Visits the types this module sends to the frontend.
 pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<BookmarkKindWire>();
     types.visit::<BookmarkCommand>();
     types.visit::<BookmarkInfo>();
     types.visit::<BookmarkStanding>();

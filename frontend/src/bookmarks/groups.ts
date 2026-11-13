@@ -1,9 +1,9 @@
-import type { BookmarkGroupInfo, BookmarkInfo, BookmarkKindWire } from "../generated/api";
+import type { BookmarkGroupInfo, BookmarkInfo, BookmarkKind } from "../generated/api";
 import { casefold } from "../casefold";
 import { timecode } from "../playback/timecode";
 
 /** The kinds in the order the filter and the kind menu list them, with their names. */
-export const KINDS: readonly (readonly [BookmarkKindWire, string])[] = [
+export const KINDS: readonly (readonly [BookmarkKind, string])[] = [
   ["note", "Note"],
   ["issue", "Issue"],
   ["example", "Example"],
@@ -13,7 +13,7 @@ export const KINDS: readonly (readonly [BookmarkKindWire, string])[] = [
 const NAMES = new Map(KINDS);
 
 /** The kind's name. */
-export const kindName = (kind: BookmarkKindWire): string => NAMES.get(kind) ?? kind;
+export const kindName = (kind: BookmarkKind): string => NAMES.get(kind) ?? kind;
 
 /** What a bookmark is called: its text, else its frame. */
 export const labelOf = ({ note, frame }: BookmarkInfo): string => note || `Frame ${frame}`;
@@ -51,7 +51,7 @@ export const countOf = (groups: readonly BookmarkGroupInfo[]): number =>
 export function filterGroups(
   groups: readonly BookmarkGroupInfo[],
   query: string,
-  kind: BookmarkKindWire | null,
+  kind: BookmarkKind | null,
 ): BookmarkGroupInfo[] {
   const needle = casefold(query.trim());
   return groups.flatMap((group) => {

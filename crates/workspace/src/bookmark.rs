@@ -1,4 +1,6 @@
 use foundation::{BookmarkId, ItemId, MediaTime};
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// What is reviewed or bookmarked: a video item (`entry: None`) or one entry of a playlist item, by its playlist and entry name.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -11,7 +13,8 @@ pub struct BookmarkTarget {
 }
 
 /// What a bookmark marks.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
 pub enum BookmarkKind {
     /// A remark.
     #[default]
@@ -39,4 +42,9 @@ pub struct Bookmark {
     pub kind: BookmarkKind,
     /// The user's text.
     pub note: String,
+}
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<BookmarkKind>();
 }

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { DEFAULT_SETTINGS } from "../client/fakeSettings";
-import type { BasisWire } from "../generated/api";
+import type { MatchBasis } from "../generated/api";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { box, READY, setup, tab } from "./laneMenuRig";
 
@@ -156,7 +156,7 @@ describe("lane menu timing", () => {
 
   it("switching from Exact back to Previous restores the tolerance the lane had", () => {
     const exact = { ...LANE_SETTINGS, basis: "Time" as const, tolerance_ms: null };
-    const timed = { ...READY, bases: ["Time"] as BasisWire[], default_basis: "Time" as const };
+    const timed = { ...READY, bases: ["Time"] as MatchBasis[], default_basis: "Time" as const };
     const { onChange } = setup({ settings: { ...exact, kept_tolerance_ms: 80 } }, timed);
     tab("Timing");
     expect(screen.queryByRole("spinbutton", { name: "Within (ms)" })).toBeNull();
@@ -174,7 +174,7 @@ describe("lane menu timing", () => {
     cleanup();
     const both = {
       ...READY,
-      bases: ["Frame", "Time"] as BasisWire[],
+      bases: ["Frame", "Time"] as MatchBasis[],
       default_basis: "Frame" as const,
     };
     const { onChange } = setup({}, both);

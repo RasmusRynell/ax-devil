@@ -4,7 +4,7 @@ import type { SettingsState } from "../generated/api";
 import { compileFilter, MEASURES, OPEN_RANGES, withRanges } from "../present";
 import type { CatalogLook, LaneSettings, LaneState, Sticky } from "./contract";
 import type {
-  BasisWire,
+  MatchBasis,
   CatalogInfoWire,
   ClientMessage,
   LaneDefaultsWire,
@@ -19,7 +19,7 @@ export type { LaneSettings, LaneState } from "./contract";
 export type ReadyStatus = Extract<LaneStatusWire, { status: "Ready" }>;
 
 /** The basis `lane` matches by: its own setting when its file offers it, else the file's default; `undefined` until the file is ready. */
-export function basisOf({ settings, status }: LaneState): BasisWire | undefined {
+export function basisOf({ settings, status }: LaneState): MatchBasis | undefined {
   if (status === "plain" || status.status !== "Ready") return undefined;
   return settings.basis !== null && status.bases.includes(settings.basis)
     ? settings.basis

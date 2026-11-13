@@ -6,8 +6,8 @@
 use crate::common;
 
 use api_types::playback::{
-    BasisWire, ClientMessage, Direction, FRAME_MAP_NONE, IngestWire, LaneInfo, LanePolicyWire,
-    LaneStatusWire, MATCH_EXACT, ServerMessage, StickyWire,
+    ClientMessage, Direction, FRAME_MAP_NONE, IngestWire, LaneInfo, LanePolicyWire, LaneStatusWire,
+    MATCH_EXACT, ServerMessage, StickyWire,
 };
 use common::{Backend, Event, Viewer, fixture};
 use scene::MatchBasis;
@@ -439,8 +439,8 @@ async fn an_onvif_lane_starts_by_frame_switches_to_time_and_the_workspace_keeps_
     else {
         panic!("the lane is ready");
     };
-    assert_eq!(bases, [BasisWire::Frame, BasisWire::Time]);
-    assert_eq!(default_basis, BasisWire::Frame);
+    assert_eq!(bases, [MatchBasis::Frame, MatchBasis::Time]);
+    assert_eq!(default_basis, MatchBasis::Frame);
 
     // By frame, record k is frame k; by time, the records at 0, 100 and 200 ms are frames 0, 3 and 6.
     let frame = policy(None, None);
@@ -448,7 +448,7 @@ async fn an_onvif_lane_starts_by_frame_switches_to_time_and_the_workspace_keeps_
     seen.read_until(&mut viewer, |seen| seen.mapped(1)).await;
     assert_eq!(seen.maps[&(1, 1)].0, 1);
     let time = LanePolicyWire {
-        basis: Some(BasisWire::Time),
+        basis: Some(MatchBasis::Time),
         ..frame
     };
     viewer.send(&lane_policy(0, 2, time, true)).await;

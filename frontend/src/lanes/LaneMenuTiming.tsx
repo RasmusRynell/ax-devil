@@ -1,5 +1,5 @@
 import { Checkbox, Select } from "../kit/Fields";
-import type { AlignmentWire, BasisWire } from "../generated/api";
+import type { AlignmentWire, MatchBasis } from "../generated/api";
 import { Switch } from "../kit/Switch";
 import type { CadenceWire } from "../stream/protocol";
 import { useSettings } from "../client/settings";
@@ -82,7 +82,7 @@ function Alignment({
   );
 }
 
-const BASES: readonly (readonly [BasisWire, string])[] = [
+const BASES: readonly (readonly [MatchBasis, string])[] = [
   ["Frame", "Frame"],
   ["Time", "Time"],
 ];
@@ -121,7 +121,7 @@ export function LaneMenuTiming({
       {(bases.length > 1 || basis === "Time") && (
         <Group label="Sync">
           {bases.length > 1 && (
-            <Select<BasisWire>
+            <Select<MatchBasis>
               label="Match by"
               help={SECTION_HELP.sync}
               value={basis ?? "Frame"}

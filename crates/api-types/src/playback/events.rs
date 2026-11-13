@@ -73,3 +73,23 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<EventAskWire>();
     types.visit::<FindEventWire>();
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::playback::ClientMessage;
+
+    use super::FindEventWire;
+
+    #[test]
+    fn finding_an_event_has_a_fixed_small_request_even_for_a_large_id() {
+        let ask = ClientMessage::FindEvent(FindEventWire {
+            lane: u16::MAX,
+            request: u32::MAX,
+            event: u32::MAX,
+            anchor: [255; 32],
+            frame: u64::MAX,
+            bins: 256,
+        });
+        assert!(serde_json::to_vec(&ask).unwrap().len() < 512);
+    }
+}

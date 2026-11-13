@@ -6,7 +6,7 @@ use crate::routes::playback::policy_from_wire;
 use crate::routes::resolve::Staged;
 use api_types::{
     CURSOR_NAME_MAX, CursorElement, CursorPoint, SessionCommand, WorkspaceCommand,
-    bookmarks::{BookmarkCommand as BookmarkWire, BookmarkKindWire},
+    bookmarks::BookmarkCommand as BookmarkWire,
     workspace::{HiddenTarget, NewItem},
 };
 use foundation::{ErrorCode, ItemId, MediaTime};
@@ -17,7 +17,7 @@ use std::path::Path;
 use tokio::time::Instant;
 use workspace::store::{BookmarkCommand, DocCommand, HiddenRef};
 use workspace::{
-    BookmarkId, BookmarkKind, BookmarkTarget, Content, Secret, Watch, WorkspaceItem,
+    BookmarkId, BookmarkTarget, Content, Secret, Watch, WorkspaceItem,
     intake::{LiveDefaults, NewLive, NewOverlay},
 };
 
@@ -281,16 +281,7 @@ fn bookmark_command(wire: BookmarkWire) -> Result<BookmarkCommand, Refusal> {
             time: MediaTime::from_us(time_us),
         },
         BookmarkWire::Add { .. } => return Err(Refusal::Invalid),
-        BookmarkWire::Edit { id, note, kind } => BookmarkCommand::Edit {
-            id,
-            note,
-            kind: kind.map(|kind| match kind {
-                BookmarkKindWire::Note => BookmarkKind::Note,
-                BookmarkKindWire::Issue => BookmarkKind::Issue,
-                BookmarkKindWire::Example => BookmarkKind::Example,
-                BookmarkKindWire::Question => BookmarkKind::Question,
-            }),
-        },
+        BookmarkWire::Edit { id, note, kind } => BookmarkCommand::Edit { id, note, kind },
         BookmarkWire::Remove { id } => BookmarkCommand::Remove(id),
         BookmarkWire::SetReviewed {
             item,

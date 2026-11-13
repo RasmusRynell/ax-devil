@@ -1,5 +1,7 @@
 // Generated from api_types::bookmarks by make; do not edit.
 
+import type { BookmarkKind } from "./workspace.bookmark";
+
 /**
  * A change to the bookmarks or reviewed marks.
  */
@@ -31,7 +33,7 @@ note?: string,
 /**
  * The new kind; unchanged when absent.
  */
-kind?: BookmarkKindWire, } | { "type": "remove", 
+kind?: BookmarkKind, } | { "type": "remove", 
 /**
  * The bookmark.
  */
@@ -105,16 +107,11 @@ time_us: number,
 /**
  * What it marks.
  */
-kind: BookmarkKindWire, 
+kind: BookmarkKind, 
 /**
  * The user's text; empty when there is none.
  */
 note: string, };
-
-/**
- * What a bookmark marks.
- */
-export type BookmarkKindWire = "note" | "issue" | "example" | "question";
 
 /**
  * Whether a group can be opened.

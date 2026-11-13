@@ -1,4 +1,4 @@
-import type { BasisWire, FieldWire, LaneStatusWire } from "../generated/api";
+import type { MatchBasis, FieldWire, LaneStatusWire } from "../generated/api";
 import type { CellRect } from "../overlay/painter";
 import type {
   ClassMask,
@@ -56,7 +56,7 @@ export type LaneSettings = {
   /** Inclusive score and confidence ranges, `null` for an open end; a row without the value is kept. */
   ranges: MeasureRanges;
   /** What the lane matches the file's records to frames by; `null` is the decoder's default, as is a basis the file lacks. */
-  basis: BasisWire | null;
+  basis: MatchBasis | null;
   tolerance_ms: number | null;
   sticky: { enabled: boolean; timeout_ms: number | null; opacity: number };
   /** The last timeout the lane had, which the expiry checkbox restores; read only while `sticky.timeout_ms` is null. */

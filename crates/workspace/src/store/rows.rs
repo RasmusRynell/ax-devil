@@ -2,11 +2,14 @@
 
 use crate::{Content, ContentId, DisplayHost, Entry, ItemId, playlist_label};
 use foundation::{UserError, Warning};
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::store::{HiddenRef, Location, Resolution, WorkspaceState};
 
 /// What a row stands for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
 pub enum RowKind {
     /// A video or live item, or an item with no Content yet.
     Item,
@@ -195,6 +198,11 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
 
 /// Between an entry id and a lane label in a lane row's key; no file name holds it, so keys never collide.
 const KEY_SEPARATOR: char = '\u{1f}';
+
+/// Visits the types this module sends to the frontend.
+pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<RowKind>();
+}
 
 #[cfg(test)]
 mod tests {

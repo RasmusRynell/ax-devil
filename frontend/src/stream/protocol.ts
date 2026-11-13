@@ -55,7 +55,7 @@ export {
 export type {
   CadenceWire,
   CatalogInfoWire,
-  BasisWire,
+  MatchBasis,
   ClientMessage,
   Direction,
   FieldGroupWire,

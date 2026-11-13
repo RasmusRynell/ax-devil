@@ -1,4 +1,4 @@
-import type { BookmarkGroupInfo, BookmarkInfo, BookmarkKindWire } from "../generated/api";
+import type { BookmarkGroupInfo, BookmarkInfo, BookmarkKind } from "../generated/api";
 import { Chip } from "../kit/Chips";
 import { ContextMenu } from "../kit/ContextMenu";
 import { Icon } from "../kit/Icon";
@@ -7,7 +7,7 @@ import type { MenuCommand, MenuEntry } from "../kit/Menu";
 import { labelOf, KINDS, subtitleOf, titleOf } from "./groups";
 
 /** The colour of a bookmark's icon: muted for a note, the live colour for an issue, then success and the accent. */
-const MARKS: Record<BookmarkKindWire, string> = {
+const MARKS: Record<BookmarkKind, string> = {
   note: "text-muted",
   issue: KIND.live,
   example: "text-success",
@@ -41,7 +41,7 @@ function menuOf(mayEdit: boolean): MenuEntry[] {
 export interface RowActions {
   open: (group: BookmarkGroupInfo, bookmark: BookmarkInfo) => void;
   rename: (bookmark: BookmarkInfo) => void;
-  kind: (bookmark: BookmarkInfo, kind: BookmarkKindWire) => void;
+  kind: (bookmark: BookmarkInfo, kind: BookmarkKind) => void;
   remove: (bookmark: BookmarkInfo) => void;
   review: (group: BookmarkGroupInfo) => void;
 }
@@ -96,7 +96,7 @@ export function BookmarkGroup({
           onSelect={({ id }: MenuCommand) => {
             if (id === RENAME) actions.rename(bookmark);
             else if (id === REMOVE) actions.remove(bookmark);
-            else actions.kind(bookmark, id.slice(KIND_PREFIX.length) as BookmarkKindWire);
+            else actions.kind(bookmark, id.slice(KIND_PREFIX.length) as BookmarkKind);
           }}
         >
           <button
