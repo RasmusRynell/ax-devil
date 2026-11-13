@@ -45,7 +45,7 @@ pub enum FileScopeBlocked {
 ///
 /// Dropping it closes it, like [`ViewerOverlays::close`].
 pub struct ViewerOverlays {
-    shared: Arc<Shared>,
+    pub(crate) shared: Arc<Shared>,
     threads: Vec<thread::JoinHandle<()>>,
     sources: Vec<Option<u16>>,
 }

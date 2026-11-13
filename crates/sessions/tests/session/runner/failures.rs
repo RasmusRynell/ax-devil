@@ -72,6 +72,31 @@ async fn a_resolver_that_panics_fails_its_item_instead_of_leaving_it_resolving()
         "{}",
         failure.reason
     );
+
+    // The panic leaves the runner working: an item added after it resolves. The observed state is released first, as
+    // it would block the next update.
+    drop(failed);
+    let other_dir = tempfile::tempdir().unwrap();
+    let other = playlist_in(other_dir.path(), &["b"]);
+    let other_id = other.id;
+    owner
+        .command(Command::Content(DocCommand::AddItems {
+            items: vec![other],
+            open: false,
+        }))
+        .unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        states.wait_for(|state| {
+            matches!(
+                state.doc.workspace.resolutions.get(&other_id),
+                Some(Resolution::Resolved { .. })
+            )
+        }),
+    )
+    .await
+    .expect("an item added after a resolver panicked never resolved")
+    .unwrap();
 }
 
 #[tokio::test]

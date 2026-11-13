@@ -20,8 +20,8 @@ pub(super) struct Latest {
     /// A running task stays registered until it leaves the blocking pool, even after cancellation.
     running: HashMap<u16, CancelToken>,
     tasks: JoinSet<Option<Reply>>,
-    lanes: HashMap<Id, u16>,
-    waiting: HashMap<u16, Job>,
+    lanes: HashMap<Id, (u16, u32)>,
+    waiting: HashMap<u16, (u32, Job)>,
     /// Answers already known, in the order asked.
     ready: VecDeque<Reply>,
 }
@@ -65,20 +65,20 @@ impl Latest {
                     }
                 });
                 if self.running.contains_key(&lane) {
-                    self.waiting.insert(lane, job);
+                    self.waiting.insert(lane, (request, job));
                 } else {
-                    self.start(lane, job);
+                    self.start(lane, request, job);
                 }
             }
             Err(why) => self.say(Reply::unavailable(lane, request, why)),
         }
     }
 
-    fn start(&mut self, lane: u16, job: Job) {
+    fn start(&mut self, lane: u16, request: u32, job: Job) {
         let cancel = CancelToken::new();
         let token = cancel.clone();
         let task = self.tasks.spawn_blocking(move || job(token));
-        self.lanes.insert(task.id(), lane);
+        self.lanes.insert(task.id(), (lane, request));
         self.running.insert(lane, cancel);
     }
 
@@ -110,19 +110,25 @@ impl Latest {
                 Ok((id, _)) => *id,
                 Err(error) => error.id(),
             };
-            let Some(lane) = self.lanes.remove(&id) else {
+            let Some((lane, request)) = self.lanes.remove(&id) else {
                 continue;
             };
             let current = self
                 .running
                 .remove(&lane)
                 .is_some_and(|token| !token.is_cancelled());
-            if let Some(job) = self.waiting.remove(&lane) {
-                self.start(lane, job);
+            if let Some((waiting, job)) = self.waiting.remove(&lane) {
+                self.start(lane, waiting, job);
             }
             match joined {
                 Ok((_, Some(reply))) if current => return reply,
-                Err(error) => tracing::warn!("A file scope request failed: {error}"),
+                Err(error) => {
+                    tracing::warn!("A file scope request failed: {error}");
+                    // A crashed query that was replaced is not wanted; the current one would otherwise never be answered.
+                    if current {
+                        return Reply::crashed(lane, request, self.audience);
+                    }
+                }
                 _ => {}
             }
         }
@@ -212,6 +218,46 @@ mod tests {
                     .await
                     .is_err()
             );
+        })
+        .await
+        .expect("whole test deadline");
+    }
+
+    #[tokio::test]
+    async fn a_query_that_panics_is_answered_as_failed_and_the_next_one_still_runs() {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            let dir = tempfile::tempdir().unwrap();
+            let (viewer, _) = super::super::tests::viewer(dir.path()).await;
+            let cache = Arc::new(Cache::new(1 << 20));
+            let mut latest = Latest::new(Audience::HOST);
+            latest.ask(&viewer, &cache, true, (0, 1), |_, _, _, _| {
+                panic!("the query has a defect")
+            });
+            assert!(matches!(
+                latest.next().await.message,
+                api_types::playback::ServerMessage::File {
+                    request: 1,
+                    answer: FileAnswer::Unavailable {
+                        unavailable: api_types::playback::FileScopeUnavailable::Failed(_)
+                    },
+                    ..
+                }
+            ));
+            latest.ask(&viewer, &cache, true, (0, 2), |_, _, _, _| {
+                Ok(FileAnswer::Unavailable {
+                    unavailable: api_types::playback::FileScopeUnavailable::Reading,
+                })
+            });
+            assert!(matches!(
+                latest.next().await.message,
+                api_types::playback::ServerMessage::File {
+                    request: 2,
+                    answer: FileAnswer::Unavailable {
+                        unavailable: api_types::playback::FileScopeUnavailable::Reading
+                    },
+                    ..
+                }
+            ));
         })
         .await
         .expect("whole test deadline");

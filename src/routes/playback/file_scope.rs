@@ -76,6 +76,20 @@ impl Reply {
         Self::file(lane, request, FileAnswer::Unavailable { unavailable: why })
     }
 
+    /// The answer to request `request` of `lane` whose query crashed. Nothing else answers it, and the viewer sends no
+    /// new question while one is outstanding.
+    fn crashed(lane: u16, request: u32, audience: Audience) -> Self {
+        let error = UserError::new(
+            ErrorCode::Internal,
+            "The file's objects could not be listed",
+        );
+        Self::unavailable(
+            lane,
+            request,
+            FileScopeUnavailable::Failed(project(&error, audience)),
+        )
+    }
+
     /// Tells the owner what a request of `lane` got wrong, in `reason`.
     fn problem(lane: u16, reason: String) -> Self {
         Self {
@@ -325,14 +339,8 @@ impl FileScopes {
                     }
                     Err(error) => {
                         tracing::warn!("A file query failed: {error}");
-                        // Nothing else answers a crashed query, so the viewer would wait for it forever.
                         if let Some((lane, request)) = self.ended(error.id()) {
-                            let error = UserError::new(
-                                ErrorCode::Internal,
-                                "The file's objects could not be listed",
-                            );
-                            let why = FileScopeUnavailable::Failed(project(&error, self.audience));
-                            return Reply::unavailable(lane, request, why);
+                            return Reply::crashed(lane, request, self.audience);
                         }
                     }
                 },
