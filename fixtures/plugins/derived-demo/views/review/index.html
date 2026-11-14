@@ -2,3 +2,10 @@
 <meta charset="utf-8">
 <title>Derived demo</title>
 <p>Derived demo</p>
+<script>
+  // What the desktop smoke reads: this page's origin (not `location.origin`, which is its address's) and every event the host sent over the port it was given.
+  window.view = { origin: self.origin, events: [] };
+  addEventListener("message", ({ ports: [port] }) => {
+    if (port) port.onmessage = ({ data }) => window.view.events.push(data);
+  });
+</script>

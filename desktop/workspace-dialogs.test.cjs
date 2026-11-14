@@ -18,6 +18,7 @@ let opened;
 let answer;
 
 class FakeWebContents extends EventEmitter {
+  session = { setPermissionRequestHandler() {}, setPermissionCheckHandler() {} };
   setWindowOpenHandler() {}
   setZoomLevel() {}
   getZoomLevel() {

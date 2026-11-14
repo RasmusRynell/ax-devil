@@ -1,6 +1,7 @@
 // Windows and the IPC they may use. A window trusts exactly one origin, fixed when it is created: the page there
 // may use the shell's IPC, navigation to any other origin is blocked, and new windows are denied. The one link a page
-// may open is the project's, in the default browser.
+// may open is the project's, in the default browser. A frame in the page (a plugin view) may only load the plugin
+// views of that origin and is granted no permission.
 const { safeFileName } = require("../shared/file-name.mjs");
 const { installDeviceIpc } = require("./device-ipc.cjs");
 const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
@@ -51,6 +52,9 @@ const PROJECT_LINK = "https://github.com/rasmusrynell/ax-devil";
 const RESTARTABLE_ARGUMENT = "--ax-devil-restartable";
 // Tells the preload that the page is served by another machine's backend.
 const REMOTE_ARGUMENT = "--ax-devil-remote";
+
+// Where the backend serves plugin views (`VIEW_PREFIX` in src/access.rs).
+const VIEW_PATH = "/views/";
 
 // Window contents -> { origin, remote }; `remote` is a page served by another machine's backend.
 const trusted = new WeakMap();
@@ -125,6 +129,27 @@ async function openWindow(
   const stayOnOrigin = (event, target) => {
     if (new URL(target).origin !== origin) event.preventDefault();
   };
+  // A plugin view's frame loads its own plugin's files and nothing else, not even a page of the app.
+  contents.on("will-frame-navigate", (details) => {
+    if (details.isMainFrame) return;
+    let allowed = false;
+    try {
+      const target = new URL(details.url);
+      allowed = target.origin === origin && target.pathname.startsWith(VIEW_PATH);
+    } catch {
+      // A URL that does not parse is not a view.
+    }
+    if (allowed) return;
+    details.preventDefault();
+    console.error(`A frame may only load plugin views; blocked ${details.url.slice(0, 200)}`);
+  });
+  // Only the page itself may be granted a permission (the default); a frame never is.
+  contents.session.setPermissionRequestHandler((_contents, _permission, allow, details) =>
+    allow(details.isMainFrame),
+  );
+  contents.session.setPermissionCheckHandler((_contents, _permission, _origin, details) =>
+    Boolean(details.isMainFrame),
+  );
   contents.on("will-navigate", stayOnOrigin);
   contents.on("will-redirect", stayOnOrigin);
   contents.on("render-process-gone", (_event, details) =>

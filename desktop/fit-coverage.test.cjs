@@ -12,6 +12,7 @@ const CHECKED = {
   "export/ExportDialog.tsx": "smoke-export.cjs",
   "kit/Gallery.tsx": "smoke-gallery.cjs",
   "lanes/LaneCatalogActions.tsx": "smoke-panels.cjs",
+  "plugins/RunDialog.tsx": "smoke-plugins.cjs",
   "shell/InformationDialog.tsx": "smoke-items.cjs",
   "shell/AboutDialog.tsx": "smoke-shell.cjs",
   "shell/AddLiveStreamDialog.tsx": "smoke-live.cjs",
