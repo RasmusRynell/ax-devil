@@ -1,0 +1,51 @@
+{
+  "manifest": 2,
+  "id": "derived-demo",
+  "name": "Derived demo",
+  "version": "1.0.0",
+  "protocol": 3,
+  "command": ["python3", "main.py"],
+  "code": ["main.py"],
+  "idle_timeout_s": 30,
+  "settings": [
+    { "key": "label", "label": "Label", "kind": "text", "default": "demo" }
+  ],
+  "handlers": [
+    {
+      "kind": "decoder",
+      "id": "derived-union",
+      "name": "Union of two lanes",
+      "input": "lanes",
+      "lanes": [
+        { "key": "truth", "label": "Ground truth" },
+        { "key": "model", "label": "Model" }
+      ],
+      "video": false,
+      "scene_version": "4.2",
+      "bases": ["frame"]
+    },
+    {
+      "kind": "task",
+      "id": "derived-count",
+      "name": "Count samples",
+      "description": "Reports how many samples a lane holds",
+      "lanes": [{ "key": "lane", "label": "Lane" }],
+      "options": [{ "key": "out", "label": "Save to", "kind": "folder" }]
+    },
+    {
+      "kind": "view",
+      "id": "derived-view",
+      "title": "Derived demo",
+      "place": "sidebar",
+      "document": "views/review/index.html"
+    },
+    {
+      "kind": "command",
+      "id": "derived-count-run",
+      "title": "Count samples",
+      "on": "lane",
+      "shortcut": "Ctrl+Alt+D",
+      "runs": "derived-count"
+    }
+  ]
+}

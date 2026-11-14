@@ -9,7 +9,8 @@ use crate::manifest::{Manifest, ManifestError};
 pub struct Reserved {
     /// Plugin ids, the built-in plugins' included.
     pub plugins: HashSet<String>,
-    /// Handler ids across every kind of handler. A handler may share its own plugin's id.
+    /// Ids of the handlers the app selects by id alone (decoders, resolvers, tasks). A handler may share its own
+    /// plugin's id.
     pub handlers: HashSet<String>,
 }
 
@@ -26,7 +27,7 @@ impl Reserved {
             ));
         }
         for (index, handler) in manifest.handlers.iter().enumerate() {
-            if self.handlers.contains(handler.id()) {
+            if handler.claims_id() && self.handlers.contains(handler.id()) {
                 return Err(ManifestError::new(
                     format!("handlers[{index}].id"),
                     format!(
@@ -41,6 +42,7 @@ impl Reserved {
             manifest
                 .handlers
                 .iter()
+                .filter(|handler| handler.claims_id())
                 .map(|handler| handler.id().to_owned()),
         );
         Ok(())

@@ -115,10 +115,18 @@ pub(crate) fn collect(manifest: &Manifest, limits: Limits) -> Result<Vec<CodeFil
     Ok(files.into_values().collect())
 }
 
-/// SHA-256 over the manifest's digest, then `path \0 length \0 bytes` of each file, in the order given.
-pub(crate) fn digest(manifest: &Manifest, files: &[CodeFile]) -> io::Result<[u8; 32]> {
+/// SHA-256 over the manifest's digest, the plugin's settings as canonical JSON, then `path \0 length \0 bytes` of each
+/// file, in the order given. The settings are part of the identity so that changing one rebuilds the plugin's lanes.
+pub(crate) fn digest(
+    manifest: &Manifest,
+    settings: &str,
+    files: &[CodeFile],
+) -> io::Result<[u8; 32]> {
     let mut hash = Sha256::new();
     hash.update(manifest.digest);
+    hash.update(settings.len().to_string().as_bytes());
+    hash.update([0]);
+    hash.update(settings.as_bytes());
     for file in files {
         let bytes = fs::read(&file.path)?;
         hash.update(file.relative.as_bytes());

@@ -7,12 +7,12 @@ use std::{
     time::Duration,
 };
 
-use handler_api::Form;
+use handler_api::{Form, Settings, Values};
 use scene::{MatchBasis, SceneVersion};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::{PROTOCOL, code, fields::Fields};
+use crate::{CommandHandler, LaneInputs, PROTOCOL, TaskHandler, ViewHandler, code, fields::Fields};
 
 /// The file name a plugin's folder holds.
 pub const MANIFEST_FILE: &str = "ax-devil-plugin.json";
@@ -86,8 +86,10 @@ pub struct Manifest {
     /// Free text, informational.
     pub version: String,
     /// Program and arguments to run. Items naming a file or folder of the plugin are absolute, so the private
-    /// working folder does not matter.
+    /// working folder does not matter. Empty for a plugin of only views and commands, which has no program.
     pub command: Vec<OsString>,
+    /// What the user may set for the whole plugin; the values are sent in every request the program gets.
+    pub settings: Form,
     /// Environment variables passed through from the app besides the standard few.
     pub env: Vec<String>,
     /// Paths relative to the folder that identify the plugin's code.
@@ -123,6 +125,12 @@ pub enum Handler {
     Decoder(DecoderHandler),
     /// Turns settings into a playlist.
     PlaylistResolver(ResolverHandler),
+    /// Reads lanes and does something with them, such as an export.
+    Task(TaskHandler),
+    /// A page shown in a sandboxed frame.
+    View(ViewHandler),
+    /// A menu entry and shortcut that runs a handler of the plugin.
+    Command(CommandHandler),
 }
 
 impl Handler {
@@ -131,7 +139,35 @@ impl Handler {
         match self {
             Self::Decoder(decoder) => &decoder.id,
             Self::PlaylistResolver(resolver) => &resolver.id,
+            Self::Task(task) => &task.id,
+            Self::View(view) => &view.id,
+            Self::Command(command) => &command.id,
         }
+    }
+
+    /// The handler's `kind` in the manifest.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Decoder(_) => "decoder",
+            Self::PlaylistResolver(_) => "playlist_resolver",
+            Self::Task(_) => "task",
+            Self::View(_) => "view",
+            Self::Command(_) => "command",
+        }
+    }
+
+    /// Whether the app selects the handler by its id alone, so no other plugin or built-in may use it. A view or a
+    /// command is named with its plugin's id in front, so its id only has to differ within the plugin.
+    pub(crate) fn claims_id(&self) -> bool {
+        !matches!(self, Self::View(_) | Self::Command(_))
+    }
+
+    /// Whether the handler runs the plugin's program, which the manifest must then give a `command` for.
+    pub(crate) fn runs_program(&self) -> bool {
+        matches!(
+            self,
+            Self::Decoder(_) | Self::PlaylistResolver(_) | Self::Task(_)
+        )
     }
 }
 
@@ -143,6 +179,8 @@ pub enum DecoderInput {
     /// Records, one per line on stdin, each answered before the next is sent: the lines of a file, or the documents of
     /// a live source.
     Records,
+    /// Lanes of the same video, the host's bundle of them: a derived lane.
+    Lanes,
 }
 
 /// A decoder the plugin declares.
@@ -154,6 +192,8 @@ pub struct DecoderHandler {
     pub name: String,
     /// What the request carries.
     pub input: DecoderInput,
+    /// The lanes and video of a [`DecoderInput::Lanes`] decoder; empty for the others.
+    pub inputs: LaneInputs,
     /// One sentence on what the decoder reads, if the manifest gives one.
     pub description: Option<String>,
     /// The Scene model version the decoder writes.
@@ -187,6 +227,27 @@ impl Manifest {
     /// The folder the manifest is in.
     pub fn folder(&self) -> &Path {
         self.path.parent().unwrap_or_else(|| Path::new("."))
+    }
+
+    /// The plugin's settings as the program gets them: `raw` as stored, with the defaults filled in. A missing
+    /// required value is not an error here (the plugin loads so it can be configured; the Plugins view asks for it),
+    /// and a stored value that no longer fits the form is dropped.
+    pub fn settings_values(&self, raw: &Settings) -> Result<Values, ManifestError> {
+        let mut lenient = self.settings.clone();
+        for field in &mut lenient.fields {
+            field.required = false;
+        }
+        lenient
+            .validate(raw)
+            .or_else(|error| {
+                tracing::warn!(
+                    "Plugin '{}': stored settings ignored: {}",
+                    self.id,
+                    error.reason
+                );
+                lenient.validate(&Settings::new())
+            })
+            .map_err(|error| ManifestError::new("settings", error.reason))
     }
 
     /// Reads and validates the manifest at `path`.
@@ -244,7 +305,7 @@ impl Manifest {
             ));
         }
         let folder = path.parent().unwrap_or_else(|| Path::new("."));
-        let command = command(&read.strings("command", true)?.unwrap_or_default(), folder)?;
+        let program = read.strings("command", false)?;
         let env = read.strings("env", false)?.unwrap_or_default();
         for name in &env {
             if name.starts_with("AX_DEVIL_") {
@@ -273,12 +334,22 @@ impl Manifest {
                 ));
             }
         });
-        let (handlers, skipped) = read.handlers()?;
+        let settings = read.form("settings", false)?;
+        let (handlers, skipped) = read.handlers(folder)?;
+        // Only a plugin with something to run needs a program: one of views and commands has none.
+        let command = match program {
+            Some(items) => command(&items, folder)?,
+            None if handlers.iter().any(Handler::runs_program) => {
+                return Err(ManifestError::new("command", "is required"));
+            }
+            None => Vec::new(),
+        };
         Ok(Self {
             id,
             name,
             version,
             command,
+            settings,
             env,
             code,
             idle_timeout,

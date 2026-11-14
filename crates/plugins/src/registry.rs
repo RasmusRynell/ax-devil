@@ -5,8 +5,10 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
+    sync::LazyLock,
 };
 
+use handler_api::Settings;
 use serde_json::{Map, Value, json};
 
 use crate::{
@@ -88,6 +90,33 @@ impl Registry {
     /// The manifest paths in install order.
     pub fn manifests(&self) -> Vec<PathBuf> {
         self.entries.iter().map(entry_manifest).collect()
+    }
+
+    /// The settings stored for the plugin at `index` in install order: empty when it has none. They are the user's
+    /// values for the manifest's `settings` form, kept literally.
+    pub fn settings(&self, index: usize) -> &Settings {
+        static NONE: LazyLock<Settings> = LazyLock::new(Settings::new);
+        match self
+            .entries
+            .get(index)
+            .and_then(|entry| entry.get("settings"))
+        {
+            Some(Value::Object(settings)) => settings,
+            _ => &NONE,
+        }
+    }
+
+    /// Stores `settings` as the plugin at `index`'s values; none at all removes the key. Nothing is written until
+    /// [`save`](Self::save), and the caller has checked them against the manifest's form.
+    pub fn set_settings(&mut self, index: usize, settings: Settings) {
+        let Some(entry) = self.entries.get_mut(index) else {
+            return;
+        };
+        if settings.is_empty() {
+            entry.remove("settings");
+        } else {
+            entry.insert("settings".to_owned(), Value::Object(settings));
+        }
     }
 
     /// Adds the plugin at `path`, a folder holding `ax-devil-plugin.json` or the manifest itself. Nothing is written

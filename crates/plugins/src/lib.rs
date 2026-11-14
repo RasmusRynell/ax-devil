@@ -1,9 +1,10 @@
-//! Plugins: installed programs that provide handlers: decoders that turn an overlay file into Scenes, and playlist
-//! resolvers that turn settings into a playlist.
+//! Plugins: installed programs that provide handlers: decoders that turn an overlay file (or lanes) into Scenes,
+//! playlist resolvers that turn settings into a playlist, and tasks that read lanes. A plugin may also list views and
+//! commands, which have no program of their own: the host reads them from the manifest.
 //!
 //! A plugin is a folder with an `ax-devil-plugin.json` manifest listing its handlers, listed in the user's registry
-//! file ([`Registry`]). [`load`] turns the registry into [`PluginDecoder`]s and [`PluginResolver`]s, which
-//! `Handlers::with_decoders` and `with_resolvers` add beside the built-ins. One handler call is one run of the
+//! file ([`Registry`]). [`load`] turns the registry into [`PluginDecoder`]s, [`PluginResolver`]s and [`PluginTask`]s,
+//! of which `Handlers::with_decoders` and `with_resolvers` add the first two beside the built-ins. One handler call is one run of the
 //! plugin's program: it writes a request on stdin, reads JSON Lines from stdout, and kills its whole process group
 //! whenever the run ends. A decode feeds the lines to a `SceneSink`; a failure keeps the samples already delivered:
 //! `decode` returns `Err` and the host, which counts the samples, marks the lane incomplete. A scan or resolve is
@@ -13,6 +14,8 @@ mod budget;
 mod code;
 mod decoder;
 mod fields;
+mod kinds;
+mod lanes;
 mod lines;
 mod manifest;
 mod program;
@@ -24,6 +27,7 @@ mod resolver;
 mod run;
 mod spawn;
 mod stderr;
+mod task;
 mod wire;
 
 use std::{
@@ -31,10 +35,11 @@ use std::{
     sync::Arc,
 };
 
-use handler_api::{Decoder, PlaylistResolver};
+use handler_api::{Decoder, PlaylistResolver, Settings};
 
 pub use decoder::PluginDecoder;
 pub use fields::RESERVED_SETTING_KEYS;
+pub use kinds::{CommandHandler, LaneInputs, On, Place, TaskHandler, ViewHandler};
 pub use manifest::{
     DecoderHandler, DecoderInput, Handler, MANIFEST_FILE, Manifest, ManifestError, ResolverHandler,
     SkippedHandler,
@@ -43,6 +48,7 @@ pub use program::Program;
 pub use registry::{Registry, RegistryError};
 pub use reserved::Reserved;
 pub use resolver::PluginResolver;
+pub use task::{PluginTask, TaskProgress};
 
 /// The plugin protocol version, the plugin API version: manifests must declare it and requests carry it.
 pub const PROTOCOL: u32 = 3;
@@ -55,21 +61,29 @@ pub struct LoadedPlugin {
     pub decoders: Vec<Arc<PluginDecoder>>,
     /// Its playlist resolvers, in manifest order.
     pub resolvers: Vec<Arc<PluginResolver>>,
-    /// The handlers it lists that this build does not know how to run.
+    /// Its tasks, in manifest order. Its views and commands are read from `manifest.handlers`.
+    pub tasks: Vec<Arc<PluginTask>>,
+    /// The handlers it lists that this build cannot use: of a kind it does not know, or referring to something
+    /// missing.
     pub skipped: Vec<SkippedHandler>,
 }
 
 impl LoadedPlugin {
-    /// Reads the manifest at `path` and makes the plugin's handlers.
+    /// Reads the manifest at `path` and makes the plugin's handlers, with the settings at their defaults.
     pub fn load(path: &Path) -> Result<Self, ManifestError> {
-        Manifest::load(path).map(Self::new)
+        Manifest::load(path).and_then(|manifest| Self::new(manifest, &Settings::new()))
     }
 
-    /// The handlers of a validated manifest, sharing one [`Program`].
-    pub fn new(manifest: Manifest) -> Self {
-        let program = Arc::new(Program::new(manifest.clone()));
+    /// The handlers of a validated manifest, sharing one [`Program`] that runs with `settings`, the plugin's stored
+    /// values (see [`Manifest::settings_values`]).
+    pub fn new(manifest: Manifest, settings: &Settings) -> Result<Self, ManifestError> {
+        let program = Arc::new(Program::new(
+            manifest.clone(),
+            manifest.settings_values(settings)?,
+        ));
         let mut decoders = Vec::new();
         let mut resolvers = Vec::new();
+        let mut tasks = Vec::new();
         for handler in &manifest.handlers {
             match handler {
                 Handler::Decoder(decoder) => {
@@ -81,14 +95,19 @@ impl LoadedPlugin {
                         resolver,
                     )));
                 }
+                Handler::Task(task) => {
+                    tasks.push(Arc::new(PluginTask::new(Arc::clone(&program), task)));
+                }
+                Handler::View(_) | Handler::Command(_) => {}
             }
         }
-        Self {
+        Ok(Self {
             skipped: manifest.skipped.clone(),
             manifest,
             decoders,
             resolvers,
-        }
+            tasks,
+        })
     }
 }
 
@@ -148,9 +167,10 @@ pub fn load(registry: &Path, reserved: &Reserved) -> Loaded {
     let entries = reserved
         .claim_in_order(read)
         .zip(manifests)
-        .map(|(plugin, manifest)| Entry {
+        .enumerate()
+        .map(|(index, (plugin, manifest))| Entry {
             manifest,
-            plugin: plugin.map(LoadedPlugin::new),
+            plugin: plugin.and_then(|plugin| LoadedPlugin::new(plugin, registry.settings(index))),
         })
         .collect();
     Loaded {

@@ -3,7 +3,8 @@
 use std::sync::Mutex;
 
 use foundation::CancelToken;
-use serde_json::Value;
+use handler_api::Values;
+use serde_json::{Map, Value};
 
 use crate::{
     code,
@@ -11,20 +12,29 @@ use crate::{
     run::{self, End, LineHandler, Process},
 };
 
-/// A plugin's command, environment, idle timeout and code identity. One per plugin, held by each of its handlers.
+/// A plugin's command, environment, idle timeout, settings and code identity. One per plugin, held by each of its
+/// handlers.
 pub struct Program {
     manifest: Manifest,
+    /// The plugin's settings, sent in every request the program gets and part of its code identity.
+    settings: Values,
     /// The files the identity hashes, as last seen, with their hash.
     code: Mutex<Option<(Vec<code::CodeFile>, [u8; 32])>>,
 }
 
 impl Program {
-    /// The program of a validated manifest.
-    pub fn new(manifest: Manifest) -> Self {
+    /// The program of a validated manifest, run with `settings` (from [`Manifest::settings_values`]).
+    pub fn new(manifest: Manifest, settings: Values) -> Self {
         Self {
             manifest,
+            settings,
             code: Mutex::new(None),
         }
+    }
+
+    /// The plugin's settings as a request carries them, exactly as given: no value is expanded or rewritten.
+    pub(crate) fn settings(&self) -> Map<String, Value> {
+        self.settings.declared()
     }
 
     /// What the plugin declares about itself.
@@ -32,8 +42,8 @@ impl Program {
         &self.manifest
     }
 
-    /// The identity of the plugin's code: SHA-256 of the manifest as it was loaded (the one that runs) and the files
-    /// it names, which the scene store keeps next to an artifact so an edited plugin rebuilds. Files are read again
+    /// The identity of the plugin's code: SHA-256 of the manifest as it was loaded (the one that runs), its settings
+    /// and the files it names, which the scene store keeps next to an artifact so an edited plugin rebuilds. Files are read again
     /// only when their size or modification time changed since the last call.
     pub fn code_hash(&self) -> Result<[u8; 32], ManifestError> {
         let files = code::collect(&self.manifest, code::LIMITS)?;
@@ -46,7 +56,7 @@ impl Program {
         {
             return Ok(*hash);
         }
-        let hash = code::digest(&self.manifest, &files)
+        let hash = code::digest(&self.manifest, &self.settings.canonical(), &files)
             .map_err(|error| ManifestError::new("code", error.to_string()))?;
         *memo = Some((files, hash));
         Ok(hash)

@@ -1,17 +1,18 @@
 //! A plugin's decoder handler as a [`Decoder`]: the handler the rest of the app picks by extension or id.
 
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 use foundation::{CancelToken, Interrupt};
 use handler_api::{
-    DecodeError, DecodeSummary, Decoder, Framing, Header, Input, SceneSink, Spec, Values, shorten,
+    Bundle, DecodeError, DecodeSummary, Decoder, Framing, Header, Input, SceneSink, Spec, Values,
+    shorten,
 };
 use scene::{Coverage, Fields, FilterPolicy, MatchBasis};
 use serde_json::json;
 
 use crate::{
-    PROTOCOL,
+    PROTOCOL, lanes,
     manifest::{DecoderHandler, DecoderInput},
     program::Program,
     records::Records,
@@ -35,7 +36,7 @@ impl PluginDecoder {
             extensions: handler.extensions.clone(),
             description: handler.description.clone(),
             framing: match handler.input {
-                DecoderInput::Path => Framing::Whole,
+                DecoderInput::Path | DecoderInput::Lanes => Framing::Whole,
                 DecoderInput::Records => Framing::Records,
             },
             bases: handler.bases.clone(),
@@ -55,8 +56,9 @@ impl PluginDecoder {
         &self.program
     }
 
-    /// One run over the file the input names; the plugin reads it itself.
-    fn run_path(
+    /// One run over the file the input names; the plugin reads it itself. For a `lanes` decoder that file is the
+    /// bundle, and the plugin is given the lane files and video it lists.
+    fn run_file(
         &self,
         input: &dyn Input,
         options: &Values,
@@ -68,20 +70,24 @@ impl PluginDecoder {
                 "A plugin decoder that reads a file cannot take a live source".to_owned(),
             ));
         };
-        // The plugin works in a folder of its own, so the path it is given must not depend on ours.
-        let overlay: PathBuf = std::path::absolute(file)
-            .map_err(|error| DecodeError(format!("Cannot resolve the overlay path: {error}")))?;
-        let Some(overlay_text) = overlay.to_str() else {
-            return Err(DecodeError(
-                "The overlay path is not valid UTF-8, which plugins need".to_owned(),
-            ));
+        let wire_input = match self.input {
+            DecoderInput::Lanes => {
+                let bundle = Bundle::read(file).map_err(|error| {
+                    DecodeError(format!("Cannot read the lanes to derive from: {error}"))
+                })?;
+                lanes::input(&bundle).map_err(DecodeError)?
+            }
+            DecoderInput::Path | DecoderInput::Records => {
+                json!({ "path": lanes::path_text(file, "overlay").map_err(DecodeError)? })
+            }
         };
         let request = json!({
             "protocol": PROTOCOL,
             "op": "decode",
             "handler": self.spec.id,
-            "input": { "path": overlay_text },
+            "input": wire_input,
             "options": options.declared(),
+            "settings": self.program.settings(),
         });
         let mut records = Records::new(sink);
         let end = self
@@ -107,6 +113,7 @@ impl PluginDecoder {
             "handler": self.spec.id,
             "input": "records",
             "options": options.declared(),
+            "settings": self.program.settings(),
         })
         .to_string();
         let mut records = Records::new(sink);
@@ -232,8 +239,8 @@ impl Decoder for PluginDecoder {
             .code_hash()
             .map_err(|error| failed(format!("The plugin's files cannot be read: {error}")))?;
         let (end, header) = match self.input {
-            DecoderInput::Path => self
-                .run_path(input, options, sink, cancel)
+            DecoderInput::Path | DecoderInput::Lanes => self
+                .run_file(input, options, sink, cancel)
                 .map_err(Interrupt::Failed)?,
             DecoderInput::Records => self.run_records(input, options, sink, cancel)?,
         };

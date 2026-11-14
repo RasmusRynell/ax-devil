@@ -5,6 +5,7 @@ use crate::common;
 use std::{fs, path::Path};
 
 use common::{base, install};
+use handler_api::Settings;
 use plugins::{Registry, Reserved, load};
 use serde_json::{Value, json};
 
@@ -198,4 +199,38 @@ fn a_broken_registry_or_plugin_loads_the_rest_and_is_listed() {
         .expect("refused")
         .0;
     assert!(reason.contains("newer ax-devil"), "{reason}");
+}
+
+#[test]
+fn a_plugins_settings_are_stored_in_its_entry_and_change_its_code_identity() {
+    let root = tempfile::tempdir().expect("root");
+    let registry_path = root.path().join("plugins.json");
+    let mut manifest = base();
+    manifest["settings"] = json!([{ "key": "model", "label": "Model", "kind": "file" }]);
+    install(&root.path().join("acme"), &manifest);
+    let mut registry = Registry::read(&registry_path).expect("empty");
+    registry
+        .install(&root.path().join("acme"), &Reserved::default())
+        .expect("installs");
+    let identity = |registry_path: &Path| {
+        let loaded = load(registry_path, &Reserved::default());
+        let plugin = loaded.entries[0].plugin.as_ref().expect("loads");
+        plugin.decoders[0].program().code_hash().expect("hash")
+    };
+    registry.save().expect("saves");
+    let unset = identity(&registry_path);
+
+    let mut settings = Settings::new();
+    settings.insert("model".to_owned(), "/models/a.onnx".into());
+    registry.set_settings(0, settings.clone());
+    registry.save().expect("saves");
+
+    assert_eq!(
+        Registry::read(&registry_path).expect("reads").settings(0),
+        &settings
+    );
+    assert_ne!(identity(&registry_path), unset);
+    registry.set_settings(0, Settings::new());
+    registry.save().expect("saves");
+    assert_eq!(identity(&registry_path), unset);
 }

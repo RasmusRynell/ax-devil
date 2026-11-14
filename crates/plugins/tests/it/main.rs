@@ -3,6 +3,8 @@
 // Shared with `adversarial.rs`, which is a separate binary.
 #[path = "../common/mod.rs"]
 mod common;
+mod derived;
 mod fixtures;
+mod kinds;
 mod manifest;
 mod registry;

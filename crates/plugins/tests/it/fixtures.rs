@@ -17,7 +17,7 @@ use plugins::{LoadedPlugin, PluginDecoder, PluginResolver};
 use scene::{Coverage, Geometry, Operation, SceneTime, TimeKind, Value};
 use std::sync::Arc;
 
-fn fixture(name: &str) -> PathBuf {
+pub(crate) fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../fixtures/plugins")
         .join(name)
@@ -49,7 +49,7 @@ fn values(resolver: &PluginResolver, settings: serde_json::Value) -> Values {
         .expect("the settings fit")
 }
 
-fn python_available() -> bool {
+pub(crate) fn python_available() -> bool {
     let found = Command::new("python3")
         .arg("--version")
         .stdout(Stdio::null())

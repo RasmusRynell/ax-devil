@@ -11,7 +11,7 @@ use crate::manifest::ManifestError;
 impl Fields<'_> {
     /// The list `key` of fields; a decoder's options are text, files or folders, a resolver's settings may be any
     /// kind (`all_kinds`).
-    pub(super) fn form(&mut self, key: &str, all_kinds: bool) -> Result<Form, ManifestError> {
+    pub(crate) fn form(&mut self, key: &str, all_kinds: bool) -> Result<Form, ManifestError> {
         let Some(list) = self.map.remove(key) else {
             return Ok(Form::default());
         };
@@ -94,8 +94,8 @@ impl Fields<'_> {
         })
     }
 
-    /// One declared field. Its value is text, except for an integer, a scan's list and decoder options' map.
-    fn field(&mut self, all_kinds: bool) -> Result<Field, ManifestError> {
+    /// The `key` of a field or a lane input: letters, digits, '_' or '-', starting with a letter or digit.
+    pub(super) fn key(&mut self) -> Result<String, ManifestError> {
         let key = self.non_empty("key")?;
         if !key.starts_with(|c: char| c.is_ascii_alphanumeric())
             || !key
@@ -109,6 +109,12 @@ impl Fields<'_> {
                 ),
             ));
         }
+        Ok(key)
+    }
+
+    /// One declared field. Its value is text, except for an integer, a scan's list and decoder options' map.
+    fn field(&mut self, all_kinds: bool) -> Result<Field, ManifestError> {
+        let key = self.key()?;
         // Only a resolver's settings become arguments of the command line.
         if all_kinds && RESERVED_SETTING_KEYS.contains(&key.replace('_', "-").as_str()) {
             return Err(self.error(

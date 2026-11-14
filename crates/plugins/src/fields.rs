@@ -1,16 +1,21 @@
 //! Typed reads of a manifest's JSON objects. Each read takes the field out, so what is left is unknown, and every
 //! error names the field by its path from the top, such as `handlers[1].options[0].kind`.
 
-use std::collections::HashSet;
+use std::{collections::HashSet, path::Path};
 
 use handler_api::ScanCount;
 use scene::{MatchBasis, SCENE_VERSION, SceneVersion};
 use serde_json::{Map, Value};
 
 mod form;
+mod kinds;
 
-use crate::manifest::{
-    DecoderHandler, DecoderInput, Handler, ManifestError, ResolverHandler, SkippedHandler, valid_id,
+use crate::{
+    LaneInputs,
+    manifest::{
+        DecoderHandler, DecoderInput, Handler, ManifestError, ResolverHandler, SkippedHandler,
+        valid_id,
+    },
 };
 
 /// The flag names (`_` written as `-`) that every `ax-devil` command line already takes, so no resolver setting may
@@ -190,9 +195,11 @@ impl<'a> Fields<'a> {
     }
 
     /// The `handlers` list: at least one, with ids that differ. A handler of a kind this build does not know is set
-    /// aside unread, since its fields are not ours to judge; the plugin fails only if none is left.
+    /// aside unread, since its fields are not ours to judge, and so is one that refers to something missing (see
+    /// `kinds::resolve`); the plugin fails only if none is left.
     pub(crate) fn handlers(
         &mut self,
+        folder: &Path,
     ) -> Result<(Vec<Handler>, Vec<SkippedHandler>), ManifestError> {
         let Value::Array(items) = self.take("handlers")? else {
             return Err(self.error("handlers", "must be a list"));
@@ -212,6 +219,9 @@ impl<'a> Fields<'a> {
             let handler = match read.string("kind")?.as_str() {
                 "decoder" => Handler::Decoder(read.decoder()?),
                 "playlist_resolver" => Handler::PlaylistResolver(read.resolver()?),
+                "task" => Handler::Task(read.task()?),
+                "view" => Handler::View(read.view()?),
+                "command" => Handler::Command(read.command()?),
                 other => {
                     skipped.push(SkippedHandler {
                         kind: other.to_owned(),
@@ -234,8 +244,11 @@ impl<'a> Fields<'a> {
             }
             handlers.push(handler);
         }
+        let (handlers, unresolved) = kinds::resolve(handlers, folder);
+        skipped.extend(unresolved);
         if handlers.is_empty() {
-            return Err(self.error("handlers", NEWER));
+            let reason = skipped.first().map_or(NEWER, |first| first.reason.as_str());
+            return Err(self.error("handlers", reason));
         }
         Ok((handlers, skipped))
     }
@@ -246,21 +259,29 @@ impl<'a> Fields<'a> {
         let input = match self.string("input")?.as_str() {
             "path" => DecoderInput::Path,
             "records" => DecoderInput::Records,
+            "lanes" => DecoderInput::Lanes,
             other => {
-                return Err(
-                    self.error("input", format!("'{other}' is not \"path\" or \"records\""))
-                );
+                return Err(self.error(
+                    "input",
+                    format!("'{other}' is not \"path\", \"records\" or \"lanes\""),
+                ));
             }
         };
         let description = self.optional_non_empty("description")?;
         let scene_version = self.scene_version()?;
-        let extensions = self.extensions()?;
+        // A lanes decoder reads the host's bundle, never a file the user names, so it has no extensions.
+        let (inputs, extensions) = if input == DecoderInput::Lanes {
+            (self.lane_inputs()?, Vec::new())
+        } else {
+            (LaneInputs::default(), self.extensions()?)
+        };
         let options = self.form("options", false)?;
         let (bases, default_basis) = self.bases()?;
         Ok(DecoderHandler {
             id,
             name,
             input,
+            inputs,
             description,
             scene_version,
             extensions,
