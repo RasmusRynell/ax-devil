@@ -2,7 +2,7 @@
 
 import type { BookmarkCommand } from "./api_types.bookmarks";
 import type { LanePolicyWire } from "./api_types.playback.lane";
-import type { HiddenTarget, NewItem } from "./api_types.workspace";
+import type { DerivedLaneWire, HiddenTarget, NewItem } from "./api_types.workspace";
 import type { ContentRef } from "./sessions.session.authorize";
 import type { ControlCommand } from "./sessions.session.commands";
 import type { Overlay, Viewport } from "./sessions.session.views";
@@ -90,7 +90,19 @@ slot: string,
 /**
  * How the lane matches.
  */
-policy: LanePolicyWire, } | { "type": "renameWorkspace", 
+policy: LanePolicyWire, } | { "type": "setDerivedLane", 
+/**
+ * The item.
+ */
+item: string, 
+/**
+ * The derived lane's slot.
+ */
+slot: string, 
+/**
+ * The lane, or `null` to remove it.
+ */
+lane: DerivedLaneWire | null, } | { "type": "renameWorkspace", 
 /**
  * The name the user entered.
  */

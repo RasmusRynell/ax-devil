@@ -17,6 +17,31 @@ export type CheckFilesRequest = {
 paths: Array<string>, };
 
 /**
+ * A lane computed by a handler from other lanes of every entry, set on an item with `SetDerivedLane`.
+ */
+export type DerivedLaneWire = { 
+/**
+ * What the user reads on the lane.
+ */
+label: string, 
+/**
+ * The decoder handler that computes it.
+ */
+handler: string, 
+/**
+ * Options handed to the handler.
+ */
+options: Record<string, unknown>, 
+/**
+ * The input lanes: the key the handler declares each under, and the slot of the lane that feeds it.
+ */
+lanes: { [key in string]?: string }, 
+/**
+ * Whether the handler also reads the entry's video.
+ */
+video: boolean, };
+
+/**
  * What the backend host makes of one path.
  */
 export type FileCheck = { 

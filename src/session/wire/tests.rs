@@ -34,6 +34,7 @@ variants! {
     SessionCommand::Content { command: DocWire::EditResolved { .. } } => "editResolved",
     SessionCommand::Content { command: DocWire::SetHidden { .. } } => "setHidden",
     SessionCommand::Content { command: DocWire::SetLaneMatching { .. } } => "setLaneMatching",
+    SessionCommand::Content { command: DocWire::SetDerivedLane { .. } } => "setDerivedLane",
     SessionCommand::Content { command: DocWire::RenameWorkspace { .. } } => "renameWorkspace",
     SessionCommand::Content { command: DocWire::Bookmark { command: BookmarkWire::Add { .. } } } => "bookmarkAdd",
     SessionCommand::Content { command: DocWire::Bookmark { command: BookmarkWire::Edit { .. } } } => "bookmarkEdit",
@@ -138,6 +139,13 @@ fn cases() -> Vec<(Value, Expect)> {
                 "setLaneMatching",
                 json!({ "item": item, "slot": "a", "policy": {
                     "basis": null, "toleranceMs": null, "sticky": { "enabled": false, "timeoutMs": null } } }),
+            ),
+            Converted,
+        ),
+        (
+            doc(
+                "setDerivedLane",
+                json!({ "item": item, "slot": "a", "lane": { "label": "A", "handler": "h", "lanes": { "in": "b" } } }),
             ),
             Converted,
         ),

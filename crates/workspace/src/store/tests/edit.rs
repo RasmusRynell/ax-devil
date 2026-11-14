@@ -118,3 +118,51 @@ fn an_edit_keeps_the_item_and_resolves_again_only_when_the_recipe_changed() {
         "an item keeps its kind"
     );
 }
+
+#[test]
+fn a_derived_lane_resolves_the_item_again_and_a_forward_reference_is_refused() {
+    let folder = tempfile::tempdir().unwrap();
+    let file = folder.path().join("a.mp4");
+    std::fs::write(&file, "x").unwrap();
+    let video = item(&file);
+    let id = video.id;
+    let (state, jobs) = add(&WorkspaceState::default(), vec![video], false);
+    let state = finish(&state, &jobs[0]);
+    let lane = |input: &str| crate::DerivedLane {
+        slot: String::new(),
+        label: "IoU".into(),
+        handler: "acme_iou".into(),
+        options: Default::default(),
+        lanes: [("in".to_owned(), input.to_owned())].into(),
+        video: false,
+    };
+    let set = |state: &WorkspaceState, slot: &str, lane| {
+        apply(
+            state,
+            DocCommand::SetDerivedLane {
+                item: id,
+                slot: slot.into(),
+                lane,
+            },
+        )
+    };
+
+    let (state, jobs) = set(&state, "a", Some(lane("gt")));
+    assert_eq!(jobs.len(), 1, "the item resolves again");
+    let (state, _) = set(&state, "b", Some(lane("a")));
+    let derived = &state.workspace.items[0].recipe.derived;
+    assert_eq!(
+        derived.iter().map(|d| d.slot.as_str()).collect::<Vec<_>>(),
+        ["a", "b"]
+    );
+
+    for forward in ["b", "a"] {
+        let (refused, jobs) = set(&state, "a", Some(lane(forward)));
+        assert!(
+            refused == state && jobs.is_empty(),
+            "'a' may not read '{forward}'"
+        );
+    }
+    let (removed, _) = set(&state, "a", None);
+    assert_eq!(removed.workspace.items[0].recipe.derived.len(), 1);
+}

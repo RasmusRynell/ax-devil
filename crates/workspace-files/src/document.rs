@@ -13,8 +13,8 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 use workspace::{
-    Bookmark, BookmarkKind, BookmarkTarget, OverlayRecipe, PlaylistRecipe, Recipe, Source,
-    Unreadable, VideoRecipe, Workspace, WorkspaceItem,
+    Bookmark, BookmarkKind, BookmarkTarget, DerivedLane, OverlayRecipe, PlaylistRecipe, Recipe,
+    Source, Unreadable, VideoRecipe, Workspace, WorkspaceItem,
 };
 
 const VERSION: u64 = 2;
@@ -45,6 +45,21 @@ struct VideoItem {
     overlays: Vec<OverlayDto>,
     #[serde(default)]
     lane_matching: BTreeMap<String, MatchPolicy>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    derived: Vec<DerivedDto>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DerivedDto {
+    slot: String,
+    label: String,
+    handler: String,
+    #[serde(default)]
+    options: Settings,
+    lanes: BTreeMap<String, String>,
+    #[serde(default)]
+    video: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -68,6 +83,8 @@ struct PlaylistItem {
     settings: Settings,
     #[serde(default)]
     lane_matching: BTreeMap<String, MatchPolicy>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    derived: Vec<DerivedDto>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -182,8 +199,20 @@ fn write_item(item: &WorkspaceItem, base: Option<&Path>) -> Value {
     let Recipe {
         source,
         lane_matching,
+        derived,
     } = &item.recipe;
     let (id, label, lane_matching) = (item.id, item.label.clone(), lane_matching.clone());
+    let derived = derived
+        .iter()
+        .map(|lane| DerivedDto {
+            slot: lane.slot.clone(),
+            label: lane.label.clone(),
+            handler: lane.handler.clone(),
+            options: lane.options.clone(),
+            lanes: lane.lanes.clone(),
+            video: lane.video,
+        })
+        .collect();
     match source {
         Source::Video(recipe) => value(&VideoItem {
             kind: "video".into(),
@@ -201,6 +230,7 @@ fn write_item(item: &WorkspaceItem, base: Option<&Path>) -> Value {
                 })
                 .collect(),
             lane_matching,
+            derived,
         }),
         Source::Playlist(recipe) => value(&PlaylistItem {
             kind: "playlist".into(),
@@ -209,6 +239,7 @@ fn write_item(item: &WorkspaceItem, base: Option<&Path>) -> Value {
             resolver: recipe.resolver.clone(),
             settings: recipe.settings.clone(),
             lane_matching,
+            derived,
         }),
         Source::Live(recipe) => value(&LiveItem::new(id, label, recipe, lane_matching)),
         Source::Unreadable(unreadable) => unreadable.raw.clone(),
@@ -283,16 +314,19 @@ fn read_item(raw: Value, base: &Path) -> WorkspaceItem {
                     })
                     .collect(),
             });
-            (dto.id, dto.label, source, dto.lane_matching)
+            (dto.id, dto.label, source, dto.lane_matching, dto.derived)
         }),
         Some("playlist") => serde_json::from_value::<PlaylistItem>(raw.clone()).map(|dto| {
             let source = Source::Playlist(PlaylistRecipe {
                 resolver: dto.resolver,
                 settings: dto.settings,
             });
-            (dto.id, dto.label, source, dto.lane_matching)
+            (dto.id, dto.label, source, dto.lane_matching, dto.derived)
         }),
-        Some("live") => serde_json::from_value::<LiveItem>(raw.clone()).map(LiveItem::into_parts),
+        Some("live") => serde_json::from_value::<LiveItem>(raw.clone()).map(|live| {
+            let (id, label, source, lane_matching) = live.into_parts();
+            (id, label, source, lane_matching, Vec::new())
+        }),
         kind => {
             let kind = kind.unwrap_or("");
             let reason =
@@ -301,7 +335,7 @@ fn read_item(raw: Value, base: &Path) -> WorkspaceItem {
         }
     };
     match parsed {
-        Ok((_, _, _, lane_matching))
+        Ok((_, _, _, lane_matching, _))
             if object
                 .get("lane_matching")
                 .is_some_and(|raw| !covered(raw, &value(&lane_matching))) =>
@@ -311,12 +345,23 @@ fn read_item(raw: Value, base: &Path) -> WorkspaceItem {
                 "Its lane matching has a setting this version does not know.".into(),
             )
         }
-        Ok((id, label, source, lane_matching)) => WorkspaceItem {
+        Ok((id, label, source, lane_matching, derived)) => WorkspaceItem {
             id,
             label,
             recipe: Recipe {
                 source,
                 lane_matching,
+                derived: derived
+                    .into_iter()
+                    .map(|lane| DerivedLane {
+                        slot: lane.slot,
+                        label: lane.label,
+                        handler: lane.handler,
+                        options: lane.options,
+                        lanes: lane.lanes,
+                        video: lane.video,
+                    })
+                    .collect(),
             },
         },
         Err(error) => unreadable(raw, error.to_string()),

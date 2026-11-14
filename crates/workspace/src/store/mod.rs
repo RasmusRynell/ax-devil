@@ -21,7 +21,7 @@ mod hidden;
 mod resolving;
 mod rows;
 
-use crate::{Content, ItemId, Source, Workspace, WorkspaceItem};
+use crate::{Content, DerivedLane, ItemId, Source, Workspace, WorkspaceItem};
 use batch::Batch;
 pub use changes::SourceChanges;
 use foundation::{HostPath, UserError};
@@ -263,6 +263,16 @@ pub enum DocCommand {
         /// The lane's matching.
         matching: MatchPolicy,
     },
+    /// Sets or removes (`None`) the derived lane at `slot` of a video or playlist item and resolves it again; see
+    /// `WorkspaceState::set_derived`.
+    SetDerivedLane {
+        /// The item.
+        item: ItemId,
+        /// The lane's slot; replaces the `slot` of `lane`.
+        slot: String,
+        /// The lane, or `None` to remove it.
+        lane: Option<DerivedLane>,
+    },
     /// Names the workspace as the user entered it (see [`name_of`]); the file keeps its name. Ignored unless `epoch`
     /// is the state's, so a rename sent before a [`DocCommand::Replace`] does not name the replacement.
     RenameWorkspace {
@@ -445,6 +455,9 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
             {
                 existing.recipe.lane_matching.insert(slot, matching);
             }
+        }
+        DocCommand::SetDerivedLane { item, slot, lane } => {
+            jobs.extend(next.set_derived(item, &slot, lane));
         }
         DocCommand::RenameWorkspace { name, epoch } => {
             if epoch == next.epoch {

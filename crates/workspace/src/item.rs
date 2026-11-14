@@ -3,6 +3,7 @@ use crate::content::{
     check_unique_lanes, playlist_content,
 };
 use crate::credentials::Environment;
+use crate::derived::{DerivedLane, append_derived};
 use crate::live::LiveRecipe;
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, ItemId, Location, UserError};
 use handler_api::{FieldKind, Form, Settings, Values};
@@ -122,6 +123,9 @@ pub struct Recipe {
     /// of a playlist, where lane names can differ. A lane without an entry is at the decoder's default basis and the
     /// app's defaults.
     pub lane_matching: BTreeMap<String, MatchPolicy>,
+    /// The lanes computed from other lanes, in the order they are built: each may read only the entry's own lanes
+    /// and those before it. An entry lacking an input slot does not get the lane. Video and playlist items only.
+    pub derived: Vec<DerivedLane>,
 }
 
 /// One thing the user added to the workspace.
@@ -190,6 +194,7 @@ impl Recipe {
         Self {
             source,
             lane_matching: BTreeMap::new(),
+            derived: Vec::new(),
         }
     }
 
@@ -238,8 +243,8 @@ impl Recipe {
         } else {
             label.to_owned()
         };
-        match &self.source {
-            Source::Video(recipe) => resolve_video(recipe, item, handlers, cancel),
+        let mut content = match &self.source {
+            Source::Video(recipe) => resolve_video(recipe, item, handlers, cancel)?,
             Source::Playlist(recipe) => {
                 let resolver = handlers.resolver(&recipe.resolver).ok_or_else(|| {
                     Interrupt::Failed(
@@ -275,15 +280,20 @@ impl Recipe {
                 }
                 playlist_content(item, &resolver.spec().name, resolved)
                     .map(Content::Playlist)
-                    .map_err(|error| Interrupt::Failed(failed(error)))
+                    .map_err(|error| Interrupt::Failed(failed(error)))?
             }
             Source::Live(recipe) => recipe
                 .resolve(item, label, handlers, env)
-                .map_err(Interrupt::Failed),
-            Source::Unreadable(unreadable) => Err(Interrupt::Failed(
-                UserError::new(ErrorCode::WorkspaceInvalid, unreadable.reason.clone()).at(*item),
-            )),
-        }
+                .map_err(Interrupt::Failed)?,
+            Source::Unreadable(unreadable) => {
+                return Err(Interrupt::Failed(
+                    UserError::new(ErrorCode::WorkspaceInvalid, unreadable.reason.clone())
+                        .at(*item),
+                ));
+            }
+        };
+        append_derived(item, &mut content, &self.derived).map_err(Interrupt::Failed)?;
+        Ok(content)
     }
 }
 

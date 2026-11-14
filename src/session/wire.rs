@@ -17,7 +17,7 @@ use std::path::Path;
 use tokio::time::Instant;
 use workspace::store::{BookmarkCommand, DocCommand, HiddenRef};
 use workspace::{
-    BookmarkId, BookmarkTarget, Content, Secret, Watch, WorkspaceItem,
+    BookmarkId, BookmarkTarget, Content, DerivedLane, Secret, Watch, WorkspaceItem,
     intake::{LiveDefaults, NewLive, NewOverlay},
 };
 
@@ -53,7 +53,8 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
                 }
             }
             api_types::DocCommand::AddResolved { .. }
-            | api_types::DocCommand::EditResolved { .. } => Scope::Host,
+            | api_types::DocCommand::EditResolved { .. }
+            | api_types::DocCommand::SetDerivedLane { .. } => Scope::Host,
             // Editing a video reads the host's files as adding one does; a live stream is only a recipe.
             api_types::DocCommand::EditItem { new, .. } => match new {
                 NewItem::Video { .. } => Scope::Host,
@@ -252,6 +253,18 @@ fn doc_command(
         api_types::DocCommand::Bookmark { command } => {
             DocCommand::Bookmarks(bookmark_command(command)?)
         }
+        api_types::DocCommand::SetDerivedLane { item, slot, lane } => DocCommand::SetDerivedLane {
+            item,
+            lane: lane.map(|lane| DerivedLane {
+                slot: slot.clone(),
+                label: lane.label,
+                handler: lane.handler,
+                options: lane.options,
+                lanes: lane.lanes,
+                video: lane.video,
+            }),
+            slot,
+        },
         api_types::DocCommand::SetLaneMatching { item, slot, policy } => {
             DocCommand::SetLaneMatching {
                 item,

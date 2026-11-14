@@ -6,9 +6,9 @@ use scene::matching::{MatchPolicy, Sticky};
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 use workspace::{
-    Bookmark, BookmarkKind, BookmarkTarget, DataHubSettings, KeptTransports, LIVE_SLOT,
-    LiveOverlay, LiveRecipe, OverlayRecipe, PlaylistRecipe, Protocol, Recipe, RtspRoute, Secret,
-    Source, Unreadable, VideoRecipe, Workspace, WorkspaceItem,
+    Bookmark, BookmarkKind, BookmarkTarget, DataHubSettings, DerivedLane, KeptTransports,
+    LIVE_SLOT, LiveOverlay, LiveRecipe, OverlayRecipe, PlaylistRecipe, Protocol, Recipe, RtspRoute,
+    Secret, Source, Unreadable, VideoRecipe, Workspace, WorkspaceItem,
 };
 use workspace_files::{SUFFIX, load, save};
 
@@ -64,6 +64,14 @@ fn sample(dir: &Path, outside: &Path) -> Workspace {
         .recipe
         .lane_matching
         .insert("gate.xml".into(), policy);
+    inside.recipe.derived.push(DerivedLane {
+        slot: "iou".into(),
+        label: "IoU".into(),
+        handler: "acme_iou".into(),
+        options: json!({"threshold": 0.5}).as_object().cloned().unwrap(),
+        lanes: [("truth".to_owned(), "gate.xml".to_owned())].into(),
+        video: true,
+    });
     let elsewhere = item("b.mp4", video(outside, outside));
     let playlist = item(
         "MOT17",
@@ -214,6 +222,11 @@ fn a_workspace_round_trips_with_paths_inside_its_folder_relative() {
     assert_eq!(json["version"], 2);
     assert_eq!(json["items"][0]["video"], "clips/a.mp4");
     assert_eq!(json["items"][0]["overlays"][0]["path"], "clips/a.xml");
+    assert_eq!(json["items"][0]["derived"][0]["lanes"]["truth"], "gate.xml");
+    assert!(
+        json["items"][1].get("derived").is_none(),
+        "a file without derived lanes loads as none, so none are written"
+    );
     assert_eq!(json["items"][1]["video"], outside.to_str().unwrap());
     assert_eq!(json["items"][3], original_raw(&original, 3));
     assert_eq!(json["items"][4], "not an item");

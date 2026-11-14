@@ -1,4 +1,5 @@
 use super::*;
+use crate::derived::{DerivedLane, append_derived};
 
 #[test]
 fn only_a_content_or_entry_id_deserializes() {
@@ -125,4 +126,42 @@ fn several_playlists_give_ids_by_playlist_name_and_refuse_what_has_no_clear_iden
     assert!(reason(vec![lanes]).ends_with(": GT"));
     // "a/b" + "c" and "a" + "b/c" are the same id.
     assert!(reason(vec![playlist("a", &["b/c"]), playlist("a/b", &["c"])]).ends_with(": c"));
+}
+
+#[test]
+fn a_derived_lane_is_built_after_the_own_lanes_of_each_entry_that_has_its_inputs() {
+    let own = |slot: &str| OverlayRef {
+        label: slot.into(),
+        slot: slot.into(),
+        source: LaneSource::File(format!("/{slot}.jsonl").into()),
+        handler: "H".into(),
+        options: Default::default(),
+        metadata: Default::default(),
+    };
+    let derive = |slot: &str, input: &str| DerivedLane {
+        slot: slot.into(),
+        label: slot.into(),
+        handler: "acme".into(),
+        options: Default::default(),
+        lanes: [("in".to_owned(), input.to_owned())].into(),
+        video: true,
+    };
+    let item = ItemId::generate();
+    let mut content = Content::Playlist(build(vec![playlist("run", &["a", "b"])]).unwrap());
+    let Content::Playlist(list) = &mut content else {
+        unreachable!()
+    };
+    list.entries[0].overlays = vec![own("gt")];
+    list.entries[1].overlays = vec![own("det")];
+    let derived = [derive("iou", "gt"), derive("chain", "iou")];
+    append_derived(&item, &mut content, &derived).unwrap();
+
+    let slots: Vec<_> = content.entries().iter().map(Entry::lane_slots).collect();
+    assert_eq!(slots, [vec!["gt", "iou", "chain"], vec!["det"]]);
+    let LaneSource::Derived { lanes, video } = &content.entries()[0].overlays[2].source else {
+        panic!("a derived lane");
+    };
+    assert_eq!(lanes[0].1.files().len(), 1, "the inputs are embedded");
+    assert_eq!(lanes[0].1.slot, "iou");
+    assert!(video.is_some());
 }

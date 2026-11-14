@@ -3,7 +3,7 @@
 use crate::{
     bookmarks::BookmarkCommand,
     playback::LanePolicyWire,
-    workspace::{HiddenTarget, NewItem},
+    workspace::{DerivedLaneWire, HiddenTarget, NewItem},
 };
 use foundation::ItemId;
 use serde::Deserialize;
@@ -108,6 +108,18 @@ pub enum DocCommand {
         slot: String,
         /// How the lane matches.
         policy: LanePolicyWire,
+    },
+    /// Set the lane derived from other lanes at `slot` in a video or playlist item's recipe, or remove it for `null`,
+    /// and resolve the item again. A new lane goes last; an input slot naming the lane itself or a later derived lane
+    /// is ignored.
+    SetDerivedLane {
+        /// The item.
+        #[ts(type = "string")]
+        item: ItemId,
+        /// The derived lane's slot.
+        slot: String,
+        /// The lane, or `null` to remove it.
+        lane: Option<DerivedLaneWire>,
     },
     /// Rename the workspace; surrounding whitespace is dropped and a blank name or `Untitled` is Untitled; the file
     /// keeps its name. Ignored when `epoch` is not the workspace's, so a rename that was sent before another seat

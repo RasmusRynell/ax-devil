@@ -177,6 +177,24 @@ pub enum ItemRecipe {
     Live(Box<NewLiveWire>),
 }
 
+/// A lane computed by a handler from other lanes of every entry, set on an item with `SetDerivedLane`.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+pub struct DerivedLaneWire {
+    /// What the user reads on the lane.
+    pub label: String,
+    /// The decoder handler that computes it.
+    pub handler: String,
+    /// Options handed to the handler.
+    #[serde(default)]
+    #[ts(type = "Record<string, unknown>")]
+    pub options: serde_json::Map<String, serde_json::Value>,
+    /// The input lanes: the key the handler declares each under, and the slot of the lane that feeds it.
+    pub lanes: std::collections::BTreeMap<String, String>,
+    /// Whether the handler also reads the entry's video.
+    #[serde(default)]
+    pub video: bool,
+}
+
 /// What an item is, from its recipe.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
@@ -327,6 +345,7 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<ReloadFailure>();
     types.visit::<ItemRecipe>();
     types.visit::<ItemKind>();
+    types.visit::<DerivedLaneWire>();
     types.visit::<ResolutionState>();
     types.visit::<NewItem>();
     types.visit::<NewOverlayWire>();

@@ -6,6 +6,7 @@
 mod bookmark;
 mod content;
 mod credentials;
+mod derived;
 mod host;
 pub mod intake;
 mod item;
@@ -22,6 +23,7 @@ pub use content::{
     PlaylistSpan, SeekableVideoContent, VideoRef, playlist_label,
 };
 pub use credentials::{Environment, Secret};
+pub use derived::DerivedLane;
 pub use foundation::{BookmarkId, ItemId};
 pub use host::{DisplayHost, HostReading};
 pub use item::{

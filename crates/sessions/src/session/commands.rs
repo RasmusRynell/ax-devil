@@ -122,7 +122,10 @@ fn content_scope(command: &DocCommand) -> Scope {
                 Scope::Content
             }
         }
-        DocCommand::Replace { .. } | DocCommand::MarkSaved { .. } => Scope::Host,
+        // Resolving the item again reads the host's files.
+        DocCommand::Replace { .. }
+        | DocCommand::MarkSaved { .. }
+        | DocCommand::SetDerivedLane { .. } => Scope::Host,
         DocCommand::OpenViewer(_)
         | DocCommand::CloseViewer(_)
         | DocCommand::Resolve(_)
