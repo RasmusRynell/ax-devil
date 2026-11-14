@@ -231,12 +231,6 @@ export function hiddenSecrets(wire: Partial<NewLiveWire>): FieldKey[] {
   ];
 }
 
-/** The numbers that are plain text, with what to say when one is not a whole number. */
-const NUMBERS = {
-  broker_port: "MQTT Port must be an integer.",
-  channel: "Topic Channel must be an integer.",
-} as const;
-
 const text = (entered: string) => entered.trim() || undefined;
 
 /** The whole number a field holds, nothing when blank or when it is something else. */
@@ -259,46 +253,19 @@ export const chosen = (value: string, choices: readonly string[]) =>
   choices.includes(value) ? value : "";
 
 /**
- * What stops the form from being added, in the order the form is read, or nothing: the rules the backend's recipe
- * check applies, so OK waits for a form the backend accepts. Every number is read whatever the overlay, so a saved
- * value of a mode not chosen still counts. A blank host or broker host takes the configured one in `values`; the data
- * source and topic must be chosen, so `form` holds them as the lists give them (see `chosen`).
+ * What the user has yet to choose, or nothing: the host (`hostKnown`: typed or configured), the decoder of a mode, and the
+ * data source or topic, which `form` holds as the camera's lists give them (see `chosen`). Every value rule is the
+ * backend's, shown on its refusal.
  */
-export function problemOf(form: LiveForm, values: SettingsState["values"], modeName: string) {
-  if (!(form.host.trim() || textOf(values["camera.host"]).trim())) return "Enter the device host.";
+export function unchosen(form: LiveForm, hostKnown: boolean, modeName: string) {
+  if (!hostKnown) return "Enter the device host.";
   if (form.overlay !== "none" && !form.handler)
     return `Select a handler type for ${modeName} overlays.`;
-  const misread = (Object.keys(NUMBERS) as (keyof typeof NUMBERS)[]).find(
-    (key) => !/^\d+$/.test(form[key].trim()),
-  );
-  if (misread) return NUMBERS[misread];
-  const head = whole(form.head);
-  if (head !== undefined && head < 1) return "Camera Head must be a positive integer.";
-  if (head !== undefined && head > 9999) return "Camera Head must be at most 9999.";
-  const rtsp = whole(form.rtsp_port);
-  if (rtsp !== undefined && (rtsp < 1 || rtsp > 65535))
-    return "RTSP Port must be between 1 and 65535.";
-  // The standard port of the other protocol cannot be addressed.
-  const protocol = form.protocol || textOf(values["camera.protocol"]);
-  if (whole(form.port) === (protocol === "http" ? 443 : protocol === "https" ? 80 : undefined))
-    return `${protocol.toUpperCase()} cannot use port ${form.port.trim()}; use the standard port.`;
-  const broker = Number(form.broker_port);
-  const channel = Number(form.channel);
-  switch (form.overlay) {
-    case "mqtt":
-      if (!(form.broker_host.trim() || textOf(values["broker.host"]).trim()))
-        return "MQTT Host is required for MQTT overlay mode.";
-      if (!form.source_key.trim()) return "Data Source is required for MQTT overlay mode.";
-      if (broker < 1 || broker > 65535) return "MQTT Port must be between 1 and 65535.";
-      return undefined;
-    case "datahub":
-      if (!form.topic.trim()) return "Topic is required for WebSocket overlay mode.";
-      if (channel < 1) return "Channel ID must be a positive integer.";
-      if (channel > 4294967295) return "Channel ID must be at most 4294967295.";
-      return undefined;
-    default:
-      return undefined;
-  }
+  if (form.overlay === "mqtt" && !form.source_key.trim())
+    return "Data Source is required for MQTT overlay mode.";
+  if (form.overlay === "datahub" && !form.topic.trim())
+    return "Topic is required for WebSocket overlay mode.";
+  return undefined;
 }
 
 /**

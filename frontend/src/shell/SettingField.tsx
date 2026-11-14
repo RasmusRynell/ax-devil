@@ -2,12 +2,11 @@ import { VideoCacheField, type ManualCache } from "./VideoCacheField";
 import type { ReactNode } from "react";
 import type { SettingsState } from "../generated/api";
 import type { SettingKey } from "../generated/settings";
-import { BrowseButton } from "../kit/Button";
 import { SegmentedControl } from "../kit/Chips";
 import { Checkbox, LABELLED, Select, TextField } from "../kit/Fields";
 import { Icon } from "../kit/Icon";
 import { SET_PASSWORD } from "../live/expansions";
-import { chooseFolder, usePickPath } from "../client/pickPath";
+import { chooseFolder, PathField } from "../client/pickPath";
 import { isSecretState, secretStateOf, type Login } from "../client/secret";
 import { numericInput } from "./numericInput";
 import { LoginsEditor } from "./LoginsEditor";
@@ -161,28 +160,15 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
   decoder: ({ label, value, decoders, onChange }) => (
     <TextField label={label} value={textOf(value)} suggestions={decoders} onChange={onChange} />
   ),
-  folder: ({ row, label, value, onChange }) => {
-    const pick = usePickPath();
-    return (
-      <TextField
-        label={label}
-        value={textOf(value)}
-        onChange={onChange}
-        action={
-          pick && (
-            <BrowseButton
-              what={row.label}
-              onBrowse={() =>
-                void pick(chooseFolder(row.label)).then((folder) => {
-                  if (folder !== null) onChange(folder);
-                })
-              }
-            />
-          )
-        }
-      />
-    );
-  },
+  folder: ({ row, label, value, onChange }) => (
+    <PathField
+      label={label}
+      what={row.label}
+      value={textOf(value)}
+      request={chooseFolder(row.label)}
+      onChange={(path) => onChange(path)}
+    />
+  ),
 };
 
 /** The control for a setting row, chosen by its kind; `label` defaults to the row's own. */

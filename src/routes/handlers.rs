@@ -3,56 +3,16 @@
 use crate::{AppState, Failure};
 use api_types::{
     Audience,
-    handlers::{
-        DecoderInfo, FieldInfo, FieldKindWire, HandlersInfo, PluginSource, PluginStatus,
-        PluginsInfo, ResolverInfo, ScanCountInfo,
-    },
+    handlers::{DecoderInfo, HandlersInfo, PluginSource, PluginStatus, PluginsInfo, ResolverInfo},
 };
 use axum::{Json, extract::State, http::StatusCode};
 use foundation::UserError;
-use handler_api::{FieldKind, Form};
 use std::collections::HashMap;
 
 /// A refused request: the status and `error` as the host sees it. The routes that use it need the `Files` grant, so
 /// the caller may read the host's paths and reasons.
 pub(super) fn refuse(status: StatusCode, error: &UserError) -> Failure {
     (status, Json(api_types::project(error, Audience::HOST)))
-}
-
-fn field_kind(kind: &FieldKind) -> FieldKindWire {
-    match kind {
-        FieldKind::Folder => FieldKindWire::Folder,
-        FieldKind::File { extensions } => FieldKindWire::File {
-            extensions: extensions.clone(),
-        },
-        FieldKind::Text => FieldKindWire::Text,
-        FieldKind::Integer { min } => FieldKindWire::Integer { min: *min },
-        FieldKind::Handler => FieldKindWire::Handler,
-        FieldKind::DecoderOptions { handler_field } => FieldKindWire::DecoderOptions {
-            handler_field: handler_field.clone(),
-        },
-        FieldKind::Scan { depends_on, count } => FieldKindWire::Scan {
-            depends_on: depends_on.clone(),
-            count: count.as_ref().map(|count| ScanCountInfo {
-                missing: count.missing.clone(),
-                found: count.found.clone(),
-                none: count.none.clone(),
-            }),
-        },
-    }
-}
-
-fn field_infos(form: &Form) -> Vec<FieldInfo> {
-    form.fields
-        .iter()
-        .map(|field| FieldInfo {
-            key: field.key.clone(),
-            label: field.label.clone(),
-            kind: field_kind(&field.kind),
-            required: field.required,
-            default: field.default.clone(),
-        })
-        .collect()
 }
 
 /// The names of the installed plugins that loaded, by plugin id: a built-in is not "from" a plugin the user installed.
@@ -78,7 +38,7 @@ pub(crate) async fn get_handlers(State(state): State<AppState>) -> Json<Handlers
             display_name: spec.name.clone(),
             description: spec.description.clone(),
             extensions: spec.extensions.clone(),
-            options: field_infos(&spec.options),
+            options: spec.options.fields.clone(),
             live: decoder.reads_live(),
         }
     });
@@ -93,7 +53,7 @@ pub(crate) async fn get_handlers(State(state): State<AppState>) -> Json<Handlers
             plugin: names
                 .get(spec.plugin.as_str())
                 .map(|name| (*name).to_owned()),
-            fields: field_infos(&spec.form),
+            fields: spec.form.fields.clone(),
         }
     });
     Json(HandlersInfo {
@@ -115,7 +75,7 @@ mod tests {
     use axum::{body::Body, http::Request};
     use foundation::{CancelToken, Interrupt};
     use handler_api::{
-        DecodeError, DecodeSummary, Decoder, Framing, Input, SceneSink, Spec, Values,
+        DecodeError, DecodeSummary, Decoder, Form, Framing, Input, SceneSink, Spec, Values,
     };
     use handlers::Handlers;
     use scene::MatchBasis;

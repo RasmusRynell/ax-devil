@@ -271,7 +271,7 @@ describe("resolver form", () => {
     const scans = stubScans();
     window.axDevilWindow = { pickFolder: () => Promise.resolve("/picked") } as WindowBridge;
     render(<Harness />);
-    fireEvent.click(screen.getByRole("button", { name: "Browse Dataset folder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose Dataset folder" }));
     await waitFor(() => expect(scans).toHaveLength(1));
     expect(scans[0].body.settings).toEqual({ root: "/picked" });
     expect((screen.getByLabelText("Dataset folder") as HTMLInputElement).value).toBe("/picked");
@@ -280,7 +280,7 @@ describe("resolver form", () => {
   it("offers Browse only where a path can be picked, not in a window on another machine's server", () => {
     window.axDevilWindow = { disconnect: () => Promise.resolve() } as WindowBridge;
     render(<Harness />);
-    expect(screen.queryByRole("button", { name: "Browse Dataset folder" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Choose Dataset folder" })).toBeNull();
   });
 
   it("restores saved settings: scans, keeps unknown keys, and marks saved names that are gone", async () => {

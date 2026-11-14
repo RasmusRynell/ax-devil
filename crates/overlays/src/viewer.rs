@@ -240,7 +240,7 @@ impl ViewerOverlays {
 
 #[cfg(test)]
 mod tests {
-    use overlay_sync::{Alignment, MatchPolicy, Tolerance};
+    use scene::matching::{Alignment, MatchPolicy, Tolerance};
 
     use crate::tests::{Env, until_ready};
 

@@ -1,8 +1,7 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, type ReactNode } from "react";
 import { reasonOf } from "../client/errors";
-import type { ChoiceInfo, DecoderInfo, ErrorWire, FieldInfo, ResolverInfo } from "../generated/api";
+import type { Choice, DecoderInfo, ErrorWire, Field, ResolverInfo } from "../generated/api";
 import { Refusal } from "../kit/Refusal";
-import { usePickPath } from "../client/pickPath";
 import { decoderOptions, FieldControl, misread, needsValue, shown, type FieldForm } from "./fields";
 import {
   checkedCount,
@@ -35,8 +34,8 @@ type Action = { resolver: ResolverInfo } & (
 
 const blank = (value: unknown) => typeof value !== "string" || value.trim() === "";
 
-const isScan = (field: FieldInfo) => field.kind.kind === "Scan";
-const isCount = (field: FieldInfo) => field.kind.kind === "Scan" && !!field.kind.count;
+const isScan = (field: Field) => field.kind.kind === "Scan";
+const isCount = (field: Field) => field.kind.kind === "Scan" && !!field.kind.count;
 /** The scans whose found values are checked, which gate loading and scan on their own. */
 const scanFields = (resolver: ResolverInfo) =>
   resolver.fields.filter((field) => isScan(field) && !isCount(field));
@@ -90,7 +89,7 @@ function reduce(forms: Forms, action: Action): Forms {
 }
 
 /** The text of a field as it is sent: a number for an `Integer` field, a folder without its padding, nothing while blank. */
-const typed = (field: FieldInfo, text: unknown) =>
+const typed = (field: Field, text: unknown) =>
   blank(text)
     ? undefined
     : field.kind.kind === "Integer"
@@ -181,7 +180,7 @@ function unchosenOf(resolver: ResolverInfo, state: State): string | null {
 function failuresAt(
   resolver: ResolverInfo,
   scans: Readonly<Record<string, ScanView>>,
-  field: FieldInfo,
+  field: Field,
 ): ErrorWire[] {
   const names = (location: string | undefined) =>
     resolver.fields.some((other) => other.key === location);
@@ -265,7 +264,6 @@ export function useResolverForm(
   );
   // A resolver not opened yet starts blank; its form is stored with its first edit.
   const state = forms.get(resolver.id) ?? start(resolver);
-  const pick = usePickPath();
   // Scans by `<resolver id>/<field key>`: a resolver left for another keeps scanning into its own form.
   const controllers = useRef(new Map<string, AbortController>());
   const slot = (key: string) => `${resolver.id}/${key}`;
@@ -273,7 +271,7 @@ export function useResolverForm(
   const latest = useRef<{ resolver: string; settings: Settings | null } | null>(null);
 
   const canScanWith = (key: string, values: Settings) => scanReady(resolver, decoders, key, values);
-  const run = (key: string, values: Settings): Promise<readonly ChoiceInfo[] | null> => {
+  const run = (key: string, values: Settings): Promise<readonly Choice[] | null> => {
     controllers.current.get(slot(key))?.abort();
     const controller = new AbortController();
     controllers.current.set(slot(key), controller);
@@ -349,7 +347,6 @@ export function useResolverForm(
   return {
     resolver,
     decoders,
-    pickPath: pick,
     values: state.values,
     scans: state.scans,
     forms,

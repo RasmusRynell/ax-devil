@@ -1,5 +1,5 @@
 import { reasonOf } from "../client/errors";
-import type { ChoiceInfo, ErrorWire, ScanCountInfo, ScanRequest } from "../generated/api";
+import type { Choice, ErrorWire, ScanCount, ScanRequest } from "../generated/api";
 import { ask, type Answer } from "../client/ask";
 
 /** Resolver settings as the backend takes them. */
@@ -11,7 +11,7 @@ export function scanChoices(
   field: string,
   settings: Settings,
   signal: AbortSignal,
-): Promise<Answer<ChoiceInfo[]>> {
+): Promise<Answer<Choice[]>> {
   const request: ScanRequest = { field, settings };
   return ask("POST /api/resolvers/{id}/scan", { params: { id: resolver }, request, signal });
 }
@@ -20,7 +20,7 @@ export function scanChoices(
 export interface ScanView {
   phase: "idle" | "scanning" | "done" | "failed";
   /** The values the scan found, in its order. */
-  choices: readonly ChoiceInfo[];
+  choices: readonly Choice[];
   /** Saved values the scan did not find; they stay in the list, marked as not found. */
   missing: readonly string[];
   /** The values that will load: found ones and saved ones alike. */
@@ -70,7 +70,7 @@ export function scanInvalidated(view: ScanView): ScanView {
 }
 
 /** The field after its scan found `choices`. Everything is selected when no list was saved. */
-export function scanFinished(view: ScanView, choices: readonly ChoiceInfo[]): ScanView {
+export function scanFinished(view: ScanView, choices: readonly Choice[]): ScanView {
   if (view.everything) {
     return {
       ...view,
@@ -95,11 +95,7 @@ export function scanFailed(view: ScanView, failure: ErrorWire): ScanView {
 }
 
 /** What the status line of a count-only scan says; `ready` is whether every setting the scan reads is filled in. */
-export function countStatus(
-  view: ScanView | undefined,
-  count: ScanCountInfo,
-  ready: boolean,
-): string {
+export function countStatus(view: ScanView | undefined, count: ScanCount, ready: boolean): string {
   switch (view?.phase) {
     case "scanning":
       return "Scanning…";

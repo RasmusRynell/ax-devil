@@ -1,10 +1,11 @@
 //! Wire types for the decoders and playlist resolvers the app knows.
 
+use handler_api::Field;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 /// The body of `GET /api/handlers`.
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Serialize, TS)]
 pub struct HandlersInfo {
     /// The overlay file decoders.
     pub decoders: Vec<DecoderInfo>,
@@ -13,7 +14,7 @@ pub struct HandlersInfo {
 }
 
 /// An overlay file decoder.
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Serialize, TS)]
 pub struct DecoderInfo {
     /// The handler id that selects the decoder.
     pub handler: String,
@@ -26,7 +27,7 @@ pub struct DecoderInfo {
     /// The file name endings it reads: lowercase, with the dot. Empty means any file.
     pub extensions: Vec<String>,
     /// The options it takes, in the order they are shown; empty for a decoder without any.
-    pub options: Vec<FieldInfo>,
+    pub options: Vec<Field>,
     /// Whether it can decode a live stream's overlay, not only a file.
     pub live: bool,
 }
@@ -149,7 +150,7 @@ pub enum HandlerKind {
 }
 
 /// A playlist resolver and the form its settings take.
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Serialize, TS)]
 pub struct ResolverInfo {
     /// The id the resolver is named by.
     pub id: String,
@@ -162,73 +163,7 @@ pub struct ResolverInfo {
     #[ts(optional)]
     pub plugin: Option<String>,
     /// The settings, in the order they are shown.
-    pub fields: Vec<FieldInfo>,
-}
-
-/// One setting of a resolver or option of a decoder.
-#[derive(Serialize, Deserialize, TS)]
-pub struct FieldInfo {
-    /// The key in the settings.
-    pub key: String,
-    /// What the user reads.
-    pub label: String,
-    /// What kind of value it holds, and so which control it gets.
-    pub kind: FieldKindWire,
-    /// Whether resolving fails without it, once the default is filled in.
-    pub required: bool,
-    /// The value used when none is given; absent when there is none.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(type = "unknown", optional)]
-    pub default: Option<serde_json::Value>,
-}
-
-/// What kind of value a setting holds.
-#[derive(Serialize, Deserialize, TS)]
-#[serde(tag = "kind")]
-pub enum FieldKindWire {
-    /// A folder path.
-    Folder,
-    /// A file path with one of these extensions.
-    File {
-        /// Lowercase, with the dot.
-        extensions: Vec<String>,
-    },
-    /// Free text.
-    Text,
-    /// A whole number of at least `min`.
-    Integer {
-        /// The smallest value allowed.
-        min: i64,
-    },
-    /// One file decoder handler id, chosen from `HandlersInfo.decoders`.
-    Handler,
-    /// The options of the decoder chosen in the `Handler` field `handler_field`: a map under this key, edited with
-    /// that decoder's `DecoderInfo.options`.
-    DecoderOptions {
-        /// The key of the `Handler` field.
-        handler_field: String,
-    },
-    /// Several of the values a scan finds; absent means all of them. With `count` the scan only reports how many it
-    /// finds, the key holds no value and is never sent.
-    Scan {
-        /// The settings the scan reads, whose change invalidates its result.
-        depends_on: Vec<String>,
-        /// What a count-only scan says; absent for a scan whose values are picked.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[ts(optional)]
-        count: Option<ScanCountInfo>,
-    },
-}
-
-/// The sentences of a count-only scan.
-#[derive(Clone, Serialize, Deserialize, TS)]
-pub struct ScanCountInfo {
-    /// Shown while a setting the scan reads is empty.
-    pub missing: String,
-    /// Shown when the scan found something; `{count}` stands for how many.
-    pub found: String,
-    /// Shown when the scan found nothing.
-    pub none: String,
+    pub fields: Vec<Field>,
 }
 
 /// The body of `POST /api/resolvers/{id}/scan`.
@@ -257,15 +192,4 @@ pub struct ResolvedInfo {
     /// The item's id.
     #[ts(type = "string")]
     pub item: foundation::ItemId,
-}
-
-/// One value a scan found.
-#[derive(Serialize, Deserialize, TS)]
-pub struct ChoiceInfo {
-    /// What is stored in the settings.
-    pub value: String,
-    /// What the user reads.
-    pub label: String,
-    /// A second line about the value; may be empty.
-    pub detail: String,
 }

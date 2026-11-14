@@ -4,7 +4,9 @@
 use std::{collections::BTreeMap, path::Path};
 
 use foundation::{ErrorCode, Location, UserError};
+use serde::Serialize;
 use serde_json::{Map, Value};
+use ts_rs::TS;
 
 /// The settings or options a handler takes.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -14,7 +16,7 @@ pub struct Form {
 }
 
 /// One setting.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
 pub struct Field {
     /// The key in the settings.
     pub key: String,
@@ -24,14 +26,19 @@ pub struct Field {
     pub kind: FieldKind,
     /// Whether the handler fails without a value (after the default is filled in).
     pub required: bool,
-    /// The value used when none is given.
+    /// The value used when none is given; absent when there is none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(type = "unknown", optional)]
     pub default: Option<Value>,
     /// How the setting is given on the command line.
+    #[serde(skip)]
+    #[ts(skip)]
     pub cli: Cli,
 }
 
 /// What kind of value a setting holds, and so which control it gets.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(tag = "kind")]
 pub enum FieldKind {
     /// A folder path.
     Folder,
@@ -61,12 +68,14 @@ pub enum FieldKind {
         /// The settings the scan reads, whose change invalidates its result.
         depends_on: Vec<String>,
         /// What a count-only scan tells the user; `None` for a scan whose values are picked.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
         count: Option<ScanCount>,
     },
 }
 
 /// The sentences of a count-only scan, which are all the user sees of what it found.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
 pub struct ScanCount {
     /// Shown while a setting the scan reads is empty.
     pub missing: String,
