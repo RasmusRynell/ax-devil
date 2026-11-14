@@ -1,20 +1,20 @@
 import { useLayoutEffect, useMemo } from "react";
-import type { SidebarView } from "../generated/api";
 import { useStreaming } from "../live/cameras";
 import { useDoc, useView } from "../session/session";
 import { useKept } from "../kit/keptState";
 import { NO_FOLDS, revealShown } from "./reveal";
 import { treeOf } from "./treeModel";
+import type { BuiltinView } from "./views";
 
 /** What a tree view keeps of its folds. */
-export const useFolds = (view: SidebarView) => useKept(`${view}:folds`, NO_FOLDS);
+export const useFolds = (view: BuiltinView) => useKept(`${view}:folds`, NO_FOLDS);
 
 /**
  * Brings a tree view's folds to what the hosted viewers show: the rows of a newly shown item or entry are revealed and
  * those the last viewer left close. The window keeps this mounted, so a view that is away (another view, or
  * no sidebar) still sees every change as the reference's trees do.
  */
-export function RevealShown({ view }: { view: SidebarView }): null {
+export function RevealShown({ view }: { view: BuiltinView }): null {
   const workspace = useDoc()?.workspace;
   const tree = useMemo(() => (workspace ? treeOf(workspace) : []), [workspace]);
   const [views] = useView("viewers");

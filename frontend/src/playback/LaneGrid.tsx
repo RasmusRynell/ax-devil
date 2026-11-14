@@ -5,11 +5,29 @@ import type { Hidden } from "../viewer/hidden";
 import type { LaneDisplay, Picked, Selection, Viewport } from "../lanes/contract";
 import { InfoHud } from "./InfoHud";
 import { LaneChip } from "../lanes/LaneChip";
+import { VideoLayer } from "../plugins/PluginFrame";
+import {
+  LaneViewsContext,
+  usePluginViews,
+  viewName,
+  type BoundViewer,
+} from "../plugins/usePlugins";
 import { allHidden, LANE_GAP, laneAt, layoutLanes, shownLanes } from "./laneCells";
+import type { CellRect } from "../overlay/painter";
 import type { Geometry } from "./renderer";
 import type { PlaybackView } from "./view";
 import { VideoCanvas } from "./VideoCanvas";
 import { FIT, intersection, pictureRect } from "./viewport";
+
+/** The visible part of the video's picture inside `cell`, which is the cell itself until the video has a size. */
+function pictureIn(cell: CellRect, view: PlaybackView, viewport: Viewport): CellRect {
+  return view.width > 0
+    ? (intersection(
+        pictureRect(cell, { width: view.width, height: view.height }, viewport),
+        cell,
+      ) ?? cell)
+    : cell;
+}
 
 /** The size of an element's content box in CSS pixels, kept current. */
 function useSize(): [React.RefObject<HTMLDivElement | null>, { width: number; height: number }] {
@@ -38,6 +56,7 @@ export function LaneGrid({
   title,
   anchor,
   entry,
+  bound,
   hidden,
   only = null,
   info = false,
@@ -63,6 +82,8 @@ export function LaneGrid({
   anchor: string;
   /** The entry the lanes belong to, as the workspace names it. */
   entry: string;
+  /** The viewer the plugin views drive; absent where none do (a live viewer). */
+  bound?: BoundViewer;
   hidden: Hidden;
   /** Shows this lane alone, filling the grid, while it is shown at all. */
   only?: number | null;
@@ -91,6 +112,17 @@ export function LaneGrid({
 }) {
   const [box, size] = useSize();
   const { lanes } = view;
+  // The plugin views on over each lane, by `<lane label>|<view name>`.
+  const videoViews = usePluginViews("video");
+  const [layers, setLayers] = useState<ReadonlySet<string>>(new Set());
+  const toggleLayer = (key: string) =>
+    setLayers((now) => {
+      const next = new Set(now);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  const viewsOn = (label: string) =>
+    videoViews.filter((plugin) => layers.has(`${label}|${viewName(plugin)}`));
   const { owner } = useAccess();
   const shown = useMemo(() => shownLanes(lanes, hidden, entry), [lanes, hidden, entry]);
   const cells = useMemo(
@@ -136,15 +168,21 @@ export function LaneGrid({
         onSelect={onSelect}
         onDrawn={onDrawn}
       />
+      {bound &&
+        cells.flatMap(({ lane: index, rect: cell }) =>
+          viewsOn(lanes[index].label).map((plugin) => (
+            <VideoLayer
+              key={`${lanes[index].label}|${viewName(plugin)}`}
+              view={plugin}
+              target={bound}
+              cell={cell}
+              picture={pictureIn(cell, view, viewport ?? FIT)}
+            />
+          )),
+        )}
       {cells.map(({ lane: index, rect: cell }) => {
         // The tag starts at the corner of the visible picture, not of the cell around it, and may run over the bars.
-        const rect =
-          view.width > 0
-            ? (intersection(
-                pictureRect(cell, { width: view.width, height: view.height }, viewport ?? FIT),
-                cell,
-              ) ?? cell)
-            : cell;
+        const rect = pictureIn(cell, view, viewport ?? FIT);
         return (
           <div
             key={lanes[index].label}
@@ -157,31 +195,43 @@ export function LaneGrid({
             }}
           >
             <div className="pointer-events-auto max-w-full">
-              <LaneChip
-                lane={lanes[index]}
-                catalogs={view.catalogs}
-                cadence={view.cadence}
-                hideName={
-                  !laneNames || info || (shown.length === 1 && lanes[index].label === title)
+              <LaneViewsContext
+                value={
+                  bound && videoViews.length > 0
+                    ? {
+                        views: videoViews,
+                        shown: new Set(viewsOn(lanes[index].label).map(viewName)),
+                        toggle: (name) => toggleLayer(`${lanes[index].label}|${name}`),
+                      }
+                    : null
                 }
-                live={live}
-                stage={{ position: shown.indexOf(index) + 1, count: shown.length }}
-                onChange={(change) => stream.setLane(index, change)}
-                onApplyAll={
-                  lanes.filter((lane) => lane.source !== null).length > 1
-                    ? () => void stream.applyToAll(index, owner)
-                    : undefined
-                }
-                onReload={() => stream.reloadCatalog(index)}
-                onDismissCatalogAction={() => stream.dismissCatalogAction(index)}
-                onHide={onHide && (() => onHide(lanes[index].label))}
-                onExport={
-                  onExport && {
-                    run: () => onExport(index),
-                    waits: !!choicesOf(lanes).find((choice) => choice.lane === index)?.cold,
+              >
+                <LaneChip
+                  lane={lanes[index]}
+                  catalogs={view.catalogs}
+                  cadence={view.cadence}
+                  hideName={
+                    !laneNames || info || (shown.length === 1 && lanes[index].label === title)
                   }
-                }
-              />
+                  live={live}
+                  stage={{ position: shown.indexOf(index) + 1, count: shown.length }}
+                  onChange={(change) => stream.setLane(index, change)}
+                  onApplyAll={
+                    lanes.filter((lane) => lane.source !== null).length > 1
+                      ? () => void stream.applyToAll(index, owner)
+                      : undefined
+                  }
+                  onReload={() => stream.reloadCatalog(index)}
+                  onDismissCatalogAction={() => stream.dismissCatalogAction(index)}
+                  onHide={onHide && (() => onHide(lanes[index].label))}
+                  onExport={
+                    onExport && {
+                      run: () => onExport(index),
+                      waits: !!choicesOf(lanes).find((choice) => choice.lane === index)?.cold,
+                    }
+                  }
+                />
+              </LaneViewsContext>
             </div>
             {info && <InfoHud stream={stream} view={view} lane={index} />}
           </div>

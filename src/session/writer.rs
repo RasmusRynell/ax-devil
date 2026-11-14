@@ -183,7 +183,10 @@ async fn send_parts<S: Sink<Message> + Unpin>(
                 .flatten(),
             link_problem: owner.then(|| state.hosting.link_problem()).flatten(),
         }),
-        view: (**seat.view.as_ref().unwrap_or(&session.presenter)).clone(),
+        view: {
+            let view = (**seat.view.as_ref().unwrap_or(&session.presenter)).clone();
+            if owner { view } else { view.for_guest() }
+        },
         views_done: seat.views_done,
     };
     if sent.mine.as_ref() == Some(&mine) {

@@ -101,3 +101,24 @@ fn restricting_drops_the_viewers_of_closed_items_and_unplaced_ones_and_keeps_the
         Some(split(Axis::Row, 3000, pane(1), pane(3)))
     );
 }
+
+#[test]
+fn a_plugin_view_is_shared_by_name_and_a_guest_sees_the_workspace_instead() {
+    let wire = json!({ "view": { "plugin": { "view": "acme.review" } }, "open": true });
+    let sidebar: Sidebar = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&sidebar).unwrap(), wire);
+    let view = View {
+        sidebar,
+        ..View::default()
+    };
+    assert_eq!(
+        view.clone().for_guest().sidebar.view,
+        SidebarView::Workspace
+    );
+    assert_eq!(
+        view.sidebar.view,
+        SidebarView::Plugin {
+            view: "acme.review".into()
+        }
+    );
+}

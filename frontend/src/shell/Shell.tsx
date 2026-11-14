@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAccess } from "../client/access";
 import { scopeOf } from "../client/commands";
-import type { SidebarView, WorkspaceCommand } from "../generated/api";
+import type { WorkspaceCommand } from "../generated/api";
 import { COMMANDS } from "../generated/settings";
 import { reasonOf } from "../client/errors";
 import { Button } from "../kit/Button";
@@ -30,10 +30,11 @@ import { RECENT_ID } from "../client/recents";
 import { SettingsDialog } from "./SettingsDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { KeptStateProvider } from "../kit/keptState";
+import { PluginViewsProvider, RunCommandContext } from "../plugins/usePlugins";
 import { RevealLive, RevealShown } from "./RevealShown";
 import { LISTED_VIEWS, Sidebar } from "./Sidebar";
 import { Welcome } from "./Welcome";
-import type { ActivityItem } from "./views";
+import { viewId, viewOf, type ActivityItem } from "./views";
 import { toggleAppFullscreen, useAppFullscreen } from "../client/windowBridge";
 import { OPEN_WORKSPACE, saveWorkspace, usePickPath } from "../client/pickPath";
 
@@ -184,11 +185,12 @@ export function Shell({ version }: { version: string }) {
   };
   const activate = (item: ActivityItem) => {
     if (item.opens === "command") run(item.id);
-    else if (sidebar.open && sidebar.view === item.id) setSidebar({ ...sidebar, open: false });
-    else setSidebar({ view: item.id as SidebarView, open: true });
+    else if (sidebar.open && viewId(sidebar.view) === item.id)
+      setSidebar({ ...sidebar, open: false });
+    else setSidebar({ view: viewOf(item), open: true });
   };
   // What each region of this window shows, so a cursor lands by region only where the same thing is shown.
-  const scopes: Scopes = { sidebar: sidebar.view, main: active?.item.id ?? "welcome" };
+  const scopes: Scopes = { sidebar: viewId(sidebar.view), main: active?.item.id ?? "welcome" };
 
   useEffect(() => {
     /** The command this key press runs, if the shell handles it. */
@@ -243,119 +245,126 @@ export function Shell({ version }: { version: string }) {
         <RevealShown key={view} view={view} />
       ))}
       <RevealLive />
-      <ViewerActionsContext.Provider value={setViewerActions}>
-        <div className="flex min-h-0 flex-1 flex-col">
-          <h1 className="sr-only">ax-devil</h1>
-          <TitleBar
-            checked={
-              new Set([
-                ...checked,
-                ...(fullscreen ? ["fullscreen"] : []),
-                ...(sidebar.open ? ["sidebar"] : []),
-                ...Object.entries(OVERLAY_CHECKS)
-                  .filter(([, { overlay }]) => overlays[overlay])
-                  .map(([id]) => id),
-              ])
-            }
-            wired={new Set([...Object.keys(actions), ...Object.keys(viewerActions)])}
-            onSelect={select}
-            onStartSharing={startSharing}
-          />
-          {notice && (
-            <Banner role="alert" onDismiss={() => setNotice(null)}>
-              {notice}
-            </Banner>
-          )}
-          {workspace?.recovered && (
-            <Banner
-              role="status"
-              actions={
-                <>
-                  <Button
-                    size="small"
-                    disabled={!allowed.content}
-                    onClick={() => void ask({ type: "keep" })}
-                  >
-                    Keep
-                  </Button>
-                  {allowed.host && (
-                    <Button size="small" onClick={() => void ask({ type: "discard" })}>
-                      Discard
-                    </Button>
-                  )}
-                </>
-              }
-            >
-              Restored unsaved changes
-            </Banner>
-          )}
-          <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-            <ActivityBar active={sidebar.open ? sidebar.view : null} onSelect={activate} />
-            {sidebar.open && <Sidebar view={sidebar.view} onRun={run} onAddLive={addLive} />}
-            <main
-              data-cursor-region="main"
-              className={`flex min-h-0 min-w-0 flex-1 overflow-auto ${sidebar.open ? "max-sm:hidden" : ""}`}
-            >
-              {viewers.length > 0 ? <SplitArea /> : <Welcome onRun={run} />}
-            </main>
-          </div>
-          <Presence scopes={scopes} />
-          {dialog === "settings" && (
-            <SettingsDialog
-              onClose={closer("settings")}
-              onRestartNeeded={() => setDialog("restart")}
-            />
-          )}
-          {dialog === "restart" && (
-            <ChoiceDialog
-              title="Restart ax-devil?"
-              message="Some changes take effect after a restart."
-              // Only a backend the desktop started itself is restarted with it.
-              choices={
-                bridge?.restart
-                  ? [
-                      { id: "now", label: "Restart Now" },
-                      { id: "later", label: "Later" },
-                    ]
-                  : [{ id: "later", label: "OK" }]
-              }
-              defaultId={bridge?.restart ? "now" : "later"}
-              onChoose={(choice) => {
-                closer("restart")();
-                if (choice === "now") bridge?.restart?.();
-              }}
-            />
-          )}
-          {dialog === "quick-setup" && (
-            <QuickSetupDialog
-              onClose={closer("quick-setup")}
-              onNotice={(message) => setRefused({ title: "Quick Setup", message })}
-            />
-          )}
-          {dialog === "about" && <AboutDialog version={version} onClose={closer("about")} />}
-          {dialog === "add-video" && <AddVideoDialog onClose={closer("add-video")} />}
-          {dialog === "add-live-stream" && (
-            <AddLiveStreamDialog
-              seed={addSeed}
-              onClose={() => {
-                setAddSeed({});
-                closer("add-live-stream")();
-              }}
-            />
-          )}
-          {dialog === "add-playlist" && <AddPlaylistDialog onClose={closer("add-playlist")} />}
-          {dialog === "shortcuts" && <ShortcutsDialog onClose={closer("shortcuts")} />}
-          {refused && (
-            <ChoiceDialog
-              title={refused.title}
-              message={refused.message}
-              choices={[{ id: "ok", label: "OK" }]}
-              defaultId="ok"
-              onChoose={() => setRefused(null)}
-            />
-          )}
-        </div>
-      </ViewerActionsContext.Provider>
+      <PluginViewsProvider>
+        <RunCommandContext value={run}>
+          <ViewerActionsContext.Provider value={setViewerActions}>
+            <div className="flex min-h-0 flex-1 flex-col">
+              <h1 className="sr-only">ax-devil</h1>
+              <TitleBar
+                checked={
+                  new Set([
+                    ...checked,
+                    ...(fullscreen ? ["fullscreen"] : []),
+                    ...(sidebar.open ? ["sidebar"] : []),
+                    ...Object.entries(OVERLAY_CHECKS)
+                      .filter(([, { overlay }]) => overlays[overlay])
+                      .map(([id]) => id),
+                  ])
+                }
+                wired={new Set([...Object.keys(actions), ...Object.keys(viewerActions)])}
+                onSelect={select}
+                onStartSharing={startSharing}
+              />
+              {notice && (
+                <Banner role="alert" onDismiss={() => setNotice(null)}>
+                  {notice}
+                </Banner>
+              )}
+              {workspace?.recovered && (
+                <Banner
+                  role="status"
+                  actions={
+                    <>
+                      <Button
+                        size="small"
+                        disabled={!allowed.content}
+                        onClick={() => void ask({ type: "keep" })}
+                      >
+                        Keep
+                      </Button>
+                      {allowed.host && (
+                        <Button size="small" onClick={() => void ask({ type: "discard" })}>
+                          Discard
+                        </Button>
+                      )}
+                    </>
+                  }
+                >
+                  Restored unsaved changes
+                </Banner>
+              )}
+              <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+                <ActivityBar
+                  active={sidebar.open ? viewId(sidebar.view) : null}
+                  onSelect={activate}
+                />
+                {sidebar.open && <Sidebar view={sidebar.view} onRun={run} onAddLive={addLive} />}
+                <main
+                  data-cursor-region="main"
+                  className={`flex min-h-0 min-w-0 flex-1 overflow-auto ${sidebar.open ? "max-sm:hidden" : ""}`}
+                >
+                  {viewers.length > 0 ? <SplitArea /> : <Welcome onRun={run} />}
+                </main>
+              </div>
+              <Presence scopes={scopes} />
+              {dialog === "settings" && (
+                <SettingsDialog
+                  onClose={closer("settings")}
+                  onRestartNeeded={() => setDialog("restart")}
+                />
+              )}
+              {dialog === "restart" && (
+                <ChoiceDialog
+                  title="Restart ax-devil?"
+                  message="Some changes take effect after a restart."
+                  // Only a backend the desktop started itself is restarted with it.
+                  choices={
+                    bridge?.restart
+                      ? [
+                          { id: "now", label: "Restart Now" },
+                          { id: "later", label: "Later" },
+                        ]
+                      : [{ id: "later", label: "OK" }]
+                  }
+                  defaultId={bridge?.restart ? "now" : "later"}
+                  onChoose={(choice) => {
+                    closer("restart")();
+                    if (choice === "now") bridge?.restart?.();
+                  }}
+                />
+              )}
+              {dialog === "quick-setup" && (
+                <QuickSetupDialog
+                  onClose={closer("quick-setup")}
+                  onNotice={(message) => setRefused({ title: "Quick Setup", message })}
+                />
+              )}
+              {dialog === "about" && <AboutDialog version={version} onClose={closer("about")} />}
+              {dialog === "add-video" && <AddVideoDialog onClose={closer("add-video")} />}
+              {dialog === "add-live-stream" && (
+                <AddLiveStreamDialog
+                  seed={addSeed}
+                  onClose={() => {
+                    setAddSeed({});
+                    closer("add-live-stream")();
+                  }}
+                />
+              )}
+              {dialog === "add-playlist" && <AddPlaylistDialog onClose={closer("add-playlist")} />}
+              {dialog === "shortcuts" && <ShortcutsDialog onClose={closer("shortcuts")} />}
+              {refused && (
+                <ChoiceDialog
+                  title={refused.title}
+                  message={refused.message}
+                  choices={[{ id: "ok", label: "OK" }]}
+                  defaultId="ok"
+                  onChoose={() => setRefused(null)}
+                />
+              )}
+            </div>
+          </ViewerActionsContext.Provider>
+        </RunCommandContext>
+      </PluginViewsProvider>
     </KeptStateProvider>
   );
 }

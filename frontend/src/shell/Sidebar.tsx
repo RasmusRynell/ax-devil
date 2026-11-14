@@ -6,6 +6,8 @@ import type { AddSeed } from "../live/cameras";
 import { ViewPanel } from "../kit/ViewPanel";
 import { useCan, useDoc, useRenameWorkspace, useView } from "../session/session";
 import { PluginsView } from "../plugins/PluginsView";
+import { SidebarFrame } from "../plugins/PluginFrame";
+import { usePluginViews, viewName } from "../plugins/usePlugins";
 import { PanelDivider } from "../tools/PanelDivider";
 import { useKept } from "../kit/keptState";
 import { LiveView } from "./LiveView";
@@ -16,12 +18,12 @@ import { StartPanel } from "./StartPanel";
 import { listedCount, treeOf, type Order, type SectionId } from "./treeModel";
 import { WorkspaceTree } from "./WorkspaceTree";
 import { UNTITLED } from "./useWindowTitle";
-import { VIEW_TITLES } from "./views";
+import { VIEW_TITLES, type BuiltinView } from "./views";
 
 /** The views that list the workspace's items: the sections each lists, the orders it offers, its search placeholder and its empty message. */
 const LISTINGS: Partial<
   Record<
-    SidebarView,
+    BuiltinView,
     { listed: readonly SectionId[]; orders: readonly Order[]; search: string; empty: string }
   >
 > = {
@@ -40,7 +42,7 @@ const LISTINGS: Partial<
 };
 
 /** The views that list the workspace's items. */
-export const LISTED_VIEWS = Object.keys(LISTINGS) as SidebarView[];
+export const LISTED_VIEWS = Object.keys(LISTINGS) as BuiltinView[];
 
 /**
  * The sidebar: a title and the view's content; the Live view has its own toolbar and says in the header how many
@@ -50,7 +52,7 @@ export const LISTED_VIEWS = Object.keys(LISTINGS) as SidebarView[];
  * and half the space beside the activity bar, remembered while the window lives, and a drag to nothing hides it.
  */
 export function Sidebar({
-  view,
+  view: asked,
   onRun,
   onAddLive,
 }: {
@@ -58,6 +60,11 @@ export function Sidebar({
   onRun: (id: string) => void;
   onAddLive: (seed: AddSeed) => void;
 }) {
+  // A plugin view the listing no longer has (its plugin was removed or failed) shows the Plugins view.
+  const plugin = usePluginViews("sidebar").find(
+    (candidate) => typeof asked !== "string" && viewName(candidate) === asked.plugin.view,
+  );
+  const view: BuiltinView = typeof asked === "string" ? asked : "plugins";
   const listing = LISTINGS[view];
   // The width the user dragged to, kept while the sidebar is hidden and shown again.
   const [width, setWidth] = useKept<number | null>("sidebar:width", null);
@@ -96,7 +103,7 @@ export function Sidebar({
       />
       <ViewPanel
         key={named?.epoch}
-        title={named ? (named.name ?? UNTITLED) : VIEW_TITLES[view]}
+        title={named ? (named.name ?? UNTITLED) : (plugin?.view.title ?? VIEW_TITLES[view])}
         tooltip={named ? (named.file ?? undefined) : undefined}
         edit={
           named && canEdit
@@ -119,7 +126,9 @@ export function Sidebar({
           ) : undefined
         }
       >
-        {view === "live" ? (
+        {plugin ? (
+          <SidebarFrame view={plugin} />
+        ) : view === "live" ? (
           <LiveView onAdd={onAddLive} />
         ) : (
           <div

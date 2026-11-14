@@ -19,6 +19,7 @@ import { useSettings } from "../client/settings";
 import { MediaToolsPanel } from "../tools/MediaToolsPanel";
 import { useMediaTools } from "../tools/useMediaTools";
 import { PaneActiveContext, useHeaderDetails, useViewerActions } from "../viewer/actions";
+import { bindViewer, type BoundViewer } from "../plugins/usePlugins";
 import { registerExport } from "../viewer/exportTargets";
 import type { Hidden } from "../viewer/hidden";
 import { useLaneFocus } from "../viewer/laneFocus";
@@ -164,6 +165,12 @@ export function Playback({
     [ready, viewer, item, entry, exportLane],
   );
   useHeaderDetails(view.details);
+  // The plugin views the sidebar shows drive this viewer while it plays.
+  const bound = useMemo<BoundViewer>(
+    () => ({ viewer, item, entry, stream }),
+    [viewer, item, entry, stream],
+  );
+  useEffect(() => (ready ? bindViewer(bound) : undefined), [ready, bound]);
   const addBookmark = useAddBookmark(stream, item, entry);
   useSeekRequest(stream, view.status, entry);
   // Opening the tools shows the lane the shortcuts act on.
@@ -247,6 +254,7 @@ export function Playback({
                 view={view}
                 name={name}
                 title={title}
+                bound={bound}
                 anchor={`frame:${item}`}
                 entry={entry}
                 hidden={hidden}

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { SidebarView } from "../generated/api";
 import { MenuButton } from "../kit/Button";
 import { SearchField } from "../kit/Fields";
 import { IconToggle } from "../kit/IconToggle";
@@ -23,6 +22,7 @@ import {
 import { useRowActions } from "./useRowActions";
 import { useRowThumbnail } from "./useRowThumbnail";
 import { WorkspaceList } from "./WorkspaceList";
+import type { BuiltinView } from "./views";
 
 const NOTHING_CHECKED: ReadonlySet<string> = new Set();
 const NO_CLOSED: ReadonlySet<string> = new Set();
@@ -54,7 +54,7 @@ export function WorkspaceTree({
   search,
   empty,
 }: {
-  view: SidebarView;
+  view: BuiltinView;
   listed: readonly SectionId[];
   orders: readonly Order[];
   search: string;

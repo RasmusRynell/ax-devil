@@ -1,7 +1,9 @@
-import { useId, useState } from "react";
+import { useContext, useId, useState } from "react";
 import type { CatalogInfoWire } from "../generated/api";
 import { Button } from "../kit/Button";
+import { Checkbox } from "../kit/Fields";
 import { Tabs } from "../kit/Tabs";
+import { LaneViewsContext, viewName } from "../plugins/usePlugins";
 import { judgedRevision, type LaneSettings, type LaneState } from "./lanes";
 import { EXPORT_TIP, EXPORT_WAITS, HIDE_LANE_TIP } from "./laneContextMenu";
 import { changedControls, LaneMenuFilter } from "./LaneMenuFilter";
@@ -47,6 +49,7 @@ export function LaneMenu({
 }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Look");
   const panel = useId();
+  const plugins = useContext(LaneViewsContext);
   // The Filter tab counts the controls that differ from their defaults, as `Filter 2`.
   const changed = changedControls(lane);
   const names = TABS.map((name) => (name === "Filter" && changed > 0 ? `Filter ${changed}` : name));
@@ -70,6 +73,22 @@ export function LaneMenu({
           <LaneMenuTiming lane={lane} cadence={cadence} live={live} onChange={onChange} />
         )}
       </div>
+      {plugins && (
+        <div
+          role="group"
+          aria-label="Views"
+          className="flex flex-col gap-s border-t border-line pt-m"
+        >
+          {plugins.views.map((plugin) => (
+            <Checkbox
+              key={viewName(plugin)}
+              label={plugin.view.title}
+              checked={plugins.shown.has(viewName(plugin))}
+              onChange={() => plugins.toggle(viewName(plugin))}
+            />
+          ))}
+        </div>
+      )}
       {(onApplyAll || onHide || onExport) && (
         <div className="flex flex-wrap gap-s border-t border-line pt-m">
           {onApplyAll && (

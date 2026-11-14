@@ -37,7 +37,11 @@ open: boolean, };
 /**
  * What the sidebar shows; part of the view a session shares.
  */
-export type SidebarView = "workspace" | "live" | "offline" | "bookmarks" | "plugins" | "sessions";
+export type SidebarView = "workspace" | "live" | "offline" | "bookmarks" | "plugins" | "sessions" | { "plugin": { 
+/**
+ * The view's qualified id.
+ */
+view: string, } };
 
 /**
  * What a window shows of the Doc. Items the Doc does not have open are dropped by the backend, with their viewers.

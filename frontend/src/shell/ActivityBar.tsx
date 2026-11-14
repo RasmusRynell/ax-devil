@@ -3,9 +3,10 @@ import type { CommandId } from "../generated/settings";
 import { Icon } from "../kit/Icon";
 import { IconButton } from "../kit/IconButton";
 import { useFailedPlugins } from "../plugins/failed";
+import { usePluginViews } from "../plugins/usePlugins";
 import { useAllowed } from "../session/session";
 import { useSettings } from "../client/settings";
-import { ACTIVITY, type ActivityItem } from "./views";
+import { ACTIVITY, pluginItem, type ActivityItem } from "./views";
 
 interface Props {
   /** The view shown in the open sidebar, or null while it is hidden. */
@@ -14,12 +15,13 @@ interface Props {
 }
 
 /**
- * The left-edge icon strip: views at the top, other windows at the bottom. A view that needs attention carries a
+ * The left-edge icon strip: views at the top, plugins' after them, other windows at the bottom. A view that needs attention carries a
  * warning mark on its icon and says why in its tooltip: Plugins, while any plugin failed to load.
  */
 export function ActivityBar({ active, onSelect }: Props) {
   const allowed = useAllowed();
   const failed = useFailedPlugins();
+  const plugins = usePluginViews("sidebar").map(pluginItem);
   const { shortcuts } = useSettings();
   const warnings: Record<string, string> =
     failed > 0 ? { plugins: `${failed} failed to load` } : {};
@@ -52,7 +54,7 @@ export function ActivityBar({ active, onSelect }: Props) {
       data-cursor-region="activityBar"
       className="flex shrink-0 justify-between border-b border-line bg-panel sm:flex-col sm:border-r sm:border-b-0"
     >
-      <div className="flex sm:flex-col">{ACTIVITY.top.map(button)}</div>
+      <div className="flex sm:flex-col">{[...ACTIVITY.top, ...plugins].map(button)}</div>
       <div className="flex sm:flex-col">{ACTIVITY.bottom.map(button)}</div>
     </nav>
   );

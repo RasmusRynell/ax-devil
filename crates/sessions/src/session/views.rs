@@ -16,7 +16,7 @@ use workspace::store::{Resolution, WorkspaceState};
 use workspace::{Content, ContentId, Entry, ItemId};
 
 /// What the sidebar shows; part of the view a session shares.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum SidebarView {
     /// The whole Workspace.
@@ -32,10 +32,15 @@ pub enum SidebarView {
     Plugins,
     /// The session this client is in, and the sessions it can watch.
     Sessions,
+    /// A plugin's view, named `<plugin id>.<view id>`. Only an Owner has plugin views.
+    Plugin {
+        /// The view's qualified id.
+        view: String,
+    },
 }
 
 /// What the sidebar shows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct Sidebar {
     /// Which view.
@@ -178,6 +183,16 @@ pub struct View {
     pub overlays: Overlays,
 }
 
+impl View {
+    /// This view as a Guest is shown it: a Guest has no plugin views, so a sidebar that shows one shows the Workspace.
+    pub fn for_guest(mut self) -> Self {
+        if matches!(self.sidebar.view, SidebarView::Plugin { .. }) {
+            self.sidebar.view = SidebarView::Workspace;
+        }
+        self
+    }
+}
+
 /// `view` cut down to what `doc` has open: no viewer, and no pane, for an item that is not open, and no viewer outside
 /// the layout. A resolved item that lost the selected entry also loses that viewer. A pane that loses its viewer
 /// gives its space to its sibling. Each viewer's entry is made one of its
@@ -239,7 +254,7 @@ pub fn restrict(view: &View, doc: &Doc) -> View {
         .collect();
     View {
         // Nothing about the sidebar depends on the Doc.
-        sidebar: *sidebar,
+        sidebar: sidebar.clone(),
         active: active.filter(|id| viewers.contains_key(id)),
         viewers,
         layout,

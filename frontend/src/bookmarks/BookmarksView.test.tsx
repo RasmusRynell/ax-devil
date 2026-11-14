@@ -222,7 +222,11 @@ describe("a viewer and its bookmarks", () => {
     function Sidebar() {
       useSidebarOnReplace();
       const [sidebar] = useView("sidebar");
-      return <div data-testid="view">{sidebar.view}</div>;
+      return (
+        <div data-testid="view">
+          {typeof sidebar.view === "string" ? sidebar.view : sidebar.view.plugin.view}
+        </div>
+      );
     }
     render(
       <SessionProvider>
@@ -259,7 +263,9 @@ describe("a viewer and its bookmarks", () => {
             choose
           </button>
           {shown && <Hook />}
-          <div data-testid="view">{sidebar.view}</div>
+          <div data-testid="view">
+            {typeof sidebar.view === "string" ? sidebar.view : sidebar.view.plugin.view}
+          </div>
         </>
       );
     }
@@ -292,7 +298,7 @@ describe("a viewer and its bookmarks", () => {
       const following = useFollowing();
       return (
         <button type="button" onClick={() => joinLink(host.link)}>
-          {`${sidebar.view} ${following ? "following" : "exploring"}`}
+          {`${typeof sidebar.view === "string" ? sidebar.view : sidebar.view.plugin.view} ${following ? "following" : "exploring"}`}
         </button>
       );
     }
@@ -330,7 +336,7 @@ describe("a viewer and its bookmarks", () => {
           <button type="button" onClick={() => void follow()}>
             follow
           </button>
-          <div data-testid="state">{`${sidebar.view} ${following ? "following" : "exploring"}`}</div>
+          <div data-testid="state">{`${typeof sidebar.view === "string" ? sidebar.view : sidebar.view.plugin.view} ${following ? "following" : "exploring"}`}</div>
         </>
       );
     }
@@ -372,7 +378,7 @@ describe("a viewer and its bookmarks", () => {
       const [sidebar] = useView("sidebar");
       return (
         <button type="button" onClick={add}>
-          {sidebar.view}
+          {typeof sidebar.view === "string" ? sidebar.view : sidebar.view.plugin.view}
         </button>
       );
     }

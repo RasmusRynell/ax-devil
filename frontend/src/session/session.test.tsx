@@ -27,7 +27,8 @@ function Probe() {
   return (
     <>
       <p>
-        {sidebar.view} {sidebar.open ? "open" : "closed"} {canView ? "editable" : "read-only"}
+        {typeof sidebar.view === "string" ? sidebar.view : sidebar.view.plugin.view}{" "}
+        {sidebar.open ? "open" : "closed"} {canView ? "editable" : "read-only"}
       </p>
       <button onClick={() => setSidebar({ ...sidebar, view: "live" })}>Show live</button>
       <button onClick={() => setSidebar({ ...sidebar, open: false })}>Hide sidebar</button>
