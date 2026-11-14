@@ -5,7 +5,7 @@ use crate::session_client;
 
 use ax_devil::{
     AppState,
-    access::{Admission, Limits, Policy, Refused},
+    access::{ConnectionGate, Limits, Policy, Refused},
     app, lan_app,
     plugins::Plugins,
     video_cache,
@@ -241,51 +241,51 @@ async fn the_listener_for_other_machines_serves_the_sockets_but_neither_settings
 
 #[test]
 fn one_peer_or_one_crowd_cannot_use_up_the_sockets() {
-    let admission = Arc::new(Admission::new(Limits::default()));
+    let gate = Arc::new(ConnectionGate::new(Limits::default()));
     let peer = |last: u8| IpAddr::V4(Ipv4Addr::new(10, 0, 0, last));
 
     // A peer may have 4 sockets waiting for their first message, and 16 open in all.
-    let mut slots: Vec<_> = (0..4).map(|_| admission.admit(peer(1)).unwrap()).collect();
-    assert_eq!(admission.admit(peer(1)).err(), Some(Refused::PeerBusy));
+    let mut slots: Vec<_> = (0..4).map(|_| gate.admit(peer(1)).unwrap()).collect();
+    assert_eq!(gate.admit(peer(1)).err(), Some(Refused::PeerBusy));
     for slot in &mut slots {
         slot.hello_received();
     }
     slots.extend((4..16).map(|_| {
-        let mut slot = admission.admit(peer(1)).unwrap();
+        let mut slot = gate.admit(peer(1)).unwrap();
         slot.hello_received();
         slot
     }));
-    assert_eq!(admission.admit(peer(1)).err(), Some(Refused::PeerBusy));
+    assert_eq!(gate.admit(peer(1)).err(), Some(Refused::PeerBusy));
     drop(slots.pop());
-    assert!(admission.admit(peer(1)).is_ok());
+    assert!(gate.admit(peer(1)).is_ok());
 
     // Sixteen peers with 4 waiting each fill the 64 server-wide, and the next peer is turned away too.
     let waiting: Vec<_> = (2..18)
         .flat_map(|last| (0..4).map(move |_| last))
-        .map(|last| admission.admit(peer(last)).unwrap())
+        .map(|last| gate.admit(peer(last)).unwrap())
         .collect();
-    assert_eq!(admission.admit(peer(100)).err(), Some(Refused::Busy));
+    assert_eq!(gate.admit(peer(100)).err(), Some(Refused::Busy));
     drop(waiting);
-    assert!(admission.admit(peer(100)).is_ok());
+    assert!(gate.admit(peer(100)).is_ok());
 }
 
 #[test]
 fn behind_a_proxy_only_the_totals_bind() {
     let proxy = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
-    let fill = |admission: &Arc<Admission>, count: usize| {
+    let fill = |gate: &Arc<ConnectionGate>, count: usize| {
         (0..count)
             .map(|_| {
-                let mut slot = admission.admit(proxy)?;
+                let mut slot = gate.admit(proxy)?;
                 slot.hello_received();
                 Ok(slot)
             })
             .collect::<Result<Vec<_>, Refused>>()
     };
-    let direct = Arc::new(Admission::new(Limits::default()));
+    let direct = Arc::new(ConnectionGate::new(Limits::default()));
     assert_eq!(fill(&direct, 17).err(), Some(Refused::PeerBusy));
 
     let limits = Limits::behind_proxy();
-    let proxied = Arc::new(Admission::new(limits));
+    let proxied = Arc::new(ConnectionGate::new(limits));
     let open = fill(&proxied, limits.sockets).unwrap();
     assert_eq!(proxied.admit(proxy).err(), Some(Refused::Busy));
     drop(open);

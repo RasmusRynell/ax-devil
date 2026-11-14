@@ -8,8 +8,8 @@ use crate::{
 
 use std::{fs, path::Path};
 
-use foundation::{CancelToken, Interrupt};
-use handler_api::{Bundle, BundleLane, Settings};
+use foundation::{CancelToken, ErrorCode, Interrupt};
+use handler_api::{Bundle, BundleLane, BundleVideo, Settings};
 use plugins::{LoadedPlugin, Manifest, TaskProgress};
 use scene::SceneTime;
 use serde_json::json;
@@ -156,4 +156,48 @@ fn a_task_whose_error_line_arrives_fails_with_its_reason() {
         Err(Interrupt::Failed(error)) => assert_eq!(error.reason, "disk full"),
         other => panic!("the task fails: {other:?}"),
     }
+}
+
+#[test]
+fn a_task_refuses_a_bundle_that_is_not_the_lanes_and_video_it_declares() {
+    let folder = tempfile::tempdir().expect("folder");
+    let lane = lane_file(folder.path(), "lane.jsonl", &[1]);
+    let manifest = json!({
+        "manifest": 2, "id": "acme", "name": "ACME", "version": "1", "protocol": 3,
+        "command": ["sh", "-c", "cat >/dev/null"],
+        "handlers": [{
+            "kind": "task", "id": "acme_export", "name": "Export",
+            "lanes": [{ "key": "lane", "label": "Lane" }]
+        }]
+    });
+    let path = common::install(&folder.path().join("plugin"), &manifest);
+    let plugin = LoadedPlugin::load(&path).expect("loads");
+    let task = &plugin.tasks[0];
+    let options = task
+        .spec()
+        .options
+        .validate(&Settings::new())
+        .expect("none");
+    let mut with_video = bundle(vec![("lane", lane.clone())]);
+    with_video.video = Some(BundleVideo {
+        path: folder.path().join("video.mp4"),
+        size: 0,
+        mtime_ns: 0,
+        images_sha256: None,
+    });
+
+    for refused in [
+        bundle(Vec::new()),
+        bundle(vec![("lane", lane.clone()), ("extra", lane.clone())]),
+        with_video,
+    ] {
+        let outcome = task.run(&refused, &options, &mut |_| (), &CancelToken::new());
+        assert!(
+            matches!(&outcome, Err(Interrupt::Failed(error)) if error.code == ErrorCode::InvalidRequest),
+            "{refused:?}: {outcome:?}"
+        );
+    }
+    let accepted = bundle(vec![("lane", lane)]);
+    task.run(&accepted, &options, &mut |_| (), &CancelToken::new())
+        .expect("the declared lanes run");
 }

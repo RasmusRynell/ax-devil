@@ -42,13 +42,7 @@ pub(crate) fn append_derived(
             let inputs: Option<Vec<(String, OverlayRef)>> = lane
                 .lanes
                 .iter()
-                .map(|(key, slot)| {
-                    let input = entry
-                        .overlays
-                        .iter()
-                        .find(|overlay| overlay.slot == *slot)?;
-                    Some((key.clone(), input.clone()))
-                })
+                .map(|(key, slot)| Some((key.clone(), entry.lane(slot)?.clone())))
                 .collect();
             let Some(lanes) = inputs else { continue };
             entry.overlays.push(OverlayRef {

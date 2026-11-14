@@ -5,12 +5,13 @@ mod info;
 mod problems;
 mod seen;
 
+use crate::shortcut_commands::settle_default_keys;
 use api_types::handlers::{CommandInfo, PluginSource, PluginStatus, PluginsInfo};
 use foundation::{ErrorCode, UserError};
 use handler_api::Settings;
 use handlers::{HandlerSet, Handlers};
 pub(crate) use info::field_infos;
-use info::{Installed, built_in_info, installed_info, same_listing};
+use info::{Installed, built_in_info, installed_info};
 use plugins::{Manifest, PluginTask, Registry, Reserved};
 use problems::log_new_problems;
 use seen::{Seen, Stamp};
@@ -197,7 +198,7 @@ impl Plugins {
         let (handlers, current) = self.read(registry, &mut seen);
         // The listing leaves out what a manifest edit may change, so it only tells a retry apart from a reload when
         // the files were the same before and when `read` stamped them.
-        if unchanged && seen.stamp == stamp && same_listing(&current.info, &self.info()) {
+        if unchanged && seen.stamp == stamp && current.info == self.info() {
             seen.wait = (wait * 2).min(MAX_RETRY_WAIT);
             return false;
         }
@@ -271,27 +272,7 @@ impl Plugins {
             };
             let manifest = Manifest::load(&installed.manifests()[index])
                 .map_err(|error| UserError::new(ErrorCode::PluginInvalid, error.capitalised()))?;
-            manifest.settings.validate(&values).map_err(|error| {
-                let invalid = UserError::new(ErrorCode::PluginInvalid, error.reason);
-                match error.location {
-                    Some(location) => invalid.at(location),
-                    None => invalid,
-                }
-            })?;
-            // What the form declares and the user gave: a default is not stored, so a changed default reaches
-            // whoever never chose a value.
-            let stored: Settings = values
-                .into_iter()
-                .filter(|(key, value)| {
-                    !value.is_null()
-                        && manifest
-                            .settings
-                            .fields
-                            .iter()
-                            .any(|field| field.key == *key)
-                })
-                .collect();
-            installed.set_settings(index, stored);
+            installed.set_settings(index, manifest.stored_settings(values)?);
             Ok(true)
         })
     }
@@ -360,7 +341,7 @@ impl Plugins {
         self.swap(handlers, current);
     }
 
-    /// The handlers and listing the registry lists now, with new view tokens.
+    /// The handlers and listing the registry lists now. A plugin keeps its view token while it stays in its folder.
     fn read(&self, registry: &Path, seen: &mut Seen) -> (Handlers, Current) {
         // Before the files are read, so a change made meanwhile is seen by the next refresh.
         *seen = Seen {
@@ -372,9 +353,19 @@ impl Plugins {
             plugins: installed,
             tasks,
             roots,
-        } = installed_info(&loaded);
+        } = installed_info(&loaded, &self.current().roots);
         let mut plugins = built_in_info(&self.built_in);
         plugins.extend(installed);
+        settle_default_keys(
+            plugins
+                .iter_mut()
+                .filter_map(|plugin| match &mut plugin.status {
+                    PluginStatus::Loaded { commands, .. } => Some(commands.iter_mut()),
+                    PluginStatus::Failed { .. } => None,
+                })
+                .flatten()
+                .collect(),
+        );
         let current = Current {
             info: Arc::new(PluginsInfo {
                 plugins,

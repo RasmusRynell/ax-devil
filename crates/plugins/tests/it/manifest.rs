@@ -55,6 +55,8 @@ fn every_refusal_names_the_manifest_field() {
             Box::new(|m| m["command"] = json!(["./missing.sh"])),
         ),
         ("id", Box::new(|m| m["id"] = json!("Not Valid"))),
+        // A command is named `<plugin>.<id>`, so a dot in an id would make that ambiguous.
+        ("id", Box::new(|m| m["id"] = json!("acme.tools"))),
         (
             "handlers[0].extensions",
             Box::new(|m| m["handlers"][0]["extensions"] = json!([".ACME"])),

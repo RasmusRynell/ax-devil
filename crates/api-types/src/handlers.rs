@@ -315,16 +315,12 @@ pub struct ResolvedInfo {
 /// The body of `POST /api/tasks/{id}/run`: the lanes of one entry, by the key the task reads them under.
 #[derive(Serialize, Deserialize, TS)]
 pub struct TaskRunRequest {
-    /// The Session of the window that asks.
-    pub session: String,
     /// The item that holds the entry.
     pub item: String,
     /// The entry whose lanes the task reads.
     pub entry: String,
     /// The slot of the lane given to each input key the task declares.
     pub lanes: BTreeMap<String, String>,
-    /// Whether the task is given the entry's video; it must match what the task declares.
-    pub video: bool,
     /// The options the task declares.
     #[ts(type = "Record<string, unknown>")]
     pub options: serde_json::Map<String, serde_json::Value>,
@@ -364,8 +360,6 @@ pub enum TaskLine {
 /// number `from`.
 #[derive(Serialize, Deserialize, TS)]
 pub struct LaneScenesQuery {
-    /// The Session of the window that asks.
-    pub session: String,
     /// The item that holds the entry.
     pub item: String,
     /// The entry.

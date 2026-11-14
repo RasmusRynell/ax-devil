@@ -4,10 +4,9 @@
 //! with `Compute` admission, which an Owner has, written to a folder that lives only as long as the run, and handed
 //! to the task as a bundle. Dropping the response cancels the task.
 
-use super::CancelOnDrop;
+use super::{CancelOnDrop, audience, find_entry, not_found, refuse};
 use crate::{AppState, Failure, access::Principal};
 use api_types::{
-    Audience,
     handlers::{TaskLine, TaskProgressInfo, TaskRunRequest},
     project,
 };
@@ -19,15 +18,13 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use bytes::Bytes;
-use foundation::{CancelToken, ErrorCode, Interrupt, ItemId, UserError};
+use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
 use futures_util::stream::unfold;
-use handler_api::Settings;
+use handler_api::{OverlayRef, Settings, VideoRef};
 use plugins::{PluginTask, TaskProgress};
 use scene_store::{Admission, build_bundle};
-use sessions::SessionId;
-use std::{collections::BTreeMap, convert::Infallible};
+use std::{convert::Infallible, sync::Arc};
 use tokio::sync::mpsc;
-use workspace::Entry;
 
 /// The largest body a run takes: its options.
 const MOST_OPTIONS_BYTES: usize = 8 << 20;
@@ -37,62 +34,12 @@ pub(super) fn limit() -> DefaultBodyLimit {
     DefaultBodyLimit::max(MOST_OPTIONS_BYTES)
 }
 
-/// A refused request: the status and `error` as `audience` may read it.
-pub(super) fn refuse(audience: Audience, status: StatusCode, error: &UserError) -> Failure {
-    (status, Json(project(error, audience)))
-}
-
-/// What an Owner may read of a failure: the host's paths and reasons only with Full access.
-pub(super) fn audience(principal: Principal) -> Audience {
-    Audience {
-        host_details: principal.full_access(),
-    }
-}
-
-/// The entry `entry` of the item `item`, which the Session `session` must be one that exists.
-pub(super) fn find_entry(
-    state: &AppState,
-    session: &str,
-    item: &str,
-    entry: &str,
-) -> Result<Entry, (StatusCode, UserError)> {
-    let missing = |what: &str| {
-        (
-            StatusCode::NOT_FOUND,
-            UserError::new(ErrorCode::Internal, format!("No such {what}")),
-        )
-    };
-    if !session
-        .parse::<SessionId>()
-        .is_ok_and(|id| state.sessions.subscribe(id).is_some())
-    {
-        return Err(missing("session"));
-    }
-    let held = ItemId::parse(item)
-        .and_then(|id| state.sessions.find_item(id))
-        .ok_or_else(|| missing("item"))?;
-    let content = held.content.ok_or_else(|| missing("item"))?;
-    content
-        .entries()
-        .iter()
-        .find(|candidate| candidate.id.as_str() == entry)
-        .cloned()
-        .ok_or_else(|| missing("entry"))
-}
-
-fn invalid(reason: impl Into<String>) -> (StatusCode, UserError) {
-    (
-        StatusCode::UNPROCESSABLE_ENTITY,
-        UserError::new(ErrorCode::InvalidRequest, reason),
-    )
-}
-
-/// What a run needs, checked: the task, the lanes by the key it reads them under, and its options.
+/// What a run needs, checked: the task, the lanes of the entry by the key it reads them under, the video if it takes
+/// one, and its options. The task checks that the lanes are the ones it declares.
 struct Prepared {
-    task: std::sync::Arc<PluginTask>,
-    entry: Entry,
-    lanes: BTreeMap<String, String>,
-    video: bool,
+    task: Arc<PluginTask>,
+    lanes: Vec<(String, OverlayRef)>,
+    video: Option<VideoRef>,
     options: handler_api::Values,
 }
 
@@ -107,28 +54,15 @@ fn prepare(
             UserError::new(ErrorCode::UnknownHandler, "No such task"),
         )
     })?;
-    let entry = find_entry(state, &request.session, &request.item, &request.entry)?;
-    let inputs = &task.spec().inputs;
-    for (key, _) in &inputs.lanes {
-        if !request.lanes.contains_key(key) {
-            return Err(invalid(format!("The task needs a lane for '{key}'")));
-        }
-    }
-    for (key, slot) in &request.lanes {
-        if !inputs.lanes.iter().any(|(declared, _)| declared == key) {
-            return Err(invalid(format!("The task reads no lane '{key}'")));
-        }
-        if !entry.overlays.iter().any(|overlay| overlay.slot == *slot) {
-            return Err(invalid(format!("The entry has no lane '{slot}'")));
-        }
-    }
-    if request.video != inputs.video {
-        return Err(invalid(if inputs.video {
-            "The task needs the video"
-        } else {
-            "The task takes no video"
-        }));
-    }
+    let entry = find_entry(state, &request.item, &request.entry)?;
+    let lanes = request
+        .lanes
+        .into_iter()
+        .map(|(key, slot)| {
+            let lane = entry.lane(&slot).ok_or_else(|| not_found("lane"))?;
+            Ok((key, lane.clone()))
+        })
+        .collect::<Result<_, _>>()?;
     let form = &task.spec().options;
     let mut options: Settings = request.options;
     // The plugin runs in its own working folder, so a relative path would not mean what it does here.
@@ -137,10 +71,9 @@ fn prepare(
         .validate(&options)
         .map_err(|error| (StatusCode::UNPROCESSABLE_ENTITY, error))?;
     Ok(Prepared {
+        video: task.spec().inputs.video.then_some(entry.video),
         task,
-        entry,
-        lanes: request.lanes,
-        video: request.video,
+        lanes,
         options,
     })
 }
@@ -159,26 +92,9 @@ fn execute(
     lines: &mpsc::Sender<Bytes>,
     cancel: &CancelToken,
 ) -> Result<(), Interrupt<UserError>> {
-    let lanes = run
-        .lanes
-        .iter()
-        .map(|(key, slot)| {
-            run.entry
-                .overlays
-                .iter()
-                .find(|overlay| overlay.slot == *slot)
-                .map(|overlay| (key.clone(), overlay.clone()))
-                .ok_or_else(|| {
-                    Interrupt::Failed(UserError::new(
-                        ErrorCode::Internal,
-                        format!("The entry has no lane '{slot}'"),
-                    ))
-                })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
     let bundle = build_bundle(
-        &lanes,
-        run.video.then_some(&run.entry.video),
+        &run.lanes,
+        run.video.as_ref(),
         folder,
         |overlay| {
             state

@@ -201,7 +201,7 @@ pub(super) fn redeem(
         Box::new(content.clone()),
         entry.map(|entry| Box::new(entry.clone())),
     );
-    let host_details = next
+    let owner = next
         .seats
         .get(&pending.seat)
         .is_some_and(|seat| matches!(seat.kind, SeatKind::Owner));
@@ -223,7 +223,7 @@ pub(super) fn redeem(
         content,
         entry,
         matching,
-        host_details,
+        owner,
     };
     Ok(())
 }

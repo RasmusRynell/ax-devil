@@ -12,7 +12,7 @@ use scene::{Coverage, Fields, FilterPolicy, MatchBasis};
 use serde_json::json;
 
 use crate::{
-    PROTOCOL, lanes,
+    LaneInputs, PROTOCOL, lanes,
     manifest::{DecoderHandler, DecoderInput},
     program::Program,
     records::Records,
@@ -23,6 +23,7 @@ use crate::{
 pub struct PluginDecoder {
     program: Arc<Program>,
     input: DecoderInput,
+    inputs: LaneInputs,
     spec: Spec,
 }
 
@@ -47,6 +48,7 @@ impl PluginDecoder {
         Self {
             program,
             input: handler.input,
+            inputs: handler.inputs.clone(),
             spec,
         }
     }
@@ -75,6 +77,7 @@ impl PluginDecoder {
                 let bundle = Bundle::read(file).map_err(|error| {
                     DecodeError(format!("Cannot read the lanes to derive from: {error}"))
                 })?;
+                self.inputs.check(&bundle).map_err(DecodeError)?;
                 lanes::input(&bundle).map_err(DecodeError)?
             }
             DecoderInput::Path | DecoderInput::Records => {

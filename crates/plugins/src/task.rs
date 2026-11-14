@@ -59,7 +59,10 @@ impl PluginTask {
     ) -> Result<(), Interrupt<UserError>> {
         cancel.check()?;
         let failed =
-            |reason: String| Interrupt::Failed(UserError::new(ErrorCode::Internal, reason));
+            |reason: String| Interrupt::Failed(UserError::new(ErrorCode::PluginInvalid, reason));
+        self.spec.inputs.check(bundle).map_err(|reason| {
+            Interrupt::Failed(UserError::new(ErrorCode::InvalidRequest, reason))
+        })?;
         self.program
             .code_hash()
             .map_err(|error| failed(format!("The plugin's files cannot be read: {error}")))?;

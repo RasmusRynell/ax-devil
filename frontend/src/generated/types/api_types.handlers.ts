@@ -177,10 +177,6 @@ path: string, };
  */
 export type LaneScenesQuery = { 
 /**
- * The Session of the window that asks.
- */
-session: string, 
-/**
  * The item that holds the entry.
  */
 item: string, 
@@ -441,10 +437,6 @@ text?: string, };
  */
 export type TaskRunRequest = { 
 /**
- * The Session of the window that asks.
- */
-session: string, 
-/**
  * The item that holds the entry.
  */
 item: string, 
@@ -456,10 +448,6 @@ entry: string,
  * The slot of the lane given to each input key the task declares.
  */
 lanes: { [key in string]?: string }, 
-/**
- * Whether the task is given the entry's video; it must match what the task declares.
- */
-video: boolean, 
 /**
  * The options the task declares.
  */

@@ -64,6 +64,7 @@ use foundation::{ErrorCode, UserError};
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use gate::Gate;
 use overlays::OverlayEvent;
+use scene_store::Admission;
 use sessions::session::{StreamLease, Ticket};
 use std::{net::SocketAddr, ops::RangeInclusive, time::Duration};
 use tokio::{
@@ -84,7 +85,7 @@ pub(crate) async fn upgrade(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     socket: WebSocketUpgrade,
 ) -> Response {
-    let slot = match state.admission.admit(peer.ip()) {
+    let slot = match state.gate.admit(peer.ip()) {
         Ok(slot) => slot,
         Err(refused) => {
             return (StatusCode::TOO_MANY_REQUESTS, refused.to_string()).into_response();
@@ -94,6 +95,16 @@ pub(crate) async fn upgrade(
         .max_message_size(MAX_CLIENT_MESSAGE)
         .max_frame_size(MAX_CLIENT_MESSAGE)
         .on_upgrade(move |socket| serve(state, socket, slot))
+}
+
+/// Who may build what a viewer's lanes lack: an Owner seat, which also drives the Presenter View, runs plugin code
+/// that is missing; a Guest only uses what is built, even while following the Presenter View.
+fn admission(lease: &StreamLease) -> Admission {
+    if lease.owner() {
+        Admission::Compute
+    } else {
+        Admission::Reuse
+    }
 }
 
 /// What the viewer's `Open` asks for besides the stream.
@@ -175,7 +186,7 @@ async fn serve(state: AppState, socket: WebSocket, mut slot: Slot) {
     let gate = Gate::new(lease.authority(), move || clock.now_us())
         .with_inspection(lease.inspection_permission());
     let audience = Audience {
-        host_details: lease.host_details(),
+        host_details: lease.owner(),
     };
     let (outbox, writer) = spawn_writer(sink, gate.clone());
     let abort = writer.abort_handle();

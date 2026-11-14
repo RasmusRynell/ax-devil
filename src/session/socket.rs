@@ -37,7 +37,7 @@ pub(crate) async fn socket(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     upgrade: WebSocketUpgrade,
 ) -> Response {
-    let slot = match state.admission.admit(peer.ip()) {
+    let slot = match state.gate.admit(peer.ip()) {
         Ok(slot) => slot,
         Err(refused) => {
             return (StatusCode::TOO_MANY_REQUESTS, refused.to_string()).into_response();

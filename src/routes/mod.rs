@@ -28,12 +28,13 @@ mod workspaces;
 mod conformance;
 
 use crate::{
-    AppState,
-    access::{self, Who},
+    AppState, Failure,
+    access::{self, Principal, Who},
     rejected,
 };
+use api_types::{Audience, project};
 use axum::{
-    Router,
+    Json, Router,
     body::Body,
     extract::Request,
     http::{StatusCode, header},
@@ -41,9 +42,10 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{MethodFilter, MethodRouter, on},
 };
-use foundation::CancelToken;
+use foundation::{CancelToken, ErrorCode, ItemId, UserError};
 use futures_util::StreamExt;
 use std::sync::Arc;
+use workspace::Entry;
 
 /// Cancels the blocking work of a request or socket when its future is dropped, as the server does when the client
 /// goes away.
@@ -53,6 +55,44 @@ impl Drop for CancelOnDrop {
     fn drop(&mut self) {
         self.0.cancel();
     }
+}
+
+/// A refused request: the status and `error` as `audience` may read it.
+pub(super) fn refuse(audience: Audience, status: StatusCode, error: &UserError) -> Failure {
+    (status, Json(project(error, audience)))
+}
+
+/// What an Owner may read of a failure: the host's paths and reasons only with Full access.
+pub(super) fn audience(principal: Principal) -> Audience {
+    Audience {
+        host_details: principal.full_access(),
+    }
+}
+
+/// The 404 for something a request names that the workspace does not have.
+pub(super) fn not_found(what: &str) -> (StatusCode, UserError) {
+    (
+        StatusCode::NOT_FOUND,
+        UserError::new(ErrorCode::ContentNotFound, format!("No such {what}")),
+    )
+}
+
+/// The entry `entry` of the item `item`, in whichever session holds the item.
+pub(super) fn find_entry(
+    state: &AppState,
+    item: &str,
+    entry: &str,
+) -> Result<Entry, (StatusCode, UserError)> {
+    let held = ItemId::parse(item)
+        .and_then(|id| state.sessions.find_item(id))
+        .ok_or_else(|| not_found("item"))?;
+    let content = held.content.ok_or_else(|| not_found("item"))?;
+    content
+        .entries()
+        .iter()
+        .find(|candidate| candidate.id.as_str() == entry)
+        .cloned()
+        .ok_or_else(|| not_found("entry"))
 }
 
 /// The listeners of one backend.

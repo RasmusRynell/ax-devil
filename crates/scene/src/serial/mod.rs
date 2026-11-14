@@ -44,6 +44,12 @@ pub fn to_json_string(scenes: &[Scene]) -> Result<String, SceneError> {
     serde_json::to_string(&Document(scenes)).map_err(failed)
 }
 
+/// The JSON text of one Scene, compact: the element [`to_json_string`] writes in its `scenes`, and the shape
+/// [`scene_from_json_slice`] reads.
+pub fn scene_to_json_string(scene: &Scene) -> Result<String, SceneError> {
+    serde_json::to_string(&W(scene)).map_err(failed)
+}
+
 /// Reads a JSON document written by [`to_json`], validating every value through the model's constructors.
 ///
 /// Fails when the document's `scene_version` has another major version or a newer minor version than this build.

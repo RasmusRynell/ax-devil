@@ -12,7 +12,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use foundation::{CancelToken, FrameRate, Interrupt};
+use foundation::{CancelToken, ErrorCode, FrameRate, Interrupt};
 use handler_api::{
     Bundle, DecodeError, DecodeSummary, Decoder, Form, Framing, ImageSequence, Input, LaneSource,
     OnEqualKey, OverlayRef, SceneSink, Settings, Spec, Values, VideoRef,
@@ -64,6 +64,10 @@ impl Decoder for Counting {
 
     fn code_hash(&self) -> Option<[u8; 32]> {
         self.code
+    }
+
+    fn derives_lanes(&self) -> bool {
+        self.derived
     }
 
     fn decode(
@@ -205,6 +209,31 @@ fn a_guest_never_runs_plugin_code_to_build_a_lane() {
     let waited = waiting.join().expect("joined");
     assert!(matches!(waited, Err(Interrupt::Failed(error)) if error.reason == "Not built yet"));
     assert_eq!(plugin.runs(), 2, "only the abandoned open decoded");
+}
+
+#[test]
+fn a_decoder_is_refused_a_source_of_the_other_kind() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (input, cache) = (dir.path().join("input.txt"), dir.path().join("cache"));
+    fs::write(&input, "a\n").expect("input");
+    let base = Counting::new("BASE", None, false);
+    let derived = Counting::new("DERIVED", None, true);
+    let registry = registry(&[base.clone(), derived.clone()], &cache);
+    let bundle = LaneSource::Derived {
+        lanes: vec![("input".into(), file("BASE", &input))],
+        video: None,
+    };
+
+    for lane in [overlay("BASE", bundle), file("DERIVED", &input)] {
+        let opened = registry.open_as(&lane, Admission::Compute, &CancelToken::new());
+        assert!(
+            matches!(&opened, Err(Interrupt::Failed(error)) if error.code == ErrorCode::OverlayInvalid),
+            "{} was opened",
+            lane.handler
+        );
+    }
+    assert_eq!((base.runs(), derived.runs()), (0, 0));
+    assert_eq!(stored(&cache, "lanes"), 0, "nothing was built first");
 }
 
 #[test]

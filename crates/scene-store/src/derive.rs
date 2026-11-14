@@ -7,7 +7,7 @@
 use std::{
     collections::BTreeMap,
     fs,
-    io::{BufWriter, Write},
+    io::{self, BufWriter, Write},
     path::{Path, PathBuf},
     sync::Arc,
     thread,
@@ -23,6 +23,7 @@ use crate::{
     Admission, Ingest, TrackRead, TrackRegistry,
     io::{create_private_dir, user_error},
     lanefile::write_lane,
+    stat::Stat,
 };
 
 /// The folder under the cache folder that holds lane files.
@@ -114,12 +115,99 @@ pub fn build_bundle(
             VideoRef::ImageSequence(sequence) => &sequence.pattern,
         };
         bundle.video = Some(
-            BundleVideo::of(video)
+            bundle_video(video)
                 .map_err(|error| user_error("Cannot read the video", &error, named))
                 .map_err(Interrupt::Failed)?,
         );
     }
     Ok(bundle)
+}
+
+/// The bundle entry for `video`: a file by its size and modification time, an image sequence by its pattern, count and
+/// a digest of every image's size and modification time. Costs one `stat` per image and reads no image. A missing
+/// image is part of the identity, not an error here: the decoder that needs it reports it.
+fn bundle_video(video: &VideoRef) -> io::Result<BundleVideo> {
+    let measure = |path: &Path| fs::metadata(path).map(|metadata| Stat::from_metadata(&metadata));
+    match video {
+        VideoRef::File(path) => {
+            let file = fs::canonicalize(path)?;
+            let stat = measure(&file)?;
+            Ok(BundleVideo {
+                path: file,
+                size: stat.size,
+                mtime_ns: stat.mtime_ns.into(),
+                images_sha256: None,
+            })
+        }
+        VideoRef::ImageSequence(sequence) => {
+            let numbering = Numbering::parse(&sequence.pattern)?;
+            let mut digest = Sha256::new();
+            for index in 0..sequence.frame_count {
+                let number = u64::from(sequence.start_number) + index;
+                match measure(&numbering.path(number)) {
+                    Ok(stat) => {
+                        digest.update([1]);
+                        digest.update(stat.size.to_le_bytes());
+                        digest.update(i128::from(stat.mtime_ns).to_le_bytes());
+                    }
+                    Err(_) => digest.update([0]),
+                }
+            }
+            Ok(BundleVideo {
+                path: sequence.pattern.clone(),
+                size: sequence.frame_count,
+                mtime_ns: 0,
+                images_sha256: Some(hex(&digest.finalize())),
+            })
+        }
+    }
+}
+
+/// A file name pattern with one `%d` or `%0Nd` in it.
+struct Numbering {
+    before: String,
+    width: usize,
+    after: String,
+}
+
+impl Numbering {
+    fn parse(pattern: &Path) -> io::Result<Self> {
+        let invalid = |reason: &str| io::Error::new(io::ErrorKind::InvalidInput, reason.to_owned());
+        let text = pattern
+            .to_str()
+            .ok_or_else(|| invalid("the image pattern is not valid text"))?;
+        let at = text
+            .find('%')
+            .ok_or_else(|| invalid("the image pattern has no number in it"))?;
+        let rest = &text[at + 1..];
+        let digits = rest.chars().take_while(char::is_ascii_digit).count();
+        let (padding, after) = rest.split_at(digits);
+        let after = after
+            .strip_prefix('d')
+            .filter(|after| !after.contains('%'))
+            .ok_or_else(|| invalid("the image pattern must hold exactly one %d or %06d"))?;
+        let width = if padding.is_empty() {
+            0
+        } else {
+            padding
+                .parse()
+                .map_err(|_| invalid("the image pattern's padding is too wide"))?
+        };
+        Ok(Self {
+            before: text[..at].to_owned(),
+            width,
+            after: after.to_owned(),
+        })
+    }
+
+    fn path(&self, number: u64) -> PathBuf {
+        let Self {
+            before,
+            width,
+            after,
+        } = self;
+        PathBuf::from(format!("{before}{number:0width$}{after}"))
+    }
 }
 
 /// Waits until `track` has read everything it will; an input that stopped early fails the open.

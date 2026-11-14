@@ -47,7 +47,7 @@ pub(crate) enum Loaded {
 
 /// The failure of an open that was refused because nothing is built.
 pub(crate) fn not_built(path: &Path) -> UserError {
-    UserError::new(ErrorCode::Forbidden, "Not built yet").at(HostPath::new(path))
+    UserError::new(ErrorCode::NotBuilt, "Not built yet").at(HostPath::new(path))
 }
 
 /// Opens the track of `request.key`. A decode that must run is started on its own thread; this returns once the

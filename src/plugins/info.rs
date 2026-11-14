@@ -2,7 +2,7 @@
 
 use api_types::handlers::{
     CommandInfo, ContributionRow, FieldInfo, FieldKindWire, OperationInfo, PluginInfo,
-    PluginSource, PluginStatus, PluginsInfo, ScanCountInfo, ViewInfo,
+    PluginSource, PluginStatus, ScanCountInfo, ViewInfo,
 };
 use handler_api::{Decoder, FieldKind, Form, PlaylistResolver};
 use handlers::Handlers;
@@ -207,8 +207,9 @@ fn loaded_status(plugin: &LoadedPlugin, token: &str) -> PluginStatus {
     }
 }
 
-/// One entry per registry entry, and a new token for each plugin that has views.
-pub(super) fn installed_info(loaded: &Loaded) -> Installed {
+/// One entry per registry entry. A plugin that has views keeps the token it had in `before` while it stays in the same
+/// folder, so a reload does not move its views; any other gets a new one.
+pub(super) fn installed_info(loaded: &Loaded, before: &HashMap<String, PathBuf>) -> Installed {
     let mut installed = Installed {
         plugins: Vec::new(),
         tasks: Vec::new(),
@@ -226,12 +227,14 @@ pub(super) fn installed_info(loaded: &Loaded) -> Installed {
         };
         let status = match &entry.plugin {
             Ok(plugin) => {
-                let token = foundation::random_token();
+                let folder = plugin.manifest.folder();
+                let token = before
+                    .iter()
+                    .find_map(|(token, root)| (root == folder).then(|| token.clone()))
+                    .unwrap_or_else(foundation::random_token);
                 let status = loaded_status(plugin, &token);
                 if matches!(&status, PluginStatus::Loaded { views, .. } if !views.is_empty()) {
-                    installed
-                        .roots
-                        .insert(token, plugin.manifest.folder().to_path_buf());
+                    installed.roots.insert(token, folder.to_path_buf());
                 }
                 installed.tasks.extend(plugin.tasks.iter().cloned());
                 status
@@ -243,20 +246,4 @@ pub(super) fn installed_info(loaded: &Loaded) -> Installed {
         installed.plugins.push(PluginInfo { source, status });
     }
     installed
-}
-
-/// Whether two listings say the same, which two loads of the same files do although each mints its own view tokens.
-pub(super) fn same_listing(a: &PluginsInfo, b: &PluginsInfo) -> bool {
-    let tokenless = |info: &PluginsInfo| {
-        let mut info = info.clone();
-        for plugin in &mut info.plugins {
-            if let PluginStatus::Loaded { views, .. } = &mut plugin.status {
-                for view in views {
-                    view.url.clear();
-                }
-            }
-        }
-        info
-    };
-    tokenless(a) == tokenless(b)
 }

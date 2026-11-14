@@ -101,6 +101,13 @@ fn a_plugin_command_is_rebindable_and_a_taken_default_ships_unbound() {
     let bound = effective(&commands, &saved);
     assert_eq!(bound["p.taken"].as_deref(), Some("Ctrl+J"));
 
+    // Taking the key its default lost to is a change from unbound, so it is stored, not dropped as a reset.
+    let taken = map(&[("save-workspace", None), ("p.taken", Some("ctrl+s"))]);
+    assert_eq!(
+        overrides_from(&commands, &taken).unwrap(),
+        map(&[("save-workspace", None), ("p.taken", Some("Ctrl+S"))])
+    );
+
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
     let settings = crate::Settings::load(&path).unwrap();

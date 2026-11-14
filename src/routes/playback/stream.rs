@@ -61,6 +61,8 @@ pub(super) struct Setup<'a> {
     pub(super) data_bytes: u64,
     /// What the viewer may learn from an error, a warning or a lane problem.
     pub(super) audience: Audience,
+    /// Whether the lanes may build what is missing.
+    pub(super) admission: scene_store::Admission,
     /// The Session the viewer is in, which scopes the user catalogs a Guest is shown.
     pub(super) session: SessionId,
     /// The size of the decoded pictures.

@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use handler_api::Form;
+use handler_api::{Bundle, Form};
 
 /// The lanes a `lanes` decoder or a task reads, by the key the program finds them under in its request.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -12,6 +12,28 @@ pub struct LaneInputs {
     pub lanes: Vec<(String, String)>,
     /// Whether the program is also given the video the lanes belong to.
     pub video: bool,
+}
+
+impl LaneInputs {
+    /// Whether `bundle` holds exactly the lanes declared, each under its key, and the video if and only if the
+    /// program takes one.
+    pub fn check(&self, bundle: &Bundle) -> Result<(), String> {
+        for (key, _) in &self.lanes {
+            if !bundle.lanes.contains_key(key) {
+                return Err(format!("A lane for '{key}' is needed"));
+            }
+        }
+        for key in bundle.lanes.keys() {
+            if !self.lanes.iter().any(|(declared, _)| declared == key) {
+                return Err(format!("No lane '{key}' is read"));
+            }
+        }
+        match (self.video, bundle.video.is_some()) {
+            (true, false) => Err("The video is needed".to_owned()),
+            (false, true) => Err("No video is taken".to_owned()),
+            _ => Ok(()),
+        }
+    }
 }
 
 /// A task the plugin declares: reads lanes, writes whatever it likes elsewhere, and produces no Scenes.

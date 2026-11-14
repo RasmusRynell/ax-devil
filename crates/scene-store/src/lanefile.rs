@@ -1,9 +1,9 @@
 //! Lane files: a track written as JSON Lines, the input a plugin program reads.
 
-use std::{io::Write, ops::Range, slice};
+use std::{io::Write, ops::Range};
 
 use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
-use scene::{Coverage, MatchBasis, Scene, serial};
+use scene::serial;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
@@ -40,14 +40,7 @@ pub fn write_lane(
             (key.as_ref().to_owned(), value)
         })
         .collect();
-    let basis = match track.default_basis() {
-        MatchBasis::Frame => "frame",
-        MatchBasis::Time => "time",
-    };
-    let coverage = match track.coverage() {
-        Coverage::Sparse => "sparse",
-        Coverage::Dense => "dense",
-    };
+    let (basis, coverage) = (track.default_basis().name(), track.coverage().name());
     let header = json!({"lane": {"basis": basis, "coverage": coverage, "metadata": metadata}});
     lines.push(&header.to_string())?;
     for index in range {
@@ -55,7 +48,12 @@ pub fn write_lane(
         let scene = track
             .scene_in(&snapshot, index)
             .map_err(Interrupt::Failed)?;
-        let body = scene_json(&scene).map_err(Interrupt::Failed)?;
+        let body = serial::scene_to_json_string(&scene).map_err(|error| {
+            Interrupt::Failed(UserError::new(
+                ErrorCode::Internal,
+                format!("Cannot write a Scene: {error}"),
+            ))
+        })?;
         lines.push(&format!("{{\"sample\":{body}}}"))?;
     }
     Ok(lines.hash.finalize().into())
@@ -89,16 +87,4 @@ impl Lines<'_> {
         }
         Ok(())
     }
-}
-
-/// The JSON of one Scene: the element `scene::serial` writes inside its document of Scenes.
-fn scene_json(scene: &Scene) -> Result<String, UserError> {
-    let internal = |reason: String| UserError::new(ErrorCode::Internal, reason);
-    let document = serial::to_json_string(slice::from_ref(scene))
-        .map_err(|error| internal(format!("Cannot write a Scene: {error}")))?;
-    document
-        .split_once("\"scenes\":[")
-        .and_then(|(_, rest)| rest.strip_suffix("]}"))
-        .map(str::to_owned)
-        .ok_or_else(|| internal("Cannot write a Scene: unexpected document shape".into()))
 }

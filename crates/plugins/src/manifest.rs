@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use foundation::{ErrorCode, UserError};
 use handler_api::{Form, Settings, Values};
 use scene::{MatchBasis, SceneVersion};
 use serde_json::Value;
@@ -250,6 +251,25 @@ impl Manifest {
             .map_err(|error| ManifestError::new("settings", error.reason))
     }
 
+    /// What to store of `values` the user gave for the plugin's settings: refused when they do not fit the form, and
+    /// otherwise only what the form declares and the user set. A default is not stored, so a changed default reaches
+    /// whoever never chose a value.
+    pub fn stored_settings(&self, values: Settings) -> Result<Settings, UserError> {
+        self.settings.validate(&values).map_err(|error| {
+            let invalid = UserError::new(ErrorCode::PluginInvalid, error.reason);
+            match error.location {
+                Some(location) => invalid.at(location),
+                None => invalid,
+            }
+        })?;
+        Ok(values
+            .into_iter()
+            .filter(|(key, value)| {
+                !value.is_null() && self.settings.fields.iter().any(|field| field.key == *key)
+            })
+            .collect())
+    }
+
     /// Reads and validates the manifest at `path`.
     pub fn load(path: &Path) -> Result<Self, ManifestError> {
         let unreadable = |error: std::io::Error| {
@@ -361,14 +381,15 @@ impl Manifest {
     }
 }
 
+/// Whether `id` is `[a-z0-9][a-z0-9_-]*` up to 64 characters. No dot: a command is named `<plugin>.<id>`, so a dot in
+/// an id would make that name ambiguous.
 pub(crate) fn valid_id(id: &str) -> bool {
     let mut chars = id.chars();
     id.len() <= 64
         && chars
             .next()
             .is_some_and(|first| first.is_ascii_lowercase() || first.is_ascii_digit())
-        && chars
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'))
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '-'))
 }
 
 /// The program and arguments with the plugin's own files made absolute.

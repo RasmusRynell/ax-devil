@@ -107,6 +107,11 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// The overlay whose lane has the slot `slot`.
+    pub fn lane(&self, slot: &str) -> Option<&OverlayRef> {
+        self.overlays.iter().find(|overlay| overlay.slot == slot)
+    }
+
     /// The labels of the lanes that start hidden, as a set to test a long entry's lanes against in constant time.
     pub fn lanes_hidden_at_first(&self) -> HashSet<&str> {
         self.lanes_starting_hidden

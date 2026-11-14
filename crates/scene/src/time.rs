@@ -97,6 +97,16 @@ pub enum Coverage {
     Dense,
 }
 
+impl Coverage {
+    /// The name in a lane file: `sparse` or `dense`.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Sparse => "sparse",
+            Self::Dense => "dense",
+        }
+    }
+}
+
 /// What a lane matches records to video frames by. The host chooses it per lane; a decoder only declares which
 /// bases it supports and which it recommends.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
@@ -107,6 +117,16 @@ pub enum MatchBasis {
     Frame,
     /// By the sample's timestamp on the video's Media Time clock.
     Time,
+}
+
+impl MatchBasis {
+    /// The name in a manifest and a lane file: `frame` or `time`.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Frame => "frame",
+            Self::Time => "time",
+        }
+    }
 }
 
 /// A span of time on one clock, ends included.

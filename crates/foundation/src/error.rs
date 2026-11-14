@@ -38,7 +38,7 @@ pub enum ErrorCode {
     OverlayInvalid,
     /// A playlist's settings or folder cannot be turned into entries.
     PlaylistInvalid,
-    /// A plugin to install or update cannot be used.
+    /// A plugin cannot be used: to install or update, or a task it runs failed.
     PluginInvalid,
     /// A render catalog cannot be loaded or compiled.
     CatalogInvalid,
@@ -54,6 +54,8 @@ pub enum ErrorCode {
     InvalidRequest,
     /// The caller lacks the access the request needs.
     Forbidden,
+    /// A derived lane has not been computed, and the caller may not run plugin code to compute it.
+    NotBuilt,
     /// A camera asked on the user's behalf did not answer, or answered no; the params say why.
     CameraFailed,
     /// A fault of the backend itself.

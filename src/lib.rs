@@ -18,7 +18,7 @@ mod thumbnails;
 pub mod video_cache;
 pub mod video_sources;
 
-use access::{Admission, Limits, Policy, Principal, bearer};
+use access::{ConnectionGate, Limits, Policy, Principal, bearer};
 use api_types::{
     AppInfo, Audience, ErrorWire, SHELL_API, SettingsFile, SettingsPatch, SettingsState,
     api_version, project,
@@ -89,7 +89,7 @@ pub struct AppState {
     /// How this listener decides who is asking.
     pub policy: Arc<Policy>,
     /// Counts the open sockets.
-    pub admission: Arc<Admission>,
+    pub gate: Arc<ConnectionGate>,
     /// Every session this backend holds, whichever listener its socket arrives on.
     pub sessions: Sessions,
     /// Playlist items resolved by the resolve route and waiting for `addResolved`.
@@ -159,7 +159,7 @@ impl AppState {
             stopping,
             log_file: None,
             policy: Arc::new(policy),
-            admission: Arc::new(Admission::new(limits)),
+            gate: Arc::new(ConnectionGate::new(limits)),
             staged: Arc::default(),
             launch: Arc::new(LaunchQueue::default()),
             files: Arc::new(WorkspaceFiles::new(None)),
@@ -184,7 +184,7 @@ impl AppState {
     /// The same state with these socket limits.
     #[must_use]
     pub fn with_limits(mut self, limits: Limits) -> Self {
-        self.admission = Arc::new(Admission::new(limits));
+        self.gate = Arc::new(ConnectionGate::new(limits));
         self
     }
 
@@ -252,7 +252,7 @@ impl AppState {
     pub(crate) fn shared_with(&self, policy: Policy) -> Self {
         Self {
             policy: Arc::new(policy),
-            admission: Arc::new(Admission::new(Limits::default())),
+            gate: Arc::new(ConnectionGate::new(Limits::default())),
             hosting: Arc::new(Hosting::None),
             ..self.clone()
         }

@@ -47,10 +47,7 @@ pub(crate) async fn settings(
     State(state): State<AppState>,
     Json(request): Json<SettingsRequest>,
 ) -> Result<Json<PluginsInfo>, Failure> {
-    let audience = Audience {
-        host_details: principal.full_access(),
-    };
-    changed(audience, move || {
+    changed(super::audience(principal), move || {
         state.plugins.set_settings(&request.plugin, request.values)
     })
     .await
@@ -245,8 +242,8 @@ mod tests {
         );
         assert_ne!(code_hash(), before, "another setting is another program");
         assert!(
-            test.state.plugins.view_root(token).is_none(),
-            "a reload ends the old view tokens"
+            test.state.plugins.view_root(token).is_some(),
+            "a reload keeps the token of a plugin that stays in its folder"
         );
 
         // A value the form refuses, or a plugin that is not installed, changes nothing.

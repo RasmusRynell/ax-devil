@@ -1,9 +1,6 @@
 //! A bounded read of one lane's samples, for a view that shows them.
 
-use super::{
-    CancelOnDrop,
-    tasks::{audience, find_entry, refuse},
-};
+use super::{CancelOnDrop, audience, find_entry, not_found, refuse};
 use crate::{AppState, Failure, access::Principal};
 use api_types::handlers::{LaneScenesQuery, MAX_LANE_SAMPLES};
 use axum::{
@@ -26,16 +23,14 @@ pub(super) async fn get(
     Query(query): Query<LaneScenesQuery>,
 ) -> Result<Response, Failure> {
     let audience = audience(principal);
-    let entry = find_entry(&state, &query.session, &query.item, &query.entry)
+    let overlay = find_entry(&state, &query.item, &query.entry)
+        .and_then(|entry| {
+            entry
+                .lane(&query.slot)
+                .cloned()
+                .ok_or_else(|| not_found("lane"))
+        })
         .map_err(|(status, error)| refuse(audience, status, &error))?;
-    let Some(overlay) = entry
-        .overlays
-        .into_iter()
-        .find(|overlay| overlay.slot == query.slot)
-    else {
-        let error = UserError::new(ErrorCode::Internal, "The entry has no such lane");
-        return Err(refuse(audience, StatusCode::NOT_FOUND, &error));
-    };
     let range = query.from..query.from.saturating_add(query.count.min(MAX_LANE_SAMPLES));
     let cancel = CancelToken::new();
     let _cancel_when_dropped = CancelOnDrop(cancel.clone());

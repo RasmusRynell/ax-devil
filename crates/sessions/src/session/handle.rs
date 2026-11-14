@@ -308,7 +308,7 @@ pub struct StreamLease {
     content: Content,
     entry: Option<ContentEntry>,
     matching: BTreeMap<String, MatchPolicy>,
-    host_details: bool,
+    owner: bool,
     inspection: Arc<dyn Fn() -> bool + Send + Sync>,
     release: Option<Box<dyn FnOnce() + Send + Sync>>,
 }
@@ -321,7 +321,7 @@ impl StreamLease {
         content: Content,
         entry: Option<ContentEntry>,
         matching: BTreeMap<String, MatchPolicy>,
-        (host_details, inspection): (bool, Arc<dyn Fn() -> bool + Send + Sync>),
+        (owner, inspection): (bool, Arc<dyn Fn() -> bool + Send + Sync>),
         release: impl FnOnce() + Send + Sync + 'static,
     ) -> Self {
         Self {
@@ -331,7 +331,7 @@ impl StreamLease {
             content,
             entry,
             matching,
-            host_details,
+            owner,
             inspection,
             release: Some(Box::new(release)),
         }
@@ -364,9 +364,10 @@ impl StreamLease {
         &self.matching
     }
 
-    /// Whether the holder may learn the host's paths and diagnostic text, or only public error codes.
-    pub fn host_details(&self) -> bool {
-        self.host_details
+    /// Whether the holder's seat was an Owner's when the ticket was redeemed. What an Owner may learn and run follows
+    /// from it.
+    pub fn owner(&self) -> bool {
+        self.owner
     }
 
     /// Reads current inspection permission; a released or revoked grant always refuses.

@@ -5,6 +5,7 @@ mod events;
 mod framing;
 mod history;
 mod ingest;
+mod lanefile;
 mod live;
 mod query;
 mod reuse;

@@ -363,12 +363,12 @@ struct Counts {
 }
 
 /// Counts open sockets and sockets that have not said hello, so one peer or one crowd cannot use up the server.
-pub struct Admission {
+pub struct ConnectionGate {
     limits: Limits,
     counts: Mutex<Counts>,
 }
 
-impl Admission {
+impl ConnectionGate {
     /// A gate with these limits.
     pub fn new(limits: Limits) -> Self {
         Self {
@@ -395,7 +395,7 @@ impl Admission {
         usage.sockets += 1;
         usage.pending += 1;
         Ok(Slot {
-            admission: Arc::clone(self),
+            gate: Arc::clone(self),
             peer,
             pending: true,
         })
@@ -419,7 +419,7 @@ impl Admission {
 
 /// One admitted socket; dropping it frees its place.
 pub struct Slot {
-    admission: Arc<Admission>,
+    gate: Arc<ConnectionGate>,
     peer: IpAddr,
     pending: bool,
 }
@@ -430,7 +430,7 @@ impl Slot {
         if self.pending {
             self.pending = false;
             let mut counts = self
-                .admission
+                .gate
                 .counts
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
@@ -444,6 +444,6 @@ impl Slot {
 
 impl Drop for Slot {
     fn drop(&mut self) {
-        self.admission.release(self.peer, self.pending);
+        self.gate.release(self.peer, self.pending);
     }
 }

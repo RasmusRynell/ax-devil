@@ -416,7 +416,7 @@ impl Service {
 
     /// Spends `ticket`, once, into a stream the caller holds until it drops the lease.
     pub fn redeem(&self, ticket: &Ticket) -> Result<StreamLease, Refusal> {
-        let (session, grant, authority, content, entry, matching, host_details) =
+        let (session, grant, authority, content, entry, matching, owner) =
             self.locked(|sessions, deferred| {
                 let id = sessions
                     .iter()
@@ -435,11 +435,11 @@ impl Service {
                             content,
                             entry,
                             matching,
-                            host_details,
+                            owner,
                             ..
                         },
                         Some(authority),
-                    ) => Ok((id, grant, authority, content, entry, matching, host_details)),
+                    ) => Ok((id, grant, authority, content, entry, matching, owner)),
                     _ => Err(Refusal::BadTicket),
                 }
             })?;
@@ -458,7 +458,7 @@ impl Service {
             *content,
             entry.map(|entry| *entry),
             matching,
-            (host_details, inspection),
+            (owner, inspection),
             move || {
                 service.locked(|sessions, deferred| {
                     // A session that already ended has released everything.

@@ -184,6 +184,25 @@ impl TrackRegistry {
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>> {
         cancel.check()?;
+        let decoder = (self.decoders)(&overlay.handler).ok_or_else(|| {
+            Interrupt::Failed(UserError::new(
+                ErrorCode::UnknownHandler,
+                format!("No decoder is installed for '{}'", overlay.handler),
+            ))
+        })?;
+        // A decoder that derives lanes reads a bundle, which only a derived source builds; any other reads a file.
+        let derived = matches!(overlay.source, LaneSource::Derived { .. });
+        if decoder.derives_lanes() != derived {
+            let reason = if derived {
+                "reads a file, so it cannot derive a lane"
+            } else {
+                "derives a lane from other lanes, so it cannot read a file"
+            };
+            return Err(Interrupt::Failed(UserError::new(
+                ErrorCode::OverlayInvalid,
+                format!("'{}' {reason}", overlay.handler),
+            )));
+        }
         let file = match &overlay.source {
             LaneSource::File(file) => file.clone(),
             LaneSource::Derived { lanes, video } => {
@@ -192,15 +211,6 @@ impl TrackRegistry {
         };
         let path = std::fs::canonicalize(&file).map_err(|e| {
             Interrupt::Failed(user_error("Cannot find the overlay file", &e, &file))
-        })?;
-        let decoder = (self.decoders)(&overlay.handler).ok_or_else(|| {
-            Interrupt::Failed(
-                UserError::new(
-                    ErrorCode::UnknownHandler,
-                    format!("No decoder is installed for '{}'", overlay.handler),
-                )
-                .at(HostPath::new(&path)),
-            )
         })?;
         let options = decoder
             .spec()

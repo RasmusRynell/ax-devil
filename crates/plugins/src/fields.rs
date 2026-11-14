@@ -89,7 +89,7 @@ impl<'a> Fields<'a> {
             Err(self.error(
                 key,
                 format!(
-                    "'{id}' must be 1-64 characters of a-z, 0-9, '.', '_' or '-', starting with a letter or digit"
+                    "'{id}' must be 1-64 characters of a-z, 0-9, '_' or '-', starting with a letter or digit"
                 ),
             ))
         }
