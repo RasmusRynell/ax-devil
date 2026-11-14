@@ -1,5 +1,5 @@
 import { COMMANDS, type CommandId } from "../generated/settings";
-import type { RecentWorkspace } from "../generated/api";
+import type { CommandInfo, RecentWorkspace } from "../generated/api";
 import type { MenuEntry } from "../kit/Menu";
 import { RECENT_ID, recentLabel } from "./recents";
 
@@ -19,8 +19,8 @@ export function command(id: CommandId): Command {
   return found;
 }
 
-/** The effective key of every command, as the backend reports it. */
-export type Shortcuts = Record<CommandId, string | null>;
+/** The effective key of every command, built-in or a plugin's `<plugin>.<id>`, as the backend reports it. */
+export type Shortcuts = Record<string, string | null>;
 
 /** What each command needs of the seat. */
 const SCOPES: Record<CommandId, Scope> = {
@@ -135,8 +135,9 @@ export const MENUS: readonly { label: string; items: readonly Layout[] }[] = [
   { label: "Help", items: [action("quick-setup"), action("about")] },
 ];
 
-/** The scope of the command `id`; an unknown id is a programming error. */
+/** The scope of the command `id`: a plugin's (its id has a dot) changes the workspace; an unknown built-in is a programming error. */
 export function scopeOf(id: string): Scope {
+  if (id.includes(".")) return "content";
   const found = (SCOPES as Record<string, Scope | undefined>)[id];
   if (!found) throw new Error(`unknown command ${id}`);
   return found;
@@ -153,16 +154,35 @@ function tidy(entries: readonly MenuEntry[]): MenuEntry[] {
   return kept;
 }
 
+/** The entries of the plugin commands that apply `on` an app, item or lane, or to anything when `on` is absent; `enabled` is whether the seat may change the workspace, which they all do. */
+export function pluginEntries(
+  plugins: readonly CommandInfo[],
+  shortcuts: Partial<Shortcuts>,
+  enabled: boolean,
+  on?: string,
+): MenuEntry[] {
+  return plugins
+    .filter((plugin) => on === undefined || plugin.on === on)
+    .map(({ id, title }) => ({
+      kind: "action",
+      id,
+      label: title,
+      shortcut: shortcuts[id] ?? undefined,
+      disabled: !enabled,
+    }));
+}
+
 /**
  * The menus as this window shows them: wired app commands and implemented viewer commands, each with its label
  * and key. Viewer commands without a target stay visible but disabled, as do commands outside allowed scopes.
- * Open Recent lists `recents` and comes with Open Workspace.
+ * Open Recent lists `recents` and comes with Open Workspace. The Plugins menu lists every command of `plugins`.
  */
 export function menusFor(
   allowed: Record<Scope, boolean>,
   wired: ReadonlySet<string>,
   shortcuts: Shortcuts,
   recents: readonly RecentWorkspace[] = [],
+  plugins: readonly CommandInfo[] = [],
 ): { label: string; entries: MenuEntry[] }[] {
   const build = (items: readonly Layout[]): MenuEntry[] =>
     tidy(
@@ -204,7 +224,11 @@ export function menusFor(
         ];
       }),
     );
-  return MENUS.map((menu) => ({ label: menu.label, entries: build(menu.items) })).filter(
-    (menu) => menu.entries.length > 0,
-  );
+  const menus = MENUS.map((menu) => ({ label: menu.label, entries: build(menu.items) }));
+  // Plugins sits before Help, which stays last.
+  menus.splice(-1, 0, {
+    label: "Plugins",
+    entries: pluginEntries(plugins, shortcuts, allowed.content),
+  });
+  return menus.filter((menu) => menu.entries.length > 0);
 }

@@ -1,6 +1,9 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useContext, useMemo, useState, type ReactNode } from "react";
+import { pluginEntries } from "../client/commands";
 import { reasonOf } from "../client/errors";
+import { SettingsContext } from "../client/settings";
 import type { MenuEntry } from "../kit/Menu";
+import { RunCommandContext, usePluginCommands } from "../plugins/usePlugins";
 import { useStreamStatuses, type StreamStatus } from "../live/streamState";
 import { useCan, useCommand, useDoc, useView } from "../session/session";
 import { useShow } from "../viewer/useViewers";
@@ -52,6 +55,9 @@ export function useRowActions(): RowActions {
   const powers = useMemo(() => ({ content, host }), [content, host]);
   const { edit, inform, dialogs } = useItemDialogs();
   const statuses = useStreamStatuses();
+  const plugins = usePluginCommands();
+  const shortcuts = useContext(SettingsContext)?.shortcuts ?? {};
+  const runCommand = useContext(RunCommandContext);
   const tree = useMemo(() => (workspace ? treeOf(workspace, statuses) : []), [workspace, statuses]);
   const [views] = useView("viewers");
   const openKeys = useMemo(
@@ -137,10 +143,20 @@ export function useRowActions(): RowActions {
       if (info) inform(info);
     } else if (id === "edit") editRow(row);
     else if (id === "remove") removeRow(row, say);
+    else if (id.includes("."))
+      runCommand(id, { item: row.item, entry: row.info.entry ?? undefined });
     else toggleHidden(row, say);
   };
   const menuOf = (row: TreeRow, exporter: (() => void) | undefined, withEdit = true) =>
-    rowMenu(row, itemOf(row), powers, exporter !== undefined, openKeys.has(row.info.key), withEdit);
+    rowMenu(
+      row,
+      itemOf(row),
+      powers,
+      exporter !== undefined,
+      openKeys.has(row.info.key),
+      withEdit,
+      pluginEntries(plugins, shortcuts, powers.content, "item"),
+    );
 
   return {
     tree,

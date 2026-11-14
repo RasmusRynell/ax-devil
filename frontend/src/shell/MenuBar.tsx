@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { menusFor } from "../client/commands";
 import { QUIET } from "../kit/look";
 import { Menu, type MenuCommand } from "../kit/Menu";
+import { usePluginCommands } from "../plugins/usePlugins";
 import { useAllowed } from "../session/session";
 import { useSettings } from "../client/settings";
 import { useRecents } from "../client/recents";
@@ -21,7 +22,13 @@ const FIRST_ITEM = '[role="menu"] [role^="menuitem"]:not(:disabled)';
 export function MenuBar({ checked, wired, onSelect }: Props) {
   const [open, setOpen] = useState<number | null>(null);
   const recents = useRecents(open !== null);
-  const menus = menusFor(useAllowed(), wired, useSettings().shortcuts, recents);
+  const menus = menusFor(
+    useAllowed(),
+    wired,
+    useSettings().shortcuts,
+    recents,
+    usePluginCommands(),
+  );
   // Only one menu button is a Tab stop, so Tab leaves the bar instead of walking through it.
   const [tabStop, setTabStop] = useState(0);
   const bar = useRef<HTMLDivElement>(null);

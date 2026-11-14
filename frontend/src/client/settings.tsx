@@ -90,15 +90,19 @@ export function settingsPatch(
   return (Object.keys(set).length ? { set } : {}) as SettingsPatch;
 }
 
-/** The patch that takes the shortcuts *base* to *draft*: a command back on its own key is reset, the rest set. */
+/**
+ * The patch that takes the shortcuts *base* to *draft*: a command back on its own key is reset, the rest set. The
+ * commands are the built-ins, or those listed in `commands` (with the plugins').
+ */
 export function shortcutsPatch(
   base: SettingsState["shortcuts"],
   draft: SettingsState["shortcuts"],
-  repairs: readonly CommandId[] = [],
+  repairs: readonly string[] = [],
+  commands: readonly { id: string; key: string | null }[] = COMMANDS,
 ) {
   const shortcutsSet: Record<string, string | null> = {};
-  const shortcutsReset: CommandId[] = [];
-  for (const { id, key } of COMMANDS) {
+  const shortcutsReset: string[] = [];
+  for (const { id, key } of commands) {
     if (base[id] === draft[id] && !repairs.includes(id)) continue;
     if (draft[id] === key) shortcutsReset.push(id);
     else shortcutsSet[id] = draft[id];

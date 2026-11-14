@@ -1,4 +1,5 @@
-import { command, scopeOf, type Scope, type Shortcuts } from "../client/commands";
+import { command, pluginEntries, scopeOf, type Scope, type Shortcuts } from "../client/commands";
+import type { CommandInfo } from "../generated/api";
 import type { CommandId } from "../generated/settings";
 import type { MenuEntry } from "../kit/Menu";
 
@@ -33,7 +34,7 @@ export const EXPORT_WAITS = "Export is available once the render catalog has loa
 
 /**
  * The lane menu's entries for the `commands` the viewer handles, disabled outside the `allowed` scopes; Hide only when the seat may hide lanes. Export
- * video also waits while the clicked lane is `cold`.
+ * video also waits while the clicked lane is `cold`. The `plugins` commands that apply to a lane follow, before Hide.
  */
 export function laneContextEntries(
   commands: readonly CommandId[],
@@ -41,6 +42,7 @@ export function laneContextEntries(
   shortcuts: Partial<Shortcuts>,
   canHide: boolean,
   cold: boolean,
+  plugins: readonly CommandInfo[] = [],
 ): MenuEntry[] {
   const entries: MenuEntry[] = commands.map((id) => {
     const waits = id === "export-video" && cold;
@@ -54,11 +56,15 @@ export function laneContextEntries(
       tip: id === "export-video" ? EXPORT_TIP : undefined,
     };
   });
-  return canHide
-    ? [
-        ...entries,
-        { kind: "separator" },
-        { kind: "action", id: HIDE_LANE, label: "Hide", tip: HIDE_LANE_TIP },
-      ]
-    : entries;
+  const own = pluginEntries(plugins, shortcuts, allowed.content, "lane");
+  return [
+    ...entries,
+    ...(own.length > 0 ? [{ kind: "separator" } as const, ...own] : []),
+    ...(canHide
+      ? [
+          { kind: "separator" } as const,
+          { kind: "action", id: HIDE_LANE, label: "Hide", tip: HIDE_LANE_TIP } as const,
+        ]
+      : []),
+  ];
 }

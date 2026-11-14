@@ -1,6 +1,6 @@
 // Generated from api_types by make; do not edit.
 
-import type { CommandId, SettingKey } from "../settings";
+import type { SettingKey } from "../settings";
 
 /**
  * Identifies a running backend, so the desktop shell and the development supervisor reuse only a compatible one.
@@ -126,11 +126,11 @@ reset?: Array<SettingKey>,
 /**
  * The commands to bind: a key, or `null` to unbind.
  */
-shortcutsSet?: Partial<Record<CommandId, string | null>>, 
+shortcutsSet?: Partial<Record<string, string | null>>, 
 /**
  * The commands to put back to their own key.
  */
-shortcutsReset?: Array<CommandId>, };
+shortcutsReset?: Array<string>, };
 
 /**
  * Every setting and shortcut as the app uses them: the body of `GET /api/settings` and the reply to a save. The keys
@@ -154,7 +154,7 @@ recovered?: Array<SettingKey>,
 /**
  * Commands with a preserved raw override different from the displayed binding.
  */
-recoveredShortcuts?: Array<CommandId>, 
+recoveredShortcuts?: Array<string>, 
 /**
  * What each non-secret setting among `values` that holds a `$NAME` reference gives as it is used (a number for a
  * whole-number setting), for a form that starts from the value. Only with Full access, since it is the server's
@@ -168,4 +168,4 @@ file?: SettingsFile,
 /**
  * The key of every command once the user's changes apply; `null` when unbound.
  */
-shortcuts: Record<CommandId, string | null>, };
+shortcuts: Record<string, string | null>, };

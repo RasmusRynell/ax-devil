@@ -151,6 +151,19 @@ describe("the bus", () => {
     bus.port.postMessage({ type: "call", id: 99, call: "cancel", args: { id: 1 } });
     expect(await running).toMatchObject({ ok: false, error: "cancelled" });
   });
+
+  it("ends a lane or scenes call that cannot be interrupted at its cancel", async () => {
+    const { host, call, bus } = open();
+    host.setLane.mockImplementation(() => new Promise(() => {}));
+    host.readScenes.mockImplementation(() => new Promise(() => {}));
+    const set = call("lanes.set", { slot: "acme.iou", runs: "acme_iou", lanes: {}, label: "L" });
+    const read = call("scenes.read", { lane: "a", from: 0, count: 1 });
+    await vi.waitFor(() => expect(host.readScenes).toHaveBeenCalled());
+    bus.port.postMessage({ type: "call", id: 98, call: "cancel", args: { id: 1 } });
+    bus.port.postMessage({ type: "call", id: 99, call: "cancel", args: { id: 2 } });
+    expect(await set).toMatchObject({ ok: false, error: "cancelled" });
+    expect(await read).toMatchObject({ ok: false, error: "cancelled" });
+  });
 });
 
 describe("the frame", () => {

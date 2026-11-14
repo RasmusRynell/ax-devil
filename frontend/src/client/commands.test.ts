@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { COMMANDS, SETTINGS } from "../generated/settings";
-import { menusFor, type Scope } from "./commands";
+import { menusFor, scopeOf, type Scope } from "./commands";
 import { RECENT_ID } from "./recents";
 
 const allowed: Record<Scope, boolean> = { host: true, content: true, view: true, app: true };
@@ -55,4 +55,20 @@ it("keeps unavailable viewer commands visible and disables them until a permitte
       (menu) => menu.label === "View",
     )?.entries,
   ).toContainEqual(expect.objectContaining({ id: "zoom-in", disabled: true }));
+});
+
+it("lists plugin commands in a Plugins menu before Help, changing the workspace like a plugin does", () => {
+  const plugins = [{ id: "acme.export", title: "Export", on: "lane", runs: "export" }];
+  const shortcuts = { "acme.export": "Ctrl+Alt+E" };
+  const labels = (list: typeof plugins) =>
+    menusFor(allowed, new Set(["about"]), shortcuts, [], list).map((menu) => menu.label);
+  expect(labels([])).not.toContain("Plugins");
+  expect(labels(plugins).slice(-2)).toEqual(["Plugins", "Help"]);
+  const menu = menusFor({ ...allowed, content: false }, new Set(), shortcuts, [], plugins).find(
+    (found) => found.label === "Plugins",
+  );
+  expect(menu?.entries).toEqual([
+    { kind: "action", id: "acme.export", label: "Export", shortcut: "Ctrl+Alt+E", disabled: true },
+  ]);
+  expect(scopeOf("acme.export")).toBe("content");
 });

@@ -98,13 +98,13 @@ function Contributions({ rows }: { rows: readonly ContributionRow[] }) {
 }
 
 /** The text each field of `fields` shows for the stored `values`. */
-const textOf = (fields: readonly FieldInfo[], values: Settings): Settings =>
+export const textOf = (fields: readonly FieldInfo[], values: Settings): Settings =>
   Object.fromEntries(
     fields.flatMap(({ key }) => (values[key] == null ? [] : [[key, String(values[key])]])),
   );
 
 /** What a form's text sends: a value per filled field, a number for an `Integer` one. */
-function settingsOf(fields: readonly FieldInfo[], text: Settings): Settings {
+export function settingsOf(fields: readonly FieldInfo[], text: Settings): Settings {
   const values: Settings = {};
   for (const field of fields) {
     const typed = String(text[field.key] ?? "").trim();

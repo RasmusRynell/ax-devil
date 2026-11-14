@@ -154,6 +154,12 @@ function lanesOf(value: unknown): Record<string, string> {
   return lanes;
 }
 
+/** Rejects once `signal` aborts. */
+const whenAborted = (signal: AbortSignal): Promise<never> =>
+  new Promise((_done, fail) =>
+    signal.addEventListener("abort", () => fail(new Error("cancelled")), { once: true }),
+  );
+
 /** A way a view speaks to the host over its port, until it is closed. */
 export interface Bus {
   /** The port to give the view's frame. */
@@ -295,7 +301,11 @@ export function createBus(plugin: PluginView, host: BusHost): Bus {
       const args = call.args === undefined ? {} : call.args;
       if (!isRecord(args)) return refuse("invalid", "args is an object");
       running.set(id, controller);
-      const value = await handle(args, id, controller.signal);
+      // A call that cannot be interrupted itself still ends at its cancel; a change already sent is not undone.
+      const value = await Promise.race([
+        handle(args, id, controller.signal),
+        whenAborted(controller.signal),
+      ]);
       reply({ ok: true, value });
     } catch (error) {
       if (error instanceof Refused) reply({ ok: false, error: error.code, reason: error.message });
@@ -315,10 +325,7 @@ export function createBus(plugin: PluginView, host: BusHost): Bus {
     if (!isRecord(data)) return;
     if (data.type === "call") void answer(data);
     else if (data.type === "key" && typeof data.key === "string")
-      host.runKey(
-        data.key,
-        (id) => ownCommands.has(id) || (!id.includes(".") && scopeOf(id) === "view"),
-      );
+      host.runKey(data.key, (id) => ownCommands.has(id) || scopeOf(id) === "view");
   };
 
   const flush = () => {
@@ -336,6 +343,9 @@ export function createBus(plugin: PluginView, host: BusHost): Bus {
       bound = binding;
       const { epoch, item, entry, lanes, selection, theme, video } = binding;
       send({ type: "context", epoch, item, entry, lanes, selection, theme, video });
+      // A command run while the view was still opening reaches it once it has its context.
+      for (const id of queued.get(name) ?? []) bus.command(id);
+      queued.delete(name);
     },
     playhead(playhead) {
       waiting = playhead;
@@ -359,12 +369,19 @@ export function createBus(plugin: PluginView, host: BusHost): Bus {
 
 /** The open buses by view name, `<plugin id>.<view id>`. */
 const alive = new Map<string, Set<Bus>>();
+/** Commands run on a view that is not open yet, by view name, until its bus has its first context. */
+const queued = new Map<string, string[]>();
 
-/** Tells the command `commandId` to the open views named `viewId`; whether any was open. Step 10's run of a `view` command. */
+/** Tells the command `commandId` to the open views named `viewId`; whether any was open. */
 export function deliverCommand(viewId: string, commandId: string): boolean {
   const buses = [...(alive.get(viewId) ?? [])];
   buses.forEach((bus) => bus.command(commandId));
   return buses.length > 0;
+}
+
+/** Tells the command now if the view is open, else when it opens: for a view the command has just revealed. */
+export function deliverWhenOpen(viewId: string, commandId: string): void {
+  if (!deliverCommand(viewId, commandId)) queued.set(viewId, [commandId]);
 }
 
 /**

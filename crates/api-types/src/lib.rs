@@ -123,7 +123,7 @@ pub struct SettingsState {
     pub recovered: Option<Vec<String>>,
     /// Commands with a preserved raw override different from the displayed binding.
     #[serde(rename = "recoveredShortcuts", skip_serializing_if = "Option::is_none")]
-    #[ts(optional, type = "Array<CommandId>")]
+    #[ts(optional, type = "Array<string>")]
     pub recovered_shortcuts: Option<Vec<String>>,
     /// What each non-secret setting among `values` that holds a `$NAME` reference gives as it is used (a number for a
     /// whole-number setting), for a form that starts from the value. Only with Full access, since it is the server's
@@ -136,7 +136,7 @@ pub struct SettingsState {
     #[ts(optional)]
     pub file: Option<SettingsFile>,
     /// The key of every command once the user's changes apply; `null` when unbound.
-    #[ts(type = "Record<CommandId, string | null>")]
+    #[ts(type = "Record<string, string | null>")]
     pub shortcuts: BTreeMap<String, Option<String>>,
 }
 
@@ -176,11 +176,11 @@ pub struct SettingsPatch {
     pub reset: Option<Vec<String>>,
     /// The commands to bind: a key, or `null` to unbind.
     #[serde(default)]
-    #[ts(optional, type = "Partial<Record<CommandId, string | null>>")]
+    #[ts(optional, type = "Partial<Record<string, string | null>>")]
     pub shortcuts_set: Option<BTreeMap<String, Option<String>>>,
     /// The commands to put back to their own key.
     #[serde(default)]
-    #[ts(optional, type = "Array<CommandId>")]
+    #[ts(optional, type = "Array<string>")]
     pub shortcuts_reset: Option<Vec<String>>,
 }
 

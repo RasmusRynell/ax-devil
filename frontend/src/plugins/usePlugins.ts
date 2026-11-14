@@ -13,59 +13,100 @@ import { useAccess } from "../client/access";
 import { reasonOf } from "../client/errors";
 import { useResource } from "../client/resource";
 import { useSettings } from "../client/settings";
-import { COMMANDS } from "../generated/settings";
-import type { ErrorWire, PluginsInfo, TaskLine } from "../generated/api";
+import type {
+  CommandInfo,
+  ErrorWire,
+  OperationInfo,
+  PluginsInfo,
+  TaskLine,
+  TaskProgressInfo,
+  ViewInfo,
+} from "../generated/api";
 import type { PlaybackStream } from "../playback/stream";
 import { useCommand, useSession } from "../session/session";
-import type { BusHost, PluginView } from "./bus";
+import type { BusHost, PluginView, TaskRun } from "./bus";
 
 /** What a plugin view is called across the app: `<plugin id>.<view id>`, which is also its `SidebarView::Plugin` id. */
 export const viewName = ({ plugin, view }: PluginView): string => `${plugin}.${view.id}`;
 
-/** The views of the plugins that loaded, with the plugin's own operations and commands. */
-const viewsOf = ({ plugins }: PluginsInfo): PluginView[] =>
-  plugins.flatMap(({ status }) =>
-    status.state === "loaded"
-      ? status.views.map((view) => ({
-          plugin: status.id,
-          view,
-          operations: status.operations,
-          commands: status.commands,
-        }))
-      : [],
-  );
+/** A plugin command with the plugin it belongs to and what it runs: a decoder or task, or a view. */
+export type PluginCommand = CommandInfo & {
+  plugin: string;
+  operation?: OperationInfo;
+  view?: ViewInfo;
+};
 
-/** The listing's views; a listing that does not read is a failed read, which is tried again. */
-async function readViews(path: string, signal: AbortSignal): Promise<PluginView[]> {
-  const answer = await ask<PluginsInfo>(path, { signal });
-  if (!answer.ok) throw answer.error;
-  // An answer that is no listing has no views; the Plugins view is where it is reported.
-  return Array.isArray(answer.value.plugins) ? viewsOf(answer.value) : [];
+interface Listed {
+  views: readonly PluginView[];
+  commands: readonly PluginCommand[];
 }
 
-const NO_VIEWS: readonly PluginView[] = [];
-const ViewsContext = createContext<readonly PluginView[]>(NO_VIEWS);
+/** The views and commands of the plugins that loaded, with the plugin's own operations. */
+const listedOf = ({ plugins }: PluginsInfo): Listed => {
+  const loaded = plugins.flatMap(({ status }) => (status.state === "loaded" ? [status] : []));
+  return {
+    views: loaded.flatMap((status) =>
+      status.views.map((view) => ({
+        plugin: status.id,
+        view,
+        operations: status.operations,
+        commands: status.commands,
+      })),
+    ),
+    commands: loaded.flatMap((status) =>
+      status.commands.map((info) => ({
+        ...info,
+        plugin: status.id,
+        operation: status.operations.find(({ id }) => id === info.runs),
+        view: status.views.find(({ id }) => id === info.runs),
+      })),
+    ),
+  };
+};
+
+/** The listing; a listing that does not read is a failed read, which is tried again. */
+async function readListed(path: string, signal: AbortSignal): Promise<Listed> {
+  const answer = await ask<PluginsInfo>(path, { signal });
+  if (!answer.ok) throw answer.error;
+  // An answer that is no listing has nothing; the Plugins view is where it is reported.
+  return Array.isArray(answer.value.plugins) ? listedOf(answer.value) : NOTHING;
+}
+
+const NOTHING: Listed = { views: [], commands: [] };
+const ListedContext = createContext<Listed>(NOTHING);
 
 /**
- * Lists the plugin views for what is below it. Only an Owner reads the listing, so a Guest's window has none; a page
- * without this provider has none either.
+ * Lists the plugin views and commands for what is below it. Only an Owner reads the listing, so a Guest's window has
+ * none; a page without this provider has none either.
  */
 export function PluginViewsProvider({ children }: { children: ReactNode }) {
   const { owner } = useAccess();
-  const { value } = useResource<PluginView[]>("plugins", owner ? "/api/plugins" : null, {
-    read: readViews,
+  const { value } = useResource<Listed>("plugins", owner ? "/api/plugins" : null, {
+    read: readListed,
   });
-  return createElement(ViewsContext, { value: value ?? NO_VIEWS }, children);
+  return createElement(ListedContext, { value: value ?? NOTHING }, children);
 }
 
 /** The plugin views of `place`. */
 export function usePluginViews(place: "sidebar" | "video"): readonly PluginView[] {
-  const views = useContext(ViewsContext);
+  const { views } = useContext(ListedContext);
   return useMemo(() => views.filter(({ view }) => view.place === place), [views, place]);
 }
 
+/** The commands of the plugins that loaded. */
+export function usePluginCommands(): readonly PluginCommand[] {
+  return useContext(ListedContext).commands;
+}
+
+/** What a command was run on: the item and entry of a row or lane menu, and the slot of the lane that was clicked. */
+export interface RunAt {
+  item?: string;
+  entry?: string;
+  lane?: string;
+}
+
 /** Runs a command by id as the shell does; the shell offers it so a view's key reaches the commands it may. */
-export const RunCommandContext = createContext<(id: string) => void>(() => {});
+export const RunCommandContext = createContext<(id: string, at?: RunAt) => void>(() => {});
 
 /** A viewer that plays an entry and can be driven. */
 export interface BoundViewer {
@@ -88,6 +129,11 @@ export function bindViewer(target: BoundViewer): () => void {
   };
   change(() => bound.set(target.viewer, target));
   return () => change(() => bound.get(target.viewer) === target && bound.delete(target.viewer));
+}
+
+/** The viewers offered now, the one in front first when `front` is given. */
+export function boundViewers(front?: number): BoundViewer[] {
+  return [...held.values()].sort((a, b) => Number(b.viewer === front) - Number(a.viewer === front));
 }
 
 /** The viewer `viewer` offered, once it plays an entry. */
@@ -125,6 +171,30 @@ async function* linesOf(response: Response): AsyncGenerator<string> {
     yield* parts.filter(Boolean);
   }
   if (pending) yield pending;
+}
+
+/** Runs a task over an entry through the backend until it is done, failed or aborted, telling `onProgress` as it goes. */
+export async function streamTask(
+  session: string,
+  { item, entry }: { item: string | null; entry: string | null },
+  { runs, lanes, video, options }: TaskRun,
+  onProgress: (progress: TaskProgressInfo) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const response = await apiFetch(`/api/tasks/${encodeURIComponent(runs)}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session, item, entry, lanes, video, options }),
+    signal,
+  });
+  if (!response.ok) return fail(response);
+  for await (const line of linesOf(response)) {
+    const message = JSON.parse(line) as TaskLine;
+    if ("progress" in message) onProgress(message.progress);
+    else if ("error" in message) throw new Error(reasonOf(message.error));
+    else return;
+  }
+  throw new Error("The task ended without saying it was done");
 }
 
 /**
@@ -183,34 +253,14 @@ export function useBusHost(
           command: { type: "setDerivedLane", item: item ?? "", slot, lane },
         });
       },
-      async runTask({ item, entry }, { runs, lanes, video, options }, onProgress, signal) {
-        const response = await apiFetch(`/api/tasks/${encodeURIComponent(runs)}/run`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            session: used.current.session,
-            item,
-            entry,
-            lanes,
-            video,
-            options,
-          }),
-          signal,
-        });
-        if (!response.ok) return fail(response);
-        for await (const line of linesOf(response)) {
-          const message = JSON.parse(line) as TaskLine;
-          if ("progress" in message) onProgress(message.progress);
-          else if ("error" in message) throw new Error(reasonOf(message.error));
-          else return;
-        }
-        throw new Error("The task ended without saying it was done");
+      runTask({ item, entry }, run, onProgress, signal) {
+        return streamTask(used.current.session, { item, entry }, run, onProgress, signal);
       },
       runKey(key, allowed) {
         if (key === "Escape" && latest.current.capturing) return latest.current.onCapture(false);
         const { shortcuts: keys, run: runCommand } = used.current;
-        const found = COMMANDS.find(({ id }) => keys[id] === key && allowed(id));
-        if (found) runCommand(found.id);
+        const found = Object.keys(keys).find((id) => keys[id] === key && allowed(id));
+        if (found) runCommand(found);
       },
     }),
     [],

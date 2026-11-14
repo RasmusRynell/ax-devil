@@ -1,7 +1,7 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { Shortcuts } from "../client/commands";
 import { reasonOf } from "../client/errors";
-import { COMMANDS, RESERVED, type CommandId } from "../generated/settings";
+import { COMMANDS, RESERVED } from "../generated/settings";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
 import { SearchField } from "../kit/Fields";
@@ -11,27 +11,33 @@ import { QUIET } from "../kit/look";
 import { SectionCaption } from "../kit/SectionCaption";
 import { shortcutDisplay, shortcutOf } from "../kit/shortcut";
 import { shortcutsPatch, useSettings } from "../client/settings";
+import { usePluginCommands } from "../plugins/usePlugins";
 import { useRepairIntent } from "./useRepairIntent";
 import { useSaveDialog } from "./useSaveDialog";
 
 /** Why a row's key was not taken, and, when another command holds it, the way to take it from that command. */
 interface Note {
-  id: CommandId;
+  id: string;
   text: string;
-  takeFrom?: { owner: CommandId; key: string };
+  takeFrom?: { owner: string; key: string };
+}
+
+/** A command as the dialog lists it: the built-ins and the plugins' own. */
+interface Row {
+  id: string;
+  label: string;
+  category: string;
+  key: string | null;
 }
 
 /** The commands under each category, categories and then labels in alphabetical order. */
-const SECTIONS = [...new Set(COMMANDS.map((command) => command.category))]
-  .sort()
-  .map((category) => ({
+const sectionsOf = (rows: readonly Row[]) =>
+  [...new Set(rows.map((row) => row.category))].sort().map((category) => ({
     category,
-    commands: COMMANDS.filter((command) => command.category === category).sort((a, b) =>
-      a.label.localeCompare(b.label),
-    ),
+    commands: rows
+      .filter((row) => row.category === category)
+      .sort((a, b) => a.label.localeCompare(b.label)),
   }));
-
-const labelOf = (id: CommandId) => COMMANDS.find((command) => command.id === id)?.label ?? id;
 
 /**
  * The Keyboard Shortcuts dialog. Changes apply on OK, through the backend, as the commands that changed. It cannot
@@ -39,11 +45,25 @@ const labelOf = (id: CommandId) => COMMANDS.find((command) => command.id === id)
  */
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const { shortcuts, recoveredShortcuts } = useSettings();
+  const plugins = usePluginCommands();
+  const rows: readonly Row[] = useMemo(
+    () => [
+      ...COMMANDS,
+      ...plugins.map(({ id, title, key }) => ({
+        id,
+        label: title,
+        category: "Plugins",
+        key: key ?? null,
+      })),
+    ],
+    [plugins],
+  );
+  const labelOf = (id: string) => rows.find((row) => row.id === id)?.label ?? id;
   // What the dialog opened with: only the commands changed from it are sent.
   const [base] = useState(shortcuts);
   const [draft, setDraft] = useState<Shortcuts>(base);
   const repair = useRepairIntent(recoveredShortcuts);
-  const [recording, setRecording] = useState<CommandId | null>(null);
+  const [recording, setRecording] = useState<string | null>(null);
   const [note, setNote] = useState<Note | null>(null);
   // What the one polite live region says: recording started, a key set, cleared or reset.
   const [announcement, setAnnouncement] = useState("");
@@ -56,23 +76,25 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => body.current?.querySelector("input")?.focus(), []);
   const needle = search.trim().toLowerCase();
-  const sections = SECTIONS.map(({ category, commands }) => ({
-    category,
-    commands: commands.filter((command) => {
-      const binding = draft[command.id];
-      return [
-        command.label,
-        command.category,
-        binding ?? "",
-        binding ? shortcutDisplay(binding).text : "",
-      ].some((text) => text.toLowerCase().includes(needle));
-    }),
-  })).filter(({ commands }) => commands.length > 0);
+  const sections = sectionsOf(rows)
+    .map(({ category, commands }) => ({
+      category,
+      commands: commands.filter((command) => {
+        const binding = draft[command.id];
+        return [
+          command.label,
+          command.category,
+          binding ?? "",
+          binding ? shortcutDisplay(binding).text : "",
+        ].some((text) => text.toLowerCase().includes(needle));
+      }),
+    }))
+    .filter(({ commands }) => commands.length > 0);
 
   /** Binds `key` (or unbinds with null) unless it is reserved or another command holds it. */
-  const assign = (id: CommandId, key: string | null, reset = false) => {
+  const assign = (id: string, key: string | null, reset = false) => {
     setRecording(null);
-    const owner = key ? COMMANDS.find((other) => other.id !== id && draft[other.id] === key) : null;
+    const owner = key ? rows.find((other) => other.id !== id && draft[other.id] === key) : null;
     if (key && (RESERVED as readonly string[]).includes(key))
       setNote({ id, text: `${shortcutDisplay(key).text} is reserved for zooming the page` });
     else if (key && owner)
@@ -94,7 +116,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
     }
   };
   /** Binds `key` to `id` and unbinds the command that held it. */
-  const reassign = (id: CommandId, { owner, key }: NonNullable<Note["takeFrom"]>) => {
+  const reassign = (id: string, { owner, key }: NonNullable<Note["takeFrom"]>) => {
     repair.edit(owner);
     repair.edit(id);
     setDraft({ ...draft, [owner]: null, [id]: key });
@@ -103,7 +125,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
       `${labelOf(id)} set to ${shortcutDisplay(key).text}, taken from ${labelOf(owner)}`,
     );
   };
-  const record = (event: KeyboardEvent, id: CommandId) => {
+  const record = (event: KeyboardEvent, id: string) => {
     if (recording !== id) {
       if (
         event.key === "F2" &&
@@ -131,16 +153,16 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const resetAll = () => {
     setRecording(null);
     setNote(null);
-    for (const { id } of COMMANDS) repair.edit(id);
-    setDraft(Object.fromEntries(COMMANDS.map(({ id, key }) => [id, key])) as Shortcuts);
+    for (const { id } of rows) repair.edit(id);
+    setDraft(Object.fromEntries(rows.map(({ id, key }) => [id, key])));
     setAnnouncement("All shortcuts reset to defaults");
   };
-  const serverNote = COMMANDS.find((row) => refusal?.location === `shortcuts.${row.id}`);
+  const serverNote = rows.find((row) => refusal?.location === `shortcuts.${row.id}`);
 
   return (
     <Dialog
       title="Keyboard Shortcuts"
-      onOk={() => void submit(shortcutsPatch(base, draft, repair.keys()))}
+      onOk={() => void submit(shortcutsPatch(base, draft, repair.keys(), rows))}
       onCancel={() => {
         if (!saving) onClose();
       }}
@@ -162,7 +184,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
                   const shown = note?.id === id ? note : null;
                   const takeFrom = shown?.takeFrom;
                   const serverText = serverNote?.id === id && refusal ? reasonOf(refusal) : null;
-                  const binding = draft[id];
+                  const binding = draft[id] ?? null;
                   const text =
                     shown?.text ??
                     (serverText && binding

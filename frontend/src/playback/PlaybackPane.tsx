@@ -19,7 +19,12 @@ import { useSettings } from "../client/settings";
 import { MediaToolsPanel } from "../tools/MediaToolsPanel";
 import { useMediaTools } from "../tools/useMediaTools";
 import { PaneActiveContext, useHeaderDetails, useViewerActions } from "../viewer/actions";
-import { bindViewer, type BoundViewer } from "../plugins/usePlugins";
+import {
+  bindViewer,
+  RunCommandContext,
+  usePluginCommands,
+  type BoundViewer,
+} from "../plugins/usePlugins";
 import { registerExport } from "../viewer/exportTargets";
 import type { Hidden } from "../viewer/hidden";
 import { useLaneFocus } from "../viewer/laneFocus";
@@ -77,6 +82,8 @@ export function Playback({
   const { objectDetails, laneNames } = useOverlays();
   const inspectable = useOwnerSeat() || objectDetails;
   const allowed = useAllowed();
+  const plugins = usePluginCommands();
+  const runCommand = useContext(RunCommandContext);
   const pane = useRef<HTMLDivElement>(null);
   const objects = useRef<ObjectLayerHandle>(null);
   const geometry = useRef<Geometry | null>(null);
@@ -239,6 +246,7 @@ export function Playback({
                   shortcuts,
                   onHideLane !== undefined,
                   !!cold,
+                  plugins,
                 );
               }}
               onSelect={({ id }) => {
@@ -246,6 +254,12 @@ export function Playback({
                 if (id === HIDE_LANE) {
                   if (lane !== null) onHideLane?.(view.lanes[lane].label);
                 } else if (id === "export-video") exportLane(lane);
+                else if (id.includes("."))
+                  runCommand(id, {
+                    item,
+                    entry,
+                    lane: lane === null ? undefined : view.lanes[lane].slot,
+                  });
                 else actions[id]?.();
               }}
             >

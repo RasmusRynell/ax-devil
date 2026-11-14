@@ -38,7 +38,7 @@ export const isStream = ({ info, itemKind }: TreeRow): boolean =>
  * video, Hide, then Edit and Remove for the whole item, which only a top-level row offers. A row still resolving
  * opens and informs nothing, and an item that was unreadable cannot be edited. A video and an entry export what a
  * viewer shows, so Export video waits for `exportable`: a viewer showing it. A viewer's header offers the same menu
- * without Edit (`withEdit` false): editing stays in the sidebar.
+ * without Edit (`withEdit` false): editing stays in the sidebar. A ready top-level row ends with the `plugins` entries.
  */
 export function rowMenu(
   row: TreeRow,
@@ -47,6 +47,7 @@ export function rowMenu(
   exportable: boolean,
   running: boolean,
   withEdit = true,
+  plugins: readonly MenuEntry[] = [],
 ): MenuEntry[] {
   const action = (id: string, label: string, disabled = false, reason?: string): MenuEntry => ({
     kind: "action",
@@ -100,6 +101,7 @@ export function rowMenu(
           action("remove", "Remove", !powers.content),
         ]
       : [],
+    row.level === 1 && status === "Ready" ? [...plugins] : [],
   ];
   return groups
     .filter((group) => group.length > 0)
