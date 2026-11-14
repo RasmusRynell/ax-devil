@@ -6,7 +6,7 @@ commands that need no program. The contract authors follow is
 why. `load(registry, reserved)` reads `plugins.json` and returns one entry per listed manifest, failed ones included
 so they can be listed; a `LoadedPlugin` holds one `PluginDecoder` per decoder handler, each the `Decoder` that
 `Handlers::with_decoders` adds beside the built-ins, one `PluginResolver` per resolver handler, added by
-`with_resolvers`, and one `PluginTask` per task. The handlers of a plugin share one `Program` (command,
+`with_resolvers`, and one `PluginTask` per task. The handlers of a plugin share one `Program` (program and arguments,
 environment, idle timeout, settings, code identity). The scene store drives it like any decoder and owns grouping, ordering and
 caching.
 
@@ -34,7 +34,7 @@ caching.
   request's `input` is `{lanes: {key: path}, video?}`. A `task` takes the same input and options, produces no Scenes
   and answers with `progress`, `warning`, `error` and `done` lines; dropping the run cancels it. A `view` names
   a page in the plugin's folder and a `command` names an own lanes decoder, task or view; either whose reference does
-  not resolve is `skipped` with the reason, like an unknown kind. A plugin of only views and commands has no `command`.
+  not resolve is `skipped` with the reason, like an unknown kind. A plugin of only views and commands has no `program`.
 - **Settings.** The top-level `settings` form is stored in the plugin's registry entry and sent as `settings` in every
   decode and task request. Nothing handed to a program is expanded: a setting or option holding `$HOME` arrives as that
   text. A resolver's request already uses `settings` for its own form, so it does not carry the plugin's.

@@ -42,7 +42,7 @@ mod tests {
         let info = |id: &str, key: &str| CommandInfo {
             id: id.to_owned(),
             title: id.to_owned(),
-            on: "app".to_owned(),
+            on: handler_api::On::App,
             key: Some(key.to_owned()),
             runs: "view".to_owned(),
         };

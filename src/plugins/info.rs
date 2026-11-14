@@ -1,8 +1,8 @@
 //! What [`PluginsInfo`](api_types::handlers::PluginsInfo) lists: one entry per plugin, built-in or installed.
 
 use api_types::handlers::{
-    CommandInfo, ContributionRow, FieldInfo, FieldKindWire, OperationInfo, PluginInfo,
-    PluginSource, PluginStatus, ScanCountInfo, ViewInfo,
+    CommandInfo, ContributionRow, FieldInfo, FieldKindWire, LaneReaderInfo, PluginInfo,
+    PluginSource, PluginStatus, ReaderKind, ScanCountInfo, ViewInfo,
 };
 use handler_api::{Decoder, FieldKind, Form, PlaylistResolver};
 use handlers::Handlers;
@@ -79,7 +79,7 @@ fn built_in(id: String, rows: Vec<ContributionRow>) -> PluginInfo {
             values: serde_json::Map::new(),
             views: Vec::new(),
             commands: Vec::new(),
-            operations: Vec::new(),
+            readers: Vec::new(),
         },
     }
 }
@@ -133,14 +133,14 @@ fn loaded_status(plugin: &LoadedPlugin, token: &str) -> PluginStatus {
     let mut rows = Vec::new();
     let mut views = Vec::new();
     let mut commands = Vec::new();
-    let mut operations = Vec::new();
+    let mut readers = Vec::new();
     for handler in &manifest.handlers {
         let (name, detail) = match handler {
             Handler::Decoder(decoder) => {
                 if decoder.input == DecoderInput::Lanes {
-                    operations.push(OperationInfo {
+                    readers.push(LaneReaderInfo {
                         id: decoder.id.clone(),
-                        kind: "decoder".to_owned(),
+                        kind: ReaderKind::Decoder,
                         name: decoder.name.clone(),
                         lanes: decoder.inputs.lanes.clone(),
                         video: decoder.inputs.video,
@@ -151,9 +151,9 @@ fn loaded_status(plugin: &LoadedPlugin, token: &str) -> PluginStatus {
             }
             Handler::PlaylistResolver(resolver) => (&resolver.name, String::new()),
             Handler::Task(task) => {
-                operations.push(OperationInfo {
+                readers.push(LaneReaderInfo {
                     id: task.id.clone(),
-                    kind: "task".to_owned(),
+                    kind: ReaderKind::Task,
                     name: task.name.clone(),
                     lanes: task.inputs.lanes.clone(),
                     video: task.inputs.video,
@@ -166,22 +166,22 @@ fn loaded_status(plugin: &LoadedPlugin, token: &str) -> PluginStatus {
                     id: view.id.clone(),
                     title: view.title.clone(),
                     icon: view.icon.clone(),
-                    place: view.place.as_str().to_owned(),
+                    place: view.place,
                     url: format!("/views/{token}/{}", url_path(&view.document)),
                 });
-                (&view.title, view.place.as_str().to_owned())
+                (&view.title, view.place.to_string())
             }
             Handler::Command(command) => {
                 commands.push(CommandInfo {
                     id: format!("{}.{}", manifest.id, command.id),
                     title: command.title.clone(),
-                    on: command.on.as_str().to_owned(),
+                    on: command.on,
                     key: command.shortcut.clone(),
                     runs: command.runs.clone(),
                 });
                 (
                     &command.title,
-                    format!("{} runs {}", command.on.as_str(), command.runs),
+                    format!("{} runs {}", command.on, command.runs),
                 )
             }
         };
@@ -203,7 +203,7 @@ fn loaded_status(plugin: &LoadedPlugin, token: &str) -> PluginStatus {
         values: plugin.settings.declared(),
         views,
         commands,
-        operations,
+        readers,
     }
 }
 

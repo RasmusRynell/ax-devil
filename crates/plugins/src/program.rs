@@ -12,7 +12,7 @@ use crate::{
     run::{self, End, LineHandler, Process},
 };
 
-/// A plugin's command, environment, idle timeout, settings and code identity. One per plugin, held by each of its
+/// A plugin's program, environment, idle timeout, settings and code identity. One per plugin, held by each of its
 /// handlers.
 pub struct Program {
     manifest: Manifest,
@@ -79,8 +79,8 @@ impl Program {
 
     /// Starts the plugin's process for the handler `handler`, which the caller feeds and reads.
     pub(crate) fn start(&self, handler: &str) -> Result<Process, String> {
-        let Some((program, args)) = self.manifest.command.split_first() else {
-            return Err("The plugin has no command".to_owned());
+        let Some((program, args)) = self.manifest.program.split_first() else {
+            return Err("The plugin has no program".to_owned());
         };
         Process::start(&run::Spec {
             id: handler,

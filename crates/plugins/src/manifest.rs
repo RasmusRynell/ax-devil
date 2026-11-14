@@ -88,7 +88,7 @@ pub struct Manifest {
     pub version: String,
     /// Program and arguments to run. Items naming a file or folder of the plugin are absolute, so the private
     /// working folder does not matter. Empty for a plugin of only views and commands, which has no program.
-    pub command: Vec<OsString>,
+    pub program: Vec<OsString>,
     /// What the user may set for the whole plugin; the values are sent in every request the program gets.
     pub settings: Form,
     /// Environment variables passed through from the app besides the standard few.
@@ -163,7 +163,7 @@ impl Handler {
         !matches!(self, Self::View(_) | Self::Command(_))
     }
 
-    /// Whether the handler runs the plugin's program, which the manifest must then give a `command` for.
+    /// Whether the handler runs the plugin's program, which the manifest must then give a `program` for.
     pub(crate) fn runs_program(&self) -> bool {
         matches!(
             self,
@@ -325,7 +325,7 @@ impl Manifest {
             ));
         }
         let folder = path.parent().unwrap_or_else(|| Path::new("."));
-        let program = read.strings("command", false)?;
+        let program = read.strings("program", false)?;
         let env = read.strings("env", false)?.unwrap_or_default();
         for name in &env {
             if name.starts_with("AX_DEVIL_") {
@@ -357,10 +357,10 @@ impl Manifest {
         let settings = read.form("settings", false)?;
         let (handlers, skipped) = read.handlers(folder)?;
         // Only a plugin with something to run needs a program: one of views and commands has none.
-        let command = match program {
-            Some(items) => command(&items, folder)?,
+        let program = match program {
+            Some(items) => resolve_program(&items, folder)?,
             None if handlers.iter().any(Handler::runs_program) => {
-                return Err(ManifestError::new("command", "is required"));
+                return Err(ManifestError::new("program", "is required"));
             }
             None => Vec::new(),
         };
@@ -368,7 +368,7 @@ impl Manifest {
             id,
             name,
             version,
-            command,
+            program,
             settings,
             env,
             code,
@@ -396,13 +396,13 @@ pub(crate) fn valid_id(id: &str) -> bool {
 ///
 /// The program resolves against the folder when it contains a `/`, else is looked up on the plugin's `PATH`.
 /// Later items name a file or folder of the plugin (`main.py`) or are passed as they are (`-u`).
-fn command(items: &[String], folder: &Path) -> Result<Vec<OsString>, ManifestError> {
+fn resolve_program(items: &[String], folder: &Path) -> Result<Vec<OsString>, ManifestError> {
     let Some((program, rest)) = items.split_first() else {
-        return Err(ManifestError::new("command", "must name a program"));
+        return Err(ManifestError::new("program", "must name a program"));
     };
     if items.iter().any(String::is_empty) {
         return Err(ManifestError::new(
-            "command",
+            "program",
             "must not contain an empty item",
         ));
     }
@@ -411,7 +411,7 @@ fn command(items: &[String], folder: &Path) -> Result<Vec<OsString>, ManifestErr
         let program_path = folder.join(program);
         if !is_executable(&program_path) {
             return Err(ManifestError::new(
-                "command",
+                "program",
                 format!("{} is not an executable file", program_path.display()),
             ));
         }

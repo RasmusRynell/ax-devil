@@ -150,7 +150,7 @@ mod tests {
                 values: Default::default(),
                 views: Vec::new(),
                 commands: Vec::new(),
-                operations: Vec::new(),
+                readers: Vec::new(),
             },
         };
         let installed = || PluginSource::Installed {

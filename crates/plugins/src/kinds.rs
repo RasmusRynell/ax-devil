@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use handler_api::{Bundle, Form};
+use handler_api::{Bundle, Form, On, Place};
 
 /// The lanes a `lanes` decoder or a task reads, by the key the program finds them under in its request.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -51,25 +51,6 @@ pub struct TaskHandler {
     pub options: Form,
 }
 
-/// Where a view is shown.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Place {
-    /// A button in the activity bar opens it in the sidebar.
-    Sidebar,
-    /// A layer over one lane's viewer.
-    Video,
-}
-
-impl Place {
-    /// The manifest's word for it.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Sidebar => "sidebar",
-            Self::Video => "video",
-        }
-    }
-}
-
 /// A page the plugin ships, shown in a sandboxed frame.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ViewHandler {
@@ -83,28 +64,6 @@ pub struct ViewHandler {
     pub place: Place,
     /// The page, a file inside the plugin's folder, relative to it.
     pub document: PathBuf,
-}
-
-/// What a command applies to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum On {
-    /// The application as a whole.
-    App,
-    /// A Video Item.
-    Item,
-    /// A lane.
-    Lane,
-}
-
-impl On {
-    /// The manifest's word for it.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::App => "app",
-            Self::Item => "item",
-            Self::Lane => "lane",
-        }
-    }
 }
 
 /// A menu entry and shortcut that runs one of the plugin's own decoders, tasks or views.

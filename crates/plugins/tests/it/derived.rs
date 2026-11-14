@@ -128,7 +128,7 @@ fn a_task_whose_error_line_arrives_fails_with_its_reason() {
     let script = r#"cat >/dev/null; printf '%s\n' '{"progress":{"done":1}}' '{"error":{"reason":"disk full"}}'"#;
     let manifest = json!({
         "manifest": 2, "id": "acme", "name": "ACME", "version": "1", "protocol": 3,
-        "command": ["sh", "-c", script],
+        "program": ["sh", "-c", script],
         "handlers": [{
             "kind": "task", "id": "acme_export", "name": "Export",
             "lanes": [{ "key": "lane", "label": "Lane" }]
@@ -164,7 +164,7 @@ fn a_task_refuses_a_bundle_that_is_not_the_lanes_and_video_it_declares() {
     let lane = lane_file(folder.path(), "lane.jsonl", &[1]);
     let manifest = json!({
         "manifest": 2, "id": "acme", "name": "ACME", "version": "1", "protocol": 3,
-        "command": ["sh", "-c", "cat >/dev/null"],
+        "program": ["sh", "-c", "cat >/dev/null"],
         "handlers": [{
             "kind": "task", "id": "acme_export", "name": "Export",
             "lanes": [{ "key": "lane", "label": "Lane" }]

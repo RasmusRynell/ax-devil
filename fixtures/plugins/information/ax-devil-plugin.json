@@ -4,7 +4,7 @@
   "name": "Information fixture",
   "version": "1.0.0",
   "protocol": 3,
-  "command": ["python3", "information.py"],
+  "program": ["python3", "information.py"],
   "code": ["information.py"],
   "handlers": [
     {

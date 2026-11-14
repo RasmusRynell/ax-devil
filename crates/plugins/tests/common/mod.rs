@@ -167,9 +167,9 @@ pub fn decode_records(decoder: &PluginDecoder, input: &mut Scripted, cancel: &Ca
 
 /// A manifest document with these fields; `extra` is inserted before the handlers as `,"key":value` text. Its one
 /// decoder, `test-conv`, reads `.test` files.
-pub fn manifest_text(command: &str, extra: &str) -> String {
+pub fn manifest_text(program: &str, extra: &str) -> String {
     format!(
-        r#"{{"manifest":2,"id":"test-plugin","name":"Test","version":"1","protocol":3,"command":{command}{extra},
+        r#"{{"manifest":2,"id":"test-plugin","name":"Test","version":"1","protocol":3,"program":{program}{extra},
             "handlers":[{{"kind":"decoder","id":"test-conv","name":"Test","input":"path","scene_version":"4.0",
             "extensions":[".test"]}}]}}"#
     )
@@ -179,7 +179,7 @@ pub fn manifest_text(command: &str, extra: &str) -> String {
 pub fn base() -> Value {
     json!({
         "manifest": 2, "id": "acme", "name": "ACME", "version": "1", "protocol": 3,
-        "command": ["python3", "convert.py"], "env": ["PYTHONPATH"], "code": ["convert.py"],
+        "program": ["python3", "convert.py"], "env": ["PYTHONPATH"], "code": ["convert.py"],
         "handlers": [{
             "kind": "decoder", "id": "acme", "name": "ACME", "input": "path", "scene_version": "4.0",
             "extensions": [".acme"],

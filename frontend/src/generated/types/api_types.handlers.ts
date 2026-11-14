@@ -1,6 +1,7 @@
 // Generated from api_types::handlers by make; do not edit.
 
 import type { ErrorWire } from "./api_types.error";
+import type { On, Place } from "./handler_api.placement";
 
 /**
  * One value a scan found.
@@ -32,9 +33,9 @@ id: string,
  */
 title: string, 
 /**
- * What it applies to: `app`, `item` or `lane`.
+ * What it applies to.
  */
-on: string, 
+on: On, 
 /**
  * The default key, such as `Ctrl+Alt+E`.
  */
@@ -172,6 +173,35 @@ export type InstallRequest = {
 path: string, };
 
 /**
+ * A handler that reads lanes, which the user picks and gives options: a decoder with input `lanes`, or a task.
+ */
+export type LaneReaderInfo = { 
+/**
+ * The handler id.
+ */
+id: string, 
+/**
+ * Which kind of handler it is.
+ */
+kind: ReaderKind, 
+/**
+ * What the user reads.
+ */
+name: string, 
+/**
+ * `(key, label)` of each lane it reads, in order.
+ */
+lanes: Array<[string, string]>, 
+/**
+ * Whether it is also given the video.
+ */
+video: boolean, 
+/**
+ * The options it takes, in the order they are shown.
+ */
+options: Array<FieldInfo>, };
+
+/**
  * The query of `GET /api/lanes/scenes`: up to [`MAX_LANE_SAMPLES`] samples of one lane of an entry, from sample
  * number `from`.
  */
@@ -196,35 +226,6 @@ from: number,
  * How many samples; at most [`MAX_LANE_SAMPLES`].
  */
 count: number, };
-
-/**
- * A lane decoder or task a plugin provides.
- */
-export type OperationInfo = { 
-/**
- * The handler id.
- */
-id: string, 
-/**
- * `decoder` or `task`.
- */
-kind: string, 
-/**
- * What the user reads.
- */
-name: string, 
-/**
- * `(key, label)` of each lane it reads, in order.
- */
-lanes: Array<[string, string]>, 
-/**
- * Whether it is also given the video.
- */
-video: boolean, 
-/**
- * The options it takes, in the order they are shown.
- */
-options: Array<FieldInfo>, };
 
 /**
  * One plugin.
@@ -289,9 +290,9 @@ views: Array<ViewInfo>,
  */
 commands: Array<CommandInfo>, 
 /**
- * The lane decoders and tasks it provides, which take lanes and options.
+ * The lane decoders and tasks it provides, which read lanes.
  */
-operations: Array<OperationInfo>, } | { "state": "failed", 
+readers: Array<LaneReaderInfo>, } | { "state": "failed", 
 /**
  * What is wrong, naming the manifest field when there is one.
  */
@@ -309,6 +310,11 @@ plugins: Array<PluginInfo>,
  * Why the registry itself could not be used, in which case no installed plugin loaded.
  */
 problem?: string, };
+
+/**
+ * What a lane reader is.
+ */
+export type ReaderKind = "decoder" | "task";
 
 /**
  * The body of `POST /api/plugins/remove`.
@@ -479,9 +485,9 @@ title: string,
  */
 icon?: string, 
 /**
- * Where it is shown: `sidebar` or `video`.
+ * Where it is shown.
  */
-place: string, 
+place: Place, 
 /**
  * Where the page is served, `/views/<token>/<document>`. The token lasts until the plugins reload.
  */

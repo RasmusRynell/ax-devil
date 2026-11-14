@@ -1,6 +1,7 @@
 //! Wire types for the decoders and playlist resolvers the app knows.
 
 use crate::ErrorWire;
+use handler_api::{On, Place};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use ts_rs::TS;
@@ -122,8 +123,8 @@ pub enum PluginStatus {
         views: Vec<ViewInfo>,
         /// The menu entries and shortcuts it adds.
         commands: Vec<CommandInfo>,
-        /// The lane decoders and tasks it provides, which take lanes and options.
-        operations: Vec<OperationInfo>,
+        /// The lane decoders and tasks it provides, which read lanes.
+        readers: Vec<LaneReaderInfo>,
     },
     /// It provides none.
     Failed {
@@ -161,8 +162,8 @@ pub struct ViewInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub icon: Option<String>,
-    /// Where it is shown: `sidebar` or `video`.
-    pub place: String,
+    /// Where it is shown.
+    pub place: Place,
     /// Where the page is served, `/views/<token>/<document>`. The token lasts until the plugins reload.
     pub url: String,
 }
@@ -174,8 +175,8 @@ pub struct CommandInfo {
     pub id: String,
     /// What the user reads.
     pub title: String,
-    /// What it applies to: `app`, `item` or `lane`.
-    pub on: String,
+    /// What it applies to.
+    pub on: On,
     /// The default key, such as `Ctrl+Alt+E`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -184,13 +185,23 @@ pub struct CommandInfo {
     pub runs: String,
 }
 
-/// A lane decoder or task a plugin provides.
+/// What a lane reader is.
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum ReaderKind {
+    /// A decoder with input `lanes`: it derives a lane.
+    Decoder,
+    /// A task: it reads lanes and writes whatever it likes elsewhere.
+    Task,
+}
+
+/// A handler that reads lanes, which the user picks and gives options: a decoder with input `lanes`, or a task.
 #[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
-pub struct OperationInfo {
+pub struct LaneReaderInfo {
     /// The handler id.
     pub id: String,
-    /// `decoder` or `task`.
-    pub kind: String,
+    /// Which kind of handler it is.
+    pub kind: ReaderKind,
     /// What the user reads.
     pub name: String,
     /// `(key, label)` of each lane it reads, in order.
@@ -401,7 +412,8 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<ContributionRow>();
     types.visit::<ViewInfo>();
     types.visit::<CommandInfo>();
-    types.visit::<OperationInfo>();
+    types.visit::<LaneReaderInfo>();
+    types.visit::<ReaderKind>();
     types.visit::<ResolverInfo>();
     types.visit::<FieldInfo>();
     types.visit::<FieldKindWire>();

@@ -46,13 +46,13 @@ fn every_refusal_names_the_manifest_field() {
             Box::new(|m| m["env"] = json!(["AX_DEVIL_TARGET_PASS"])),
         ),
         (
-            "command",
-            Box::new(|m| drop(m.as_object_mut().expect("object").remove("command"))),
+            "program",
+            Box::new(|m| drop(m.as_object_mut().expect("object").remove("program"))),
         ),
-        ("command", Box::new(|m| m["command"] = json!([]))),
+        ("program", Box::new(|m| m["program"] = json!([]))),
         (
-            "command",
-            Box::new(|m| m["command"] = json!(["./missing.sh"])),
+            "program",
+            Box::new(|m| m["program"] = json!(["./missing.sh"])),
         ),
         ("id", Box::new(|m| m["id"] = json!("Not Valid"))),
         // A command is named `<plugin>.<id>`, so a dot in an id would make that ambiguous.

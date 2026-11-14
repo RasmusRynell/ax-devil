@@ -1,7 +1,7 @@
 # Views, commands and the bus
 
 A **view** is a page the plugin ships, shown in a sandboxed frame inside ax-devil. A **command** is a menu entry and
-rebindable key that runs one of the plugin's own handlers. A plugin of only views and commands needs no `command` or
+rebindable key that runs one of the plugin's own handlers. A plugin of only views and commands needs no `program` or
 `code`. Manifest fields beside `decoder` and `task` are in [reference.md](reference.md).
 
 ```json

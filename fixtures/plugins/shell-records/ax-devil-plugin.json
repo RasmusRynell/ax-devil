@@ -4,7 +4,7 @@
   "name": "Shell records",
   "version": "1.0.0",
   "protocol": 3,
-  "command": ["sh", "convert.sh"],
+  "program": ["sh", "convert.sh"],
   "code": ["convert.sh"],
   "idle_timeout_s": 30,
   "handlers": [

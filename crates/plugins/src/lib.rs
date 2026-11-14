@@ -39,7 +39,7 @@ use handler_api::{Decoder, PlaylistResolver, Settings, Values};
 
 pub use decoder::PluginDecoder;
 pub use fields::RESERVED_SETTING_KEYS;
-pub use kinds::{CommandHandler, LaneInputs, On, Place, TaskHandler, ViewHandler};
+pub use kinds::{CommandHandler, LaneInputs, TaskHandler, ViewHandler};
 pub use manifest::{
     DecoderHandler, DecoderInput, Handler, MANIFEST_FILE, Manifest, ManifestError, ResolverHandler,
     SkippedHandler,

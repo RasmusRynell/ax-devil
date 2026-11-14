@@ -6,12 +6,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use handler_api::{On, Place};
 use serde_json::Value;
 
 use super::Fields;
 use crate::{
-    CommandHandler, DecoderInput, Handler, LaneInputs, ManifestError, On, Place, SkippedHandler,
-    TaskHandler, ViewHandler, manifest::is_inside,
+    CommandHandler, DecoderInput, Handler, LaneInputs, ManifestError, SkippedHandler, TaskHandler,
+    ViewHandler, manifest::is_inside,
 };
 
 impl Fields<'_> {
@@ -61,13 +62,9 @@ impl Fields<'_> {
         let id = self.id("id")?;
         let title = self.non_empty("title")?;
         let icon = self.optional_non_empty("icon")?;
-        let place = match self.string("place")?.as_str() {
-            "sidebar" => Place::Sidebar,
-            "video" => Place::Video,
-            other => {
-                return Err(self.error("place", format!("'{other}' is not sidebar or video")));
-            }
-        };
+        let place = self.string("place")?;
+        let place: Place = serde_json::from_value(place.clone().into())
+            .map_err(|_| self.error("place", format!("'{place}' is not sidebar or video")))?;
         let document = PathBuf::from(self.non_empty("document")?);
         if !is_inside(&document) {
             return Err(self.error("document", "must be a path inside the plugin's folder"));
@@ -84,14 +81,9 @@ impl Fields<'_> {
     pub(super) fn command(&mut self) -> Result<CommandHandler, ManifestError> {
         let id = self.id("id")?;
         let title = self.non_empty("title")?;
-        let on = match self.string("on")?.as_str() {
-            "app" => On::App,
-            "item" => On::Item,
-            "lane" => On::Lane,
-            other => {
-                return Err(self.error("on", format!("'{other}' is not app, item or lane")));
-            }
-        };
+        let on = self.string("on")?;
+        let on: On = serde_json::from_value(on.clone().into())
+            .map_err(|_| self.error("on", format!("'{on}' is not app, item or lane")))?;
         Ok(CommandHandler {
             id,
             title,

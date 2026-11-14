@@ -208,7 +208,7 @@ mod tests {
             listed["commands"][0]["id"],
             "derived-demo.derived-count-run"
         );
-        assert_eq!(listed["operations"].as_array().unwrap().len(), 2);
+        assert_eq!(listed["readers"].as_array().unwrap().len(), 2);
         let url = listed["views"][0]["url"].as_str().unwrap();
         let token = url
             .strip_prefix("/views/")

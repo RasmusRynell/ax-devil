@@ -4,7 +4,7 @@
   "name": "Python tracks",
   "version": "1.0.0",
   "protocol": 3,
-  "command": ["python3", "convert.py"],
+  "program": ["python3", "convert.py"],
   "code": ["convert.py"],
   "idle_timeout_s": 30,
   "handlers": [

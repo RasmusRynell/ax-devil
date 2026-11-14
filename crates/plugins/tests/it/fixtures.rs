@@ -76,12 +76,12 @@ fn key(scene: &scene::Scene) -> SceneTime {
 fn a_plugin_keeps_an_observation_on_another_clock() {
     let folder = tempfile::tempdir().expect("folder");
     let line = r#"{"sample":{"time":{"start":{"frame":3},"end":{"frame":3}},"entities":[{"id":"a","observations":[{"time":{"us":100},"geometry":{"box":[0.1,0.2,0.3,0.4]}}]}]}}"#;
-    let command = serde_json::json!([
+    let program = serde_json::json!([
         "sh",
         "-c",
         format!("cat >/dev/null; printf '%s\\n' '{line}'")
     ]);
-    let manifest = common::manifest_text(&command.to_string(), "");
+    let manifest = common::manifest_text(&program.to_string(), "");
     let path = folder.path().join(plugins::MANIFEST_FILE);
     std::fs::write(&path, manifest).expect("manifest");
     let decoder = LoadedPlugin::load(&path).expect("loads").decoders.remove(0);
@@ -363,7 +363,7 @@ fn a_reported_error_names_the_setting_it_is_about() {
 fn scripted(folder: &Path, script: &str) -> Arc<PluginResolver> {
     let manifest = serde_json::json!({
         "manifest": 2, "id": "scripted", "name": "Scripted", "version": "1", "protocol": 3,
-        "command": ["sh", "-c", script], "code": ["ax-devil-plugin.json"],
+        "program": ["sh", "-c", script], "code": ["ax-devil-plugin.json"],
         "handlers": [{
             "kind": "playlist_resolver", "id": "scripted", "name": "Scripted", "description": "Prints",
             "settings": [

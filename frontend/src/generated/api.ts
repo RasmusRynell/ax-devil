@@ -26,6 +26,7 @@ export * from "./types/api_types.workspace";
 export * from "./types/export.render";
 export * from "./types/foundation.error";
 export * from "./types/foundation.time";
+export * from "./types/handler_api.placement";
 export * from "./types/playback.authority";
 export * from "./types/scene.inspection";
 export * from "./types/scene.inspection.leaf";

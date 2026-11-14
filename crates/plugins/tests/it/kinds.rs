@@ -36,8 +36,8 @@ fn a_plugin_of_views_and_commands_has_no_program_but_a_task_needs_one() {
     let folder = tempfile::tempdir().expect("folder");
     let path = install(folder.path(), &views_only());
     fs::write(folder.path().join("page.html"), "<p>hi</p>").expect("page");
-    let plugin = LoadedPlugin::load(&path).expect("loads without a command");
-    assert!(plugin.manifest.command.is_empty() && plugin.skipped.is_empty());
+    let plugin = LoadedPlugin::load(&path).expect("loads without a program");
+    assert!(plugin.manifest.program.is_empty() && plugin.skipped.is_empty());
     assert!(plugin.decoders.is_empty() && plugin.tasks.is_empty());
 
     let mut with_task = views_only();
@@ -47,7 +47,7 @@ fn a_plugin_of_views_and_commands_has_no_program_but_a_task_needs_one() {
         .push(json!({ "kind": "task", "id": "work", "name": "Work", "lanes": [{ "key": "a", "label": "A" }] }));
     let error =
         Manifest::load(&install(folder.path(), &with_task)).expect_err("a task runs the program");
-    assert_eq!(error.field.as_deref(), Some("command"));
+    assert_eq!(error.field.as_deref(), Some("program"));
 }
 
 #[test]

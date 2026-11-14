@@ -45,6 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     api_types::visit_api_types(&mut registry);
     export::visit_api_types(&mut registry);
     foundation::visit_api_types(&mut registry);
+    handler_api::visit_api_types(&mut registry);
     playback::visit_api_types(&mut registry);
     scene::visit_api_types(&mut registry);
     scene_store::visit_api_types(&mut registry);

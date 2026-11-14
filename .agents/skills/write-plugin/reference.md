@@ -19,7 +19,7 @@ field by its path, such as `handlers[1].options[0].kind`.
 | `id` | yes | The plugin id: 1-64 characters of `a-z 0-9 . _ -`, starting with a letter or digit. Must differ from every built-in and installed plugin id |
 | `name`, `version` | yes | Shown to the user; `version` is free text |
 | `protocol` | yes | `3`; any other value does not load |
-| `command` | yes, unless only views and commands | Program and arguments. A program containing `/` is relative to the folder and must be executable; otherwise it is looked up on `PATH`. Later items that name a file or folder of the plugin become absolute; items starting with `-` are passed as written. Nothing is appended: the request carries the path |
+| `program` | yes, unless only views and commands | Program and arguments. A program containing `/` is relative to the folder and must be executable; otherwise it is looked up on `PATH`. Later items that name a file or folder of the plugin become absolute; items starting with `-` are passed as written. Nothing is appended: the request carries the path |
 | `env` | no | Names of environment variables to pass through besides the standard few. `AX_DEVIL_*` is refused |
 | `code` | no | Paths in the folder (files or folders, no `..`) whose bytes identify the plugin; default the whole folder. Dot-names and `__pycache__` are skipped; at most 20,000 files and 256 MiB |
 | `idle_timeout_s` | no | 1 to 86,400; default 120. Seconds the plugin may print nothing before it is killed |
@@ -78,7 +78,7 @@ loads no plugin; a broken entry fails alone. Both are listed by `plugins list`.
 
 ## Running
 
-The host starts `command` in an empty private working folder (also `TMPDIR`), removed at the end, so rely on the
+The host starts `program` in an empty private working folder (also `TMPDIR`), removed at the end, so rely on the
 absolute paths in the request. The environment holds only `PATH`, `HOME`, `LANG`,
 `LC_ALL`, `LC_CTYPE`, `TZ` (on Windows also `SYSTEMROOT`) and the manifest's `env`. A `path` decoder's stdin gets one
 line, then EOF:

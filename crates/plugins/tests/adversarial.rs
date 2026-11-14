@@ -1,4 +1,4 @@
-//! The plugin host against plugins that misbehave. The plugin is this test binary run again: the command
+//! The plugin host against plugins that misbehave. The plugin is this test binary run again: the manifest's program
 //! names it with `--plugin=MODE`, and `main` plays the plugin instead of running the tests. The binary has
 //! no libtest harness because libtest would print its own lines on the plugin's stdout.
 #![allow(clippy::print_stdout, clippy::print_stderr)] // a test runner without a harness reports with prints
@@ -263,9 +263,9 @@ fn serde_json_string(text: &str) -> String {
 /// A decoder for this binary playing `mode`, with `FAKE_LISTED` passed through and `extra` manifest fields.
 fn fake(folder: &Path, mode: &str, extra: &str) -> std::sync::Arc<PluginDecoder> {
     let exe = std::env::current_exe().expect("test binary path");
-    let command = serde_json::json!([exe, format!("{MODE_PREFIX}{mode}")]);
+    let program = serde_json::json!([exe, format!("{MODE_PREFIX}{mode}")]);
     let text = manifest_text(
-        &command.to_string(),
+        &program.to_string(),
         &format!(r#","env":["FAKE_LISTED"]{extra}"#),
     );
     let text = if mode.starts_with("records-") {

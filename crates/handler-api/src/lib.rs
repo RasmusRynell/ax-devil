@@ -8,6 +8,7 @@
 mod bundle;
 mod decoder;
 mod form;
+mod placement;
 mod refs;
 mod resolver;
 mod skipped;
@@ -18,6 +19,7 @@ pub use decoder::{
     Spec,
 };
 pub use form::{Cli, Field, FieldKind, Form, ScanCount, Selection, Values, invalid_field};
+pub use placement::{On, Place};
 pub use refs::{ImageSequence, LaneSource, OverlayRef, VideoRef};
 pub use resolver::{
     Choice, PlaylistResolver, ResolvedEntry, ResolvedPlaylist, ResolvedPlaylists, ResolverSpec,
@@ -26,3 +28,9 @@ pub use skipped::{SkippedRecords, shorten};
 
 /// Settings or options as the user, a playlist or a workspace holds them: not yet checked against a [`Form`].
 pub type Settings = serde_json::Map<String, serde_json::Value>;
+
+/// Visits every type this crate sends to the frontend, for `export-types`.
+pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
+    types.visit::<Place>();
+    types.visit::<On>();
+}

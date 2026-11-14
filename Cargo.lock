@@ -68,6 +68,7 @@ dependencies = [
  "bytes",
  "export",
  "foundation",
+ "handler-api",
  "overlays",
  "playback",
  "scene",
@@ -947,6 +948,7 @@ dependencies = [
  "scene",
  "serde",
  "serde_json",
+ "ts-rs",
 ]
 
 [[package]]
