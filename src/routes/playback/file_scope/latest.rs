@@ -281,14 +281,16 @@ mod tests {
             let (viewer, _) = super::super::tests::viewer(dir.path()).await;
             let cache = Arc::new(Cache::new(1 << 20));
             let mut latest = Latest::new(Audience::HOST);
-            let (entered, started) = tokio::sync::oneshot::channel();
+            let (entered, mut started) = tokio::sync::mpsc::unbounded_channel();
             let (resume, released) = mpsc::channel();
+            let released = Mutex::new(released);
             latest.ask(&viewer, &cache, true, (0, 1), move |_, _, _, _| {
                 entered.send(()).unwrap();
-                released.recv_timeout(Duration::from_secs(5)).unwrap();
+                let held = released.lock().unwrap();
+                held.recv_timeout(Duration::from_secs(5)).unwrap();
                 panic!("the superseded query has a defect")
             });
-            started.await.unwrap();
+            started.recv().await.unwrap();
             // Request 1 is superseded while it runs; 2 is replaced before it starts; 3 runs once 1 has ended.
             latest.ask(&viewer, &cache, true, (0, 2), |_, _, _, _| {
                 panic!("the replaced query never runs")
