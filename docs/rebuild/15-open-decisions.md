@@ -13,7 +13,7 @@ and D20 belongs to the overlay path. Decisions already taken are in [14](14-buil
 
 | ID | Question | Recommended answer |
 |----|----------|--------------------|
-| D1 | How do plugins (file decoders, message decoders, playlist resolvers) run, and do existing third-party Python plugins keep working (PL-05)? | Settled by D29: the built-in ones are native code and other data enters through plugin processes (one manifest of typed handlers; the plugin owns its environment through `command`); authors port third-party plugins to the new contract and the Python bridge (PL-05) stays not planned ([05](05-formats-and-extensions.md#plugin-runtime)) |
+| D1 | How do plugins (file decoders, message decoders, playlist resolvers) run, and do existing third-party Python plugins keep working (PL-05)? | Settled by D29: the built-in ones are native code and other data enters through plugin processes (one manifest of typed handlers; the plugin owns its environment through `program`); authors port third-party plugins to the new contract and the Python bridge (PL-05) stays not planned ([05](05-formats-and-extensions.md#plugin-runtime)) |
 | D15 | Do we write a throwaway script in the old Python app that dumps what it decodes and draws, to compare the new code against? | Yes; commit the outputs with a note on where they came from |
 
 ## Before workspace persistence

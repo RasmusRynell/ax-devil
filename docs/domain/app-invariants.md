@@ -82,7 +82,8 @@ and the rest of the rules: [invariants](invariants.md).
 ## Plugin System
 
 - Plugins load only from the registry that install wrote, never because their files exist. Plugin ids are unique
-  among plugins and handler ids among all decoders and resolvers.
+  among plugins, and the ids of decoders, resolvers and tasks among all of them; a view's or command's id only within
+  its plugin.
 - Load failures never stop the application; each is recorded and listed.
 - A plugin runs in an empty working folder with an allowlisted environment; its process group is killed whenever the
   run ends ([trust](../plugins.md#trust)).

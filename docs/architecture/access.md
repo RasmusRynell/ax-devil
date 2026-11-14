@@ -50,6 +50,8 @@ nothing but its own plugin's files.
 ## Sessions And Seats
 
 - A Session has one Presenter View. Every Owner seat drives it and shows it; an Owner has no private view.
+  The one exception is presentation-only: whether a plugin's video layer is on is window-local, not Session state, and
+  nothing a Guest or the host acts on reads it.
 - A Guest seat follows the Presenter View, or explores its own view when the Sharing options allow it.
 - A Guest's playback lease permits inspection only while its current view shows object details: the Presenter View
   while following, its own while exploring. Inspection admission and delivery both read that current permission;
@@ -61,8 +63,8 @@ nothing but its own plugin's files.
   Guest.
 - A Session lives while an Owner seat is attached. When the last one disconnects the grace period runs; when the
   last one leaves, the Session ends. A Guest never keeps a Session alive.
-- A Guest's demand never runs plugin code: an open from a Guest seat reuses a stored result, else the lane fails as
-  not built yet. Owner seats compute. The listing of plugins and the task and lane-scene routes are Owner's, so a Guest
+- A Guest's demand never runs plugin code: an open from a Guest seat reuses a stored result, else the lane fails
+  as Not Built. Owner seats compute. The listing of plugins and the task and lane-scene routes are Owner's, so a Guest
   has no views, commands or tokens.
 - A Guest receives a projection of the Session: never a setting, a credential, a reference, a host path or the
   detail of a failure.
@@ -118,7 +120,7 @@ to browse the server through `GET /api/files/folder`.
 |--------|--------|
 | A route | Public, Owner, Full access or Local, by the Full access test |
 | A setting | One table row: scope by the four questions, `secret`, `full_access` |
-| A bus call (a plugin view's request, fulfilled by the Owner page) | It is one of the closed table in `frontend/src/plugins/bus.ts`, fulfilled by an Owner route or command; it passes no `file` or `folder` option and reaches no Full access route |
+| A bus call (a plugin view's request, fulfilled by the Owner page) | It is one of the closed table in `frontend/src/plugins/bus.ts`, fulfilled by an Owner route or command; it reaches only its own plugin's handlers and `<plugin id>.<name>` lanes, passes no `file` or `folder` option, and reaches no Full access route |
 | A Session field | Whether a Guest receives it; if so, it passes the projection rule |
 | A native feature | The shell bridge offers it; what a remote Owner uses instead |
 | Something to choose from | The list lives with the server; the choice is a setting |

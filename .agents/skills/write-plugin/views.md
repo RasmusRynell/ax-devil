@@ -16,7 +16,8 @@ rebindable key that runs one of the plugin's own handlers. A plugin of only view
   `task` or a `view`; a view receives the `command` event. Running a decoder or task opens a dialog to pick lanes and
   options. A `shortcut` that is reserved or already taken ships unbound.
 - A `view` or `command` whose `document` or `runs` does not resolve is skipped with the reason, like an unknown kind.
-- A view or command id need only be unique within its plugin.
+- A view's or command's id need only be unique within its plugin; outside it they are `<plugin id>.<id>`. Every id
+  matches `[a-z0-9][a-z0-9_-]*`.
 
 ## The frame
 
@@ -31,31 +32,33 @@ On its first load the host posts one `MessagePort`; everything below travels ove
 
 - The view sends `{"type": "call", "id", "call", "epoch", "args"}`; `id` is a number it picks. The reply is
   `{"type": "reply", "id", "ok": true, "value"}` or `{"type": "reply", "id", "ok": false, "error", "reason"}`, where
-  `error` is `stale`, `no_viewer`, `refused`, `too_large`, `invalid`, `unknown_call`, `cancelled` or `failed`.
-- The view sends `{"type": "key", "key", "epoch"}` for a key it did not handle, with no reply; a key of an older `epoch` is dropped.
+  `error` is `stale`, `no_viewer`, `refused`, `too_large`, `invalid`, `unknown_slot`, `unknown_call`, `cancelled` or `failed`.
+- The view sends `{"type": "key", "key", "epoch"}` for a key it did not handle, with no reply; a key of another `epoch` is dropped.
 - The host sends the events below, each `{"type": ...}`.
 - Every call but `cancel` carries the `epoch` of the last `context` event. The epoch changes when the view is bound to
   another viewer, item or entry (not when only the lanes, selection, theme or video rectangle change), and a call with
   another epoch, or before any `context`, is answered `stale` before anything happens: ask again with the new one.
   An effect names its item, entry and slot, so it cannot land on a later binding.
-- No call takes a path: `lanes.set` and `task.run` refuse (`refused`) an option the operation's form declares as `file`
+- No call takes a path: `lanes.set` and `task.run` refuse (`refused`) an option the handler's form declares as `file`
   or `folder`, and options over 256 KiB (`lanes.set`) or 8 MiB (`task.run`) (`too_large`).
-- A call reaches only the plugin's own handlers: `runs` must be a `decoder` (`lanes.set`) or `task` (`task.run`) of
-  this plugin, and `lanes.set` takes only a `slot` named `<plugin id>.<name>`, otherwise `refused`.
+- A call reaches only the plugin's own handlers: `handler` must be a `decoder` (`lanes.set`) or `task` (`task.run`) of
+  this plugin, and `lanes.set` takes only a `slot` named `<plugin id>.<name>`, otherwise `refused`. A lane is addressed
+  by its slot, and each slot in `lanes` must be a slot of the bound viewer's lanes or of a derived lane this view set
+  earlier under the same binding, otherwise `unknown_slot`.
 
 | Call | Does |
 |------|------|
-| `viewer.set {frame?, playing?, select?, capture?}` | Moves the bound viewer: `frame` a whole number, `select` `{lane, entity}` (a slot) or `null`; `no_viewer` when none is bound or it no longer shows the item and entry |
-| `scenes.read {lane, from, count}` | The lane `lane` (any slot of the entry) as a lane file text, `count` samples from sample number `from`; the backend caps `count` at 2,000 and fails (`failed`) an answer over 8 MiB |
-| `lanes.set {slot, runs, lanes, options, label}` or `{slot, remove: true}` | Adds, changes or removes the derived lane `<plugin id>.<name>`; `runs` is one of the plugin's `decoder` ids and `lanes` maps its keys to slots. A changed option derives again, and a result already built is reused |
-| `task.run {runs, lanes, options}` | Runs one of the plugin's own tasks; `progress` events carry the call's id and the reply comes at the end |
+| `viewer.set {frame?, playing?, select?, capture?}` | Moves the bound viewer: `frame` a whole number, `select` `{slot, entity}` or `null`; `no_viewer` when none is bound or it no longer shows the item and entry |
+| `scenes.read {slot, from, count}` | The lane `slot` (any slot of the entry) as a lane file text, `count` samples from sample number `from`; the backend caps `count` at 2,000 and fails (`failed`) an answer over 8 MiB |
+| `lanes.set {slot, handler, lanes, options, label}` or `{slot, remove: true}` | Adds, changes or removes the derived lane `<plugin id>.<name>`; `handler` is one of the plugin's `decoder` ids and `lanes` maps each input key it declares to a slot. A changed option derives again, and a result already built is reused |
+| `task.run {handler, lanes, options}` | Runs one of the plugin's own tasks, `lanes` as above; `progress` events carry the call's id and the reply comes at the end |
 | `cancel {id}` | Aborts that outstanding call of this view, which then fails `cancelled`; always answered `ok`, whatever the epoch |
 
 | Event | Content |
 |-------|---------|
-| `context` | `epoch`, `item`, `entry` (null while no viewer is bound), `lanes` as `[{slot, label, basis, complete}]`, `selection` (`{lane, entity}` or null), `theme` (`light` or `dark`), `video` (`{x, y, width, height}` in CSS pixels of the page; only for a `video` view) |
+| `context` | `epoch`, `item`, `entry` (null while no viewer is bound), `lanes` as `[{slot, label, basis, complete}]`, `selection` (`{slot, entity}` or null), `theme` (`light` or `dark`), `video` (`{x, y, width, height}` in CSS pixels of the page; only for a `video` view) |
 | `playhead` | `frame`, `time` (microseconds or null), `playing`; at most every 33 ms, only the latest |
-| `command` | `id`: a `command` whose `runs` is this view |
+| `command` | `id`: `<plugin id>.<id>` of a `command` whose `runs` is this view |
 | `progress` | `id` of the `task.run`, with `done`, `total`, `text` as the task gave them |
 
 `key` runs a command only if it is a built-in command of scope `view` or one of the plugin's own. A plugin command runs

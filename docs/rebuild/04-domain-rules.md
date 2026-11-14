@@ -26,7 +26,7 @@ record of what changed from the reference wording. Scene types at the reference:
 
 - UI Lifecycle: the GC freeze and collection rules (Python-specific; the guarantee is in [03](03-runtime.md)).
 - Plugin System: uv project, interpreter selection, `AX_DEVIL_LAUNCH_COMMAND`/`AX_DEVIL_PLUGIN_ROOT`; dropped. The
-  guarantees stay (a plugin's dependencies are its own, through its manifest's `command`; install and remove change
+  guarantees stay (a plugin's dependencies are its own, through its manifest's `program`; install and remove change
   only the registry).
 - Data Pipeline: "one process pool" for the cache allowance; keep "one allowance shared by open offline sources".
 - Class and method names quoted as requirements (`add_observation()`, `SplitView`, `WorkspaceIntake`).

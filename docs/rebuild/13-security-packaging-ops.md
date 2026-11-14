@@ -123,7 +123,7 @@ Builds are unsigned. Linux: `chmod +x` the AppImage; where FUSE is missing run i
 on Ubuntu 24.04+ the Chromium sandbox may need `--no-sandbox`. Windows: SmartScreen "More info", then "Run anyway".
 macOS: System Settings, Privacy & Security, "Open Anyway", or `xattr -dr com.apple.quarantine ax-devil.app`.
 
-D6 and D29: plugins are the user's own programs and bring their own environment (`command`), so a bundle ships no interpreter for them.
+D6 and D29: plugins are the user's own programs and bring their own environment (`program`), so a bundle ships no interpreter for them.
 
 ## Observability
 

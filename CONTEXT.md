@@ -57,11 +57,20 @@ Shared language for ax-devil's inspection workspace. Code, docs and UI use these
 | Export Job | One export of a viewer's lanes to an MP4 file or a PNG of one frame: the Owner asks on the viewer's playback socket, the backend freezes the lanes' catalogs, Lane Styles, Lane Policies and data revisions, and runs it, one at a time, until it ends or the socket closes. | Recording, render job |
 | Render Page | The hidden offscreen Electron page that draws an Export Job's pictures from the frozen inputs, with the same presentation code as the screen. | Export window, headless browser |
 | Plugin | An installed program, listed in the plugin registry and run as the user, that provides Handlers ([plugins](docs/plugins.md)). | Converter, script, adapter |
-| Handler | One decoder, playlist resolver, task, view or command, built in or provided by a Plugin, selected by its handler id. A Plugin's decoder turns an overlay file into Scenes as JSON Lines. | Converter, driver |
+| Program | The executable and arguments a Plugin's manifest names (`program`); every decoder, resolver and task call of the Plugin is one run of it. A Plugin of only views and commands has none. | Command, binary |
+| Handler | One decoder, playlist resolver, task, view or command, built in or provided by a Plugin, selected by its handler id. A decoder, resolver or task id is unique among all handlers; a view's or command's is local to its Plugin and written `<plugin>.<id>` outside it. | Converter, driver, contribution, operation |
+| Lane Reader | A Handler that reads lanes of an entry: a decoder with input `lanes`, or a Task. Listed to the page as `readers`. | Operation |
+| Lane Input | One lane a Lane Reader reads: a declared input key mapped to the slot of the lane given for it, checked once by the plugins crate. | Lane argument |
+| Lane File | A lane's track as JSON Lines, named by its content hash: what a Lane Reader's request and a view's `scenes.read` carry. | Scene dump, export |
 | Derived Lane | A lane a decoder computes from other lanes of the same entry and optionally its video, declared on a Workspace Item by slot and stored like any lane; its identity is its Bundle's digest. | Result, computed track |
-| Bundle | The file the host writes for a Derived Lane or Task: its input lane files by key with their content hashes, and its video. Its digest is the Derived Lane's identity. | Job, manifest |
-| Task | A Handler that reads lanes of an entry and produces no Scenes; it writes where its own options say. One streaming request: progress is the response, cancel is dropping it. | Job, export |
-| Plugin View | A page a Plugin ships, shown in a sandboxed frame in the sidebar or over one lane's viewer; it reaches the app only through the bus the Owner's page fulfils. | Plugin UI, extension |
+| Bundle | The file the host writes for a Derived Lane or Task: its input Lane Files by key with their content hashes, and its video. Only a Derived Lane's Bundle digest is an identity; a Task's Bundle is not. | Job, manifest |
+| Task | A Lane Reader that produces no Scenes; it writes where its own options say. One streaming request: progress is the response, cancel is dropping it. | Job, export |
+| Admission | Whether a demand may run plugin code: Compute for an Owner seat, Reuse for a Guest seat, decided where the playback lease is redeemed. | Permission, role check |
+| Not Built | The error a Guest's open gets for a lane of plugin code with no stored result: Reuse never computes. | Pending, missing |
+| Plugin Command | A menu entry and rebindable key of a Plugin that runs one of its own Lane Readers or views, on the app, an item or a lane. | Action, operation |
+| Place | Where a Plugin View is shown: the sidebar, or a video layer over one lane's viewer whose on/off state belongs to its window. | Slot, zone |
+| Plugin View | A page a Plugin ships, shown in a sandboxed frame in a Place and served under a view address (`/views/<random>/...`); it reaches the app only through the Bus. | Plugin UI, extension, view token |
+| Bus | The one channel of messages between a Plugin View and the Owner's page. A Binding is the viewer, item and entry it is bound to; the epoch counts Bindings, and a call made under another epoch is answered `stale`. | Plugin API, RPC |
 | Ingest Watermark | While a file is still being read, the sample key below which every frame is decided. Frame Map cells exist only below it, and the first out-of-order key stops it until the read ends. | Progress, loaded up to |
 | Marks | The boxes, lines, circles, points, paths and labels a catalog produces from a Sample Item in a lane, laid out and painted by the frontend. | Drawing Instruction, Prepared Drawing |
 

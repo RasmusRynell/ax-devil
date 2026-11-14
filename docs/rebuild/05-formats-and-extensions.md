@@ -90,7 +90,7 @@ Guarantees any mechanism must meet (`docs/domain/invariants.md#plugin-system`, [
 
 - Discovery only through a declared registry; never by folder presence.
 - Protocol and Scene version checks before registration; failures listed, never fatal.
-- A plugin owns its environment through its manifest's `command`; installing a plugin never changes the app.
+- A plugin owns its environment through its manifest's `program`; installing a plugin never changes the app.
 - Install, update and remove from the CLI and the Plugins view, validated before activation and applied to the
   running app within a second or two: the app polls the registry and each listed manifest (PL-03).
 - Authoring stays cheap for an agent: one small folder, a local install command, a check command that runs it on real

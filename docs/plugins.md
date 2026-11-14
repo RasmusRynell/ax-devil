@@ -2,7 +2,7 @@
 
 ax-devil reads other overlay formats through **plugins**: programs in any language that you install and ax-devil
 runs on an overlay file or a camera's live metadata to get its Scenes, or on a folder to get playlists. A plugin lists the **handlers** it
-provides in its manifest: decoders and playlist resolvers, and tasks, views and commands. Writing one, with an agent or by hand, is in the
+provides in its manifest: decoders, playlist resolvers, tasks, views and commands, all run from its one `program`. Writing one, with an agent or by hand, is in the
 [write-plugin skill](../.agents/skills/write-plugin/SKILL.md); the contract is its
 [reference](../.agents/skills/write-plugin/reference.md). The decoders and playlist resolvers that ship with ax-devil
 are built in and not plugins you install.
@@ -19,8 +19,8 @@ reason, and `plugins list` says why one did not load.
 ## Trust
 
 A plugin is code you install. It runs as you, can read your files and reach the network, and ax-devil does not
-sandbox it. ax-devil gives it only the overlay path (or the records of a file or live source), the lane files and video of a derived lane
-or task, or the settings a resolver is given, the options and settings its manifest declares (taken literally, never
+sandbox it. ax-devil gives it only the overlay path (or the records of a file or live source), the lane files and video a lane
+reader (a derived lane's decoder or a task) declares, or the settings a resolver is given, the options and settings its manifest declares (taken literally, never
 expanded), a short
 allowlist of environment variables (none of ax-devil's credentials) and an empty private working folder, and kills it
 and, except on Windows, everything it started when the lane no longer needs it. A workspace from someone else can

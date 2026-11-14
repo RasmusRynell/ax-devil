@@ -11,8 +11,8 @@ environment, idle timeout, settings, code identity). The scene store drives it l
 caching.
 
 - **Manifest is validated whole** (`manifest.rs`, `fields.rs`): an error names the field by its path, such as
-  `handlers[1].options[0].kind`. A handler id must be new across plugins unless it is a view or a command, which only
-  differ within their plugin (`Reserved`). The registry
+  `handlers[1].options[0].kind`. Ids match `[a-z0-9][a-z0-9_-]*` (no dot, so a command's `<plugin>.<id>` is unambiguous). A
+  decoder, resolver or task id must be new across plugins; a view's or command's only differs within its plugin (`Reserved`). The registry
   (`registry.rs`) is written only by install, update and remove, atomically and private to the user, and keeps keys it does
   not know.
 - **Identity.** `code_hash` is SHA-256 over the manifest, the plugin's settings and the files its `code` names, re-read
@@ -29,12 +29,14 @@ caching.
   bridge queue holds the rest, so there is no buffering of its own. A process that ends after an answer costs the one record
   it was on and is started again with the next; one that ends before its own first answer (a restarted one too) fails the session, so a broken
   plugin is not started once per document. The idle timeout runs only while an answer is owed.
-- **Lanes, tasks, views, commands.** A `decoder` with `input: lanes` is a derived lane: its input file is the host's
-  bundle (`handler_api::Bundle`, which lists each input lane file by key with its hash, and the video), and the
-  request's `input` is `{lanes: {key: path}, video?}`. A `task` takes the same input and options, produces no Scenes
-  and answers with `progress`, `warning`, `error` and `done` lines; dropping the run cancels it. A `view` names
-  a page in the plugin's folder and a `command` names an own lanes decoder, task or view; either whose reference does
-  not resolve is `skipped` with the reason, like an unknown kind. A plugin of only views and commands has no `program`.
+- **Lane readers, views, commands.** A lane reader is a `decoder` with `input: lanes` (a derived lane) or a `task`;
+  `LaneInputs::check` is the one place that holds a request's lanes and video to what it declares, in `PluginDecoder`
+  and `PluginTask`, whoever asked. The derived lane's input file is the host's bundle (`handler_api::Bundle`, which
+  lists each input lane file by key with its hash, and the video), and the request's `input` is
+  `{lanes: {key: path}, video?}`. A `task` takes the same input and options, produces no Scenes and answers with
+  `progress`, `warning`, `error` and `done` lines; dropping the run cancels it. A `view` names a page in the plugin's
+  folder and a `command` names an own lane reader or view; either whose reference does not resolve is `skipped` with
+  the reason, like an unknown kind. A plugin of only views and commands has no `program`.
 - **Settings.** The top-level `settings` form is stored in the plugin's registry entry and sent as `settings` in every
   decode and task request. Nothing handed to a program is expanded: a setting or option holding `$HOME` arrives as that
   text. A resolver's request already uses `settings` for its own form, so it does not carry the plugin's.

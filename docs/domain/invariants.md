@@ -105,9 +105,10 @@ Rules for Workspace content, viewers, the sidebar, UI lifecycle, plugin loading 
 - Pausing RTSP keeps its connection alive. Stopping is terminal; reopening creates a new source.
 - Scene file artifacts are invalid unless their complete identity matches: source content digest (a stat fingerprint
   only spares hashing an unchanged file; a derived lane's source is its bundle, so its identity is the bundle's digest
-  and any input change rebuilds it), decoder name (for a plugin, the hash of its manifest, settings and code files),
-  artifact version, Scene version, decode options and store format version. If the source changed during the build, the artifact is persisted without a digest, so the
-  next open sees the file as changed. Cache files are private and always rebuildable.
+  and any input change rebuilds it; a task's bundle is no identity), decoder name (for a plugin, the hash of its
+  manifest, settings and code files), artifact version, Scene version, decode options and store format version. If the
+  source changed during the build, the artifact is persisted without a digest, so the next open sees the file as
+  changed. Cache files are private and always rebuildable.
 - Samples with one start key are one group, merged or replaced as the decoder asks. A key below an earlier one freezes
   the stream: the rest is sorted at the end into a new generation with its own numbering and revision.
 - While a file is read, a Frame Map cell is sent only for a frame the samples so far decide, and a sent cell never
@@ -154,8 +155,14 @@ Rules for Workspace content, viewers, the sidebar, UI lifecycle, plugin loading 
 ## Plugins
 
 - Nothing handed to a plugin is expanded: a request, option or setting holding `$HOME` or `$NAME` arrives as that text.
-- A view's bus call, `cancel` apart, carries the epoch of the context it was made under, and the page answers any other
-  epoch `stale` before doing anything. The epoch changes with the viewer, item or entry the view is bound to, and an
+- A view's bus call, `cancel` apart, and its `key` message carry the epoch of the context they were made under; the page
+  answers a call of any other epoch `stale` before doing anything and drops such a key. The epoch changes with the viewer, item or entry the view is bound to, and an
   effect names that item and entry, so none lands on a later binding.
-- A view's bus reaches only its own plugin's decoders and tasks, sets only lanes named `<plugin id>.<name>`, and passes
-  no option the operation's form declares as `file` or `folder`.
+- A view's bus reaches only its own plugin's decoders and tasks, sets only lanes named `<plugin id>.<name>`, takes
+  input lanes only from the bound viewer's or from a derived lane that view set earlier under the same binding
+  (`unknown_slot` otherwise), and passes no option the handler's form declares as `file` or `folder`.
+- A task and a `lanes` decoder get exactly the lane inputs and video they declare, whoever asks: the plugins crate
+  checks this, never a route or a page. The track registry checks that a derived source has a `lanes` decoder and a
+  file source does not.
+- Plugin and handler ids are `[a-z0-9][a-z0-9_-]*`, with no dot, so `<plugin>.<id>`, the name of a view or command
+  outside its plugin, is never ambiguous.

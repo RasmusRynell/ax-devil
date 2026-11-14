@@ -16,7 +16,7 @@ field by its path, such as `handlers[1].options[0].kind`.
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `manifest` | yes | `2` |
-| `id` | yes | The plugin id: 1-64 characters of `a-z 0-9 . _ -`, starting with a letter or digit. Must differ from every built-in and installed plugin id |
+| `id` | yes | The plugin id: 1-64 characters of `a-z 0-9 _ -` (no dot), starting with a letter or digit. Must differ from every built-in and installed plugin id |
 | `name`, `version` | yes | Shown to the user; `version` is free text |
 | `protocol` | yes | `3`; any other value does not load |
 | `program` | yes, unless only views and commands | Program and arguments. A program containing `/` is relative to the folder and must be executable; otherwise it is looked up on `PATH`. Later items that name a file or folder of the plugin become absolute; items starting with `-` are passed as written. Nothing is appended: the request carries the path |
@@ -26,8 +26,9 @@ field by its path, such as `handlers[1].options[0].kind`.
 | `settings` | no | A list of fields, below, of kind `text`, `file` or `folder`; the user's values are sent in every `decode` and `task` request as `settings`, literally (no `$NAME`), and are part of the code hash |
 | `handlers` | yes | A non-empty list of handlers, below |
 
-Every handler has `kind` and `id` (same characters as the plugin id; it may equal the plugin's own id, and must
-differ from every other handler id, built-in or installed, of any kind; `--handler-type` takes it) and `name`. A
+Every handler has `kind` and `id` (same characters as the plugin id; it may equal the plugin's own id; `--handler-type`
+takes it) and `name`. The id of a decoder, playlist resolver or task must differ from that of every other such handler,
+built-in or installed; a `view` or `command` id only within its plugin (outside it, `<plugin id>.<id>`). A
 `kind` this ax-devil does not know is skipped, unread and without an id, and listed under the plugin as needing
 a newer ax-devil; the plugin's other handlers work, and a plugin left with none fails.
 
@@ -94,8 +95,9 @@ Stderr is drained: its last 20 lines (2 KiB) join a failure's reason, and it is 
 
 ### Lanes
 
-A `lanes` decoder and a task declare `"lanes": [{"key","label"}]` (the lanes the user picks, read under `key`) and
-`"video": true` to also get the entry's video. The request carries files, never a bundle:
+A `lanes` decoder and a task (the **lane readers**) declare `"lanes": [{"key","label"}]` (the lanes the user picks,
+read under `key`) and `"video": true` to also get the entry's video. The host gives exactly those: a missing or extra
+key, or a video not declared, fails the run before the program starts. The request carries files, never a bundle:
 
 ```json
 {"protocol":3,"op":"decode","handler":"acme_iou","input":{"lanes":{"truth":"/abs/a.jsonl","model":"/abs/b.jsonl"},"video":"/abs/v.mp4"},"options":{},"settings":{}}
@@ -103,7 +105,8 @@ A `lanes` decoder and a task declare `"lanes": [{"key","label"}]` (the lanes the
 
 (`"op":"task"` for a task.) A lane file is JSON Lines: `{"lane":{"basis","coverage","metadata"}}`, then one `{"sample": Scene}`
 per stored sample, keyed `{"frame":N}` or `{"us":N}`. A decoder prints Scenes as usual, and a lane that changes any
-input is recomputed. `fixtures/plugins/derived-demo` is the model.
+input is recomputed. A Guest's open of such a lane never runs the program: it fails as Not Built unless the result is
+stored. `fixtures/plugins/derived-demo` is the model.
 
 ### Records
 

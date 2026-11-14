@@ -19,9 +19,9 @@ development work. The contract is in
 2. Read a real file. Decide what keys a sample (a frame number or a time in microseconds, one kind per file), whether
    every frame has a sample (`dense`) or only some (`sparse`), what the object ids and classes are, and what is in the
    file besides geometry.
-3. Create a folder with `ax-devil-plugin.json` and the program. Start from `fixtures/plugins/python-tracks`
-   (Python, every Scene part) or `fixtures/plugins/shell-times` (sh and awk, time keys, `replace`); a resolver from
-   `fixtures/plugins/python-runs`. A resolver prints absolute paths and names a decoder id for each overlay.
+3. Create a folder with `ax-devil-plugin.json` and the program; ids are lowercase `a-z 0-9 _ -`. Start from
+   `fixtures/plugins/python-tracks` (Python, every Scene part) or `fixtures/plugins/shell-times` (sh and awk, time
+   keys, `replace`); a resolver from `fixtures/plugins/python-runs`. A resolver prints absolute paths and names a decoder id for each overlay.
 4. Install it and prove it on the user's real file, not only a toy one:
 
    ```bash
@@ -39,7 +39,7 @@ A decoder for a live source (a camera's metadata documents) declares `"input": "
 answers one record at a time, which `fixtures/plugins/shell-records` shows. `check` reads such a decoder's file line by line.
 
 A decoder with `"input": "lanes"` computes a lane from other lanes of the entry, and a `task` reads lanes and writes
-where its own options say (`fixtures/plugins/derived-demo`; [reference](reference.md#lanes)). `check` reads one file, so
+where its own options say; both are lane readers and get exactly the lanes and video they declare (`fixtures/plugins/derived-demo`; [reference](reference.md#lanes)). `check` reads one file, so
 run these by hand: pipe a request with lane files to the program, such as
 `echo '{"protocol":3,"op":"decode","handler":"ID","input":{"lanes":{"KEY":"a.jsonl"}},"options":{},"settings":{}}' | ./main.py`,
 then add the lane from the app. A page shown in the app, or a menu entry that runs a handler, is a view or command:
