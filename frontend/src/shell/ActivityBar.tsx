@@ -2,8 +2,7 @@ import { scopeOf } from "../client/commands";
 import type { CommandId } from "../generated/settings";
 import { Icon } from "../kit/Icon";
 import { IconButton } from "../kit/IconButton";
-import { useFailedPlugins } from "../plugins/failed";
-import { usePluginViews } from "../plugins/usePlugins";
+import { usePluginListing, usePluginViews } from "../plugins/listing";
 import { useAllowed } from "../session/session";
 import { useSettings } from "../client/settings";
 import { ACTIVITY, pluginItem, type ActivityItem } from "./views";
@@ -20,7 +19,7 @@ interface Props {
  */
 export function ActivityBar({ active, onSelect }: Props) {
   const allowed = useAllowed();
-  const failed = useFailedPlugins();
+  const { failed } = usePluginListing();
   const plugins = usePluginViews("sidebar").map(pluginItem);
   const { shortcuts } = useSettings();
   const warnings: Record<string, string> =

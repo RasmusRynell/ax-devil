@@ -2,9 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { AccessContext } from "../client/access";
 import type { PluginInfo, PluginsInfo } from "../generated/api";
+import { PluginViewsProvider } from "./listing";
 import { PluginsView } from "./PluginsView";
 
-const NOTHING = { settings: [], values: {}, views: [], commands: [], operations: [] };
+const NOTHING = { settings: [], values: {}, views: [], commands: [], readers: [] };
 const MOT: PluginInfo = {
   source: { kind: "built_in" },
   status: {
@@ -91,7 +92,9 @@ afterEach(() => {
 const view = () =>
   render(
     <AccessContext value={{ owner: true, fullAccess: true }}>
-      <PluginsView />
+      <PluginViewsProvider>
+        <PluginsView />
+      </PluginViewsProvider>
     </AccessContext>,
   );
 

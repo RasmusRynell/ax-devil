@@ -135,9 +135,12 @@ export const MENUS: readonly { label: string; items: readonly Layout[] }[] = [
   { label: "Help", items: [action("quick-setup"), action("about")] },
 ];
 
-/** The scope of the command `id`: a plugin's (its id has a dot) changes the workspace; an unknown built-in is a programming error. */
+/** Whether `id` is a plugin's command, `<plugin id>.<command id>`: a built-in's has no dot. */
+export const isPluginCommand = (id: string): boolean => id.includes(".");
+
+/** The scope of the command `id`: a plugin's changes the workspace; an unknown built-in is a programming error. */
 export function scopeOf(id: string): Scope {
-  if (id.includes(".")) return "content";
+  if (isPluginCommand(id)) return "content";
   const found = (SCOPES as Record<string, Scope | undefined>)[id];
   if (!found) throw new Error(`unknown command ${id}`);
   return found;

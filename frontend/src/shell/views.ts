@@ -1,7 +1,6 @@
 import type { SidebarView } from "../generated/api";
 import { ICONS, type IconName } from "../kit/icons";
-import type { PluginView } from "../plugins/bus";
-import { viewName } from "../plugins/usePlugins";
+import { viewName, type PluginView } from "../plugins/listing";
 
 /** The views the app itself has, which are listed in the activity bar and have a title. */
 export type BuiltinView = Exclude<SidebarView, { plugin: unknown }>;

@@ -30,13 +30,8 @@ import { RECENT_ID } from "../client/recents";
 import { SettingsDialog } from "./SettingsDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { KeptStateProvider } from "../kit/keptState";
-import { useRunPlugin } from "../plugins/RunDialog";
-import {
-  PluginViewsProvider,
-  RunCommandContext,
-  usePluginCommands,
-  type RunAt,
-} from "../plugins/usePlugins";
+import { PluginViewsProvider, usePluginCommands } from "../plugins/listing";
+import { RunCommandContext, useRunPlugin, type RunAt } from "../plugins/RunDialog";
 import { RevealLive, RevealShown } from "./RevealShown";
 import { LISTED_VIEWS, Sidebar } from "./Sidebar";
 import { Welcome } from "./Welcome";

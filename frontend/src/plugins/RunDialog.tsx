@@ -1,20 +1,39 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  createContext,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { usePickPath } from "../client/pickPath";
-import type { OperationInfo, TaskProgressInfo } from "../generated/api";
+import type { LaneReaderInfo, TaskProgressInfo } from "../generated/api";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { Select } from "../kit/Fields";
 import { Refusal } from "../kit/Refusal";
-import { FieldControl, misread, needsValue, type FieldForm } from "../resolvers/fields";
-import { useCommand, useSession } from "../session/session";
-import { deliverCommand, deliverWhenOpen } from "./bus";
-import { settingsOf, textOf } from "./PluginsView";
 import {
-  boundViewers,
-  streamTask,
-  type BoundViewer,
-  type PluginCommand,
-  type RunAt,
-} from "./usePlugins";
+  FieldControl,
+  misread,
+  needsValue,
+  plainForm,
+  settingsOf,
+  textOf,
+} from "../resolvers/fields";
+import { useCommand } from "../session/session";
+import { boundViewers, type BoundViewer } from "../viewer/bound";
+import { deliverCommand, deliverWhenOpen } from "./bus";
+import { viewName, type PluginCommand } from "./listing";
+import { streamTask } from "./tasks";
+
+/** What a command was run on: the item and entry of a row or lane menu, and the slot of the lane that was clicked. */
+export interface RunAt {
+  item?: string;
+  entry?: string;
+  slot?: string;
+}
+
+/** Runs a command by id as the shell does; the shell offers it so a view's key reaches the commands it may. */
+export const RunCommandContext = createContext<(id: string, at?: RunAt) => void>(() => {});
 
 const NONE = "";
 
@@ -23,58 +42,46 @@ const progressText = ({ done, total, text }: TaskProgressInfo) =>
 
 /**
  * The dialog of a plugin command that runs a decoder or a task over the lanes of the viewer `target`: a lane per input
- * (the clicked `lane`, else a lane of the same name, filled in), then the options. A decoder sets its derived lane,
+ * (the clicked `slot`, else a lane of the same name, filled in), then the options. A decoder sets its derived lane,
  * named by the command, on the item; a task streams with its progress until it is done, and Cancel stops it.
  */
 export function RunDialog({
   command,
-  operation,
+  reader,
   target,
-  lane,
+  slot,
   onClose,
 }: {
   command: PluginCommand;
-  operation: OperationInfo;
+  reader: LaneReaderInfo;
   target: BoundViewer;
-  lane?: string;
+  slot?: string;
   onClose: () => void;
 }) {
-  const session = useSession().session?.id ?? "";
   const send = useCommand();
-  const pickPath = usePickPath();
   const { lanes } = useSyncExternalStore(target.stream.subscribe, target.stream.getSnapshot);
   const [picks, setPicks] = useState<Record<string, string>>(() =>
     Object.fromEntries(
-      operation.lanes.map(([key, label], at) => [
+      reader.lanes.map(([key, label], at) => [
         key,
-        (at === 0 && lanes.find(({ slot }) => slot === lane)?.slot) ||
+        (at === 0 && lanes.find((found) => found.slot === slot)?.slot) ||
           lanes.find((found) => found.slot === key || found.label === label)?.slot ||
           NONE,
       ]),
     ),
   );
-  const [draft, setDraft] = useState(() => textOf(operation.options, {}));
+  const [draft, setDraft] = useState(() => textOf(reader.options, {}));
   const [progress, setProgress] = useState<TaskProgressInfo | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
 
-  const form: FieldForm = {
-    decoders: [],
-    values: draft,
-    scans: {},
-    pickPath,
-    set: (key, value) => setDraft((current) => ({ ...current, [key]: value })),
-    canScan: () => false,
-    scan: () => undefined,
-    toggle: () => undefined,
-    toggleAll: () => undefined,
-  };
-  const options = settingsOf(operation.options, draft);
+  const form = plainForm(draft, setDraft, usePickPath());
+  const options = settingsOf(reader.options, draft);
   const incomplete =
     Object.values(picks).includes(NONE) ||
-    operation.options.some(
+    reader.options.some(
       (field) => misread(field, draft) || (needsValue(field) && options[field.key] === undefined),
     );
 
@@ -85,7 +92,7 @@ export function RunDialog({
     setProgress(null);
     setBusy(true);
     try {
-      if (operation.kind === "decoder")
+      if (reader.kind === "decoder")
         await send({
           type: "content",
           command: {
@@ -94,18 +101,17 @@ export function RunDialog({
             slot: command.id,
             lane: {
               label: command.title,
-              handler: operation.id,
+              handler: reader.id,
               options,
               lanes: picks,
-              video: operation.video,
+              video: reader.video,
             },
           },
         });
       else
         await streamTask(
-          session,
           target,
-          { runs: operation.id, lanes: picks, video: operation.video, options },
+          { handler: reader.id, lanes: picks, options },
           setProgress,
           controller.signal,
         );
@@ -129,20 +135,17 @@ export function RunDialog({
       }}
     >
       <DialogBody>
-        {operation.lanes.map(([key, label]) => (
+        {reader.lanes.map(([key, label]) => (
           <Select
             key={key}
             label={label}
             value={picks[key]}
-            options={[
-              [NONE, "Choose"],
-              ...lanes.map(({ slot, label: name }) => [slot, name] as const),
-            ]}
-            onChange={(slot) => setPicks((now) => ({ ...now, [key]: slot }))}
+            options={[[NONE, "Choose"], ...lanes.map((lane) => [lane.slot, lane.label] as const)]}
+            onChange={(picked) => setPicks((now) => ({ ...now, [key]: picked }))}
             disabled={busy}
           />
         ))}
-        {operation.options.map((field) => (
+        {reader.options.map((field) => (
           <FieldControl key={field.key} field={field} form={form} />
         ))}
         {progress && (
@@ -173,27 +176,27 @@ export function useRunPlugin(
 ): { run: (id: string, at?: RunAt) => void; running: boolean; dialog: ReactNode } {
   const [open, setOpen] = useState<{
     command: PluginCommand;
-    operation: OperationInfo;
+    reader: LaneReaderInfo;
     target: BoundViewer;
-    lane?: string;
+    slot?: string;
   } | null>(null);
   const run = (id: string, at: RunAt = {}) => {
     const command = commands.find((found) => found.id === id);
     if (!command) return;
-    const { operation, view } = command;
+    const { reader, view } = command;
     if (view) {
-      const name = `${command.plugin}.${view.id}`;
+      const name = viewName({ plugin: command.plugin, view });
       if (view.place === "sidebar") {
         reveal(name);
         deliverWhenOpen(name, id);
       } else if (!deliverCommand(name, id)) notify(`Turn on ${view.title} in a lane menu`);
-    } else if (operation) {
+    } else if (reader) {
       const target = boundViewers(front).find(
         (viewer) =>
           (at.item === undefined || viewer.item === at.item) &&
           (at.entry === undefined || viewer.entry === at.entry),
       );
-      if (target) setOpen({ command, operation, target, lane: at.lane });
+      if (target) setOpen({ command, reader, target, slot: at.slot });
       else notify("Open it first");
     }
   };

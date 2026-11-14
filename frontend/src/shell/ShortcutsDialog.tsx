@@ -11,7 +11,7 @@ import { QUIET } from "../kit/look";
 import { SectionCaption } from "../kit/SectionCaption";
 import { shortcutDisplay, shortcutOf } from "../kit/shortcut";
 import { shortcutsPatch, useSettings } from "../client/settings";
-import { usePluginCommands } from "../plugins/usePlugins";
+import { usePluginCommands } from "../plugins/listing";
 import { useRepairIntent } from "./useRepairIntent";
 import { useSaveDialog } from "./useSaveDialog";
 

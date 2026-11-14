@@ -1,9 +1,10 @@
 import { useContext, useMemo, useState, type ReactNode } from "react";
-import { pluginEntries } from "../client/commands";
+import { isPluginCommand, pluginEntries } from "../client/commands";
 import { reasonOf } from "../client/errors";
 import { SettingsContext } from "../client/settings";
 import type { MenuEntry } from "../kit/Menu";
-import { RunCommandContext, usePluginCommands } from "../plugins/usePlugins";
+import { usePluginCommands } from "../plugins/listing";
+import { RunCommandContext } from "../plugins/RunDialog";
 import { useStreamStatuses, type StreamStatus } from "../live/streamState";
 import { useCan, useCommand, useDoc, useView } from "../session/session";
 import { useShow } from "../viewer/useViewers";
@@ -143,7 +144,7 @@ export function useRowActions(): RowActions {
       if (info) inform(info);
     } else if (id === "edit") editRow(row);
     else if (id === "remove") removeRow(row, say);
-    else if (id.includes("."))
+    else if (isPluginCommand(id))
       runCommand(id, { item: row.item, entry: row.info.entry ?? undefined });
     else toggleHidden(row, say);
   };

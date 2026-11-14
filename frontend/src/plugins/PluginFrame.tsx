@@ -1,16 +1,11 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSettings } from "../client/settings";
 import { basisOf } from "../lanes/lanes";
+import { useBoundViewer, type BoundViewer } from "../viewer/bound";
 import { useViewers } from "../viewer/useViewers";
-import {
-  createBus,
-  onFrameLoad,
-  type Binding,
-  type Bus,
-  type BusLane,
-  type PluginView,
-} from "./bus";
-import { useBoundViewer, useBusHost, type BoundViewer } from "./usePlugins";
+import { createBus, onFrameLoad, type Bus, type BusLane } from "./bus";
+import type { PluginView } from "./listing";
+import { useBusHost } from "./useBusHost";
 
 type Rect = { x: number; y: number; width: number; height: number };
 
@@ -84,29 +79,38 @@ export function PluginFrame({
   const picked = playing?.selection;
   const entity = picked?.entity;
   const selection = useMemo(
-    () => (picked && entity ? { lane: playing.lanes[picked.lane]?.slot ?? "", entity } : null),
+    () => (picked && entity ? { slot: playing.lanes[picked.lane]?.slot ?? "", entity } : null),
     // The selection is its lane and entity; the snapshot around it changes with every frame.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
     [picked?.lane, entity],
   );
-  // Another viewer, item or entry is another binding: calls made for the old one are stale.
-  const epoch = useRef({ key: "", value: 0 });
-  const key = target ? `${target.viewer}:${target.item}:${target.entry}` : "";
+  const viewer = target?.viewer ?? null;
+  const item = target?.item ?? null;
+  const entry = target?.entry ?? null;
   useEffect(() => {
-    if (!bus) return;
-    if (epoch.current.key !== key) epoch.current = { key, value: epoch.current.value + 1 };
-    const binding: Binding = {
-      epoch: epoch.current.value,
-      item: target?.item ?? null,
-      entry: target?.entry ?? null,
+    bus?.rebind({
+      viewer,
+      item,
+      entry,
       lanes,
       selection,
       theme,
       video: picture && { ...picture },
-    };
-    bus.rebind(binding);
+    });
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [bus, key, lanes, selection, theme, picture?.x, picture?.y, picture?.width, picture?.height]);
+  }, [
+    bus,
+    viewer,
+    item,
+    entry,
+    lanes,
+    selection,
+    theme,
+    picture?.x,
+    picture?.y,
+    picture?.width,
+    picture?.height,
+  ]);
   const frameNow = playing?.playhead;
   const timeUs = playing?.shown?.timestampUs ?? null;
   const isPlaying = playing?.playing ?? false;

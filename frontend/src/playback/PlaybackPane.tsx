@@ -15,16 +15,14 @@ import { Icon } from "../kit/Icon";
 import { NoticeList } from "../kit/NoticeList";
 import { Popover } from "../kit/Popover";
 import { useAllowed, useOverlays, useOwnerSeat } from "../session/session";
+import { isPluginCommand } from "../client/commands";
 import { useSettings } from "../client/settings";
 import { MediaToolsPanel } from "../tools/MediaToolsPanel";
 import { useMediaTools } from "../tools/useMediaTools";
 import { PaneActiveContext, useHeaderDetails, useViewerActions } from "../viewer/actions";
-import {
-  bindViewer,
-  RunCommandContext,
-  usePluginCommands,
-  type BoundViewer,
-} from "../plugins/usePlugins";
+import { usePluginCommands } from "../plugins/listing";
+import { RunCommandContext } from "../plugins/RunDialog";
+import { bindViewer, type BoundViewer } from "../viewer/bound";
 import { registerExport } from "../viewer/exportTargets";
 import type { Hidden } from "../viewer/hidden";
 import { useLaneFocus } from "../viewer/laneFocus";
@@ -254,11 +252,11 @@ export function Playback({
                 if (id === HIDE_LANE) {
                   if (lane !== null) onHideLane?.(view.lanes[lane].label);
                 } else if (id === "export-video") exportLane(lane);
-                else if (id.includes("."))
+                else if (isPluginCommand(id))
                   runCommand(id, {
                     item,
                     entry,
-                    lane: lane === null ? undefined : view.lanes[lane].slot,
+                    slot: lane === null ? undefined : view.lanes[lane].slot,
                   });
                 else actions[id]?.();
               }}

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { menusFor } from "../client/commands";
 import { QUIET } from "../kit/look";
 import { Menu, type MenuCommand } from "../kit/Menu";
-import { usePluginCommands } from "../plugins/usePlugins";
+import { usePluginCommands } from "../plugins/listing";
 import { useAllowed } from "../session/session";
 import { useSettings } from "../client/settings";
 import { useRecents } from "../client/recents";

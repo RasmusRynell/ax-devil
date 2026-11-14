@@ -6,12 +6,9 @@ import type { LaneDisplay, Picked, Selection, Viewport } from "../lanes/contract
 import { InfoHud } from "./InfoHud";
 import { LaneChip } from "../lanes/LaneChip";
 import { VideoLayer } from "../plugins/PluginFrame";
-import {
-  LaneViewsContext,
-  usePluginViews,
-  viewName,
-  type BoundViewer,
-} from "../plugins/usePlugins";
+import { LaneViewsContext } from "../lanes/LaneMenu";
+import { usePluginViews, viewName } from "../plugins/listing";
+import type { BoundViewer } from "../viewer/bound";
 import { allHidden, LANE_GAP, laneAt, layoutLanes, shownLanes } from "./laneCells";
 import type { CellRect } from "../overlay/painter";
 import type { Geometry } from "./renderer";

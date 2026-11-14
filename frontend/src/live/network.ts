@@ -5,6 +5,7 @@ import { apiFetch } from "../client/api";
 import type { NetworkRow, NetworkSignIn, NetworkSnapshot, ScanStarted } from "../generated/api";
 import type { Tone } from "../kit/look";
 import { ask } from "../client/ask";
+import { linesOf } from "../client/lines";
 import { reasonOf } from "../client/errors";
 
 const RETRY_MS = 2000;
@@ -78,13 +79,6 @@ export function uptimeText(seconds: number): string {
   return `${minutes}m`;
 }
 
-/** Complete lines of `pending` followed by `chunk`, and the unfinished rest. */
-export function splitLines(pending: string, chunk: string): { lines: string[]; rest: string } {
-  const parts = (pending + chunk).split("\n");
-  const rest = parts.pop() ?? "";
-  return { lines: parts.filter((line) => line.trim() !== ""), rest };
-}
-
 /**
  * The scan as the backend last said; `dropped` while the stream is down and being reopened. `epoch` counts the times
  * the stream has been opened, for what must not outlive a connection: a restarted backend numbers its scans again.
@@ -117,20 +111,11 @@ export function useNetwork(enabled: boolean): Network {
         const response = await apiFetch("/api/network", { signal: stop.signal });
         if (!response.ok || !response.body) throw new Error(`answered ${response.status}`);
         setState((now) => ({ ...now, dropped: false, epoch: now.epoch + 1 }));
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let pending = "";
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const { lines, rest } = splitLines(pending, decoder.decode(value, { stream: true }));
-          pending = rest;
-          for (const line of lines) {
-            const snapshot = JSON.parse(line) as NetworkSnapshot;
-            if (snapshot.scan < latest) continue;
-            latest = snapshot.scan;
-            setState((now) => ({ ...now, snapshot, dropped: false }));
-          }
+        for await (const line of linesOf(response)) {
+          const snapshot = JSON.parse(line) as NetworkSnapshot;
+          if (snapshot.scan < latest) continue;
+          latest = snapshot.scan;
+          setState((now) => ({ ...now, snapshot, dropped: false }));
         }
       } catch {
         // Aborted, or the connection dropped: reopened below.

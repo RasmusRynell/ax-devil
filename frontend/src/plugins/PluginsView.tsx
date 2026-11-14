@@ -1,9 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useAccess } from "../client/access";
 import { chooseFolder, usePickPath } from "../client/pickPath";
 import { ask } from "../client/ask";
 import { reasonOf } from "../client/errors";
-import { useResource } from "../client/resource";
 import type {
   ContributionRow,
   ErrorWire,
@@ -20,9 +19,16 @@ import { Chip } from "../kit/Chips";
 import { TextField } from "../kit/Fields";
 import { SectionCaption, type CaptionMark } from "../kit/SectionCaption";
 import { Refusal } from "../kit/Refusal";
-import { FieldControl, misread, needsValue, type FieldForm } from "../resolvers/fields";
+import {
+  FieldControl,
+  misread,
+  needsValue,
+  plainForm,
+  settingsOf,
+  textOf,
+} from "../resolvers/fields";
 import type { Settings } from "../resolvers/scan";
-import { failedIn, reportFailedPlugins } from "./failed";
+import { usePluginListing } from "./listing";
 
 /** What the contributions of each kind are called in a plugin's row; a new kind is a new entry. */
 const KINDS: Record<string, string> = {
@@ -97,22 +103,6 @@ function Contributions({ rows }: { rows: readonly ContributionRow[] }) {
   );
 }
 
-/** The text each field of `fields` shows for the stored `values`. */
-export const textOf = (fields: readonly FieldInfo[], values: Settings): Settings =>
-  Object.fromEntries(
-    fields.flatMap(({ key }) => (values[key] == null ? [] : [[key, String(values[key])]])),
-  );
-
-/** What a form's text sends: a value per filled field, a number for an `Integer` one. */
-export function settingsOf(fields: readonly FieldInfo[], text: Settings): Settings {
-  const values: Settings = {};
-  for (const field of fields) {
-    const typed = String(text[field.key] ?? "").trim();
-    if (typed !== "") values[field.key] = field.kind.kind === "Integer" ? Number(typed) : typed;
-  }
-  return values;
-}
-
 /** The form of a plugin's own settings, with Save while it differs from what the plugin runs with. */
 function SettingsForm({
   name,
@@ -128,18 +118,7 @@ function SettingsForm({
   onSave: (values: Settings) => void;
 }) {
   const [draft, setDraft] = useState(() => textOf(fields, values));
-  const pickPath = usePickPath();
-  const form: FieldForm = {
-    decoders: [],
-    values: draft,
-    scans: {},
-    pickPath,
-    set: (key, value) => setDraft((current) => ({ ...current, [key]: value })),
-    canScan: () => false,
-    scan: () => undefined,
-    toggle: () => undefined,
-    toggleAll: () => undefined,
-  };
+  const form = plainForm(draft, setDraft, usePickPath());
   const sent = settingsOf(fields, draft);
   const unchanged =
     JSON.stringify(sent) === JSON.stringify(settingsOf(fields, textOf(fields, values)));
@@ -232,13 +211,10 @@ function Row({
 /** The sidebar's Plugins view: the plugins that failed, are installed and ship with the app, and installing, updating and removing. */
 export function PluginsView() {
   // `apply` shows a change's answer instead of any read still pending.
-  const { value: info, error, apply, reload } = useResource<PluginsInfo>("plugins", "/api/plugins");
+  const { value: info, error, apply, reload } = usePluginListing();
   const failure = error ? reasonOf(error as ErrorWire) : null;
-  useEffect(() => {
-    if (info) reportFailedPlugins(failedIn(info));
-  }, [info]);
   // Installing and removing run code on the server's machine: only Full access may.
-  const mayChange = useAccess().fullAccess;
+  const { owner, fullAccess: mayChange } = useAccess();
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   // Why the last install or remove failed; a list reload never clears it.
@@ -311,7 +287,7 @@ export function PluginsView() {
       {refused && <Refusal reason={refused} />}
       {failure && <Refusal reason={failure} />}
       {info?.problem && <Refusal reason={info.problem} />}
-      {info === undefined && !failure && (
+      {owner && info === undefined && !failure && (
         <p role="status" className="m-0 px-m text-muted">
           Loading…
         </p>

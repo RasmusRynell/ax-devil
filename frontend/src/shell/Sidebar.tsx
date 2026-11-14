@@ -7,7 +7,7 @@ import { ViewPanel } from "../kit/ViewPanel";
 import { useCan, useDoc, useRenameWorkspace, useView } from "../session/session";
 import { PluginsView } from "../plugins/PluginsView";
 import { SidebarFrame } from "../plugins/PluginFrame";
-import { usePluginViews, viewName } from "../plugins/usePlugins";
+import { usePluginViews, viewName } from "../plugins/listing";
 import { PanelDivider } from "../tools/PanelDivider";
 import { useKept } from "../kit/keptState";
 import { LiveView } from "./LiveView";

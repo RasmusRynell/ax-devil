@@ -1,19 +1,11 @@
 import { scopeOf } from "../client/commands";
 import type {
-  CommandInfo,
   DerivedLaneWire,
-  OperationInfo,
+  LaneReaderInfo,
+  ReaderKind,
   TaskProgressInfo,
-  ViewInfo,
 } from "../generated/api";
-
-/** A plugin view with what its bus may reach: the plugin's own operations and commands. */
-export interface PluginView {
-  plugin: string;
-  view: ViewInfo;
-  operations: readonly OperationInfo[];
-  commands: readonly CommandInfo[];
-}
+import { viewName, type PluginView } from "./listing";
 
 export interface BusLane {
   slot: string;
@@ -23,15 +15,15 @@ export interface BusLane {
 }
 
 /**
- * What a view is bound to. `epoch` changes whenever the view is bound to something else; a call made under another
- * epoch is refused. `item` is null while no viewer is bound.
+ * What a view is bound to: the viewer, with the item and entry it plays. Each is null while no viewer is bound. The bus
+ * numbers the bindings: when the viewer, item or entry changes, a call made under the old number is refused.
  */
 export interface Binding {
-  epoch: number;
+  viewer: number | null;
   item: string | null;
   entry: string | null;
   lanes: readonly BusLane[];
-  selection: { lane: string; entity: string } | null;
+  selection: { slot: string; entity: string } | null;
   theme: "light" | "dark";
   /** The video rectangle the view covers, in CSS pixels of the page; absent for a sidebar view. */
   video?: { x: number; y: number; width: number; height: number };
@@ -46,14 +38,13 @@ export interface Playhead {
 export interface ViewerSet {
   frame?: number;
   playing?: boolean;
-  select?: { lane: string; entity: string } | null;
+  select?: { slot: string; entity: string } | null;
   capture?: boolean;
 }
 
 export interface TaskRun {
-  runs: string;
+  handler: string;
   lanes: Record<string, string>;
-  video: boolean;
   options: Record<string, unknown>;
 }
 
@@ -99,6 +90,7 @@ export type Refusal =
   | "refused"
   | "too_large"
   | "invalid"
+  | "unknown_slot"
   | "unknown_call"
   | "cancelled"
   | "failed";
@@ -130,16 +122,10 @@ const count = (value: unknown, name: string): number =>
 const sizeOf = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).length;
 
 /** The call's options, as an object, that no option of a `file` or `folder` kind is among, and at most `most` bytes. */
-function optionsOf(
-  value: unknown,
-  operation: OperationInfo,
-  most: number,
-): Record<string, unknown> {
+function optionsOf(value: unknown, reader: LaneReaderInfo, most: number): Record<string, unknown> {
   const options = value === undefined ? {} : value;
   if (!isRecord(options)) return refuse("invalid", "options is an object");
-  const paths = operation.options.filter(
-    ({ kind }) => kind.kind === "File" || kind.kind === "Folder",
-  );
+  const paths = reader.options.filter(({ kind }) => kind.kind === "File" || kind.kind === "Folder");
   if (paths.some(({ key }) => key in options))
     refuse("refused", "A path option cannot be given by a view");
   if (sizeOf(options) > most) refuse("too_large", "options is too large");
@@ -149,7 +135,7 @@ function optionsOf(
 function lanesOf(value: unknown): Record<string, string> {
   if (!isRecord(value)) return refuse("invalid", "lanes is an object");
   const lanes: Record<string, string> = {};
-  for (const [key, slot] of Object.entries(value)) lanes[key] = text(slot, "a lane");
+  for (const [key, slot] of Object.entries(value)) lanes[key] = text(slot, "a slot");
   return lanes;
 }
 
@@ -161,7 +147,7 @@ const whenAborted = (signal: AbortSignal): Promise<never> =>
 /** A way a view speaks to the host over its port, until it is closed. */
 export interface Bus {
   port: MessagePort;
-  /** Binds the view to something else, or tells it of a change in what it is bound to under the same epoch. */
+  /** Binds the view to `binding`, or tells it of a change in what it is bound to; a new viewer, item or entry is a new epoch. */
   rebind(binding: Binding): void;
   /** Tells the view where the bound viewer is; only the latest is kept while one waits. */
   playhead(playhead: Playhead): void;
@@ -178,11 +164,14 @@ export interface Bus {
  */
 export function createBus(plugin: PluginView, host: BusHost): Bus {
   const channel = new MessageChannel();
-  const name = `${plugin.plugin}.${plugin.view.id}`;
+  const name = viewName(plugin);
   const hostPort = channel.port1;
   const ownCommands = new Set(plugin.commands.map(({ id }) => id));
   const running = new Map<number, AbortController>();
+  /** The slots of the lanes this view set, which its later lanes may read before the viewer lists them. */
+  const derived = new Set<string>();
   let bound: Binding | null = null;
+  let epoch = 0;
   let closed = false;
   let waiting: Playhead | null = null;
   let told = 0;
@@ -191,8 +180,8 @@ export function createBus(plugin: PluginView, host: BusHost): Bus {
   const send = (message: Record<string, unknown>) => {
     if (!closed) hostPort.postMessage(message);
   };
-  const operation = (id: unknown, kind: "decoder" | "task"): OperationInfo => {
-    const found = plugin.operations.find((candidate) => candidate.id === id);
+  const reader = (id: unknown, kind: ReaderKind): LaneReaderInfo => {
+    const found = plugin.readers.find((candidate) => candidate.id === id);
     return found?.kind === kind
       ? found
       : refuse("refused", `This plugin has no ${kind} ${String(id)}`);
@@ -203,7 +192,7 @@ export function createBus(plugin: PluginView, host: BusHost): Bus {
     return bound as Binding & { item: string; entry: string };
   };
   /** Slots of this plugin's lanes are `<plugin>.<name>`, so a plugin cannot reach a lane of the entry or of another plugin. */
-  const slot = (value: unknown): string => {
+  const ownSlot = (value: unknown): string => {
     const name = text(value, "slot");
     return name.startsWith(`${plugin.plugin}.`)
       ? name
@@ -227,7 +216,7 @@ export function createBus(plugin: PluginView, host: BusHost): Bus {
             ? null
             : isRecord(select)
               ? {
-                  lane: text(select.lane, "select.lane"),
+                  slot: text(select.slot, "select.slot"),
                   entity: text(select.entity, "select.entity"),
                 }
               : refuse("invalid", "select is an object or null");
@@ -238,7 +227,7 @@ export function createBus(plugin: PluginView, host: BusHost): Bus {
       const now = viewer();
       return host.readScenes(
         now,
-        text(args.lane, "lane"),
+        text(args.slot, "slot"),
         count(args.from, "from"),
         count(args.count, "count"),
         signal,
@@ -246,25 +235,33 @@ export function createBus(plugin: PluginView, host: BusHost): Bus {
     },
     "lanes.set": async (args) => {
       const now = viewer();
-      const target = slot(args.slot);
-      if (args.remove === true) return host.setLane(now, target, null);
-      const handler = operation(args.runs, "decoder");
-      const lane: DerivedLaneWire = {
+      const target = ownSlot(args.slot);
+      if (args.remove === true) {
+        await host.setLane(now, target, null);
+        derived.delete(target);
+        return undefined;
+      }
+      const decoder = reader(args.handler, "decoder");
+      const lanes = lanesOf(args.lanes);
+      const known = new Set([...now.lanes.map(({ slot }) => slot), ...derived]);
+      const unknown = Object.values(lanes).find((slot) => !known.has(slot));
+      if (unknown !== undefined) refuse("unknown_slot", `No lane ${unknown} to read`);
+      await host.setLane(now, target, {
         label: text(args.label, "label"),
-        handler: handler.id,
-        options: optionsOf(args.options, handler, MOST_LANE_OPTIONS_BYTES),
-        lanes: lanesOf(args.lanes),
-        video: handler.video,
-      };
-      return host.setLane(now, target, lane);
+        handler: decoder.id,
+        options: optionsOf(args.options, decoder, MOST_LANE_OPTIONS_BYTES),
+        lanes,
+        video: decoder.video,
+      });
+      derived.add(target);
+      return undefined;
     },
     "task.run": async (args, id, signal) => {
       const now = viewer();
-      const task = operation(args.runs, "task");
+      const task = reader(args.handler, "task");
       const run: TaskRun = {
-        runs: task.id,
+        handler: task.id,
         lanes: lanesOf(args.lanes),
-        video: task.video,
         options: optionsOf(args.options, task, MOST_TASK_OPTIONS_BYTES),
       };
       await host.runTask(
@@ -289,7 +286,7 @@ export function createBus(plugin: PluginView, host: BusHost): Bus {
         running.get(count(args.id, "id"))?.abort();
         return reply({ ok: true });
       }
-      if (bound === null || call.epoch !== bound.epoch)
+      if (bound === null || call.epoch !== epoch)
         refuse("stale", "The view is bound to something else");
       const handle = typeof call.call === "string" ? calls[call.call] : undefined;
       if (!handle) return refuse("unknown_call", `No call ${String(call.call)}`);
@@ -323,7 +320,7 @@ export function createBus(plugin: PluginView, host: BusHost): Bus {
       data.type === "key" &&
       typeof data.key === "string" &&
       bound !== null &&
-      bound.epoch === data.epoch
+      epoch === data.epoch
     )
       host.runKey(bound, data.key, (id) => ownCommands.has(id) || scopeOf(id) === "view");
   };
@@ -340,8 +337,16 @@ export function createBus(plugin: PluginView, host: BusHost): Bus {
   const bus: Bus = {
     port: channel.port2,
     rebind(binding) {
+      if (
+        bound?.viewer !== binding.viewer ||
+        bound.item !== binding.item ||
+        bound.entry !== binding.entry
+      ) {
+        epoch += 1;
+        derived.clear();
+      }
       bound = binding;
-      const { epoch, item, entry, lanes, selection, theme, video } = binding;
+      const { item, entry, lanes, selection, theme, video } = binding;
       send({ type: "context", epoch, item, entry, lanes, selection, theme, video });
       // A command run while the view was still opening reaches it once it has its context.
       for (const id of queued.get(name) ?? []) bus.command(id);

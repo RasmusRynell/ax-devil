@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import type { CommandInfo } from "../generated/api";
 import { COMMANDS, SETTINGS } from "../generated/settings";
 import { menusFor, scopeOf, type Scope } from "./commands";
 import { RECENT_ID } from "./recents";
@@ -58,7 +59,9 @@ it("keeps unavailable viewer commands visible and disables them until a permitte
 });
 
 it("lists plugin commands in a Plugins menu before Help, changing the workspace like a plugin does", () => {
-  const plugins = [{ id: "acme.export", title: "Export", on: "lane", runs: "export" }];
+  const plugins: CommandInfo[] = [
+    { id: "acme.export", title: "Export", on: "lane", runs: "export" },
+  ];
   const shortcuts = { "acme.export": "Ctrl+Alt+E" };
   const labels = (list: typeof plugins) =>
     menusFor(allowed, new Set(["about"]), shortcuts, [], list).map((menu) => menu.label);

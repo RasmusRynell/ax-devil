@@ -49,6 +49,41 @@ export function misread(field: FieldInfo, values: Settings): string | undefined 
 /** Whether the field must be filled in: required, with no default for the backend to use. */
 export const needsValue = (field: FieldInfo) => field.required && field.default == null;
 
+/** The text each field of `fields` shows for the stored `values`. */
+export const textOf = (fields: readonly FieldInfo[], values: Settings): Settings =>
+  Object.fromEntries(
+    fields.flatMap(({ key }) => (values[key] == null ? [] : [[key, String(values[key])]])),
+  );
+
+/** What a form's text sends: a value per filled field, a number for an `Integer` one. */
+export function settingsOf(fields: readonly FieldInfo[], text: Settings): Settings {
+  const values: Settings = {};
+  for (const field of fields) {
+    const typed = String(text[field.key] ?? "").trim();
+    if (typed !== "") values[field.key] = field.kind.kind === "Integer" ? Number(typed) : typed;
+  }
+  return values;
+}
+
+/** A form of plain fields, with no scans or decoders, over the typed text `draft`. */
+export function plainForm(
+  draft: Settings,
+  setDraft: (change: (current: Settings) => Settings) => void,
+  pickPath?: PickPath,
+): FieldForm {
+  return {
+    decoders: [],
+    values: draft,
+    scans: {},
+    pickPath,
+    set: (key, value) => setDraft((current) => ({ ...current, [key]: value })),
+    canScan: () => false,
+    scan: () => undefined,
+    toggle: () => undefined,
+    toggleAll: () => undefined,
+  };
+}
+
 const text = (form: FieldForm, field: FieldInfo) => shown(field, form.values);
 
 /** A text box, with Browse beside it when the form can pick a path. */

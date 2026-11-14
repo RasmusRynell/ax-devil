@@ -1,9 +1,9 @@
-import { useContext, useId, useState } from "react";
+import { createContext, useContext, useId, useState } from "react";
 import type { CatalogInfoWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Checkbox } from "../kit/Fields";
 import { Tabs } from "../kit/Tabs";
-import { LaneViewsContext, viewName } from "../plugins/usePlugins";
+import { viewName, type PluginView } from "../plugins/listing";
 import { judgedRevision, type LaneSettings, type LaneState } from "./lanes";
 import { EXPORT_TIP, EXPORT_WAITS, HIDE_LANE_TIP } from "./laneContextMenu";
 import { changedControls, LaneMenuFilter } from "./LaneMenuFilter";
@@ -13,6 +13,16 @@ import type { CadenceWire } from "../stream/protocol";
 import { SECTION_HELP } from "./sectionHelp";
 
 const TABS = ["Look", "Filter", "Timing"] as const;
+
+/** The video views a lane can show over its picture: which are on for it, and a way to turn one on or off. */
+export interface LaneViews {
+  views: readonly PluginView[];
+  shown: ReadonlySet<string>;
+  toggle: (view: string) => void;
+}
+
+/** What the lane menu offers of video views for the lane it is open for; none outside a viewer that offers them. */
+export const LaneViewsContext = createContext<LaneViews | null>(null);
 
 /**
  * What the user can change about one lane, in three tabs so that it fits a small window at large text: how it looks

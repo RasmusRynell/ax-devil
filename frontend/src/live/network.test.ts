@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import type { NetworkRow, NetworkSnapshot } from "../generated/api";
-import { compareScans, splitLines, useNetwork, type Order } from "./network";
+import { compareScans, useNetwork, type Order } from "./network";
 
 const row = (address: string, firmware: string, extra: Partial<NetworkRow> = {}): NetworkRow => ({
   address,
@@ -49,12 +49,6 @@ describe("order", () => {
 });
 
 describe("snapshot stream", () => {
-  it("joins lines split across chunks and keeps the unfinished one", () => {
-    const first = splitLines("", '{"a":1}\n{"b"');
-    expect(first).toEqual({ lines: ['{"a":1}'], rest: '{"b"' });
-    expect(splitLines(first.rest, ":2}\n\n")).toEqual({ lines: ['{"b":2}'], rest: "" });
-  });
-
   it("follows the stream and opens it again after a drop", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const snapshot = (scan: number): NetworkSnapshot => ({

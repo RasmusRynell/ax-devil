@@ -16,7 +16,7 @@ const MANIFEST = {
   name: "Two runs",
   version: "1.0.0",
   protocol: 3,
-  command: ["python3", "runs.py"],
+  program: ["python3", "runs.py"],
   code: ["runs.py"],
   idle_timeout_s: 30,
   handlers: [

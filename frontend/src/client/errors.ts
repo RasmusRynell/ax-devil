@@ -27,6 +27,7 @@ export const ERRORS: Record<ErrorCode, string> = {
   SaveFailed: "The workspace could not be saved.",
   InvalidRequest: "The request is not valid.",
   Forbidden: "You are not allowed to do that.",
+  NotBuilt: "The lane is not built yet, and only the owner can build it.",
   CameraFailed: "The camera did not answer.",
   Internal: "The backend failed.",
 };

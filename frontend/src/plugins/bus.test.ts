@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { OperationInfo } from "../generated/api";
+import type { LaneReaderInfo } from "../generated/api";
 import {
   createBus,
   deliverCommand,
@@ -7,8 +7,8 @@ import {
   type Binding,
   type Bus,
   type BusHost,
-  type PluginView,
 } from "./bus";
+import type { PluginView } from "./listing";
 
 const options = (kind: "File" | "Folder" | "Text") => [
   {
@@ -18,11 +18,7 @@ const options = (kind: "File" | "Folder" | "Text") => [
     required: false,
   },
 ];
-const operation = (
-  id: string,
-  kind: "decoder" | "task",
-  form = options("Text"),
-): OperationInfo => ({
+const reader = (id: string, kind: "decoder" | "task", form = options("Text")): LaneReaderInfo => ({
   id,
   kind,
   name: id,
@@ -33,19 +29,19 @@ const operation = (
 const plugin: PluginView = {
   plugin: "acme",
   view: { id: "review", title: "Review", place: "sidebar", url: "/views/t/index.html" },
-  operations: [
-    operation("acme_iou", "decoder"),
-    operation("paths", "decoder", options("Folder")),
-    operation("coco", "task", options("File")),
-    operation("plain", "task"),
+  readers: [
+    reader("acme_iou", "decoder"),
+    reader("paths", "decoder", options("Folder")),
+    reader("coco", "task", options("File")),
+    reader("plain", "task"),
   ],
   commands: [{ id: "acme.export", title: "Export", on: "lane", runs: "plain" }],
 };
-const binding = (epoch: number): Binding => ({
-  epoch,
-  item: "i",
+const binding = (item = "i"): Binding => ({
+  viewer: 1,
+  item,
   entry: "e",
-  lanes: [],
+  lanes: [{ slot: "x", label: "X", basis: null, complete: true }],
   selection: null,
   theme: "dark",
 });
@@ -53,7 +49,7 @@ const binding = (epoch: number): Binding => ({
 const buses: Bus[] = [];
 afterEach(() => buses.splice(0).forEach((bus) => bus.close()));
 
-/** A bus bound at epoch 2, and a way for the view to call it. */
+/** A bus bound once (epoch 1), and a way for the view to call it. */
 function open(runTask: BusHost["runTask"] = () => Promise.resolve()) {
   const host = {
     viewerSet: vi.fn<BusHost["viewerSet"]>(() => true),
@@ -64,11 +60,11 @@ function open(runTask: BusHost["runTask"] = () => Promise.resolve()) {
   };
   const bus = createBus(plugin, host);
   buses.push(bus);
-  bus.rebind(binding(2));
+  bus.rebind(binding());
   const replies = new Map<number, (reply: Record<string, unknown>) => void>();
   bus.port.onmessage = ({ data }) => replies.get((data as { id: number }).id)?.(data);
   let next = 0;
-  const call = (name: string, args: unknown, epoch = 2) =>
+  const call = (name: string, args: unknown, epoch = 1) =>
     new Promise<Record<string, unknown>>((resolve) => {
       const id = (next += 1);
       replies.set(id, resolve);
@@ -80,15 +76,21 @@ function open(runTask: BusHost["runTask"] = () => Promise.resolve()) {
 describe("the bus", () => {
   it("answers a call of another epoch stale and calls nothing", async () => {
     const { host, bus, call } = open();
-    bus.rebind(binding(3));
-    const lane = { slot: "acme.iou", runs: "acme_iou", lanes: { a: "x" }, options: {}, label: "L" };
-    expect(await call("lanes.set", lane, 2)).toMatchObject({ ok: false, error: "stale" });
-    expect(await call("task.run", { runs: "plain", lanes: {} }, 2)).toMatchObject({
+    bus.rebind(binding("j"));
+    const lane = {
+      slot: "acme.iou",
+      handler: "acme_iou",
+      lanes: { a: "x" },
+      options: {},
+      label: "L",
+    };
+    expect(await call("lanes.set", lane, 1)).toMatchObject({ ok: false, error: "stale" });
+    expect(await call("task.run", { handler: "plain", lanes: {} }, 1)).toMatchObject({
       error: "stale",
     });
     expect(host.setLane).not.toHaveBeenCalled();
     expect(host.runTask).not.toHaveBeenCalled();
-    expect(await call("lanes.set", lane, 3)).toMatchObject({ ok: true });
+    expect(await call("lanes.set", lane, 2)).toMatchObject({ ok: true });
     expect(host.setLane).toHaveBeenCalledOnce();
   });
 
@@ -97,7 +99,7 @@ describe("the bus", () => {
     const set = (change: object) =>
       call("lanes.set", {
         slot: "acme.iou",
-        runs: "acme_iou",
+        handler: "acme_iou",
         lanes: {},
         options: {},
         label: "L",
@@ -105,13 +107,13 @@ describe("the bus", () => {
       });
     expect(await set({ slot: "other.iou" })).toMatchObject({ error: "refused" });
     expect(await set({ slot: "video.mp4" })).toMatchObject({ error: "refused" });
-    expect(await set({ runs: "theirs" })).toMatchObject({ error: "refused" });
-    expect(await set({ runs: "plain" })).toMatchObject({ error: "refused" });
-    expect(await set({ runs: "paths", options: { out: "/tmp" } })).toMatchObject({
+    expect(await set({ handler: "theirs" })).toMatchObject({ error: "refused" });
+    expect(await set({ handler: "plain" })).toMatchObject({ error: "refused" });
+    expect(await set({ handler: "paths", options: { out: "/tmp" } })).toMatchObject({
       error: "refused",
     });
     expect(
-      await call("task.run", { runs: "coco", lanes: {}, options: { out: "/tmp" } }),
+      await call("task.run", { handler: "coco", lanes: {}, options: { out: "/tmp" } }),
     ).toMatchObject({
       error: "refused",
     });
@@ -127,10 +129,24 @@ describe("the bus", () => {
     expect(host.setLane).toHaveBeenLastCalledWith(expect.anything(), "acme.iou", null);
   });
 
+  it("lets a lane read only a lane the viewer lists or this view set before", async () => {
+    const { host, call } = open();
+    const set = (slot: string, input: string) =>
+      call("lanes.set", { slot, handler: "acme_iou", lanes: { a: input }, label: "L" });
+    expect(await set("acme.first", "nowhere")).toMatchObject({ ok: false, error: "unknown_slot" });
+    expect(host.setLane).not.toHaveBeenCalled();
+    expect(await set("acme.first", "x")).toMatchObject({ ok: true });
+    expect(await set("acme.second", "acme.first")).toMatchObject({ ok: true });
+    expect(await call("lanes.set", { slot: "acme.first", remove: true })).toMatchObject({
+      ok: true,
+    });
+    expect(await set("acme.third", "acme.first")).toMatchObject({ error: "unknown_slot" });
+  });
+
   it("runs a key only for a view-scope command or the plugin's own", async () => {
     const { host, bus } = open();
     const run = host.runKey;
-    bus.port.postMessage({ type: "key", key: "Ctrl+Shift+K", epoch: 2 });
+    bus.port.postMessage({ type: "key", key: "Ctrl+Shift+K", epoch: 1 });
     await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
     const allowed = run.mock.calls[0][2];
     expect([allowed("zoom-in"), allowed("acme.export")]).toEqual([true, true]);
@@ -143,11 +159,11 @@ describe("the bus", () => {
 
   it("runs a key for the viewer the view is bound to and drops one of another epoch", async () => {
     const { host, bus } = open();
-    const other = { ...binding(3), item: "j", entry: "f" };
+    const other = { ...binding("j"), entry: "f" };
     bus.rebind(other);
-    bus.port.postMessage({ type: "key", key: "Space", epoch: 2 });
+    bus.port.postMessage({ type: "key", key: "Space", epoch: 1 });
     bus.port.postMessage({ type: "key", key: "Space" });
-    bus.port.postMessage({ type: "key", key: "K", epoch: 3 });
+    bus.port.postMessage({ type: "key", key: "K", epoch: 2 });
     await vi.waitFor(() => expect(host.runKey).toHaveBeenCalledOnce());
     expect(host.runKey).toHaveBeenCalledWith(other, "K", expect.any(Function));
   });
@@ -157,7 +173,7 @@ describe("the bus", () => {
       (_binding, _run, _progress, signal) =>
         new Promise((_done, fail) => signal.addEventListener("abort", () => fail(new Error("x")))),
     );
-    const running = call("task.run", { runs: "plain", lanes: {} });
+    const running = call("task.run", { handler: "plain", lanes: {} });
     await vi.waitFor(() => expect(host.runTask).toHaveBeenCalled());
     bus.port.postMessage({ type: "call", id: 99, call: "cancel", args: { id: 1 } });
     expect(await running).toMatchObject({ ok: false, error: "cancelled" });
@@ -167,8 +183,13 @@ describe("the bus", () => {
     const { host, call, bus } = open();
     host.setLane.mockImplementation(() => new Promise(() => {}));
     host.readScenes.mockImplementation(() => new Promise(() => {}));
-    const set = call("lanes.set", { slot: "acme.iou", runs: "acme_iou", lanes: {}, label: "L" });
-    const read = call("scenes.read", { lane: "a", from: 0, count: 1 });
+    const set = call("lanes.set", {
+      slot: "acme.iou",
+      handler: "acme_iou",
+      lanes: {},
+      label: "L",
+    });
+    const read = call("scenes.read", { slot: "a", from: 0, count: 1 });
     await vi.waitFor(() => expect(host.readScenes).toHaveBeenCalled());
     bus.port.postMessage({ type: "call", id: 98, call: "cancel", args: { id: 1 } });
     bus.port.postMessage({ type: "call", id: 99, call: "cancel", args: { id: 2 } });
