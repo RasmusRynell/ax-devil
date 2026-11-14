@@ -58,12 +58,17 @@ impl Serialize for Document<'_> {
 impl Serialize for W<'_, Scene> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let scene = self.0;
-        let mut out = serializer.serialize_struct("Scene", 5)?;
+        let values = scene.values();
+        let with_values = !serializer.is_human_readable() || !values.is_empty();
+        let mut out = serializer.serialize_struct("Scene", 5 + usize::from(with_values))?;
         out.serialize_field("time", &W(&scene.time()))?;
         out.serialize_field("entities", &List(scene.entities()))?;
         out.serialize_field("events", &List(scene.events()))?;
         out.serialize_field("relations", &List(scene.relations()))?;
         out.serialize_field("debug", &FieldsOut(scene.debug()))?;
+        if with_values {
+            out.serialize_field("values", &FieldsOut(values))?;
+        }
         out.end()
     }
 }
@@ -299,6 +304,11 @@ impl Serialize for W<'_, Operation> {
                 let mut out = serializer.serialize_struct_variant(NAME, 3, "split", 2)?;
                 out.serialize_field("source", source.as_str())?;
                 out.serialize_field("targets", &Ids(targets))?;
+                out.end()
+            }
+            Operation::Note { text } => {
+                let mut out = serializer.serialize_struct_variant(NAME, 4, "note", 1)?;
+                out.serialize_field("text", text)?;
                 out.end()
             }
         }

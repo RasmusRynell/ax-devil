@@ -9,7 +9,7 @@ use crate::lru::footprint;
 /// The Scenes given for one start key. A key with one Scene stays that Scene; a second joins them.
 ///
 /// Joining: entities in the order they first appear, an entity id seen again adds its observations and images and
-/// lets a later end reason or motion state win; relations, events and debug fields are appended; the slice ends at
+/// lets a later end reason or motion state win; relations, events, debug fields and values are appended; the slice ends at
 /// the later end.
 pub(crate) struct Group {
     content: Content,
@@ -29,6 +29,7 @@ struct Parts {
     events: Vec<Event>,
     relations: Vec<EntityRelation>,
     debug: Fields,
+    values: Fields,
 }
 
 impl Group {
@@ -81,12 +82,16 @@ impl Parts {
             events,
             relations,
             debug,
+            values,
             ..
         } = self;
         let scene = Scene::new(slice)
             .with_entities(entities)?
             .with_events(events)?;
-        Ok(scene.with_relations(relations).with_debug(debug))
+        Ok(scene
+            .with_relations(relations)
+            .with_debug(debug)
+            .with_values(values))
     }
 
     /// A copy of what the Scene is made of; the lookup is not needed to build it.
@@ -98,6 +103,7 @@ impl Parts {
             events: self.events.clone(),
             relations: self.relations.clone(),
             debug: self.debug.clone(),
+            values: self.values.clone(),
         }
     }
 
@@ -109,6 +115,7 @@ impl Parts {
             events: Vec::new(),
             relations: Vec::new(),
             debug: Fields::new(),
+            values: Fields::new(),
         };
         parts.take_contents(scene);
         parts
@@ -142,5 +149,6 @@ impl Parts {
         self.events.extend(scene.events().iter().cloned());
         self.relations.extend(scene.relations().iter().cloned());
         self.debug.extend(scene.debug().iter().cloned());
+        self.values.extend(scene.values().iter().cloned());
     }
 }

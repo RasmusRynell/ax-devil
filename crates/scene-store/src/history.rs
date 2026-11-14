@@ -24,11 +24,12 @@ pub(crate) use build::HistoryBuilder;
 pub(crate) const HISTORY_BYTES: usize = 256 << 20;
 
 /// The kinds of event in the order of their bits in [`History`]'s per-entity event set.
-const KINDS: [OperationKind; 4] = [
+const KINDS: [OperationKind; 5] = [
     OperationKind::Delete,
     OperationKind::Rename,
     OperationKind::Merge,
     OperationKind::Split,
+    OperationKind::Note,
 ];
 
 fn kind_index(kind: OperationKind) -> u8 {
@@ -37,6 +38,7 @@ fn kind_index(kind: OperationKind) -> u8 {
         OperationKind::Rename => 1,
         OperationKind::Merge => 2,
         OperationKind::Split => 3,
+        OperationKind::Note => 4,
     }
 }
 
@@ -187,7 +189,7 @@ impl History {
             .map(|&word| self.words.get(word))
     }
 
-    /// The kinds of event `entity` is in, in the order delete, rename, merge, split.
+    /// The kinds of event `entity` is in, in the order delete, rename, merge, split, note.
     pub(crate) fn event_kinds(&self, entity: u32) -> impl Iterator<Item = OperationKind> {
         let set = self.events_of[entity as usize];
         KINDS

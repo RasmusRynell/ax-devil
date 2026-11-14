@@ -1,5 +1,5 @@
 {
-  "scene_version": "4.2",
+  "scene_version": "4.3",
   "scenes": [
     {
       "time": {
@@ -223,6 +223,21 @@
               ]
             }
           }
+        },
+        {
+          "time": {
+            "start": {
+              "us": 1000000
+            },
+            "end": {
+              "us": 1040000
+            }
+          },
+          "operation": {
+            "note": {
+              "text": "lens cleaned"
+            }
+          }
         }
       ],
       "relations": [
@@ -240,6 +255,9 @@
       "debug": {
         "decoder": "test",
         "alpha": []
+      },
+      "values": {
+        "people": 3
       }
     }
   ]

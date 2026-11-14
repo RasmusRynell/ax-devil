@@ -81,6 +81,8 @@ pub enum OperationKind {
     Merge,
     /// One entity is several.
     Split,
+    /// A remark that changes nothing.
+    Note,
 }
 
 impl OperationKind {
@@ -91,6 +93,7 @@ impl OperationKind {
             Self::Rename => "Rename",
             Self::Merge => "Merge",
             Self::Split => "Split",
+            Self::Note => "Note",
         }
     }
 }
@@ -124,6 +127,11 @@ pub enum Operation {
         /// The entities it became.
         targets: Vec<EntityId>,
     },
+    /// A remark at that moment; it involves no entity.
+    Note {
+        /// What the remark says.
+        text: String,
+    },
 }
 
 /// A change to entity identity, and when it applies.
@@ -148,6 +156,7 @@ impl Event {
             Operation::Rename { .. } => OperationKind::Rename,
             Operation::Merge { .. } => OperationKind::Merge,
             Operation::Split { .. } => OperationKind::Split,
+            Operation::Note { .. } => OperationKind::Note,
         }
     }
 
@@ -165,6 +174,7 @@ impl Event {
             Operation::Rename { from, to } => format!("{title} {from} → {to}"),
             Operation::Merge { sources, target } => format!("{title} {} → {target}", list(sources)),
             Operation::Split { source, targets } => format!("{title} {source} → {}", list(targets)),
+            Operation::Note { text } => format!("{title} {text}"),
         }
     }
 
@@ -176,6 +186,7 @@ impl Event {
                 Operation::Rename { from, to } => (Some(from), &[], Some(to)),
                 Operation::Merge { sources, target } => (None, sources, Some(target)),
                 Operation::Split { source, targets } => (Some(source), targets, None),
+                Operation::Note { .. } => (None, &[], None),
             };
         first.into_iter().chain(middle).chain(last)
     }
@@ -233,6 +244,7 @@ pub struct Scene {
     events: Vec<Event>,
     relations: Vec<EntityRelation>,
     debug: Fields,
+    values: Fields,
 }
 
 impl Scene {
@@ -244,6 +256,7 @@ impl Scene {
             events: Vec::new(),
             relations: Vec::new(),
             debug: Fields::new(),
+            values: Fields::new(),
         }
     }
 
@@ -297,6 +310,12 @@ impl Scene {
         self
     }
 
+    /// Sets the values the file reports about the moment as a whole, such as a count or a level.
+    pub fn with_values(mut self, values: Fields) -> Self {
+        self.values = values;
+        self
+    }
+
     /// The moment this Scene describes.
     pub fn time(&self) -> TimeSlice {
         self.time
@@ -325,6 +344,11 @@ impl Scene {
     /// Decoder diagnostics shown only in debug views.
     pub fn debug(&self) -> &Fields {
         &self.debug
+    }
+
+    /// The values the file reports about the moment as a whole.
+    pub fn values(&self) -> &Fields {
+        &self.values
     }
 }
 

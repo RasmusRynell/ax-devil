@@ -49,7 +49,7 @@ pub struct SceneVersion {
 }
 
 /// The version of the Scene model in this build.
-pub const SCENE_VERSION: SceneVersion = SceneVersion { major: 4, minor: 2 };
+pub const SCENE_VERSION: SceneVersion = SceneVersion { major: 4, minor: 3 };
 
 impl SceneVersion {
     /// Whether a decoder built for version `decoder` produces Scenes this version reads: the same major version,
@@ -83,6 +83,6 @@ mod tests {
 
         assert!(app.accepts(version(4, 0)) && app.accepts(version(4, 2)));
         assert!(!app.accepts(version(4, 3)) && !app.accepts(version(3, 0)));
-        assert_eq!(SCENE_VERSION.to_string(), "4.2");
+        assert_eq!(SCENE_VERSION.to_string(), "4.3");
     }
 }

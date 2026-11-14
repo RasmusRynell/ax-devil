@@ -88,7 +88,7 @@ impl<V: Clone> Lru<V> {
 /// An estimate of the memory a Scene holds: the sizes of its values plus the text and lists they own. It leans high
 /// (no allocator slack is subtracted) so the cache stays under its budget.
 pub(crate) fn footprint(scene: &Scene) -> usize {
-    let mut bytes = size_of::<Scene>() + fields(scene.debug());
+    let mut bytes = size_of::<Scene>() + fields(scene.debug()) + fields(scene.values());
     for entity in scene.entities() {
         bytes += size_of::<scene::Entity>() + entity.id().as_str().len() + 16;
         bytes += entity

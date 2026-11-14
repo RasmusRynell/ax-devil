@@ -3,4 +3,4 @@
 /**
  * Which change to entity identity an operation is.
  */
-export type OperationKindWire = "delete" | "rename" | "merge" | "split";
+export type OperationKindWire = "delete" | "rename" | "merge" | "split" | "note";

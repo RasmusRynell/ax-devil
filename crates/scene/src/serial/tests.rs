@@ -176,6 +176,12 @@ fn rich_scene() -> Scene {
                 targets: vec![id("4"), id("5")],
             },
         ),
+        Event::new(
+            span,
+            Operation::Note {
+                text: "lens cleaned".into(),
+            },
+        ),
     ];
     let relation =
         |kind, from: &str, to: &str| EntityRelation::new(kind, id(from), id(to)).expect("a type");
@@ -192,6 +198,7 @@ fn rich_scene() -> Scene {
             field("decoder", Value::Str("test".into())),
             field("alpha", Value::List(Vec::new())),
         ])
+        .with_values(vec![field("people", Value::Int(3))])
 }
 
 fn mot_frames() -> Vec<Scene> {
@@ -334,7 +341,10 @@ fn the_reference_apps_scene_dumps_load_and_write_back_the_same() {
 
         let scenes = from_json(&original).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
 
-        assert_eq!(to_json(&scenes), original, "{}", path.display());
+        // The dumps are the reference app's, at the Scene version it had.
+        let mut written = to_json(&scenes);
+        written["scene_version"] = original["scene_version"].clone();
+        assert_eq!(written, original, "{}", path.display());
     }
 }
 
@@ -405,10 +415,10 @@ fn custom_geometry_keeps_independent_bounds_and_optional_outline_on_the_wire() {
 fn a_document_of_another_version_is_refused() {
     let document = |version: &str| format!(r#"{{"scene_version":"{version}","scenes":[]}}"#);
 
-    for accepted in ["4.0", "4.1", "4.2"] {
+    for accepted in ["4.0", "4.1", "4.2", "4.3"] {
         assert_eq!(from_json_str(&document(accepted)), Ok(Vec::new()));
     }
-    for version in ["5.0", "3.9", "4.3", "four", "4"] {
+    for version in ["5.0", "3.9", "4.4", "four", "4"] {
         assert!(from_json_str(&document(version)).is_err(), "{version}");
     }
     assert!(from_json_str(r#"{"scenes":[]}"#).is_err());

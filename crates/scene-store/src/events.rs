@@ -159,6 +159,7 @@ fn anchor<'a>(
         OperationKind::Rename => 1,
         OperationKind::Merge => 2,
         OperationKind::Split => 3,
+        OperationKind::Note => 4,
     }]);
     for text in std::iter::once(label).chain(ids) {
         digest.update((text.len() as u64).to_le_bytes());

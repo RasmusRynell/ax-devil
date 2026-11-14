@@ -30,6 +30,8 @@ pub(super) struct SceneIn {
     relations: Vec<RelationIn>,
     #[serde(default)]
     debug: FieldsIn,
+    #[serde(default)]
+    values: FieldsIn,
 }
 
 #[derive(Deserialize)]
@@ -148,6 +150,9 @@ enum OperationIn {
         source: String,
         targets: Vec<String>,
     },
+    Note {
+        text: String,
+    },
 }
 
 #[derive(Deserialize)]
@@ -182,7 +187,8 @@ impl SceneIn {
             .with_entities(entities)?
             .with_events(events)?
             .with_relations(relations)
-            .with_debug(self.debug.0))
+            .with_debug(self.debug.0)
+            .with_values(self.values.0))
     }
 }
 
@@ -308,6 +314,7 @@ impl EventIn {
                 source: id(source)?,
                 targets: ids(targets)?,
             },
+            OperationIn::Note { text } => Operation::Note { text },
         };
         Ok(Event::new(self.time.build()?, operation))
     }

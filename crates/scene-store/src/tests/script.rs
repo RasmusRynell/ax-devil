@@ -6,7 +6,7 @@ use scene::Geometry;
 use super::*;
 use crate::ingest::Tuning;
 
-/// One Scene to give: entities as `(id, x)`, each with one observation at `time`.
+/// One Scene to give: entities as `(id, x)`, each with one observation at `time`; its `seen` value counts them.
 #[derive(Clone)]
 pub(super) struct Step {
     pub(super) time: SceneTime,
@@ -90,6 +90,10 @@ fn scene_of(step: &Step) -> Scene {
     Scene::new(TimeSlice::at(step.time))
         .with_entities(entities)
         .expect("one clock")
+        .with_values(vec![(
+            "seen".into(),
+            Value::Int(step.entities.len() as i64),
+        )])
 }
 
 impl Decoder for Script {
