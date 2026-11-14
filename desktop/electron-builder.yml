@@ -1,0 +1,40 @@
+# Built by `make package` (scripts/package-desktop.sh), which stages the backend and its FFmpeg libraries in staging/bin first.
+appId: io.github.rasmusrynell.ax-devil
+productName: ax-devil
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+# The backend reads the renderer and its page as files (src/desktop.rs), which an archive would hide from it.
+asar: false
+publish: null
+directories:
+  output: dist
+# The shell, the hidden renderer export uses (render.cjs and generated/render, built with the frontend) and what
+# --smoke-test needs; tests and the benchmark stay out.
+files:
+  - "*.cjs"
+  - "!*.test.cjs"
+  - "!bench.cjs"
+  - generated/**
+  - package.json
+# The backend sits beside the app, where a process can be started from (see backendExecutable).
+extraResources:
+  - from: ../shared/file-name.mjs
+    to: shared/file-name.mjs
+  - from: staging/bin
+    to: bin
+protocols:
+  name: ax-devil
+  schemes: [ax-devil]
+toolsets:
+  appimage: 1.0.3
+linux:
+  target: AppImage
+  category: Utility
+win:
+  target: zip
+mac:
+  target:
+    - target: dmg
+      arch: arm64
+  category: public.app-category.developer-tools
+  hardenedRuntime: false
+  identity: "-"

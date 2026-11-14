@@ -1,0 +1,160 @@
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { useState } from "react";
+import { waitFor, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { AccessContext } from "../client/access";
+import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
+import { SettingsDialog } from "./SettingsDialog";
+
+// The dialog built from the real settings table, which SettingsDialog.test.tsx replaces with one of its own.
+
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function showModal() {
+    this.setAttribute("open", "");
+  };
+});
+afterEach(cleanup);
+afterAll(() => vi.restoreAllMocks());
+
+const open = () =>
+  render(
+    <AccessContext.Provider value={{ owner: true, fullAccess: false }}>
+      <FakeSettings state={DEFAULT_SETTINGS}>
+        <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
+      </FakeSettings>
+    </AccessContext.Provider>,
+  );
+
+describe("settings dialog, real table", () => {
+  it("lists the device, analytics and scan defaults on their pages", () => {
+    open();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "General",
+      "Playback",
+      "Stream defaults",
+      "Analytics",
+      "Network scan",
+      "Storage",
+      "Advanced",
+    ]);
+    // Each row's tooltip is its setting key, so the keys give the order, and the headings the groups.
+    const rows = (page: string) => {
+      fireEvent.click(screen.getByRole("tab", { name: page }));
+      const panel = screen.getByRole("tabpanel");
+      return [
+        within(panel)
+          .queryAllByRole("heading")
+          .map((heading) => heading.textContent),
+        Array.from(panel.querySelectorAll("[title]"))
+          .map((row) => row.getAttribute("title"))
+          .filter((title) => /^[a-z]+\.[a-z_]+$/.test(title ?? "")),
+      ];
+    };
+    expect(rows("Stream defaults")).toEqual([
+      ["Device", "Video and overlay"],
+      [
+        "camera.protocol",
+        "camera.host",
+        "camera.user",
+        "camera.password",
+        "camera.rtsp_port",
+        "camera.rtsp_route",
+        "camera.timeout",
+        "camera.head",
+        "camera.overlay",
+        "camera.rtsp_handler",
+      ],
+    ]);
+    expect(rows("Analytics")).toEqual([
+      ["MQTT analytics", "DataHub WebSocket analytics"],
+      [
+        "broker.host",
+        "broker.port",
+        "broker.user",
+        "broker.password",
+        "broker.source_key",
+        "broker.handler",
+        "datahub.topic",
+        "datahub.channel",
+        "datahub.handler",
+      ],
+    ]);
+    expect(rows("Network scan")).toEqual([
+      ["Discovery", "Network scan", "Sign-in logins"],
+      ["scan.on_startup", "scan.sign_in", "scan.range", "scan.logins"],
+    ]);
+    // Full access with password sits in Advanced, under Sharing; its tooltip is a sentence, not the key.
+    expect(rows("Advanced")[0]).toEqual(["Sharing"]);
+  });
+
+  it("masks a literal password and warns about it, and shows a $VARIABLE reference as it is", () => {
+    open();
+    for (const [page, label] of [
+      ["Stream defaults", "Password"],
+      ["Analytics", "Broker password"],
+    ]) {
+      fireEvent.click(screen.getByRole("tab", { name: page }));
+      // Every page stays in the DOM, hidden, so look in the shown one.
+      const panel = within(screen.getByRole("tabpanel"));
+      const password = panel.getByLabelText(label) as HTMLInputElement;
+      expect(password.type).toBe("text");
+      expect(panel.queryByText(/^Saved as plain text/)).toBeNull();
+      fireEvent.change(password, { target: { value: "hunter2" } });
+      expect(password.type).toBe("password");
+      expect(panel.getByText(/^Saved as plain text/).id).toBe(
+        password.getAttribute("aria-describedby"),
+      );
+    }
+  });
+});
+
+it("stores edited Manual GiB as MiB and preserves an untouched rounded display", async () => {
+  const apply = vi.fn().mockResolvedValue(null);
+  const state = {
+    ...DEFAULT_SETTINGS,
+    values: { ...DEFAULT_SETTINGS.values, "playback.video_cache": 1537 },
+  };
+  function Harness() {
+    const [open, setOpen] = useState(true);
+    return (
+      <AccessContext.Provider value={{ owner: true, fullAccess: true }}>
+        <FakeSettings state={state} apply={apply}>
+          <button onClick={() => setOpen(true)}>Open settings</button>
+          {open && <SettingsDialog onClose={() => setOpen(false)} onRestartNeeded={() => {}} />}
+        </FakeSettings>
+      </AccessContext.Provider>
+    );
+  }
+  const view = render(<Harness />);
+  fireEvent.click(screen.getByRole("tab", { name: "Playback" }));
+  const field = screen.getByLabelText("Total allowance (GiB)") as HTMLInputElement;
+  expect(field.value).toBe("1.50");
+  const mode = screen.getByRole("combobox", { name: "Video cache" });
+  fireEvent.change(mode, { target: { value: "auto" } });
+  fireEvent.click(screen.getByRole("tab", { name: "General" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Playback" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "Video cache" }), {
+    target: { value: "manual" },
+  });
+  expect((screen.getByLabelText("Total allowance (GiB)") as HTMLInputElement).value).toBe("1.50");
+  fireEvent.click(screen.getByRole("button", { name: "OK" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(apply).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Playback" }));
+  fireEvent.keyDown(screen.getByLabelText("Total allowance (GiB)"), { key: "ArrowUp" });
+  expect((screen.getByLabelText("Total allowance (GiB)") as HTMLInputElement).value).toBe("1.75");
+  fireEvent.click(screen.getByRole("button", { name: "OK" }));
+  await waitFor(() =>
+    expect(apply).toHaveBeenLastCalledWith({ set: { "playback.video_cache": 1792 } }),
+  );
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Playback" }));
+  fireEvent.change(screen.getByLabelText("Total allowance (GiB)"), { target: { value: "1.51" } });
+  fireEvent.click(screen.getByRole("button", { name: "OK" }));
+  await waitFor(() =>
+    expect(apply).toHaveBeenLastCalledWith({ set: { "playback.video_cache": 1546 } }),
+  );
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  view.unmount();
+});

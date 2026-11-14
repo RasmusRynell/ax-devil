@@ -1,161 +1,124 @@
 # Testing
 
+What to test and how to judge a test is in the [write-tests skill](../../.agents/skills/write-tests/SKILL.md); the
+test pyramid and oracle policy are in [09](../rebuild/09-testing.md).
+
 ## Running tests
 
 ```bash
-make test                                       # Regular offline suite, on a private Xvfb display
-make test-integration                           # Real development, pip/tool, and upgrade checks; may download packages
-make check                                     # Formatting, linting, logging conventions, and strict types
+make test                          # Every suite
+make test-frontend TEST=App        # React component tests (Vitest, jsdom); TEST filters by name or file
+make test-backend CRATE=scene TEST=info  # Rust tests, one crate or all, without and with the embedded frontend
+make test-integration              # Development supervisor (starts the services, stops the whole tree) and the desktop's argument forwarding
+make test-desktop SMOKE=media     # Electron app on a private display, SMOKE picks groups or scenarios; screenshots in artifacts/screenshots/
+make bench                         # Rust benchmarks (sample item encode); numbers on stdout, nothing asserted
+make bench-export                  # Export speed through the real render page, SwiftShader and GPU; numbers on stdout
+make check                         # The gate: every static check, then every suite
+make check-fast                    # Static checks only, file-size check on changed files only
 ```
 
-`make test` distributes whole files across available CPUs, capped at eight workers. Use
-`make test TEST_WORKERS=0` for serial debugging or set a smaller worker count on constrained machines.
-Each worker owns a separate temporary home and app storage; subprocesses inside a worker reuse that worker's home.
-Focused `uv run pytest ...` commands and the installation integration suite stay serial.
+Targets install what they need and exit after one run. The first run downloads the Rust toolchain (into
+`.cargo-cache/` and `.toolchain/` when no `rustup` is on `PATH`), crates, npm packages, Watchexec and cargo-deny (built
+into `.tools/` unless `PATH` has Watchexec 2.x, or cargo-deny at the Makefile's pinned version) and the Electron binary
+(into the user's download cache). After that, every target runs offline as long as `Cargo.lock`, `pnpm-lock.yaml`,
+`rust-toolchain.toml` and the pinned tool versions in the Makefile are unchanged. Test output and evidence go in
+`artifacts/`. The system FFmpeg libraries and clang that the
+`media` crate builds against are prerequisites no target installs ([README](../../README.md#build-from-source)).
 
-To run a specific test file or test:
+Debug and test builds carry line tables only (backtraces keep `file:line`; dependencies have none) to keep `target/`
+small. For a debugger, add `--profile dev-full` to a `scripts/cargo` build or test; it builds into `target/dev-full`.
 
-```bash
-uv run pytest tests/modules/workspace/core/test_content.py
-uv run pytest tests/modules/workspace/core/test_content.py::test_specific_case -v
-uv run pytest tests/ -k "keyword"
-```
+A crate's integration tests are one binary, `tests/it/main.rs`: add a file there and a `mod` line, not a new `tests/*.rs`. The root crate keeps the tests that set environment variables in two more, `tests/export/` and `tests/live_transport.rs`.
 
-Plugin runtime checks:
+## Tests never touch the user's files or session
 
-```bash
-uv run pytest tests/modules/plugin_system tests/modules/plugin_installation
-uv run ax-devil plugins --help
-uv run ax-devil --help
-```
+Every suite runs through `scripts/isolated`:
 
-The regular suite covers plugin installation with uv mocked, plus real entry-point discovery and decoding of the
-minimal package from `.agents/skills/write-plugin/reference.md` in fresh Python processes.
+- `HOME` and the XDG config, data, cache, state and runtime folders point into a fresh temporary folder, removed
+  afterwards. Toolchains keep their real locations. Tests therefore load no user plugins, and the private settings
+  turn the startup network scan off; devices and transports are faked.
+- `DISPLAY`, `WAYLAND_DISPLAY` and the session bus are unset, so nothing can reach the user's desktop.
+- `--display` starts a private Xvfb server for that run only (`xvfb-run -a`), so parallel runs never share a display
+  or compete for focus. The Linux `native` smoke group opts into `--window-manager`: Openbox manages that private
+  display and XTest drives native input through Python. Missing Openbox, Python or XTest fails the run. Other groups
+  keep plain Xvfb; neither path falls back to the user's display.
+- Before and after, it records path, size and modification time under `~/.ax_devil` and the `ax-devil` folders in
+  the user's XDG config, data, cache and state homes, and fails the run if anything changed.
 
-`make test-integration` installs the app and that plugin for real (editable, `uv tool install`, and pip from wheels)
-outside the checkout with isolated storage, then checks launching, decoding, upgrades, rollback, refresh at launch and
-removal. It may download and build packages, needs the same system libraries as a normal installation, and publishes
-nothing.
+Run any ad-hoc GUI check the same way: `make app ISOLATE=1 ARGS=...` runs the release app on a private display and
+`make cli ISOLATE=1 ARGS=...` the backend. What a virtual display cannot verify (physical GPU, compositor, other window managers, fractional scaling on a real screen) is reported as
+not run.
 
-CI runs these jobs on pull requests, `main`, and release tags: `quality` shares one Python 3.12 environment for
-application checks, the regular suite, installation smoke tests, and package builds; `test` runs
-the regular suite on the minimum supported Python 3.10 on Ubuntu, Windows (Direct3D 11 on the WARP software adapter)
-and macOS, serially because windows on one native desktop fight over focus; `lowest` runs it on Python 3.10 with the oldest allowed
-dependencies (`uv pip install --resolution lowest-direct -e . --group dev`). A newer push to a PR cancels its
-superseded run; runs for `main` commits and releases always finish.
-Pytest excludes the `integration` marker by default; `-m integration` selects it explicitly.
+What an ad-hoc check creates outside `artifacts/` and the run's temporary folder is removed when the check finishes
+(anything over ~100 MB first), and no process it started (test runner, Electron, browser, dev server) is left running.
 
-## Package artifacts
+## Export end to end
 
-`uv build` builds the wheel and source distribution. CI runs it on pull requests, main pushes, and version tags.
-Artifacts are uploaded only for release tags. On a `v*` tag, after all three CI jobs pass, CI runs
-`tools/release-check/run.sh` and publishes the built artifacts to PyPI through trusted publishing.
-A published release must remain available to the plugin resolver at its exact version.
+`tests/export/export.rs` and `tests/export/catalog_check.rs` run the real Electron render page, forced to SwiftShader so pixels do
+not depend on the machine's graphics (`AX_DEVIL_RENDER_GRAPHICS=software`), through the routes and the command, and
+read the written MP4 and PNG back with `media`. They skip, saying why on stderr, when Electron or the built render
+page is missing; `make test-backend` builds both and sets `AX_DEVIL_REQUIRE_ELECTRON`, which makes a skip a failure.
 
-`tools/release-check/run.sh [tool|pip|py310|source]` needs Docker. It installs the candidate in fresh Ubuntu 24.04
-containers by running the documented prerequisite and source commands as written. The `tool`, `pip`, and `py310`
-scenarios install the built wheel, with a local directory standing in for PyPI and every dependency coming from PyPI;
-they render catalogs, install the documented plugin, play a generated video on a virtual display, upgrade the app, and check that
-plugins follow. `source` clones the candidate, runs `make check`, `make test`, and `make test-integration`, and checks
-that editable plugin edits apply without reinstalling.
+## Plugin tests
 
-## GUI verification
+`crates/plugins/tests` and `tests/it/plugins.rs` run the plugins in `fixtures/plugins` as real processes. The
+Python ones need `python3`; without it those tests skip, saying why on stderr, unless `AX_DEVIL_REQUIRE_PYTHON` is
+set, which makes the skip a failure.
 
-All agent verification runs away from the user's desktop, on a private Xvfb display with Mesa's OpenGL (llvmpipe).
-The test suite starts one itself (see below), so plain `make test` and `uv run pytest` need nothing else; Xvfb must be
-installed: `sudo pacman -S --needed xorg-server-xvfb xorg-xauth` on Arch/Omarchy, or
-`sudo apt install xvfb xauth libgl1-mesa-dri` on Debian/Ubuntu.
-Save `QWidget.grab()` or `QQuickWindow.grabWindow()` output to `tmp_path` or `/tmp` and inspect that image. Send
-interactions through Qt test events. For application UI, see
-[the write-ui skill's checks](../../.agents/skills/write-ui/SKILL.md#check-it).
+## Desktop suite and screenshots
 
-Standalone GUI tools and commands that render (`ax-devil catalog render`, the app itself) get a display from
-`xvfb-run -a -s "-screen 0 1920x1080x24"`, or from `tools/private_display.py`, which starts one on a free display
-number without touching others. They must close their windows and workers when finished.
-The pytest suite isolates app storage too; standalone app checks must use temporary settings and fixtures.
+`make test-desktop` builds the debug backend and runs the smoke scenarios in the Electron window. A scenario is
+`desktop/smoke-<name>.cjs` exporting `run(ctx)`, listed once in `desktop/smoke-groups.cjs` (the launcher refuses a
+scenario in no group). A group is one fresh app launch and runs its scenarios in order, each inheriting the state the
+one before left, so add a scenario after the one whose state it needs. `SMOKE=<token>` names a group, which runs whole,
+or a scenario, which runs with the ones before it in its group; without it every group runs. Each scenario has its own
+timeout, shorter than the launch's own deadline, so a hang fails by scenario name. Screenshots are captured only after the compositor has drawn a frame for
+the current state; capturing earlier fails. In smoke
+mode the desktop's listener for other machines takes a free loopback port through the hidden `--share-address`, so
+nothing leaves the machine. `desktop/fit-coverage.test.cjs` fails until each new dialog names the scenario that fit-checks it, or a reason ([DT-02](../parity/app.md#developer-tooling)).
 
-Xvfb has no window manager, so tests that need keyboard focus activate their window first. It does not verify the
-physical GPU or its driver, Wayland, or window-manager interaction; those need a separate session or machine with its
-own display and input. Never launch verification windows, send input, or capture screenshots on the user's desktop.
-If the required isolated environment is unavailable, report the check as unrun and its coverage limit.
-Real-device checks use configured test devices; the offline suite mocks external services.
+## Sharing across two machines
 
-## Test organization
+Automated checks cannot cut a real network or open a real LAN listener, so run this by hand on release builds
+(`make build`; a development build serves no frontend) when sharing changes. Host A and host B must reach each other.
 
-```
-tests/
-├── conftest.py                    Shared fixtures (temp dirs, plugin loading, Qt display)
-├── core/                          Root CLI, package metadata, and `ax_devil.core` tests
-├── modules/                       Concept-owned module tests for workspace, viewer workflow, scene, sources, sync, cache, and playback
-├── plugins/                       Plugin decoder and playlist resolver tests
-└── helpers/                       Test utility modules
-```
+1. On host A, start sharing in the Sessions view of the app. Alternatively run `ax-devil serve --bind 0.0.0.0` on
+   A, open its printed link in a browser on B and start sharing there.
+2. On B, open the join link in a browser, then open it again in the app: `ax-devil app --server <link>`, or pass the
+   `ax-devil://open?url=<encoded link>` link as an argument. The app asks before it opens.
+3. Check that the plain HTTP warning was logged on A, that both cursors show on each side, and that follow, explore
+   and Follow presenter behave as in the smoke scenario.
+4. Cut a Guest's network for 10 s: it resumes with the same Guest N. Cut it for 60 s (the server notices after 25 s
+   and holds the seat 30 s more): the owner's list drops the seat.
+5. With the owner in a browser on B and the server on A, cut B's network for 10 s: the session continues, with the
+   Guests seeing the owner away meanwhile. Cut it for 60 s: the session ends and Guests are told the owner
+   left (`OwnerGone`).
+6. With a desktop owner, close its window without stopping sharing: Guests must not stay on a live session. They see
+   the owner away and then the session end, or lose the connection once the app's backend has stopped.
 
-Config and settings tests live under `tests/modules/settings/`.
+## Fixtures
 
-## Key conventions
+Committed inputs live in `fixtures/` with their provenance and license. Each test owns its temporary files and
+caches; nothing is shared between tests through the filesystem.
 
-- **Regular tests stay offline.** Only the explicit installation integration test may download packages. Mock all external services (RTSP, MQTT, device APIs).
-- **Private display.** `tests/__init__.py` starts Xvfb (one per xdist worker, so windows cannot take each other's
-  keyboard focus) and sets `QT_QPA_PLATFORM=xcb`, Mesa's software OpenGL and `DISPLAY` before importing Qt or
-  application modules, replacing inherited desktop settings, so plain `uv run pytest`, CI and a stray
-  `QT_QPA_PLATFORM=offscreen` all use the same platform; Qt Quick has no GPU backend under offscreen. Missing Xvfb
-  fails the run. Off Linux the suite uses Qt's native platform plugin and starts no display; the graphics API comes
-  from the `QSG_RHI_*` variables (see CI). `AX_DEVIL_TESTS_QPA_PLATFORM` names a platform plugin on any OS and skips Xvfb. Create
-  applications through pytest-qt's `qapp`/`qtbot`, never during collection.
-- **Plugins isolated.** A session-scoped fixture loads built-ins while installed external entry points are patched out.
-- **Qt teardown.** Register widgets with `qtbot.addWidget()`. Register only top-level widgets: Qt deletes children with their parent, and a registered child whose parent was garbage-collected first makes pytest-qt close an already-deleted widget. The shared teardown hook drains Qt's deferred deletions after pytest-qt closes widgets, keeping native destruction on the GUI thread and out of later tests. Like the app, the suite runs with automatic cyclic GC off and collects in that hook, so a collection never runs inside a Qt callback; do not re-enable `gc` in a test without restoring it.
-- **Temp directories.** Use pytest's `tmp_path` for file-system tests. `temp_dir` is an alias; `test_temp_root` supplies a session directory for shared generated media. Pytest manages their retention and cleanup.
-- **Catalog fixtures.** Shared UI fixtures give each test its own empty user catalog store. For management, selection and validation tests, use `small_catalog_path` as `create_catalog(..., base_catalog_path=small_catalog_path)` or get fresh document data from `tests.catalog_helpers.catalog_document()`. The source bytes are immutable; each user copy still passes real schema validation and compilation. Keep packaged-catalog checks for its schema, sheets and rendered output. Tests must never write to the built-in catalog path. `test_scene_render_catalog_state_model.py` checks selections and selectors after every step of named scenarios and seeded random sequences; add a scenario there for a state bug that focused tests do not cover.
-- **Prefer controller-level tests** over widget-heavy tests. `pytest-qt` is available but keep widget interactions minimal.
-- **Isolated and fast.** Each test should be independent. No shared mutable state between tests.
+`fixtures/session/` holds Session Docs, steps and seat rights written by the backend's own projection (`src/session/frontend_fixtures`). Backend tests compare them without writing; regenerate explicitly with `UPDATE_GOLDENS=1 make test-backend TEST=frontend_fixture`. Session and catalog feed fixtures share the same containment checks and update path. Frontend tests take backend-derived values from them through `frontend/src/session/fakeScenario.ts`; a new shape is a new scenario in `src/session/frontend_fixtures`, never built or patched in TypeScript. A command a test sends changes the fake's Doc only through a recorded step; one with none fails the test unless it is in `UNRECORDED` in `fakeSession.ts` (random ids or file work, so no live edit).
 
-## Writing a new test
+## CI
 
-Delete the tests of code you remove or merge first; test each rule once, at the layer that owns it. A new test
-should protect a meaningful failure: wrong frames or overlays, lost settings, leaked workers, failed plugin loading,
-or damaged output. Prefer strengthening an existing case over adding another smoke test.
-Assert observable output using explicit expectations; avoid constructor echoes, deleted-name checks, route-equivalence
-checks, private state and exact internal call sequences. Fake external transports or processes, while keeping owned
-components real where practical.
-Use events/signals for worker completion, not arbitrary sleeps or elapsed-time thresholds as proof of correctness.
-Keep generated media tiny and reuse it when independent tests can safely share an immutable fixture.
-`video_file_factory(duration, fps)` reuses generated video files; each caller must own and close its decoder,
-worker and frame cache. Treat those source files as immutable; copy them to `tmp_path` before source-invalidation tests
-modify them. Immutable reference images and TLS certificates can use module/session fixtures, while readers, servers,
-and writable caches remain independent. A cache or prefetch test should check retained frames and require successful delivery
-without additional decoding; request speed alone cannot prove a cache hit.
+`make check` is the gate. CI runs it on Linux split across jobs; the per-OS jobs only build and smoke-test the packaged
+app. `.github/workflows/ci.yml` runs on pull requests to and pushes on `main` and `rewrite`, and on `v*` tags, with
+every job starting at once:
 
-## Tests never touch the user's files
+- `check` (Ubuntu 24.04) runs `make check SKIP_DESKTOP=1`: every check and suite except the desktop one. It builds
+  and tests against the same pinned FFmpeg the Linux package ships (`FFMPEG_DIR`, shared cache entry) and installs clang
+  for the `media` crate's bindings. The make target fails when its checks leave generated files changed. Only pushes save the Cargo cache;
+  pull requests restore it (a copy per pull request ref would pass the repository's 10 GB cache cap).
+- `Desktop (<group>)`, one per group in `desktop/smoke-groups.cjs`, runs `make test-desktop SMOKE=<group>` and uploads
+  `screenshots-<group>`.
+- `package` (Linux, Windows, macOS) runs `make package` and `make smoke-packaged` (once per group) against a pinned shared FFmpeg
+  (downloaded for Linux and Windows, built from source on macOS, both cached). Windows runs make from Git Bash.
+- `version` and `release` run on tags only. `version` runs `make verify-release-version`; `release` waits for the
+  others and drafts the release from the packages.
 
-`tests/__init__.py` gives every run its own temporary home folder (`HOME` and the XDG folders) before any app code is
-imported, so configuration, render catalogs, window state, logs, caches and plugins all land there; the folder is
-removed when the owning process ends, and nested runs reuse it without deleting their parent's home.
-The session hooks in `tests/conftest.py` record the user's real
-`~/.ax_devil/configs` and `render_catalogs` and the plugin data folder before the run, and fail it if any of
-them changed. After each test the shared configuration is pointed back at the suite's own file, so a test that switches
-it cannot affect later ones. A test that needs files uses `tmp_path`.
-
-## Quick renderer verification
-
-`tests/modules/video_player/engine/test_quick_*.py` exercise rendered output, text/path
-ordering, opacity, texture replacement, software rendering, and reparenting.
-`tests/modules/video_player/engine/test_image_renderer.py` verifies native dimensions,
-edge pixels, overlay removal, and source-context dimensions. Run it with
-`QT_SCALE_FACTOR=1.5` to verify export independently of desktop scaling.
-For fractional/high-DPI geometry, add `QT_SCALE_FACTOR=1.5` and select only
-`tests/modules/video_player/engine/test_quick_geometry.py -k numeric_geometry`; repeat at scale 2.
-Other pixel-coordinate tests assume scale 1. Linux/OpenGL results do not certify other graphics APIs.
-
-## Rendering benchmarks
-
-Measure rendering cost and compare it with an older ref using [`tools/bench`](../../tools/bench/README.md).
-
-## Playback memory
-
-To check the [video cache memory](../settings.md#video-cache-memory) figures, generate clips with FFmpeg `testsrc2`
-at 1080p and 4K, 30 fps, 20 seconds:
-`libx264 -preset ultrafast -crf 28 -g 60 -pix_fmt yuv420p -threads 2` (long-GOP: `-g 300 -sc_threshold 0`). Play
-them on the private display without overlays with Manual 1 GiB in fresh processes, recording indexing separately from cached opens.
-Play to the end, probe retained and evicted frames, change the allowance during playback, and open and close sources
-to check redistribution and cleanup.
+A newer push to a pull request cancels its superseded run. Versions are pinned once each: Node in `.node-version`,
+pnpm in `packageManager`, Rust in `rust-toolchain.toml`, actions by commit SHA in the workflow.

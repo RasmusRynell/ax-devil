@@ -1,0 +1,294 @@
+/* The one place for design values. Colors are light/dark pairs that follow `color-scheme` on the root; sizes derived
+   from text follow the one body size; spacing and radii stay fixed. Components use the generated utilities only. */
+@theme static {
+  --color-*: initial;
+  /* Colours the theme tiles draw in both themes at once have their light and dark half named. */
+  --color-surface-light: #f6f8fb;
+  --color-surface-dark: #121314;
+  --color-surface: light-dark(var(--color-surface-light), var(--color-surface-dark));
+  --color-panel-light: #edf2f7;
+  --color-panel-dark: #191a1b;
+  --color-panel: light-dark(var(--color-panel-light), var(--color-panel-dark));
+  --color-popup: light-dark(#ffffff, #252627);
+  --color-fg: light-dark(#263445, #cccccc);
+  --color-muted-light: #5a6a7d;
+  --color-muted-dark: #858585;
+  --color-muted: light-dark(var(--color-muted-light), var(--color-muted-dark));
+  --color-disabled: light-dark(#7c8794, #6e6e6e);
+  --color-line: light-dark(#d5dee8, #252627);
+  --color-line-strong-light: #7b8d9f;
+  --color-line-strong-dark: #393a3b;
+  --color-line-strong: light-dark(var(--color-line-strong-light), var(--color-line-strong-dark));
+  --color-accent-light: #23678d;
+  --color-accent-dark: #3994bc;
+  --color-accent: light-dark(var(--color-accent-light), var(--color-accent-dark));
+  --color-hover: light-dark(#26344514, #cccccc14);
+  --color-scrim: light-dark(#f6f8fb99, #12131499);
+  --color-loading-cover: light-dark(
+    #f6f8fbc8,
+    #121314c8
+  ); /* the loading cover: the window colour at alpha 200 */
+  /* Status text: all is well (success), something needs a look (caution), something is wrong (danger). */
+  --color-success: light-dark(#1b6e3c, #5fc27e);
+  --color-caution: light-dark(#8a5300, #e0b04a);
+  --color-danger: light-dark(#b3261e, #f28b82);
+  /* The window Close button under the pointer: red at alpha 217, with white text, in both themes. */
+  --color-close: #e81123d9;
+  /* What kind of thing an icon or caption mark stands for; one color per kind wherever it shows. */
+  --color-kind-live: light-dark(#c4362e, #e5534b);
+  --color-kind-video: light-dark(#526477, #a8b3bf);
+  --color-kind-playlist: light-dark(#6f45c2, #b18cf0);
+  --color-kind-lane: light-dark(#607080, #8f9aa6);
+  /* The video surface and the controls over it look the same in both themes: near-black with white controls. */
+  --color-canvas: #0e0f10;
+  --color-on-canvas: #ffffff;
+  --color-on-canvas-muted: #b8bec6;
+  --color-canvas-hover: #ffffff24;
+  --color-canvas-scrim: #000000cc;
+  --color-canvas-line: #ffffff2e;
+  --color-canvas-chip: #0e0f10e6; /* the hover chip's scrim: the canvas at alpha 230 */
+  --color-canvas-chip-line: #ffffff28; /* and its border: white at alpha 40 */
+  --color-canvas-cached: #ffffff2d; /* the frames the backend holds decoded, on the seek bar */
+  --color-canvas-accent: #3994bc;
+  --color-on-canvas-caution: #f5c451;
+  --color-on-canvas-danger: #ff8a80;
+  /* The dot of the hover chip: one per class, picked by the class name, so a class keeps its color in every session. */
+  --color-category-0: #6ea8f7;
+  --color-category-1: #e0a35c;
+  --color-category-2: #8bc47c;
+  --color-category-3: #e07f9d;
+  --color-category-4: #4fc3c3;
+  --color-category-5: #b18cf0;
+  --color-category-6: #d6c25a;
+  --color-category-7: #e5806b;
+  /* The same hues on the panel, deeper on a light theme to keep their contrast. */
+  --color-dot-0: light-dark(#2a62c4, #6ea8f7);
+  --color-dot-1: light-dark(#a35f12, #e0a35c);
+  --color-dot-2: light-dark(#3a7a2c, #8bc47c);
+  --color-dot-3: light-dark(#b02f5c, #e07f9d);
+  --color-dot-4: light-dark(#117a7a, #4fc3c3);
+  --color-dot-5: light-dark(#6f45c2, #b18cf0);
+  --color-dot-6: light-dark(#7d6a00, #d6c25a);
+  --color-dot-7: light-dark(#b04125, #e5806b);
+
+  /* Participant colors, indexed by the backend's color number modulo the count; text on them is --presence-fg. */
+  --presence-0: light-dark(#b42318, #f87171);
+  --presence-1: light-dark(#1d4ed8, #60a5fa);
+  --presence-2: light-dark(#0f766e, #2dd4bf);
+  --presence-3: light-dark(#6d28d9, #a78bfa);
+  --presence-4: light-dark(#b54708, #fb923c);
+  --presence-5: light-dark(#be185d, #f472b6);
+  --presence-6: light-dark(#4d7c0f, #a3e635);
+  --presence-7: light-dark(#a16207, #facc15);
+  --presence-fg: light-dark(#ffffff, #121314);
+
+  --spacing-xs: 2px;
+  --spacing-s: 4px;
+  --spacing-m: 8px;
+  --spacing-l: 12px;
+  --spacing-xl: 16px;
+  --spacing-inset: 10px; /* a chip on the video keeps this far from the picture's corner */
+  --spacing-hairline: 1px;
+
+  --radius-*: initial;
+  --radius-control: 4px;
+  --radius-popup: 6px;
+  --radius-pill: 9999px;
+  --radius-mark: 2px; /* the small square before a caption */
+
+  --shadow-*: initial;
+  --shadow-popup: 0 4px 12px light-dark(#26344526, #00000066);
+  --shadow-float: 0 4px 16px #00000080;
+
+  --ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
+
+  /* The loading arc: 8 degrees every 25 ms, a turn in 1.125 s. */
+  --animate-arc: arc-turn 1.125s linear infinite;
+  @keyframes arc-turn {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  --stroke-edge: 2px;
+  --stroke-focus: 2px;
+
+  --text-*: initial;
+  /* The body sizes the Text size setting chooses between; `system` is what no choice gives. */
+  --text-size-system: 14px;
+  --text-size-small: 13px;
+  --text-size-medium: 15px;
+  --text-size-large: 18px;
+  --text-size-larger: 21px;
+  --text-body: var(
+    --text-size-system
+  ); /* the one base size; the setting picks it, zoom is the browser's */
+  --text-small: calc(var(--text-body) - 2px);
+  --text-aside: calc(var(--text-body) - 1px);
+  --text-heading: calc(var(--text-body) + 2px);
+
+  --tracking-caption: 0.08em;
+
+  --spacing-icon: calc(var(--text-body) * 1.2);
+  --spacing-row: calc(var(--text-body) + 8px);
+  --spacing-header: calc(var(--text-body) + 12px);
+  --spacing-bar: calc(var(--text-body) + 16px);
+  --spacing-segment: calc(var(--spacing-row) - 2 * (var(--spacing-xs) + var(--spacing-hairline)));
+  --spacing-activity: calc(var(--spacing-icon) * 2);
+  --spacing-spinner: calc(
+    var(--spacing-icon) * 1.8
+  ); /* the loading indicator's arc, stroke included */
+  --spacing-sidebar: 34ch; /* the sidebar before the user drags it */
+  --spacing-sidebar-least: 24ch; /* the least a drag leaves it; dragged below half of this, it closes */
+  --spacing-list-least: calc(
+    4 * var(--spacing-row)
+  ); /* the least a scrolling list keeps, so a short window scrolls its view instead */
+  --spacing-logins: calc(
+    5 * var(--spacing-row) + 4 * var(--spacing-s)
+  ); /* five login rows, more scroll */
+  --spacing-search-least: 12ch; /* the least the Live toolbar's search field keeps, so "Search" shows whole; the buttons wrap below it */
+  --spacing-title-least: 6ch; /* the least a list row keeps of its title, which its aside gives way to */
+  --spacing-welcome: 40ch;
+  --spacing-field: 24ch;
+  --spacing-field-wide: 42ch; /* a field that holds a `$NAME` reference */
+  --spacing-form: 72ch; /* the form of the Add Live Stream dialog */
+  --spacing-panel: 48ch;
+  --spacing-setup: calc(var(--text-size-larger) * 26); /* room for all five text-size tiles */
+  --spacing-preview: calc(var(--text-size-system) * 6.4); /* the miniature window on a theme tile */
+  --spacing-sample: calc(
+    var(--text-size-larger) * 2
+  ); /* room for "Aa" at the largest size, whatever is chosen */
+}
+
+/* Strokes: the accent edge of a selected tab or view, and the keyboard focus ring (inset where an edge would clip it; `within` for a label around a hidden native input). */
+@utility border-b-edge {
+  border-bottom-width: var(--stroke-edge);
+  border-bottom-style: solid;
+}
+@utility border-l-edge {
+  border-left-width: var(--stroke-edge);
+  border-left-style: solid;
+}
+@utility border-edge {
+  border-width: var(--stroke-edge);
+  border-style: solid;
+}
+/* One row square at zero specificity, so a size class from the caller overrides it whatever the stylesheet order. */
+@utility square-row {
+  :where(&) {
+    width: var(--spacing-row);
+    height: var(--spacing-row);
+  }
+}
+@utility focus-ring {
+  &:focus-visible {
+    outline: var(--stroke-focus) solid var(--color-accent);
+  }
+}
+@utility focus-ring-within {
+  &:has(:focus-visible) {
+    outline: var(--stroke-focus) solid var(--color-accent);
+  }
+}
+@utility focus-ring-inset {
+  &:focus-visible {
+    outline: var(--stroke-focus) solid var(--color-accent);
+    outline-offset: calc(var(--stroke-focus) * -1);
+  }
+}
+
+/* The lower-right half of a box: the dark half of the System theme tile. */
+@utility clip-diagonal {
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+/* A readout that keeps the room for --chars characters, inside xs padding and a hairline border, so it does not move
+   as its text changes. */
+@utility chars-wide {
+  min-width: calc(var(--chars) * 1ch + 2 * (var(--spacing-xs) + var(--spacing-hairline)));
+}
+
+/* The seek bar over video: a slim rounded track filled to --seek-fill (0 to 1) in the accent, with a thumb that
+   appears on hover and keyboard focus. The thumb travels inset by half its width, so the fill follows its center. */
+@utility seek-bar {
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  &:disabled {
+    cursor: default;
+  }
+  &:focus-visible {
+    outline: none;
+  }
+  &::-webkit-slider-runnable-track {
+    height: var(--spacing-s);
+    border-radius: var(--radius-pill);
+    background: linear-gradient(
+      to right,
+      var(--color-canvas-accent)
+        calc(var(--spacing-l) / 2 + (100% - var(--spacing-l)) * var(--seek-fill, 0)),
+      transparent 0
+    );
+  }
+  &::-webkit-slider-thumb {
+    appearance: none;
+    box-sizing: border-box;
+    width: var(--spacing-l);
+    height: var(--spacing-l);
+    margin-top: calc((var(--spacing-s) - var(--spacing-l)) / 2);
+    border: 0;
+    border-radius: var(--radius-pill);
+    background: var(--color-on-canvas);
+    transform: scale(0);
+    transition: transform 150ms var(--ease-out-cubic);
+  }
+  &:hover::-webkit-slider-thumb,
+  &:focus-visible::-webkit-slider-thumb {
+    transform: scale(1);
+  }
+  &:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 var(--stroke-focus) var(--color-canvas-accent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::-webkit-slider-thumb {
+      transition: none;
+    }
+  }
+}
+
+/* A run of cached frames on the seek bar's rail, from --from for --span (0 to 1 of the rail, see seekBand), and at least
+   one pixel wide. */
+@utility seek-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(100% * var(--from));
+  width: max(1px, 100% * var(--span));
+  background: var(--color-canvas-cached);
+}
+
+/* Theme choices; "auto" follows the operating system live. */
+:root,
+:root[data-theme="auto"] {
+  color-scheme: light dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* Text size choices; "system" sets nothing, so the base size stays --text-size-system. */
+:root[data-text-size="small"] {
+  --text-body: var(--text-size-small);
+}
+:root[data-text-size="medium"] {
+  --text-body: var(--text-size-medium);
+}
+:root[data-text-size="large"] {
+  --text-body: var(--text-size-large);
+}
+:root[data-text-size="larger"] {
+  --text-body: var(--text-size-larger);
+}

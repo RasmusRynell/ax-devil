@@ -1,0 +1,30 @@
+{
+  "initial": {
+    "document": "{\"schema\":4,\"name\":\"Shared\",\"description\":\"\",\"vars\":{},\"rules\":[],\"layers\":[]}",
+    "id": "user:shared.json",
+    "problem": null,
+    "revision": 1,
+    "type": "Catalog"
+  },
+  "oneOwner": {
+    "document": "{\"schema\":4,\"name\":\"Shared\",\"description\":\"\",\"vars\":{},\"rules\":[],\"layers\":[]}",
+    "id": "user:shared.json",
+    "problem": null,
+    "revision": 1,
+    "type": "Catalog"
+  },
+  "restored": {
+    "document": "{\"schema\":4,\"name\":\"Shared\",\"description\":\"\",\"vars\":{},\"rules\":[],\"layers\":[]}",
+    "id": "user:shared.json",
+    "problem": null,
+    "revision": 1,
+    "type": "Catalog"
+  },
+  "withdrawn": {
+    "document": null,
+    "id": "user:shared.json",
+    "problem": null,
+    "revision": 0,
+    "type": "Catalog"
+  }
+}

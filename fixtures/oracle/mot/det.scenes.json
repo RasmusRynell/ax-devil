@@ -1,0 +1,15 @@
+{"scene_version":"4.2","scenes":[
+{"time":{"start":{"frame":0},"end":{"frame":0}},"entities":[
+{"id":"untracked:0:0","observations":[{"time":{"frame":0},"geometry":{"box":[0.15625,0.20833333333333334,0.234375,0.4166666666666667]},"classifications":[{"type":"person","score":0.9,"confidence":null,"attributes":{"class_id":1,"source":"det","visibility_ratio":1.0}}]}],"end_reason":null,"motion_state":null},
+{"id":"untracked:0:1","observations":[{"time":{"frame":0},"geometry":{"box":[0.5,0.5,0.6,0.6]},"classifications":[{"type":"person","score":12.5,"confidence":null,"attributes":{"class_id":1,"source":"det","visibility_ratio":1.0}}]}],"end_reason":null,"motion_state":null},
+{"id":"5","observations":[{"time":{"frame":0},"geometry":{"box":[0.015625,0.041666666666666664,0.0625,0.125]},"classifications":[{"type":"person","score":0.5,"confidence":null,"attributes":{"class_id":1,"source":"det","visibility_ratio":1.0}}]}],"end_reason":null,"motion_state":null}
+],"events":[],"relations":[],"debug":{}},
+{"time":{"start":{"frame":1},"end":{"frame":1}},"entities":[
+{"id":"untracked:1:0","observations":[{"time":{"frame":1},"geometry":{"box":[0.159375,0.21041666666666667,0.2375,0.41875]},"classifications":[{"type":"person","score":0.88,"confidence":null,"attributes":{"class_id":1,"source":"det","visibility_ratio":1.0}}]}],"end_reason":null,"motion_state":null},
+{"id":"5","observations":[{"time":{"frame":1},"geometry":{"box":[0.01875,0.04583333333333333,0.065625,0.12916666666666665]},"classifications":[{"type":"person","score":0.55,"confidence":null,"attributes":{"class_id":1,"source":"det","visibility_ratio":1.0}}]}],"end_reason":null,"motion_state":null}
+],"events":[],"relations":[],"debug":{}},
+{"time":{"start":{"frame":3},"end":{"frame":3}},"entities":[
+{"id":"untracked:3:0","observations":[{"time":{"frame":3},"geometry":{"box":[0.165625,0.21458333333333332,0.24375,0.42291666666666666]},"classifications":[{"type":"person","score":0.8,"confidence":null,"attributes":{"class_id":1,"source":"det","visibility_ratio":1.0}}]}],"end_reason":null,"motion_state":null},
+{"id":"5","observations":[{"time":{"frame":3},"geometry":{"box":[0.9375,0.9375,1.09375,1.1458333333333333]},"classifications":[{"type":"person","score":0.6,"confidence":null,"attributes":{"class_id":1,"source":"det","visibility_ratio":1.0}}]}],"end_reason":null,"motion_state":null}
+],"events":[],"relations":[],"debug":{}}
+]}

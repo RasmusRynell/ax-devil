@@ -1,0 +1,47 @@
+# Parity: workspace, adding content and live
+
+Row format: [parity](../parity.md). Deviations: [workspace deviations](workspace-deviations.md).
+
+## Workspace
+
+| ID | Feature | P | Status | Test | Notes |
+|----|---------|---|--------|------|-------|
+| WS-01 | Ordered items (video, live, playlist); Untitled until named | M | done | `crates/workspace/src/intake/tests.rs` (label spaces and unnamed path edits), `crates/workspace-files/tests/it/format.rs` (saved labels), `crates/workspace/src/store` tests, `src/session/project.rs`, `tests/it/{local_video,mot_playlist,workspace_files}.rs`, `kit/EditableLabel.test.tsx` | Rename in the sidebar title |
+| WS-02 | New, Open, Save, Save As, recent workspaces | M | done | `crates/workspace-files` tests (audience-aware recent folders), `tests/it/workspace_files.rs`, `desktop/workspace-dialogs.test.cjs`, `shell/WorkspaceFiles.test.tsx` | Version 2 files; Python files are refused, with no importer |
+| WS-03 | No prompts; recovery copy, restore banner, per-instance lock | M | done | `crates/workspace-files` and `crates/workspace/src/store` tests, `tests/it/workspace_files.rs`, `shell/WorkspaceFiles.test.tsx` | The lock is per window, an OS lock on a sidecar file. Copies are named after the workspace, with no timestamp; recovery failures do not block New/Open (`recovery_failure_does_not_prevent_replacement`) |
+| WS-04 | Unreadable items preserved | M | done | `crates/workspace-files` tests | An item with an unknown kind or key, or a malformed body, is kept and written back as read |
+| WS-05 | Background resolution; pending and unavailable rows | M | done | `crates/workspace/src/store` tests, `crates/sessions/tests/session/{runner,sources}.rs`, `crates/handlers/tests/resolvers`, `shell/WorkspaceTree.test.tsx`, `tests/it/local_video.rs` | A pending or failed item has a sidebar row; a failed one keeps its reason; skipped sequences warn. An unavailable row's Open shows the reason only |
+| WS-06 | Re-resolve on file change; reload offered to open viewers | M | done | `crates/sessions/tests/session/sources.rs` (entry-specific source revisions), `shell/SplitArea.test.tsx` |  |
+| WS-07 | Rename, Edit, Remove, item information | M | done | `crates/workspace/src/store` tests, `src/session` tests, `shell/{WorkspaceTree,Add*Dialog}.test.tsx` | Rename is the Edit form's Name; a new recipe keeps surviving entries and closes missing ones without reopening the item (`shell/SplitArea.test.tsx`, `crates/sessions/tests/session/retirement.rs`) |
+| WS-08 | Hide/Unhide entries and lanes | M | done | `crates/workspace/src/store` tests, `crates/sessions/tests/session/matrix.rs`, `src/session/project.rs`, `{shell/WorkspaceTree,viewer/{PlaylistViewer,hidden},playback/{LaneGrid,VideoViewer}}.test.*` | Kept in the Doc, never saved ([CONTEXT](../../CONTEXT.md)). Show hidden lists them dimmed; next/previous skip them; hidden lanes undrawn |
+| WS-09 | Bookmarks and reviewed marks; Bookmarks view; open at frame | M | done | `crates/workspace/src/store/bookmarks.rs`, `tests/it/bookmarks.rs`, `bookmarks/` |  |
+| WS-10 | Bookmarks to CSV | S | done | `tests/it/bookmarks.rs`, `desktop/workspace-dialogs.test.cjs` (CSV suggested folder), `make test-desktop` |  |
+| WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | done | `shell/{Sidebar*,WorkspaceTree*,OfflineAdd,ActivityBar,treeModel}.test.*`, `live/rows.test.ts` | Search, Sort, folds and width outlive a view switch; every open viewer marks its item and entry (`shell/WorkspaceTree.reveal.test.tsx`). Same-named rows (LOB-014) and cameras get a detail line: place, stream state. Offline has Add; found cameras match held hosts, expanded; Plugins flags failures. Offline sorts by Location; `desktop/smoke-rows.cjs` covers live overlay Information; `tests/it/workspace_metadata.rs` covers accepted metadata; `desktop/smoke-items.cjs` checks its dialog fit |
+| WS-12 | Start panel and welcome area | M | done | `shell/{Shell,WorkspaceFiles,Sidebar}.test.tsx` | Only while empty; heading only with recents; Open Workspace default; Live: AC-03 |
+| WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | done | `viewer/*.test.*`, `shell/{SplitArea,headerFailure}.test.*`, `playback/{budget,videoDetails}.test.ts`, `desktop/smoke-video.cjs` header details | SPL-002: added videos replace the active preview (`shell/SplitArea.test.tsx`); reopening creates a fresh viewer (`viewer/placement.test.ts`). Header menu: without Edit; Information and Remove belong to the item, Export to the requesting entry |
+| WS-14 | Long playlists load collapsed | S | done | `shell/reveal.test.ts` |  |
+| WS-15 | Hover cards with thumbnails | S | in progress | `tests/it/{local_video,glance}.rs`, `crates/live/src/glance/tests.rs`, `shell/{WorkspaceTree*,LiveView,HoverPicture}.test.tsx`, `desktop/smoke-{loopback,hover-window}.cjs` | EXP-014: viewport placement, browser/tree hiding and native deactivation; loopback live pictures; real cameras unverified |
+
+## Adding content
+
+| ID | Feature | P | Status | Test | Notes |
+|----|---------|---|--------|------|-------|
+| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | done | `crates/workspace/src/intake.rs`, `src/{cli/tests,routes/intake}.rs`, `tests/it/{playback_ws,local_video}.rs`, `desktop/args.test.cjs`, `shell/{Shell.addVideo,AddVideoDialog}.test.tsx`, `desktop/smoke-native-input.cjs`, `crates/handlers` tests | A remote window asks for a path; an unreadable file keeps Add off |
+| AC-02 | Drop video files on the window | M | dropped |  | See [deviations](workspace-deviations.md) |
+| AC-03 | Add Live Stream with analytics discovery | M | done | `shell/AddLiveStreamDialog.test.tsx`, `src/session/reader/tests.rs` | Edit keeps the saved login on the same camera and displays an unavailable saved handler across mode switches |
+| AC-04 | Add Playlist through a resolver form | M | done | `shell/{AddPlaylistDialog,WorkspaceTree}.test.tsx`, `resolvers/*.test.*`, `crates/handler-api/tests/form.rs`, `src/routes/{handlers,resolve,scan}.rs`, `src/cli/tests.rs`, `tests/it/{local_video,mot_playlist}.rs`, `make test-desktop` | Resolves before adding, so a failure stays in the dialog; a resolver may return several. The CLI playlist waits for a local window |
+| AC-05 | One intake validation for dialogs and the CLI | M | done | `crates/workspace/src/intake.rs`, `src/cli/tests.rs`, `tests/it/{local_video,mot_playlist}.rs` | Dialogs and CLI use `workspace::intake`; CLI preflights files |
+
+## Live
+
+| ID | Feature | P | Status | Test | Notes |
+|----|---------|---|--------|------|-------|
+| LV-01 | RTSP video with one overlay: embedded ONVIF metadata, MQTT or DataHub | M | done | `camera/tests/it/{rtsp,mqtt,datahub}.rs`, `crates/live`, `desktop/smoke-loopback.cjs` | Loopback decoded pictures |
+| LV-02 | Per-feed status: connected, reconnecting, error, stalled; Retry | M | done | `crates/live/src/tests/retry.rs`, `live/{words,session}.test.ts`, `desktop/smoke-loopback.cjs` | Loopback recovery and terminal codec; LIV-008: bounded MQTT alternatives in Python order with empty keys excluded, projected per audience and escaped for safety (`crates/live/src/tests/alternatives.rs`, `camera/src/mqtt/lease.rs`, `camera/tests/it/mqtt.rs`, `live/words.test.ts`) |
+| LV-03 | Pause keeps the connection; stop is terminal | M | done | `crates/live`, `live/session.test.ts` | |
+| LV-04 | Capture-time synchronization of frames and overlays | M | done | `crates/live/src/gate.rs` | |
+| LV-05 | Network scan with optional sign-in; add found camera | M | done | `camera/tests/it/scan.rs`, `shell/LiveView.test.tsx` | |
+| LV-06 | Streams start only on explicit action | M | done | `crates/workspace/src/store` tests, `sessions` streams, `shell/LiveView.test.tsx` | |
+| LV-07 | Live Events list keeps recording while hidden; no seekable history | M | done | `live/session.test.ts` | |
+| LV-08 | Temporary device configuration (MQTT analytics publisher) removed on stop and quit | M | done | `camera/tests/it/mqtt.rs`, `crates/live` | |
+| LV-09 | RTSP through the camera's web API (HTTP tunnel); a custom stream URL as typed | S | done | `camera/tests/it/tunnel.rs`, `workspace` live tests, `shell/liveForm.test.ts` | Untested on a camera |

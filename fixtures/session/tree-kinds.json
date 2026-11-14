@@ -1,0 +1,3049 @@
+{
+  "docs": {
+    "all-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [
+                      "MOT_FILE"
+                    ],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [
+                      []
+                    ],
+                    "lanes": [
+                      "GT"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 9,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000006",
+              "kind": "live",
+              "label": "Lobby",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "Lobby",
+                  "generation": 6,
+                  "id": "00000000-0000-4000-8000-000000000006",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Lobby"
+                  ],
+                  "overlay": "none",
+                  "recipe": null,
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000007",
+              "kind": "live",
+              "label": "Dock",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "Dock",
+                  "generation": 7,
+                  "id": "00000000-0000-4000-8000-000000000007",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Dock"
+                  ],
+                  "overlay": "none",
+                  "recipe": null,
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000008",
+              "kind": "video",
+              "label": "w.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "w.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000008",
+                    "label": "w.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "w.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 8,
+                  "id": "00000000-0000-4000-8000-000000000008",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000006",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000006",
+              "key": "00000000-0000-4000-8000-000000000006",
+              "kind": "item",
+              "label": "Lobby",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000007",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000007",
+              "key": "00000000-0000-4000-8000-000000000007",
+              "kind": "item",
+              "label": "Dock",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000008",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000008",
+              "key": "00000000-0000-4000-8000-000000000008",
+              "kind": "item",
+              "label": "w.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": true,
+              "recipe": {
+                "label": null,
+                "overlays": [
+                  {
+                    "handler": "MOT_FILE",
+                    "label": "GT",
+                    "options": {
+                      "height": 48,
+                      "width": 64
+                    },
+                    "path": "/data/v/GT.txt"
+                  }
+                ],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [
+                      "MOT_FILE"
+                    ],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [
+                      []
+                    ],
+                    "lanes": [
+                      "GT"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 9,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000004",
+              "kind": "video",
+              "label": "wait.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/wait/wait.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "status": "Pending"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000005",
+              "kind": "unreadable",
+              "label": "mystery",
+              "open": false,
+              "resolution": {
+                "code": "WorkspaceInvalid",
+                "location": "00000000-0000-4000-8000-000000000005",
+                "params": {
+                  "item": "00000000-0000-4000-8000-000000000005"
+                },
+                "reason": "Unknown item kind: \"mystery\". A newer version or a missing plugin?",
+                "status": "Failed"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000006",
+              "kind": "live",
+              "label": "Lobby",
+              "open": true,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.5",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Lobby",
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Lobby",
+                  "generation": 6,
+                  "id": "00000000-0000-4000-8000-000000000006",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Lobby"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.5",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Lobby",
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.5"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000007",
+              "kind": "live",
+              "label": "Dock",
+              "open": true,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.6",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Dock",
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Dock",
+                  "generation": 7,
+                  "id": "00000000-0000-4000-8000-000000000007",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Dock"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.6",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Dock",
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.6"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000008",
+              "kind": "video",
+              "label": "w.mp4",
+              "open": true,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/w/w.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "w.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000008",
+                    "label": "w.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "w.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 8,
+                  "id": "00000000-0000-4000-8000-000000000008",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/v/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000004",
+              "key": "00000000-0000-4000-8000-000000000004",
+              "kind": "item",
+              "label": "wait.mp4",
+              "location": null,
+              "status": {
+                "status": "Pending"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000005",
+              "key": "00000000-0000-4000-8000-000000000005",
+              "kind": "item",
+              "label": "mystery",
+              "location": null,
+              "status": {
+                "code": "WorkspaceInvalid",
+                "location": "00000000-0000-4000-8000-000000000005",
+                "params": {
+                  "item": "00000000-0000-4000-8000-000000000005"
+                },
+                "reason": "Unknown item kind: \"mystery\". A newer version or a missing plugin?",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "10.0.0.5",
+              "entry": "00000000-0000-4000-8000-000000000006",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000006",
+              "key": "00000000-0000-4000-8000-000000000006",
+              "kind": "item",
+              "label": "Lobby",
+              "location": "10.0.0.5",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "10.0.0.6",
+              "entry": "00000000-0000-4000-8000-000000000007",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000007",
+              "key": "00000000-0000-4000-8000-000000000007",
+              "kind": "item",
+              "label": "Dock",
+              "location": "10.0.0.6",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000008",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000008",
+              "key": "00000000-0000-4000-8000-000000000008",
+              "kind": "item",
+              "label": "w.mp4",
+              "location": "/data/w/w.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "cam-closed": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [
+                  {
+                    "handler": "MOT_FILE",
+                    "label": "GT",
+                    "options": {
+                      "height": 48,
+                      "width": 64
+                    },
+                    "path": "/data/v/GT.txt"
+                  }
+                ],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [
+                      "MOT_FILE"
+                    ],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [
+                      []
+                    ],
+                    "lanes": [
+                      "GT"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000004",
+              "kind": "video",
+              "label": "wait.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/wait/wait.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "status": "Pending"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000005",
+              "kind": "unreadable",
+              "label": "mystery",
+              "open": false,
+              "resolution": {
+                "code": "WorkspaceInvalid",
+                "location": "00000000-0000-4000-8000-000000000005",
+                "params": {
+                  "item": "00000000-0000-4000-8000-000000000005"
+                },
+                "reason": "Unknown item kind: \"mystery\". A newer version or a missing plugin?",
+                "status": "Failed"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000006",
+              "kind": "live",
+              "label": "Lobby",
+              "open": false,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.5",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Lobby",
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Lobby",
+                  "generation": 6,
+                  "id": "00000000-0000-4000-8000-000000000006",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Lobby"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.5",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Lobby",
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.5"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000007",
+              "kind": "live",
+              "label": "Dock",
+              "open": false,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.6",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Dock",
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Dock",
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000007",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Dock"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.6",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Dock",
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.6"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000008",
+              "kind": "video",
+              "label": "w.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/w/w.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "w.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000008",
+                    "label": "w.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "w.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000008",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/v/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000004",
+              "key": "00000000-0000-4000-8000-000000000004",
+              "kind": "item",
+              "label": "wait.mp4",
+              "location": null,
+              "status": {
+                "status": "Pending"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000005",
+              "key": "00000000-0000-4000-8000-000000000005",
+              "kind": "item",
+              "label": "mystery",
+              "location": null,
+              "status": {
+                "code": "WorkspaceInvalid",
+                "location": "00000000-0000-4000-8000-000000000005",
+                "params": {
+                  "item": "00000000-0000-4000-8000-000000000005"
+                },
+                "reason": "Unknown item kind: \"mystery\". A newer version or a missing plugin?",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "10.0.0.5",
+              "entry": "00000000-0000-4000-8000-000000000006",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000006",
+              "key": "00000000-0000-4000-8000-000000000006",
+              "kind": "item",
+              "label": "Lobby",
+              "location": "10.0.0.5",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "10.0.0.6",
+              "entry": "00000000-0000-4000-8000-000000000007",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000007",
+              "key": "00000000-0000-4000-8000-000000000007",
+              "kind": "item",
+              "label": "Dock",
+              "location": "10.0.0.6",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000008",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000008",
+              "key": "00000000-0000-4000-8000-000000000008",
+              "kind": "item",
+              "label": "w.mp4",
+              "location": "/data/w/w.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "cam-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000006",
+              "kind": "live",
+              "label": "Lobby",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "Lobby",
+                  "generation": 6,
+                  "id": "00000000-0000-4000-8000-000000000006",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Lobby"
+                  ],
+                  "overlay": "none",
+                  "recipe": null,
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000006",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000006",
+              "key": "00000000-0000-4000-8000-000000000006",
+              "kind": "item",
+              "label": "Lobby",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [
+                  {
+                    "handler": "MOT_FILE",
+                    "label": "GT",
+                    "options": {
+                      "height": 48,
+                      "width": 64
+                    },
+                    "path": "/data/v/GT.txt"
+                  }
+                ],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [
+                      "MOT_FILE"
+                    ],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [
+                      []
+                    ],
+                    "lanes": [
+                      "GT"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000004",
+              "kind": "video",
+              "label": "wait.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/wait/wait.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "status": "Pending"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000005",
+              "kind": "unreadable",
+              "label": "mystery",
+              "open": false,
+              "resolution": {
+                "code": "WorkspaceInvalid",
+                "location": "00000000-0000-4000-8000-000000000005",
+                "params": {
+                  "item": "00000000-0000-4000-8000-000000000005"
+                },
+                "reason": "Unknown item kind: \"mystery\". A newer version or a missing plugin?",
+                "status": "Failed"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000006",
+              "kind": "live",
+              "label": "Lobby",
+              "open": true,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.5",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Lobby",
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Lobby",
+                  "generation": 6,
+                  "id": "00000000-0000-4000-8000-000000000006",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Lobby"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.5",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Lobby",
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.5"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000007",
+              "kind": "live",
+              "label": "Dock",
+              "open": false,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.6",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Dock",
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Dock",
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000007",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Dock"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.6",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Dock",
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.6"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000008",
+              "kind": "video",
+              "label": "w.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/w/w.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "w.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000008",
+                    "label": "w.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "w.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000008",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/v/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000004",
+              "key": "00000000-0000-4000-8000-000000000004",
+              "kind": "item",
+              "label": "wait.mp4",
+              "location": null,
+              "status": {
+                "status": "Pending"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000005",
+              "key": "00000000-0000-4000-8000-000000000005",
+              "kind": "item",
+              "label": "mystery",
+              "location": null,
+              "status": {
+                "code": "WorkspaceInvalid",
+                "location": "00000000-0000-4000-8000-000000000005",
+                "params": {
+                  "item": "00000000-0000-4000-8000-000000000005"
+                },
+                "reason": "Unknown item kind: \"mystery\". A newer version or a missing plugin?",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "10.0.0.5",
+              "entry": "00000000-0000-4000-8000-000000000006",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000006",
+              "key": "00000000-0000-4000-8000-000000000006",
+              "kind": "item",
+              "label": "Lobby",
+              "location": "10.0.0.5",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "10.0.0.6",
+              "entry": "00000000-0000-4000-8000-000000000007",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000007",
+              "key": "00000000-0000-4000-8000-000000000007",
+              "kind": "item",
+              "label": "Dock",
+              "location": "10.0.0.6",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000008",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000008",
+              "key": "00000000-0000-4000-8000-000000000008",
+              "kind": "item",
+              "label": "w.mp4",
+              "location": "/data/w/w.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "dock-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000007",
+              "kind": "live",
+              "label": "Dock",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "Dock",
+                  "generation": 6,
+                  "id": "00000000-0000-4000-8000-000000000007",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Dock"
+                  ],
+                  "overlay": "none",
+                  "recipe": null,
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000007",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000007",
+              "key": "00000000-0000-4000-8000-000000000007",
+              "kind": "item",
+              "label": "Dock",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [
+                  {
+                    "handler": "MOT_FILE",
+                    "label": "GT",
+                    "options": {
+                      "height": 48,
+                      "width": 64
+                    },
+                    "path": "/data/v/GT.txt"
+                  }
+                ],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [
+                      "MOT_FILE"
+                    ],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [
+                      []
+                    ],
+                    "lanes": [
+                      "GT"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000004",
+              "kind": "video",
+              "label": "wait.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/wait/wait.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "status": "Pending"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000005",
+              "kind": "unreadable",
+              "label": "mystery",
+              "open": false,
+              "resolution": {
+                "code": "WorkspaceInvalid",
+                "location": "00000000-0000-4000-8000-000000000005",
+                "params": {
+                  "item": "00000000-0000-4000-8000-000000000005"
+                },
+                "reason": "Unknown item kind: \"mystery\". A newer version or a missing plugin?",
+                "status": "Failed"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000006",
+              "kind": "live",
+              "label": "Lobby",
+              "open": false,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.5",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Lobby",
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Lobby",
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000006",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Lobby"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.5",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Lobby",
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.5"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000007",
+              "kind": "live",
+              "label": "Dock",
+              "open": true,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.6",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Dock",
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Dock",
+                  "generation": 6,
+                  "id": "00000000-0000-4000-8000-000000000007",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Dock"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.6",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Dock",
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.6"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000008",
+              "kind": "video",
+              "label": "w.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/w/w.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "w.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000008",
+                    "label": "w.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "w.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000008",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/v/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000004",
+              "key": "00000000-0000-4000-8000-000000000004",
+              "kind": "item",
+              "label": "wait.mp4",
+              "location": null,
+              "status": {
+                "status": "Pending"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000005",
+              "key": "00000000-0000-4000-8000-000000000005",
+              "kind": "item",
+              "label": "mystery",
+              "location": null,
+              "status": {
+                "code": "WorkspaceInvalid",
+                "location": "00000000-0000-4000-8000-000000000005",
+                "params": {
+                  "item": "00000000-0000-4000-8000-000000000005"
+                },
+                "reason": "Unknown item kind: \"mystery\". A newer version or a missing plugin?",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "10.0.0.5",
+              "entry": "00000000-0000-4000-8000-000000000006",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000006",
+              "key": "00000000-0000-4000-8000-000000000006",
+              "kind": "item",
+              "label": "Lobby",
+              "location": "10.0.0.5",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "10.0.0.6",
+              "entry": "00000000-0000-4000-8000-000000000007",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000007",
+              "key": "00000000-0000-4000-8000-000000000007",
+              "kind": "item",
+              "label": "Dock",
+              "location": "10.0.0.6",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000008",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000008",
+              "key": "00000000-0000-4000-8000-000000000008",
+              "kind": "item",
+              "label": "w.mp4",
+              "location": "/data/w/w.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "initial": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE",
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        [],
+                        []
+                      ],
+                      "lanes": [
+                        "GT",
+                        "DPM"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000001/Train/B",
+                      "label": "B",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/Train",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [
+                  {
+                    "handler": "MOT_FILE",
+                    "label": "GT",
+                    "options": {
+                      "height": 48,
+                      "width": 64
+                    },
+                    "path": "/data/v/GT.txt"
+                  }
+                ],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [
+                      "MOT_FILE"
+                    ],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "v.mp4",
+                    "lane_metadata": [
+                      []
+                    ],
+                    "lanes": [
+                      "GT"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "video",
+              "label": "bad.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/bad/bad.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Failed"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000004",
+              "kind": "video",
+              "label": "wait.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/wait/wait.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "status": "Pending"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000005",
+              "kind": "unreadable",
+              "label": "mystery",
+              "open": false,
+              "resolution": {
+                "code": "WorkspaceInvalid",
+                "location": "00000000-0000-4000-8000-000000000005",
+                "params": {
+                  "item": "00000000-0000-4000-8000-000000000005"
+                },
+                "reason": "Unknown item kind: \"mystery\". A newer version or a missing plugin?",
+                "status": "Failed"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000006",
+              "kind": "live",
+              "label": "Lobby",
+              "open": false,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.5",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Lobby",
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Lobby",
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000006",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Lobby"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.5",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Lobby",
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.5"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000007",
+              "kind": "live",
+              "label": "Dock",
+              "open": false,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.6",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Dock",
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Dock",
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000007",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Dock"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.6",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Dock",
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.6"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000008",
+              "kind": "video",
+              "label": "w.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/w/w.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "w.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000008",
+                    "label": "w.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "w.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000008",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/A",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/A\u001fDPM",
+              "kind": "lane",
+              "label": "DPM",
+              "location": "/data/mot/DPM.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": true,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/mot/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/Train/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/Train/B\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/v/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "bad.mp4",
+              "location": null,
+              "status": {
+                "code": "FileNotFound",
+                "location": "/data/bad/bad.mp4",
+                "params": {},
+                "reason": "File not found",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000004",
+              "key": "00000000-0000-4000-8000-000000000004",
+              "kind": "item",
+              "label": "wait.mp4",
+              "location": null,
+              "status": {
+                "status": "Pending"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000005",
+              "key": "00000000-0000-4000-8000-000000000005",
+              "kind": "item",
+              "label": "mystery",
+              "location": null,
+              "status": {
+                "code": "WorkspaceInvalid",
+                "location": "00000000-0000-4000-8000-000000000005",
+                "params": {
+                  "item": "00000000-0000-4000-8000-000000000005"
+                },
+                "reason": "Unknown item kind: \"mystery\". A newer version or a missing plugin?",
+                "status": "Unavailable"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "10.0.0.5",
+              "entry": "00000000-0000-4000-8000-000000000006",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000006",
+              "key": "00000000-0000-4000-8000-000000000006",
+              "kind": "item",
+              "label": "Lobby",
+              "location": "10.0.0.5",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "10.0.0.6",
+              "entry": "00000000-0000-4000-8000-000000000007",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000007",
+              "key": "00000000-0000-4000-8000-000000000007",
+              "kind": "item",
+              "label": "Dock",
+              "location": "10.0.0.6",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000008",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000008",
+              "key": "00000000-0000-4000-8000-000000000008",
+              "kind": "item",
+              "label": "w.mp4",
+              "location": "/data/w/w.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    }
+  },
+  "ids": {
+    "bad": "00000000-0000-4000-8000-000000000003",
+    "cam": "00000000-0000-4000-8000-000000000006",
+    "dock": "00000000-0000-4000-8000-000000000007",
+    "mot": "00000000-0000-4000-8000-000000000001",
+    "mot/A": "00000000-0000-4000-8000-000000000001/Train/A",
+    "mot/B": "00000000-0000-4000-8000-000000000001/Train/B",
+    "mot/Train": "00000000-0000-4000-8000-000000000001/Train",
+    "odd": "00000000-0000-4000-8000-000000000005",
+    "v": "00000000-0000-4000-8000-000000000002",
+    "w": "00000000-0000-4000-8000-000000000008",
+    "wait": "00000000-0000-4000-8000-000000000004"
+  },
+  "steps": [
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000006",
+          "type": "openViewer"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "cam-open"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000006",
+          "type": "closeViewer"
+        },
+        "type": "content"
+      },
+      "from": "cam-open",
+      "to": "cam-closed"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000007",
+          "type": "openViewer"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "dock-open"
+    }
+  ]
+}

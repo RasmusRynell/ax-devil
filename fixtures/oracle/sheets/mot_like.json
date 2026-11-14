@@ -1,0 +1,10 @@
+{"scene_version":"4.2","scenes":[
+{"time":{"start":{"frame":0},"end":{"frame":0}},"entities":[
+{"id":"1","observations":[{"time":{"frame":0},"geometry":{"box":[0.1,0.2,0.15000000000000002,0.5]},"classifications":[{"type":"person","score":0.91,"confidence":null,"attributes":{"class_id":1,"source":"det","visibility_ratio":1.0}}]}],"end_reason":null,"motion_state":null},
+{"id":"2","observations":[{"time":{"frame":0},"geometry":{"box":[0.95,0.5,1.05,0.7]},"classifications":[{"type":"person","score":5.3,"confidence":null,"attributes":{"class_id":1,"source":"det","visibility_ratio":1.0}}]}],"end_reason":null,"motion_state":null},
+{"id":"untracked:0:2","observations":[{"time":{"frame":0},"geometry":{"box":[0.5,0.5,0.6,0.5700000000000001]},"classifications":[{"type":"person","score":0.125,"confidence":null,"attributes":{"class_id":1,"source":"det","visibility_ratio":1.0}}]}],"end_reason":null,"motion_state":null},
+{"id":"3","observations":[{"time":{"frame":0},"geometry":{"box":[0.3,0.6,0.36,0.72]},"classifications":[{"type":"?99","score":null,"confidence":null,"attributes":{"class_id":99,"source":"gt"}}]}],"end_reason":null,"motion_state":null},
+{"id":"4","observations":[{"time":{"frame":0},"geometry":{"box":[0.7,0.1,0.7799999999999999,0.30000000000000004]},"classifications":[{"type":"static_person","score":null,"confidence":null,"attributes":{"class_id":7,"source":"gt","visibility_ratio":0.5,"gt_mark":1}}]}],"end_reason":null,"motion_state":null},
+{"id":"5","observations":[{"time":{"frame":0},"geometry":{"box":[0.55,0.3,0.75,0.55]},"classifications":[{"type":"car","score":0.375,"confidence":null,"attributes":{"class_id":3,"source":"det"}}]}],"end_reason":null,"motion_state":null}
+],"events":[],"relations":[],"debug":{}}
+]}
