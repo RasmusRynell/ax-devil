@@ -29,6 +29,7 @@ pub use env::reference;
 pub use kind::{Kind, NoFilter, StickyValue, SyncValue};
 pub use migrate::VERSION;
 use serde_json::{Map, Value};
+use shortcuts::Command;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
@@ -121,7 +122,9 @@ impl State {
                             self.rows().any(|setting| setting.key == key)
                         } else {
                             self.overrides.contains_key(key)
-                                || shortcuts::COMMANDS.iter().any(|command| command.id == key)
+                                || shortcuts::COMMANDS
+                                    .iter()
+                                    .any(|command| command.id == key.as_str())
                         };
                         (!known).then(|| format!("{name}.{key}"))
                     }));
@@ -162,10 +165,31 @@ impl State {
         self.revision
     }
 
-    /// The key of every command once the user's overrides apply; `None` when unbound. Shortcuts belong to
+    /// The key of every one of `commands` once the user's overrides apply; `None` when unbound. Shortcuts belong to
     /// [`Scope::Personal`].
-    pub fn shortcuts(&self) -> BTreeMap<&'static str, Option<String>> {
-        shortcuts::effective(&self.overrides)
+    pub fn shortcuts(&self, commands: &[Command]) -> BTreeMap<String, Option<String>> {
+        shortcuts::effective(commands, &self.overrides_for(commands))
+    }
+
+    /// The saved overrides for `commands`. Those of commands this version does not know (a plugin's) stay in the
+    /// document, so they are read from there.
+    fn overrides_for(&self, commands: &[Command]) -> BTreeMap<String, Option<String>> {
+        let mut found = self.overrides.clone();
+        let saved = self.document.get("shortcuts").and_then(Value::as_object);
+        for command in commands {
+            let id = command.id.as_ref();
+            let key = match saved.and_then(|saved| saved.get(id)) {
+                Some(Value::Null) => None,
+                Some(Value::String(key)) if key.is_empty() => None,
+                Some(Value::String(key)) => match shortcuts::canonical(key) {
+                    Ok(key) => Some(key),
+                    Err(_) => continue,
+                },
+                _ => continue,
+            };
+            found.entry(id.to_owned()).or_insert(key);
+        }
+        found
     }
 }
 
@@ -257,14 +281,16 @@ impl Settings {
     /// file atomically with only what differs from the defaults (and keeps what this version does not know), then
     /// swaps the state; on any failure nothing changes.
     pub fn patch(&self, patch: &Patch) -> Result<Arc<State>, Error> {
-        self.patch_if(patch, |_| Ok(()))
+        self.patch_if(patch, shortcuts::COMMANDS, |_| Ok(()))
     }
 
     /// As [`patch`](Self::patch), but `allow` first sees the stored state under the lock that orders every change, so
-    /// a check that depends on the stored values and on what other writers do holds when the write happens.
+    /// a check that depends on the stored values and on what other writers do holds when the write happens. The
+    /// shortcuts it names are checked against `commands`, the built-ins and the plugins' ([`shortcuts::with_plugins`]).
     pub fn patch_if(
         &self,
         patch: &Patch,
+        commands: &[Command],
         allow: impl FnOnce(&State) -> Result<(), Error>,
     ) -> Result<Arc<State>, Error> {
         let _writing = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
@@ -302,23 +328,20 @@ impl Settings {
                 .map_err(|reason| invalid(setting.key, &reason))?;
             values.insert(setting.key.to_owned(), kept);
         }
-        let mut bound: BTreeMap<String, Option<String>> = shortcuts::effective(&current.overrides)
-            .into_iter()
-            .map(|(id, key)| (id.to_owned(), key))
-            .collect();
+        let mut bound = current.shortcuts(commands);
         for id in &patch.shortcuts_reset {
             let location = format!("shortcuts.{id}");
-            let command = shortcuts::COMMANDS
+            let command = commands
                 .iter()
                 .find(|command| command.id == id.as_str())
                 .ok_or_else(|| invalid(&location, "is not a command"))?;
             if patch.shortcuts_set.contains_key(id) {
                 return Err(invalid(&location, "named twice"));
             }
-            bound.insert(id.clone(), command.key.map(str::to_owned));
+            bound.insert(id.clone(), command.key.as_deref().map(str::to_owned));
         }
         bound.extend(patch.shortcuts_set.clone());
-        let overrides = shortcuts::overrides_from(&bound)?;
+        let overrides = shortcuts::overrides_from(commands, &bound)?;
         self.write(&current, values, overrides, patch)
     }
 

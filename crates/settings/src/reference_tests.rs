@@ -78,10 +78,7 @@ fn edit(given: &[(&str, Value)]) -> Patch {
             .iter()
             .map(|(key, value)| ((*key).to_owned(), value.clone())),
     );
-    let shortcuts = shortcuts::effective(&BTreeMap::new())
-        .into_iter()
-        .map(|(id, key)| (id.to_owned(), key))
-        .collect();
+    let shortcuts = shortcuts::effective(shortcuts::COMMANDS, &BTreeMap::new());
     Patch {
         set: values,
         shortcuts_set: shortcuts,

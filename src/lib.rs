@@ -11,6 +11,7 @@ mod routes;
 pub mod runtime;
 pub mod session;
 pub mod share;
+mod shortcut_commands;
 #[cfg(test)]
 mod test_support;
 mod thumbnails;
@@ -292,13 +293,15 @@ fn snapshot(
     state: &settings::State,
     policy: &Policy,
     credential: Option<&str>,
+    commands: &[settings::shortcuts::Command],
 ) -> SettingsState {
     let principal = policy.principal_in(credential, state);
     SettingsState {
         revision: state.revision(),
         values: state.values(),
         recovered: Some(state.recovered()).filter(|keys| !keys.is_empty()),
-        recovered_shortcuts: Some(state.recovered_shortcuts()).filter(|keys| !keys.is_empty()),
+        recovered_shortcuts: Some(state.recovered_shortcuts(commands))
+            .filter(|keys| !keys.is_empty()),
         // What a reference gives is the server's environment: only Full access is told.
         resolved: principal
             .full_access()
@@ -309,11 +312,7 @@ fn snapshot(
             version: state.version(),
             log: log_file.map(|file| file.display().to_string()),
         }),
-        shortcuts: state
-            .shortcuts()
-            .into_iter()
-            .map(|(id, key)| (id.to_owned(), key))
-            .collect(),
+        shortcuts: state.shortcuts(commands),
     }
 }
 
@@ -323,6 +322,7 @@ pub(crate) async fn get_settings(
         settings,
         policy,
         log_file,
+        plugins,
         ..
     }): State<AppState>,
 ) -> Json<SettingsState> {
@@ -332,6 +332,7 @@ pub(crate) async fn get_settings(
         &settings.state(),
         &policy,
         bearer(&headers),
+        &shortcut_commands::of(&plugins),
     ))
 }
 
@@ -344,6 +345,7 @@ pub(crate) async fn patch_settings(
         policy,
         catalogs: library,
         log_file,
+        plugins,
         ..
     }): State<AppState>,
     Json(body): Json<SettingsPatch>,
@@ -358,12 +360,13 @@ pub(crate) async fn patch_settings(
             .into_iter()
             .collect(),
     };
+    let commands = shortcut_commands::of(&plugins);
     // The file write blocks, so it stays off the async workers.
     let saved = tokio::task::spawn_blocking(move || {
         // The default catalog is checked under the lock that writes it, against the value stored by then, so a
         // catalog deleted meanwhile (which resets the default under the same lock) is not stored again.
         settings
-            .patch_if(&patch, |current| {
+            .patch_if(&patch, &commands, |current| {
                 admit_save(&policy, bearer(&headers), current, &patch)?;
                 // Only after admission, which refuses what a caller without Full access may not read or write.
                 let full_access = policy.principal_in(bearer(&headers), current).full_access();
@@ -391,6 +394,7 @@ pub(crate) async fn patch_settings(
                     &state,
                     &policy,
                     bearer(&headers),
+                    &commands,
                 )
             })
     })

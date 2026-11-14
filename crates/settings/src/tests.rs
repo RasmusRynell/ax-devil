@@ -18,10 +18,7 @@ fn values(theme: &str) -> BTreeMap<String, Value> {
 }
 
 pub(crate) fn change(theme: &str) -> Patch {
-    let shortcuts = shortcuts::effective(&BTreeMap::new())
-        .into_iter()
-        .map(|(id, key)| (id.to_owned(), key))
-        .collect();
+    let shortcuts = shortcuts::effective(shortcuts::COMMANDS, &BTreeMap::new());
     Patch {
         set: values(theme),
         shortcuts_set: shortcuts,
@@ -158,7 +155,10 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
 
     let settings = Settings::load(&path).unwrap();
     assert_eq!(settings.state().values()["camera.overlay"], "rtsp");
-    assert_eq!(settings.state().shortcuts()["exit"], None);
+    assert_eq!(
+        settings.state().shortcuts(shortcuts::COMMANDS)["exit"],
+        None
+    );
 
     let mut edit = change("mqtt");
     edit.set.insert("ui.quick_setup_done".into(), json!(false));
@@ -178,7 +178,10 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
     );
     let again = Settings::load(&path).unwrap().state();
     assert_eq!(again.values()["camera.overlay"], "mqtt");
-    assert_eq!(again.shortcuts()["exit"].as_deref(), Some("Ctrl+Alt+Q"));
+    assert_eq!(
+        again.shortcuts(shortcuts::COMMANDS)["exit"].as_deref(),
+        Some("Ctrl+Alt+Q")
+    );
     assert_eq!(
         fs::read_dir(path.parent().unwrap()).unwrap().count(),
         1,
@@ -374,11 +377,7 @@ fn every_released_settings_file_still_loads() {
         let state = settings.state();
         let again = Patch {
             set: state.values.clone(),
-            shortcuts_set: state
-                .shortcuts()
-                .into_iter()
-                .map(|(id, key)| (id.to_owned(), key))
-                .collect(),
+            shortcuts_set: state.shortcuts(shortcuts::COMMANDS),
             ..Patch::default()
         };
         settings.patch(&again).unwrap();
@@ -483,7 +482,7 @@ fn a_patch_is_checked_against_the_stored_state_and_a_refusal_changes_nothing() {
     settings.patch(&change("mqtt")).unwrap();
 
     let refused = settings
-        .patch_if(&change("rtsp"), |stored| {
+        .patch_if(&change("rtsp"), shortcuts::COMMANDS, |stored| {
             assert_eq!(stored.values()["camera.overlay"], "mqtt");
             Err(Error {
                 location: "camera.overlay".into(),

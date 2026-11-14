@@ -63,39 +63,34 @@ impl State {
         let mut known = BTreeMap::new();
         let mut shortcut_entries = Map::new();
         for command in shortcuts::COMMANDS {
-            match stored.remove(command.id) {
+            let id = command.id.as_ref();
+            match stored.remove(id) {
                 None => {}
                 Some(Value::String(key)) if key.is_empty() => {
-                    known.insert(command.id.to_owned(), None);
+                    known.insert(id.to_owned(), None);
                 }
                 Some(Value::String(key)) => match shortcuts::canonical(&key) {
                     Ok(key) => {
-                        known.insert(command.id.to_owned(), Some(key));
+                        known.insert(id.to_owned(), Some(key));
                     }
                     Err(reason) => {
-                        shortcut_entries.insert(command.id.to_owned(), Value::String(key));
-                        tracing::warn!(
-                            "Invalid saved shortcut {}: {reason}; using the default",
-                            command.id
-                        );
+                        shortcut_entries.insert(id.to_owned(), Value::String(key));
+                        tracing::warn!("Invalid saved shortcut {id}: {reason}; using the default");
                     }
                 },
                 Some(Value::Null) => {
-                    known.insert(command.id.to_owned(), None);
+                    known.insert(id.to_owned(), None);
                 }
                 Some(_) => {
                     return Err(invalid(
-                        &format!("shortcuts.{}", command.id),
+                        &format!("shortcuts.{id}"),
                         "expected a key or null",
                     ));
                 }
             }
         }
-        let bound: BTreeMap<String, Option<String>> = shortcuts::effective(&known)
-            .into_iter()
-            .map(|(id, key)| (id.to_owned(), key))
-            .collect();
-        let overrides = shortcuts::overrides_from(&bound)?;
+        let bound = shortcuts::effective(shortcuts::COMMANDS, &known);
+        let overrides = shortcuts::overrides_from(shortcuts::COMMANDS, &bound)?;
         for (id, key) in &overrides {
             shortcut_entries
                 .entry(id.clone())

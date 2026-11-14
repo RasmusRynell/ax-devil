@@ -213,7 +213,16 @@ fn a_save_is_judged_against_the_state_it_is_written_under_so_a_revocation_in_bet
     let with_reference = settings
         .update("scan.range", |_| Some("$RANGE".into()))
         .unwrap();
-    let reply = |state: &settings::State| snapshot(&settings, None, state, &policy, Some("pw"));
+    let reply = |state: &settings::State| {
+        snapshot(
+            &settings,
+            None,
+            state,
+            &policy,
+            Some("pw"),
+            settings::shortcuts::COMMANDS,
+        )
+    };
     assert!(reply(&with_reference).resolved.is_some());
     change.set.insert("scan.range".into(), "$RANGE".into());
     change.set.insert("storage.cache_dir".into(), "".into());

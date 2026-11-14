@@ -22,12 +22,18 @@ fn invalid_saved_preferences_survive_unrelated_saves_until_edited() {
     let loaded = Settings::load(&path).unwrap();
     let defaults = Settings::load(&folder.path().join("defaults.json")).unwrap();
     assert_eq!(loaded.state().values(), defaults.state().values());
-    assert_eq!(loaded.state().shortcuts(), defaults.state().shortcuts());
+    assert_eq!(
+        loaded.state().shortcuts(shortcuts::COMMANDS),
+        defaults.state().shortcuts(shortcuts::COMMANDS)
+    );
     assert_eq!(read(&path), document);
     let mut recovered = loaded.state().recovered();
     recovered.sort();
     assert_eq!(recovered, invalid.keys().cloned().collect::<Vec<_>>());
-    assert_eq!(loaded.state().recovered_shortcuts(), vec!["exit"]);
+    assert_eq!(
+        loaded.state().recovered_shortcuts(shortcuts::COMMANDS),
+        vec!["exit"]
+    );
     let unrelated = Patch {
         set: BTreeMap::from([("scan.on_startup".into(), json!(false))]),
         ..Patch::default()
@@ -70,7 +76,12 @@ fn invalid_saved_preferences_survive_unrelated_saves_until_edited() {
             .recovered()
             .contains(&"overlays.default_sticky".to_owned())
     );
-    assert!(reloaded.state().recovered_shortcuts().is_empty());
+    assert!(
+        reloaded
+            .state()
+            .recovered_shortcuts(shortcuts::COMMANDS)
+            .is_empty()
+    );
     let mut malformed_shortcut = Patch::default();
     malformed_shortcut
         .shortcuts_set

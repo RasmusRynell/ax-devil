@@ -4,7 +4,7 @@
 //! `Meta+Ctrl+Alt+Shift+<key>` (modifiers in that order, omitted when unused); the frontend matches events against the
 //! same grammar. `<key>` is a letter (upper case), a digit, one ASCII symbol, `F1`..`F24`, or one of [`NAMED_KEYS`].
 
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
 use crate::{
     Error,
@@ -23,23 +23,25 @@ pub enum Category {
     Playback,
     /// Zoom, panels, overlays and what is shown.
     View,
+    /// What plugins add.
+    Plugins,
 }
 
 /// One command the user can run from the menus or the keyboard.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Command {
     /// Stable id, used in the settings file.
-    pub id: &'static str,
+    pub id: Cow<'static, str>,
     /// Menu and dialog label.
-    pub label: &'static str,
+    pub label: Cow<'static, str>,
     /// The dialog section the command is listed under.
     pub category: Category,
     /// The default key in canonical form, or `None` when the command ships unbound.
-    pub key: Option<&'static str>,
+    pub key: Option<Cow<'static, str>>,
     /// Whether holding the key repeats the command.
     pub repeats: bool,
     /// What the command does, shown as its menu item's tooltip; `None` shows none.
-    pub description: Option<&'static str>,
+    pub description: Option<Cow<'static, str>>,
 }
 
 const fn command(
@@ -49,21 +51,31 @@ const fn command(
     key: Option<&'static str>,
     repeats: bool,
 ) -> Command {
-    Command {
-        id,
-        label,
-        category,
-        key,
-        repeats,
-        description: None,
-    }
+    described(id, label, category, key, repeats, None)
 }
 
 /// `command` with a tooltip.
-const fn described(command: Command, description: &'static str) -> Command {
+const fn described(
+    id: &'static str,
+    label: &'static str,
+    category: Category,
+    key: Option<&'static str>,
+    repeats: bool,
+    description: Option<&'static str>,
+) -> Command {
     Command {
-        description: Some(description),
-        ..command
+        id: Cow::Borrowed(id),
+        label: Cow::Borrowed(label),
+        category,
+        key: match key {
+            Some(key) => Some(Cow::Borrowed(key)),
+            None => None,
+        },
+        repeats,
+        description: match description {
+            Some(text) => Some(Cow::Borrowed(text)),
+            None => None,
+        },
     }
 }
 
@@ -222,18 +234,20 @@ pub const COMMANDS: &[Command] = &[
         true,
     ),
     described(
-        command("lane-names", "Show Lane Names", Category::View, None, false),
-        LANE_NAMES_DESCRIPTION,
+        "lane-names",
+        "Show Lane Names",
+        Category::View,
+        None,
+        false,
+        Some(LANE_NAMES_DESCRIPTION),
     ),
     described(
-        command(
-            "object-details",
-            "Object Hover and Click Details",
-            Category::View,
-            None,
-            false,
-        ),
-        OBJECT_DETAILS_DESCRIPTION,
+        "object-details",
+        "Object Hover and Click Details",
+        Category::View,
+        None,
+        false,
+        Some(OBJECT_DETAILS_DESCRIPTION),
     ),
     command(
         "info-overlay",
@@ -349,37 +363,63 @@ fn canonical_name(name: &str) -> Result<String, String> {
     }
 }
 
-/// The key each command is bound to once `overrides` (id to key, `None` = unbound) are applied.
+/// The built-in commands followed by `plugins`, each with the default key it may keep.
+///
+/// A plugin default that is invalid, reserved, equals a built-in default or is already another command's default
+/// ships unbound, so a plugin never takes a key from the app or from an earlier plugin.
+pub fn with_plugins(plugins: impl IntoIterator<Item = Command>) -> Vec<Command> {
+    let mut commands = COMMANDS.to_vec();
+    for mut plugin in plugins {
+        plugin.key = plugin
+            .key
+            .as_deref()
+            .and_then(|key| canonical(key).ok())
+            .filter(|key| {
+                !RESERVED.contains(&key.as_str())
+                    && !commands
+                        .iter()
+                        .any(|other| other.key.as_deref() == Some(key.as_str()))
+            })
+            .map(Cow::Owned);
+        commands.push(plugin);
+    }
+    commands
+}
+
+/// The key each of `commands` is bound to once `overrides` (id to key, `None` = unbound) are applied.
 ///
 /// An override wins; a default whose key an override uses becomes unbound, so a key the user chose is never shared
 /// with a default added in a later release. Overrides for unknown ids change nothing.
 pub fn effective(
+    commands: &[Command],
     overrides: &BTreeMap<String, Option<String>>,
-) -> BTreeMap<&'static str, Option<String>> {
-    let taken: Vec<String> = COMMANDS
+) -> BTreeMap<String, Option<String>> {
+    let taken: Vec<String> = commands
         .iter()
-        .filter_map(|command| canonical(overrides.get(command.id)?.as_deref()?).ok())
+        .filter_map(|command| canonical(overrides.get(command.id.as_ref())?.as_deref()?).ok())
         .collect();
-    COMMANDS
+    commands
         .iter()
         .map(|command| {
-            let key = match overrides.get(command.id) {
+            let key = match overrides.get(command.id.as_ref()) {
                 Some(key) => key.clone(),
                 None => command
                     .key
+                    .as_deref()
                     .filter(|key| !taken.iter().any(|taken| taken == key))
                     .map(str::to_owned),
             };
-            (command.id, key)
+            (command.id.to_string(), key)
         })
         .collect()
 }
 
 /// The overrides that produce `effective`: only the commands whose key differs from the default, in canonical form.
 ///
-/// Ids missing from `effective` keep their default. Rejects unknown ids, invalid or reserved keys, and a key used by
-/// two commands, naming `shortcuts.<id>` as the location.
+/// Ids missing from `effective` keep their default. Rejects ids not in `commands`, invalid or reserved keys, and a key
+/// used by two commands, naming `shortcuts.<id>` as the location.
 pub fn overrides_from(
+    commands: &[Command],
     effective: &BTreeMap<String, Option<String>>,
 ) -> Result<BTreeMap<String, Option<String>>, Error> {
     let fail = |id: &str, reason: String| Error {
@@ -390,164 +430,41 @@ pub fn overrides_from(
     };
     if let Some(id) = effective
         .keys()
-        .find(|id| !COMMANDS.iter().any(|command| command.id == id.as_str()))
+        .find(|id| !commands.iter().any(|command| command.id == id.as_str()))
     {
         return Err(fail(id, "is not a command".to_owned()));
     }
     let mut owners: BTreeMap<String, &Command> = BTreeMap::new();
     let mut overrides = BTreeMap::new();
-    for command in COMMANDS {
-        let wanted = match effective.get(command.id) {
+    for command in commands {
+        let wanted = match effective.get(command.id.as_ref()) {
             Some(key) => key.as_deref(),
-            None => command.key,
+            None => command.key.as_deref(),
         };
         let key = wanted
             .map(canonical)
             .transpose()
-            .map_err(|reason| fail(command.id, reason))?;
+            .map_err(|reason| fail(&command.id, reason))?;
         if let Some(key) = &key {
             if RESERVED.contains(&key.as_str()) {
                 return Err(fail(
-                    command.id,
+                    &command.id,
                     format!("{key} is reserved for zooming the page"),
                 ));
             }
             if let Some(owner) = owners.insert(key.clone(), command) {
                 return Err(fail(
-                    command.id,
+                    &command.id,
                     format!("{key} is already used by {}", owner.label),
                 ));
             }
         }
-        if key.as_deref() != command.key {
-            overrides.insert(command.id.to_owned(), key);
+        if key.as_deref() != command.key.as_deref() {
+            overrides.insert(command.id.to_string(), key);
         }
     }
     Ok(overrides)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn map(entries: &[(&str, Option<&str>)]) -> BTreeMap<String, Option<String>> {
-        entries
-            .iter()
-            .map(|(id, key)| ((*id).to_owned(), key.map(str::to_owned)))
-            .collect()
-    }
-
-    #[test]
-    fn overrides_win_and_round_trip() {
-        let none = effective(&BTreeMap::new());
-        assert_eq!(none["save-workspace"].as_deref(), Some("Ctrl+S"));
-        assert_eq!(none["new-workspace"], None);
-        let all: BTreeMap<String, Option<String>> = none
-            .iter()
-            .map(|(id, key)| ((*id).to_owned(), key.clone()))
-            .collect();
-        assert!(
-            overrides_from(&all).unwrap().is_empty(),
-            "defaults are valid, unique and unreserved"
-        );
-
-        // Exit takes Ctrl+S: Save Workspace loses its default instead of sharing it.
-        let chosen = map(&[
-            ("exit", Some("ctrl+s")),
-            ("new-workspace", Some("Ctrl+Shift+W")),
-            ("about", None),
-        ]);
-        let bound = effective(&chosen);
-        assert_eq!(bound["exit"].as_deref(), Some("ctrl+s"));
-        assert_eq!(bound["save-workspace"], None);
-        assert_eq!(bound["open-workspace"].as_deref(), Some("Ctrl+O"));
-
-        let edited: BTreeMap<String, Option<String>> = bound
-            .iter()
-            .map(|(id, key)| ((*id).to_owned(), key.clone()))
-            .collect();
-        let saved = overrides_from(&edited).unwrap();
-        assert_eq!(
-            saved["exit"].as_deref(),
-            Some("Ctrl+S"),
-            "stored in canonical form"
-        );
-        assert_eq!(
-            saved["save-workspace"], None,
-            "an unbound default is stored as null"
-        );
-        assert_eq!(saved["new-workspace"].as_deref(), Some("Ctrl+Shift+W"));
-        assert!(
-            !saved.contains_key("about"),
-            "a value equal to the default is not stored"
-        );
-
-        for (change, location, reason) in [
-            (
-                map(&[("exit", Some("Ctrl+S"))]),
-                "shortcuts.exit",
-                "Ctrl+S is already used by Save Workspace",
-            ),
-            (
-                map(&[("exit", Some("Ctrl+0"))]),
-                "shortcuts.exit",
-                "reserved",
-            ),
-            (map(&[("nope", None)]), "shortcuts.nope", "not a command"),
-        ] {
-            let mut full = all.clone();
-            full.extend(change);
-            let error = overrides_from(&full).unwrap_err();
-            assert_eq!(error.location, location);
-            assert!(error.reason.contains(reason), "{}", error.reason);
-        }
-    }
-
-    #[test]
-    fn meta_binding_survives_save_reload_and_conflicts_are_refused() {
-        let folder = tempfile::tempdir().unwrap();
-        let path = folder.path().join("settings.json");
-        let settings = crate::Settings::load(&path).unwrap();
-        let edit = crate::Patch {
-            shortcuts_set: map(&[("exit", Some("ctrl+meta+alt+shift+q"))]),
-            ..Default::default()
-        };
-        settings.patch(&edit).unwrap();
-        let saved: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-        assert_eq!(saved["shortcuts"]["exit"], "Meta+Ctrl+Alt+Shift+Q");
-        let loaded = crate::Settings::load(&path).unwrap();
-        assert_eq!(
-            loaded.state().shortcuts()["exit"].as_deref(),
-            Some("Meta+Ctrl+Alt+Shift+Q")
-        );
-        let duplicate = crate::Patch {
-            shortcuts_set: map(&[("about", Some("Meta+Ctrl+Alt+Shift+Q"))]),
-            ..Default::default()
-        };
-        assert!(
-            loaded
-                .patch(&duplicate)
-                .unwrap_err()
-                .reason
-                .contains("already used")
-        );
-    }
-
-    #[test]
-    fn canonical_keys_match_the_shared_vectors() {
-        let vectors: Vec<serde_json::Value> =
-            serde_json::from_str(include_str!("../../../fixtures/shortcuts/keys.json")).unwrap();
-        for vector in vectors {
-            let input = vector["input"].as_str().unwrap();
-            match vector.get("canonical") {
-                Some(expected) => assert_eq!(
-                    canonical(input).as_deref(),
-                    Ok(expected.as_str().unwrap()),
-                    "{input:?}"
-                ),
-                None => assert!(canonical(input).is_err(), "{input:?} should be refused"),
-            }
-        }
-    }
-}
+mod tests;

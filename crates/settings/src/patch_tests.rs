@@ -74,7 +74,10 @@ fn patches_from_stale_copies_keep_each_other_and_the_revision_rises_with_each_wr
         "a key not named is not touched"
     );
     assert_eq!(state.values()["scan.range"], "10.0.0.0/24");
-    assert_eq!(state.shortcuts()["exit"].as_deref(), Some("Ctrl+Alt+Q"));
+    assert_eq!(
+        state.shortcuts(shortcuts::COMMANDS)["exit"].as_deref(),
+        Some("Ctrl+Alt+Q")
+    );
     assert_eq!(state.revision(), first + 2);
 
     let reset = Patch {
@@ -85,8 +88,8 @@ fn patches_from_stale_copies_keep_each_other_and_the_revision_rises_with_each_wr
     let state = settings.patch(&reset).unwrap();
     assert_eq!(state.values()["camera.overlay"], "datahub");
     assert_eq!(
-        state.shortcuts()["exit"],
-        shortcuts::effective(&BTreeMap::new())["exit"]
+        state.shortcuts(shortcuts::COMMANDS)["exit"],
+        shortcuts::effective(shortcuts::COMMANDS, &BTreeMap::new())["exit"]
     );
     assert_eq!(state.values()["scan.range"], "10.0.0.0/24");
 }

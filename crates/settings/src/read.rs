@@ -1,7 +1,7 @@
 //! How the rest of the app reads a setting's value from the state: as used, as stored, as written, or listed for a
 //! form, each deciding what a `$NAME` reference gives.
 
-use crate::{Kind, State};
+use crate::{Command, Kind, State};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -21,15 +21,15 @@ impl State {
     }
 
     /// Commands whose saved override was recovered; only ids are exposed, never the malformed raw values.
-    pub fn recovered_shortcuts(&self) -> Vec<String> {
+    pub fn recovered_shortcuts(&self, commands: &[Command]) -> Vec<String> {
         let raw = self.document.get("shortcuts").and_then(Value::as_object);
-        self.shortcuts()
+        self.shortcuts(commands)
             .into_iter()
             .filter(|(id, key)| {
-                raw.and_then(|raw| raw.get(*id))
+                raw.and_then(|raw| raw.get(id))
                     .is_some_and(|value| *value != serde_json::json!(key))
             })
-            .map(|(id, _)| id.to_owned())
+            .map(|(id, _)| id)
             .collect()
     }
 
