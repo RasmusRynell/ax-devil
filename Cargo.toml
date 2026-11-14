@@ -109,7 +109,7 @@ workspace = true
 
 [features]
 default = ["embed-assets"]
-embed-assets = ["dep:rust-embed", "dep:mime_guess"]
+embed-assets = ["dep:rust-embed"]
 
 [dependencies]
 api-types.workspace = true
@@ -120,7 +120,6 @@ clap = { version = "4", features = ["derive", "string"] }
 export.workspace = true
 foundation.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
-getrandom = "0.4"
 handler-api.workspace = true
 handlers.workspace = true
 live.workspace = true
@@ -144,15 +143,11 @@ sha2.workspace = true
 tracing.workspace = true
 workspace.workspace = true
 workspace-files.workspace = true
-mime_guess = { version = "2", optional = true }
+mime_guess = "2"
 rust-embed = { version = "8", optional = true }
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time"] }
 tungstenite = "0.29"
-
-# Opens a plugin's view file from the folder above it, so no link leads out of `views/`.
-[target.'cfg(unix)'.dependencies]
-rustix = { workspace = true, features = ["fs"] }
 
 [dev-dependencies]
 # Camera values for the tests that build what a scan or a camera answers; only the live crate depends on camera otherwise.

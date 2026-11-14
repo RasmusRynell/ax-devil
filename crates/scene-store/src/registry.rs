@@ -7,14 +7,13 @@ use std::{
     time::Duration,
 };
 
-use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, Location, UserError};
+use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, Location, UserError, hex};
 use handler_api::{Decoder, LaneSource, OverlayRef, Values};
 use sha2::{Digest, Sha256};
 
 use crate::{
     ingest::Tuning,
     io::user_error,
-    lanefile::hex,
     load::{Loaded, Request, load, not_built},
     track::Track,
 };

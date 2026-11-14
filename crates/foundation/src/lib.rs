@@ -1,6 +1,6 @@
 //! Values every other backend crate shares: Media Time and frame identity, the frame index types, decoded video
 //! frames, cancellation, the one reading of a stream URL, workspace item and bookmark ids, the user-facing error and warning values and the parser of the MOT Challenge
-//! `seqinfo.ini`, which its playlist resolver reads. No I/O.
+//! `seqinfo.ini`, which its playlist resolver reads, and the hex and random-token helpers. No I/O.
 
 mod address;
 mod cancel;
@@ -10,6 +10,7 @@ mod host;
 mod id;
 mod seqinfo;
 mod time;
+mod token;
 
 pub use address::{Url, UrlRefusal, check_stream_url, login, read_url, url_without_password};
 pub use cancel::{CancelToken, Cancelled, Interrupt};
@@ -19,6 +20,7 @@ pub use host::is_plain_host;
 pub use id::{BookmarkId, ItemId};
 pub use seqinfo::{SeqInfo, parse_seqinfo};
 pub use time::{FrameId, FrameRate, FrameSize, Keyframes, MediaTime, Timeline, TimelineError};
+pub use token::{hex, random_bytes, random_token};
 
 /// Visits every type this crate sends to the frontend, for `export-types`.
 pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {

@@ -9,11 +9,12 @@ use std::{
     fs,
     io::{BufWriter, Write},
     path::{Path, PathBuf},
+    sync::Arc,
     thread,
     time::Duration,
 };
 
-use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, Interrupt, UserError, hex};
 use handler_api::{Bundle, BundleLane, BundleVideo, OverlayRef, VideoRef};
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
@@ -21,7 +22,7 @@ use tempfile::NamedTempFile;
 use crate::{
     Admission, Ingest, TrackRead, TrackRegistry,
     io::{create_private_dir, user_error},
-    lanefile::{hex, write_lane},
+    lanefile::write_lane,
 };
 
 /// The folder under the cache folder that holds lane files.
@@ -47,33 +48,13 @@ impl TrackRegistry {
         cancel: &CancelToken,
     ) -> Result<PathBuf, Interrupt<UserError>> {
         let root = self.derived_root().map_err(Interrupt::Failed)?;
-        let mut bundle = Bundle {
-            lanes: BTreeMap::new(),
-            video: None,
-        };
-        for (key, input) in lanes {
-            let track = self.open_as(input, admission, cancel)?;
-            wait_complete(&*track, cancel)?;
-            let (path, digest) = store_lane(&root.join(LANE_FOLDER), &*track, cancel)?;
-            bundle.lanes.insert(
-                key.clone(),
-                BundleLane {
-                    path,
-                    sha256: hex(&digest),
-                },
-            );
-        }
-        if let Some(video) = video {
-            let named = match video {
-                VideoRef::File(path) => path,
-                VideoRef::ImageSequence(sequence) => &sequence.pattern,
-            };
-            bundle.video = Some(
-                BundleVideo::of(video)
-                    .map_err(|error| user_error("Cannot read the video", &error, named))
-                    .map_err(Interrupt::Failed)?,
-            );
-        }
+        let bundle = build_bundle(
+            lanes,
+            video,
+            &root.join(LANE_FOLDER),
+            |input| Ok(self.open_as(input, admission, cancel)? as Arc<dyn TrackRead>),
+            cancel,
+        )?;
         let bytes = bundle.to_bytes();
         let folder = root.join(DERIVED_FOLDER);
         let mut temp = temporary_in(&folder).map_err(Interrupt::Failed)?;
@@ -100,6 +81,45 @@ impl TrackRegistry {
         })?;
         Ok(self.scratch.get_or_init(|| dir).path().to_path_buf())
     }
+}
+
+/// Opens each of `lanes` with `open`, waits for it to be read completely, writes it as a lane file in `folder`, and
+/// returns the bundle that names the lane files and `video`. An input that stopped early fails the build.
+pub fn build_bundle(
+    lanes: &[(String, OverlayRef)],
+    video: Option<&VideoRef>,
+    folder: &Path,
+    open: impl Fn(&OverlayRef) -> Result<Arc<dyn TrackRead>, Interrupt<UserError>>,
+    cancel: &CancelToken,
+) -> Result<Bundle, Interrupt<UserError>> {
+    let mut bundle = Bundle {
+        lanes: BTreeMap::new(),
+        video: None,
+    };
+    for (key, input) in lanes {
+        let track = open(input)?;
+        wait_complete(&*track, cancel)?;
+        let (path, digest) = store_lane(folder, &*track, cancel)?;
+        bundle.lanes.insert(
+            key.clone(),
+            BundleLane {
+                path,
+                sha256: hex(&digest),
+            },
+        );
+    }
+    if let Some(video) = video {
+        let named = match video {
+            VideoRef::File(path) => path,
+            VideoRef::ImageSequence(sequence) => &sequence.pattern,
+        };
+        bundle.video = Some(
+            BundleVideo::of(video)
+                .map_err(|error| user_error("Cannot read the video", &error, named))
+                .map_err(Interrupt::Failed)?,
+        );
+    }
+    Ok(bundle)
 }
 
 /// Waits until `track` has read everything it will; an input that stopped early fails the open.

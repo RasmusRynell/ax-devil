@@ -41,7 +41,7 @@ pub struct Command {
     /// Whether holding the key repeats the command.
     pub repeats: bool,
     /// What the command does, shown as its menu item's tooltip; `None` shows none.
-    pub description: Option<Cow<'static, str>>,
+    pub description: Option<&'static str>,
 }
 
 const fn command(
@@ -50,18 +50,6 @@ const fn command(
     category: Category,
     key: Option<&'static str>,
     repeats: bool,
-) -> Command {
-    described(id, label, category, key, repeats, None)
-}
-
-/// `command` with a tooltip.
-const fn described(
-    id: &'static str,
-    label: &'static str,
-    category: Category,
-    key: Option<&'static str>,
-    repeats: bool,
-    description: Option<&'static str>,
 ) -> Command {
     Command {
         id: Cow::Borrowed(id),
@@ -72,11 +60,14 @@ const fn described(
             None => None,
         },
         repeats,
-        description: match description {
-            Some(text) => Some(Cow::Borrowed(text)),
-            None => None,
-        },
+        description: None,
     }
+}
+
+/// `command` with a tooltip.
+const fn described(mut command: Command, description: &'static str) -> Command {
+    command.description = Some(description);
+    command
 }
 
 /// Every command, in menu order.
@@ -234,20 +225,18 @@ pub const COMMANDS: &[Command] = &[
         true,
     ),
     described(
-        "lane-names",
-        "Show Lane Names",
-        Category::View,
-        None,
-        false,
-        Some(LANE_NAMES_DESCRIPTION),
+        command("lane-names", "Show Lane Names", Category::View, None, false),
+        LANE_NAMES_DESCRIPTION,
     ),
     described(
-        "object-details",
-        "Object Hover and Click Details",
-        Category::View,
-        None,
-        false,
-        Some(OBJECT_DETAILS_DESCRIPTION),
+        command(
+            "object-details",
+            "Object Hover and Click Details",
+            Category::View,
+            None,
+            false,
+        ),
+        OBJECT_DETAILS_DESCRIPTION,
     ),
     command(
         "info-overlay",

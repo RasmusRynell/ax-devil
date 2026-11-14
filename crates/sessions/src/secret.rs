@@ -4,32 +4,8 @@
 //! knowing an id (as the server's password holders do) reveals nothing about the secrets.
 
 use crate::session::Refusal;
-use std::{
-    fmt::{self, Write as _},
-    hint::black_box,
-    str::FromStr,
-};
-
-fn random<const N: usize>() -> [u8; N] {
-    let mut bytes = [0; N];
-    // Without operating-system randomness there is no sound way to make an unguessable secret; stopping is safer
-    // than falling back to something guessable.
-    getrandom::fill(&mut bytes)
-        .unwrap_or_else(|error| panic!("the operating system has no randomness: {error}"));
-    bytes
-}
-
-fn write_hex(bytes: &[u8], f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    bytes.iter().try_for_each(|byte| write!(f, "{byte:02x}"))
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().fold(String::new(), |mut text, byte| {
-        // Writing to a String cannot fail.
-        let _ = write!(text, "{byte:02x}");
-        text
-    })
-}
+use foundation::{hex, random_bytes, random_token};
+use std::{fmt, hint::black_box, str::FromStr};
 
 /// Exactly `2 * N` hexadecimal digits, or `Invalid`.
 fn read_hex<const N: usize>(text: &str) -> Result<[u8; N], Refusal> {
@@ -52,13 +28,13 @@ pub struct SessionId([u8; 8]);
 impl SessionId {
     /// A new random id.
     pub fn generate() -> Self {
-        Self(random())
+        Self(random_bytes())
     }
 }
 
 impl fmt::Display for SessionId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_hex(&self.0, f)
+        f.write_str(&hex(&self.0))
     }
 }
 
@@ -79,7 +55,7 @@ pub struct Secret(String);
 impl Secret {
     /// A new secret from the operating system's randomness.
     pub fn generate() -> Self {
-        Self(hex(&random::<16>()))
+        Self(random_token())
     }
 
     /// A secret the operator chose. It travels in an `Authorization: Bearer` header, which a browser can only send

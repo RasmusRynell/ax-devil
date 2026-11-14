@@ -18,7 +18,6 @@ const unchanging = () => () => {};
 const noSnapshot = () => undefined;
 const noCapture = () => {};
 
-/** The theme a view is told: the setting, with the system's choice for `auto`. */
 function useTheme(): "light" | "dark" {
   const preference = useSettings().values["ui.theme"];
   if (preference === "light" || preference === "dark") return preference;

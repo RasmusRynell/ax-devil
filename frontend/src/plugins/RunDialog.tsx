@@ -18,7 +18,6 @@ import {
 
 const NONE = "";
 
-/** What a task says of how far it is. */
 const progressText = ({ done, total, text }: TaskProgressInfo) =>
   [text, total ? `${done ?? 0} / ${total}` : done].filter((part) => part !== undefined).join(" ");
 

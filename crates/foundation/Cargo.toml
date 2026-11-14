@@ -14,6 +14,7 @@ workspace = true
 
 [dependencies]
 bytes.workspace = true
+getrandom = "0.4"
 # A stream URL is read, and its login decoded, here (address.rs).
 percent-encoding = "2"
 serde.workspace = true

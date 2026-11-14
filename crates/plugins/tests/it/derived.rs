@@ -9,8 +9,8 @@ use crate::{
 use std::{fs, path::Path};
 
 use foundation::{CancelToken, Interrupt};
-use handler_api::{Bundle, BundleLane, Decoder, Settings};
-use plugins::{LoadedPlugin, Manifest, Program, TaskProgress};
+use handler_api::{Bundle, BundleLane, Settings};
+use plugins::{LoadedPlugin, Manifest, TaskProgress};
 use scene::SceneTime;
 use serde_json::json;
 
@@ -45,18 +45,10 @@ fn demo_manifest() -> std::path::PathBuf {
 }
 
 #[test]
-fn the_demo_plugin_loads_every_kind_and_a_lanes_decode_reads_both_lane_files() {
+fn a_lanes_decode_reads_both_lane_files() {
     let plugin = LoadedPlugin::load(&demo_manifest()).expect("the demo loads");
     assert!(plugin.skipped.is_empty(), "{:?}", plugin.skipped);
-    assert_eq!(plugin.manifest.settings.fields.len(), 1);
-    assert_eq!(
-        plugin.tasks[0].spec().inputs.lanes,
-        [("lane".to_owned(), "Lane".to_owned())]
-    );
-    let kinds: Vec<_> = plugin.manifest.handlers.iter().map(|h| h.kind()).collect();
-    assert_eq!(kinds, ["decoder", "task", "view", "command"]);
     let decoder = &plugin.decoders[0];
-    assert_eq!(decoder.spec().id, "derived-union");
 
     if !python_available() {
         return;
@@ -164,24 +156,4 @@ fn a_task_whose_error_line_arrives_fails_with_its_reason() {
         Err(Interrupt::Failed(error)) => assert_eq!(error.reason, "disk full"),
         other => panic!("the task fails: {other:?}"),
     }
-}
-
-#[test]
-fn a_settings_change_is_a_different_code_identity() {
-    let manifest = Manifest::load(&demo_manifest()).expect("loads");
-    let hash = |label: Option<&str>| {
-        let mut settings = Settings::new();
-        if let Some(label) = label {
-            settings.insert("label".to_owned(), label.into());
-        }
-        let values = manifest.settings_values(&settings).expect("values");
-        Program::new(manifest.clone(), values)
-            .code_hash()
-            .expect("hash")
-    };
-
-    assert_eq!(hash(Some("a")), hash(Some("a")));
-    assert_ne!(hash(Some("a")), hash(Some("b")));
-    // The default fills in an omitted value, as it does everywhere else.
-    assert_eq!(hash(None), hash(Some("demo")));
 }

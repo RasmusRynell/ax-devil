@@ -1,11 +1,11 @@
 use std::{
     collections::BTreeMap,
-    fmt::Write as _,
     fs, io,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use foundation::hex;
 use serde::{Deserialize, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 
@@ -81,13 +81,7 @@ impl BundleVideo {
                     path: sequence.pattern.clone(),
                     size: sequence.frame_count,
                     mtime_ns: 0,
-                    images_sha256: Some(digest.finalize().iter().fold(
-                        String::new(),
-                        |mut hex, byte| {
-                            let _ = write!(hex, "{byte:02x}");
-                            hex
-                        },
-                    )),
+                    images_sha256: Some(hex(&digest.finalize())),
                 })
             }
         }

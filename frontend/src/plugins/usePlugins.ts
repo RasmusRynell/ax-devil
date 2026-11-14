@@ -22,6 +22,7 @@ import type {
   TaskProgressInfo,
   ViewInfo,
 } from "../generated/api";
+import { splitLines } from "../live/network";
 import type { PlaybackStream } from "../playback/stream";
 import { useCommand, useSession } from "../session/session";
 import { useViewers } from "../viewer/useViewers";
@@ -88,13 +89,11 @@ export function PluginViewsProvider({ children }: { children: ReactNode }) {
   return createElement(ListedContext, { value: value ?? NOTHING }, children);
 }
 
-/** The plugin views of `place`. */
 export function usePluginViews(place: "sidebar" | "video"): readonly PluginView[] {
   const { views } = useContext(ListedContext);
   return useMemo(() => views.filter(({ view }) => view.place === place), [views, place]);
 }
 
-/** The commands of the plugins that loaded. */
 export function usePluginCommands(): readonly PluginCommand[] {
   return useContext(ListedContext).commands;
 }
@@ -167,9 +166,9 @@ async function* linesOf(response: Response): AsyncGenerator<string> {
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    const parts = (pending + decoder.decode(value, { stream: true })).split("\n");
-    pending = parts.pop() ?? "";
-    yield* parts.filter(Boolean);
+    const { lines, rest } = splitLines(pending, decoder.decode(value, { stream: true }));
+    pending = rest;
+    yield* lines;
   }
   if (pending) yield pending;
 }

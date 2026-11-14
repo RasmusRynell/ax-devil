@@ -43,7 +43,7 @@ pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
 #[cfg(test)]
 mod tests;
 
-pub use derive::{DERIVED_EXTENSION, DERIVED_FOLDER, LANE_EXTENSION, LANE_FOLDER};
+pub use derive::{DERIVED_EXTENSION, DERIVED_FOLDER, LANE_EXTENSION, LANE_FOLDER, build_bundle};
 pub use events::{
     EventAnchor, EventDetail, EventMatches, EventObject, EventPlacement, EventQuery, EventRow,
     EventView, Involved,

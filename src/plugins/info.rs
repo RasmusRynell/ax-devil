@@ -106,25 +106,11 @@ pub(super) fn built_in_info(built_in_handlers: &Handlers) -> Vec<PluginInfo> {
 
 /// What loading the registry made: the listing, and what the routes find a task or a view's files by.
 pub(super) struct Installed {
-    /// One entry per registry entry.
     pub plugins: Vec<PluginInfo>,
     /// The tasks of the plugins that loaded.
     pub tasks: Vec<Arc<PluginTask>>,
     /// The folder of each plugin that has views, by the token its view addresses carry.
     pub roots: HashMap<String, PathBuf>,
-}
-
-/// A fresh unguessable token. Without operating-system randomness there is no sound way to make one; stopping is
-/// safer than falling back to something guessable.
-fn token() -> String {
-    let mut bytes = [0u8; 16];
-    getrandom::fill(&mut bytes)
-        .unwrap_or_else(|error| panic!("the operating system has no randomness: {error}"));
-    bytes.iter().fold(String::new(), |mut text, byte| {
-        // Writing to a String cannot fail.
-        let _ = write!(text, "{byte:02x}");
-        text
-    })
 }
 
 /// `path` as a URL path: `/` between its parts, anything but letters, digits and `-._~` percent-encoded.
@@ -240,7 +226,7 @@ pub(super) fn installed_info(loaded: &Loaded) -> Installed {
         };
         let status = match &entry.plugin {
             Ok(plugin) => {
-                let token = token();
+                let token = foundation::random_token();
                 let status = loaded_status(plugin, &token);
                 if matches!(&status, PluginStatus::Loaded { views, .. } if !views.is_empty()) {
                     installed

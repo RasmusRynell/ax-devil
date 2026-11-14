@@ -89,15 +89,14 @@ impl PluginTask {
     }
 }
 
-/// One line: exactly one of these keys.
+/// One line: an object of exactly one of these keys.
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LineIn {
-    progress: Option<ProgressIn>,
-    log: Option<LogIn>,
-    warning: Option<WarningIn>,
-    error: Option<ErrorIn>,
-    done: Option<DoneIn>,
+#[serde(rename_all = "lowercase")]
+enum LineIn {
+    Progress(ProgressIn),
+    Warning(WarningIn),
+    Error(ErrorIn),
+    Done(DoneIn),
 }
 
 #[derive(Deserialize)]
@@ -106,12 +105,6 @@ struct ProgressIn {
     done: Option<u64>,
     total: Option<u64>,
     text: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LogIn {
-    text: String,
 }
 
 /// `{"done":{}}`: the plugin says it finished; the exit code is what decides.
@@ -134,7 +127,17 @@ impl LineHandler for TaskLines<'_> {
         }
         let line = std::str::from_utf8(bytes)
             .map_err(|_| "is not valid UTF-8".to_owned())
-            .and_then(|text| serde_json::from_str(text).map_err(|error| json_reason(&error)));
+            .and_then(|text| {
+                serde_json::from_str(text).map_err(|error| {
+                    // Valid JSON that is not an object of one key reads as a syntax error to the enum.
+                    if error.is_syntax() && serde_json::from_str::<serde_json::Value>(text).is_ok()
+                    {
+                        "needs exactly one of progress, warning, error or done".to_owned()
+                    } else {
+                        json_reason(&error)
+                    }
+                })
+            });
         let line: LineIn = match line {
             Ok(line) => line,
             Err(reason) => {
@@ -142,31 +145,12 @@ impl LineHandler for TaskLines<'_> {
             }
         };
         match line {
-            LineIn {
-                progress: Some(progress),
-                log: None,
-                warning: None,
-                error: None,
-                done: None,
-            } => (self.on_progress)(TaskProgress {
+            LineIn::Progress(progress) => (self.on_progress)(TaskProgress {
                 done: progress.done,
                 total: progress.total,
                 text: progress.text.as_deref().map(cut),
             }),
-            LineIn {
-                progress: None,
-                log: Some(log),
-                warning: None,
-                error: None,
-                done: None,
-            } => tracing::info!("Task log: {}", cut(&log.text)),
-            LineIn {
-                progress: None,
-                log: None,
-                warning: Some(warning),
-                error: None,
-                done: None,
-            } => {
+            LineIn::Warning(warning) => {
                 let warning = load_warning(warning);
                 tracing::warn!(
                     "Task warning: {} ({})",
@@ -174,29 +158,12 @@ impl LineHandler for TaskLines<'_> {
                     warning.reasons.join("; ")
                 );
             }
-            LineIn {
-                progress: None,
-                log: None,
-                warning: None,
-                error: Some(error),
-                done: None,
-            } => {
+            LineIn::Error(error) => {
                 let reason = cut(&error.reason);
                 self.error = Some(reason.clone());
                 return Next::Stop(reason);
             }
-            LineIn {
-                progress: None,
-                log: None,
-                warning: None,
-                error: None,
-                done: Some(DoneIn {}),
-            } => {}
-            _ => {
-                return Next::Stop(format!(
-                    "Line {number} of the plugin's output needs exactly one of progress, log, warning, error or done"
-                ));
-            }
+            LineIn::Done(DoneIn {}) => {}
         }
         Next::Continue
     }

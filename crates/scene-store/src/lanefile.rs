@@ -1,6 +1,6 @@
 //! Lane files: a track written as JSON Lines, the input a plugin program reads.
 
-use std::{fmt::Write as _, io::Write, ops::Range, slice};
+use std::{io::Write, ops::Range, slice};
 
 use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
 use scene::{Coverage, MatchBasis, Scene, serial};
@@ -59,14 +59,6 @@ pub fn write_lane(
         lines.push(&format!("{{\"sample\":{body}}}"))?;
     }
     Ok(lines.hash.finalize().into())
-}
-
-/// The lowercase hex of `bytes`.
-pub(crate) fn hex(bytes: &[u8]) -> String {
-    bytes.iter().fold(String::new(), |mut hex, byte| {
-        let _ = write!(hex, "{byte:02x}");
-        hex
-    })
 }
 
 /// The lines written so far, counted and hashed.

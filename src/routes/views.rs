@@ -1,9 +1,8 @@
 //! A plugin's views: the files of its `views/` folder, served to the sandboxed frame that shows them.
 //!
 //! The token in the address is the only credential and names one plugin; the files come from nothing but that plugin's
-//! `views/` folder. A file is reached by opening each part of the path from the folder above it without following a
-//! link, so no `..`, link or race can lead out of the folder. The sandbox headers are added for the whole prefix by
-//! [`security_headers`](crate::access::security_headers), errors included.
+//! `views/` folder: a path that resolves outside it, by `..` or a link, is refused. The sandbox headers are added for
+//! the whole prefix by [`security_headers`](crate::access::security_headers), errors included.
 
 use crate::AppState;
 use axum::{
@@ -13,8 +12,8 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use std::{
-    fs::File,
-    io::{self, Read},
+    fs::{self, File},
+    io::Read,
     path::Path as FsPath,
 };
 
@@ -24,89 +23,36 @@ const VIEWS_FOLDER: &str = "views";
 /// The largest file served.
 const MOST_BYTES: u64 = 32 << 20;
 
-/// The parts of `path` when it names something inside `views/`: every part is a plain name.
-fn parts(path: &str) -> Option<Vec<&str>> {
-    let parts: Vec<_> = path.split('/').collect();
-    let plain = |part: &&str| {
-        !part.is_empty() && *part != "." && *part != ".." && !part.contains(['\\', ':', '\0'])
-    };
-    (parts.len() >= 2 && parts[0] == VIEWS_FOLDER && parts.iter().all(plain)).then_some(parts)
-}
-
-/// Opens the file at `parts` below `root`, never following a link on the way: each part is opened from the folder
-/// before it.
-#[cfg(unix)]
-fn open_beneath(root: &FsPath, parts: &[&str]) -> io::Result<File> {
-    use rustix::fs::{CWD, Mode, OFlags, openat};
-    let flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW;
-    let Some((name, folders)) = parts.split_last() else {
-        return Err(io::ErrorKind::NotFound.into());
-    };
+/// The bytes of the regular file `path` names below `root`, if it resolves to inside `root/views/` (so no `..` or link
+/// leads out) and is not larger than [`MOST_BYTES`].
+fn read_file(root: &FsPath, path: &str) -> Option<Vec<u8>> {
     // The plugin's own folder may be reached through links: it was installed there.
-    let mut folder = openat(
-        CWD,
-        root,
-        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::DIRECTORY,
-        Mode::empty(),
-    )?;
-    for part in folders {
-        folder = openat(&folder, *part, flags | OFlags::DIRECTORY, Mode::empty())?;
-    }
-    // Not waiting on a pipe or a device that has nothing to give.
-    let file = openat(&folder, *name, flags | OFlags::NONBLOCK, Mode::empty())?;
-    Ok(File::from(file))
-}
-
-/// Opens the file at `parts` below `root`, refusing any link or other reparse point on the way.
-#[cfg(windows)]
-fn open_beneath(root: &FsPath, parts: &[&str]) -> io::Result<File> {
-    use std::os::windows::fs::MetadataExt;
-    const REPARSE_POINT: u32 = 0x400;
-    let mut path = root.to_path_buf();
-    for part in parts {
-        path.push(part);
-        if std::fs::symlink_metadata(&path)?.file_attributes() & REPARSE_POINT != 0 {
-            return Err(io::ErrorKind::PermissionDenied.into());
-        }
-    }
-    File::open(path)
-}
-
-/// The bytes of the regular file at `parts` below `root`, if it is one and not larger than [`MOST_BYTES`].
-fn read_file(root: &FsPath, parts: &[&str]) -> Option<Vec<u8>> {
-    let file = open_beneath(root, parts).ok()?;
-    if !file.metadata().ok()?.is_file() {
+    let views = root.join(VIEWS_FOLDER).canonicalize().ok()?;
+    let file = root.join(path).canonicalize().ok()?;
+    // A pipe or a device is refused before it is opened, so nothing waits on it.
+    if !file.starts_with(&views) || !fs::metadata(&file).ok()?.is_file() {
         return None;
     }
     let mut bytes = Vec::new();
-    file.take(MOST_BYTES + 1).read_to_end(&mut bytes).ok()?;
+    File::open(file)
+        .ok()?
+        .take(MOST_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
     (bytes.len() as u64 <= MOST_BYTES).then_some(bytes)
 }
 
-/// What a browser needs to run a file of a view; anything else is opaque bytes.
-fn content_type(name: &str) -> &'static str {
-    let extension = name.rsplit_once('.').map(|(_, extension)| extension);
-    match extension.map(str::to_ascii_lowercase).as_deref() {
-        Some("html" | "htm") => "text/html; charset=utf-8",
-        Some("js" | "mjs") => "text/javascript; charset=utf-8",
-        Some("css") => "text/css; charset=utf-8",
-        Some("json" | "map") => "application/json",
-        Some("txt") => "text/plain; charset=utf-8",
-        Some("svg") => "image/svg+xml",
-        Some("png") => "image/png",
-        Some("jpg" | "jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("webp") => "image/webp",
-        Some("ico") => "image/x-icon",
-        Some("woff2") => "font/woff2",
-        Some("woff") => "font/woff",
-        Some("wasm") => "application/wasm",
-        _ => "application/octet-stream",
+/// What a browser needs to run a file of a view; text is read as UTF-8.
+fn content_type(path: &str) -> String {
+    let mime = mime_guess::from_path(path).first_or_octet_stream();
+    if mime.type_() == mime_guess::mime::TEXT {
+        format!("{mime}; charset=utf-8")
+    } else {
+        mime.to_string()
     }
 }
 
-/// The file of a plugin's view, or 404 for an unknown token, a path outside `views/`, a link, or anything but a
-/// regular file.
+/// The file of a plugin's view, or 404 for an unknown token, a path outside `views/`, or anything but a regular file.
 pub(super) async fn get(
     State(state): State<AppState>,
     Path((token, path)): Path<(String, String)>,
@@ -115,19 +61,15 @@ pub(super) async fn get(
         return StatusCode::NOT_FOUND.into_response();
     };
     let served = tokio::task::spawn_blocking(move || {
-        let parts = parts(&path)?;
-        let bytes = read_file(&root, &parts)?;
-        Some((content_type(parts[parts.len() - 1]), bytes))
+        read_file(&root, &path).map(|bytes| (content_type(&path), bytes))
     })
     .await
     .ok()
     .flatten();
     match served {
         Some((kind, bytes)) => (
-            [
-                (header::CONTENT_TYPE, kind),
-                (header::CACHE_CONTROL, "no-store"),
-            ],
+            [(header::CONTENT_TYPE, kind)],
+            [(header::CACHE_CONTROL, "no-store")],
             Body::from(bytes),
         )
             .into_response(),
@@ -234,9 +176,8 @@ mod tests {
         std::fs::write(plugin.path().join("secret.txt"), "secret").unwrap();
         std::fs::write(views.join("inner/page.html"), "page").unwrap();
         std::os::unix::fs::symlink("../secret.txt", views.join("file")).unwrap();
-        std::os::unix::fs::symlink("..", views.join("inner/up")).unwrap();
-        let read =
-            |path: &str| super::parts(path).and_then(|p| super::read_file(plugin.path(), &p));
+        std::os::unix::fs::symlink("../..", views.join("inner/up")).unwrap();
+        let read = |path: &str| super::read_file(plugin.path(), path);
         assert_eq!(read("views/inner/page.html").as_deref(), Some(&b"page"[..]));
         for path in [
             "views/file",

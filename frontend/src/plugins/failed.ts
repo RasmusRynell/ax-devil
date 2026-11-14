@@ -6,7 +6,6 @@ let failed = 0;
 let asked = false;
 const listeners = new Set<() => void>();
 
-/** How many of `info`'s plugins did not load. */
 export const failedIn = ({ plugins }: PluginsInfo): number =>
   plugins.filter(({ status }) => status.state === "failed").length;
 

@@ -15,7 +15,6 @@ export interface PluginView {
   commands: readonly CommandInfo[];
 }
 
-/** One lane as a view is told of it. */
 export interface BusLane {
   slot: string;
   label: string;
@@ -38,14 +37,12 @@ export interface Binding {
   video?: { x: number; y: number; width: number; height: number };
 }
 
-/** Where the bound viewer is. */
 export interface Playhead {
   frame: number;
   timeUs: number | null;
   playing: boolean;
 }
 
-/** What `viewer.set` may change. */
 export interface ViewerSet {
   frame?: number;
   playing?: boolean;
@@ -53,7 +50,6 @@ export interface ViewerSet {
   capture?: boolean;
 }
 
-/** What `task.run` asks, once checked. */
 export interface TaskRun {
   runs: string;
   lanes: Record<string, string>;
@@ -157,7 +153,6 @@ function lanesOf(value: unknown): Record<string, string> {
   return lanes;
 }
 
-/** Rejects once `signal` aborts. */
 const whenAborted = (signal: AbortSignal): Promise<never> =>
   new Promise((_done, fail) =>
     signal.addEventListener("abort", () => fail(new Error("cancelled")), { once: true }),
@@ -165,15 +160,12 @@ const whenAborted = (signal: AbortSignal): Promise<never> =>
 
 /** A way a view speaks to the host over its port, until it is closed. */
 export interface Bus {
-  /** The port to give the view's frame. */
   port: MessagePort;
   /** Binds the view to something else, or tells it of a change in what it is bound to under the same epoch. */
   rebind(binding: Binding): void;
   /** Tells the view where the bound viewer is; only the latest is kept while one waits. */
   playhead(playhead: Playhead): void;
-  /** Tells the view a command that runs it was run. */
   command(id: string): void;
-  /** Ends every call still running and closes the port. */
   close(): void;
 }
 
@@ -182,8 +174,7 @@ export interface Bus {
  * `{type: "reply", id, ok, value | error, reason}`; it sends `{type: "key", key, epoch}` for a key it did not handle. The
  * host sends `context`, `playhead`, `command` and (for a running task) `progress` events, each `{type, ...}`.
  * A call whose epoch is not the one of the last `context` is answered `stale` and reaches nothing; a `key` of another
- * epoch is dropped, as it has no reply. The one table of
- * calls is `calls` below.
+ * epoch is dropped, as it has no reply. The one table of calls is `calls` below.
  */
 export function createBus(plugin: PluginView, host: BusHost): Bus {
   const channel = new MessageChannel();

@@ -32,7 +32,7 @@ caching.
 - **Lanes, tasks, views, commands.** A `decoder` with `input: lanes` is a derived lane: its input file is the host's
   bundle (`handler_api::Bundle`, which lists each input lane file by key with its hash, and the video), and the
   request's `input` is `{lanes: {key: path}, video?}`. A `task` takes the same input and options, produces no Scenes
-  and answers with `progress`, `log`, `warning`, `error` and `done` lines; dropping the run cancels it. A `view` names
+  and answers with `progress`, `warning`, `error` and `done` lines; dropping the run cancels it. A `view` names
   a page in the plugin's folder and a `command` names an own lanes decoder, task or view; either whose reference does
   not resolve is `skipped` with the reason, like an unknown kind. A plugin of only views and commands has no `command`.
 - **Settings.** The top-level `settings` form is stored in the plugin's registry entry and sent as `settings` in every

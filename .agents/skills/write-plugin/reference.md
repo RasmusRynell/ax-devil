@@ -43,7 +43,7 @@ Decoder handler (`"kind": "decoder"`):
 | `options` | no | A list of fields, below, of kind `text`, `file` or `folder` only. Values are always text |
 
 Task handler (`"kind": "task"`): `id`, `name`, optional `description`, `lanes` and `video` as under [Lanes](#lanes), and `options`
-as a decoder's. Its output has no Scenes: `{"progress":{"done"?,"total"?,"text"?}}`, `{"log":{"text"}}`, `warning`, `error` and
+as a decoder's. Its output has no Scenes: `{"progress":{"done"?,"total"?,"text"?}}`, `warning`, `error` and
 `{"done":{}}`; the exit code decides the end, and the user dropping the run kills the program. A task writes where
 its own `folder` option or setting says.
 

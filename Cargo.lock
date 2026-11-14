@@ -146,7 +146,6 @@ dependencies = [
  "export",
  "foundation",
  "futures-util",
- "getrandom 0.4.3",
  "handler-api",
  "handlers",
  "http-body-util",
@@ -775,6 +774,7 @@ name = "foundation"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "getrandom 0.4.3",
  "percent-encoding",
  "serde",
  "ts-rs",
@@ -2313,7 +2313,6 @@ name = "sessions"
 version = "0.1.0"
 dependencies = [
  "foundation",
- "getrandom 0.4.3",
  "handler-api",
  "handlers",
  "playback",

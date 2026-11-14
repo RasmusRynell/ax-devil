@@ -21,27 +21,16 @@ use axum::{
 use bytes::Bytes;
 use foundation::{CancelToken, ErrorCode, Interrupt, ItemId, UserError};
 use futures_util::stream::unfold;
-use handler_api::{Bundle, BundleLane, BundleVideo, Settings};
+use handler_api::Settings;
 use plugins::{PluginTask, TaskProgress};
-use scene_store::{Admission, Ingest, TrackRead, write_lane};
+use scene_store::{Admission, build_bundle};
 use sessions::SessionId;
-use std::{
-    collections::BTreeMap,
-    convert::Infallible,
-    fmt::Write as _,
-    fs,
-    io::{BufWriter, Write},
-    thread,
-    time::Duration,
-};
+use std::{collections::BTreeMap, convert::Infallible};
 use tokio::sync::mpsc;
 use workspace::Entry;
 
 /// The largest body a run takes: its options.
 const MOST_OPTIONS_BYTES: usize = 8 << 20;
-
-/// How often the wait for a lane to be read looks at the cancel token.
-const WAIT_SLICE: Duration = Duration::from_millis(20);
 
 /// Lets a run's options be as large as [`MOST_OPTIONS_BYTES`], which a JSON body otherwise may not be.
 pub(super) fn limit() -> DefaultBodyLimit {
@@ -156,24 +145,10 @@ fn prepare(
     })
 }
 
-/// One JSON line.
 fn line(line: &TaskLine) -> Bytes {
     let mut bytes = serde_json::to_vec(line).unwrap_or_default();
     bytes.push(b'\n');
     Bytes::from(bytes)
-}
-
-/// Waits until `track` has read everything it will; a lane that stopped early fails the run.
-fn wait_complete(track: &dyn TrackRead, cancel: &CancelToken) -> Result<(), Interrupt<UserError>> {
-    loop {
-        match &track.snapshot().ingest {
-            Ingest::Complete => return Ok(()),
-            Ingest::Incomplete(error) => return Err(Interrupt::Failed(error.clone())),
-            Ingest::Reading => {}
-        }
-        cancel.check()?;
-        thread::sleep(WAIT_SLICE);
-    }
 }
 
 /// Opens and writes the lanes into `folder`, then runs the task over them, sending its progress to `lines`.
@@ -184,45 +159,34 @@ fn execute(
     lines: &mpsc::Sender<Bytes>,
     cancel: &CancelToken,
 ) -> Result<(), Interrupt<UserError>> {
-    let internal = |reason: String| Interrupt::Failed(UserError::new(ErrorCode::Internal, reason));
-    let mut bundle = Bundle {
-        lanes: BTreeMap::new(),
-        video: None,
-    };
-    for (number, (key, slot)) in run.lanes.iter().enumerate() {
-        let overlay = run
-            .entry
-            .overlays
-            .iter()
-            .find(|overlay| overlay.slot == *slot)
-            .ok_or_else(|| internal(format!("The entry has no lane '{slot}'")))?;
-        let track = state
-            .overlays
-            .open_track(overlay, Admission::Compute, cancel)?;
-        wait_complete(&*track, cancel)?;
-        let path = folder.join(format!("lane-{number}.jsonl"));
-        let file = fs::File::create(&path)
-            .map_err(|error| internal(format!("Cannot write a lane: {error}")))?;
-        let mut out = BufWriter::new(file);
-        let digest = write_lane(&*track, None, u64::MAX, &mut out, cancel)?;
-        out.flush()
-            .map_err(|error| internal(format!("Cannot write a lane: {error}")))?;
-        let sha256 = digest.iter().fold(String::new(), |mut hex, byte| {
-            let _ = write!(hex, "{byte:02x}");
-            hex
-        });
-        bundle
-            .lanes
-            .insert(key.clone(), BundleLane { path, sha256 });
-    }
-    if run.video {
-        bundle.video = Some(BundleVideo::of(&run.entry.video).map_err(|error| {
-            Interrupt::Failed(UserError::new(
-                ErrorCode::Internal,
-                format!("Cannot read the video: {error}"),
-            ))
-        })?);
-    }
+    let lanes = run
+        .lanes
+        .iter()
+        .map(|(key, slot)| {
+            run.entry
+                .overlays
+                .iter()
+                .find(|overlay| overlay.slot == *slot)
+                .map(|overlay| (key.clone(), overlay.clone()))
+                .ok_or_else(|| {
+                    Interrupt::Failed(UserError::new(
+                        ErrorCode::Internal,
+                        format!("The entry has no lane '{slot}'"),
+                    ))
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let bundle = build_bundle(
+        &lanes,
+        run.video.then_some(&run.entry.video),
+        folder,
+        |overlay| {
+            state
+                .overlays
+                .open_track(overlay, Admission::Compute, cancel)
+        },
+        cancel,
+    )?;
     let mut on_progress = |progress: TaskProgress| {
         let sent = lines.blocking_send(line(&TaskLine::Progress(TaskProgressInfo {
             done: progress.done,
