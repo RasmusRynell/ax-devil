@@ -9,13 +9,13 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
-use foundation::{CancelToken, Interrupt};
+use foundation::{CancelToken, FrameRate, Interrupt};
 use handler_api::{
-    Bundle, DecodeError, DecodeSummary, Decoder, Form, Framing, Input, LaneSource, OnEqualKey,
-    OverlayRef, SceneSink, Settings, Spec, Values,
+    Bundle, DecodeError, DecodeSummary, Decoder, Form, Framing, ImageSequence, Input, LaneSource,
+    OnEqualKey, OverlayRef, SceneSink, Settings, Spec, Values, VideoRef,
 };
 use scene::{Coverage, FilterPolicy, MatchBasis, Scene, SceneTime, TimeSlice};
 use scene_store::{Admission, TrackRead, TrackRegistry};
@@ -243,4 +243,57 @@ fn a_derived_lane_rebuilds_when_an_input_changes_and_is_reused_when_it_does_not(
         "the changed input rebuilt it"
     );
     assert_eq!((stored(&cache, "lanes"), stored(&cache, "derived")), (2, 2));
+}
+
+#[test]
+fn a_derived_lane_with_an_image_sequence_rebuilds_when_one_image_changes() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (input, cache) = (dir.path().join("input.txt"), dir.path().join("cache"));
+    fs::write(&input, "a\nb\n").expect("input");
+    let images = dir.path().join("img");
+    fs::create_dir(&images).expect("images");
+    let image = |number: u32| images.join(format!("{number:06}.jpg"));
+    for number in 1..=3 {
+        fs::write(image(number), "pixels").expect("image");
+    }
+    let base = Counting::new("BASE", None, false);
+    let derived = Counting::new("DERIVED", None, true);
+    let registry = registry(&[base.clone(), derived.clone()], &cache);
+    let lane = overlay(
+        "DERIVED",
+        LaneSource::Derived {
+            lanes: vec![("input".into(), file("BASE", &input))],
+            video: Some(VideoRef::ImageSequence(ImageSequence {
+                pattern: images.join("%06d.jpg"),
+                start_number: 1,
+                frame_rate: FrameRate::new(30, 1).expect("a rate"),
+                width: 1,
+                height: 1,
+                frame_count: 3,
+            })),
+        },
+    );
+    let open = || {
+        let track = registry
+            .open_as(&lane, Admission::Compute, &CancelToken::new())
+            .expect("opens");
+        while matches!(track.snapshot().ingest, scene_store::Ingest::Reading) {
+            thread::sleep(Duration::from_millis(5));
+        }
+    };
+
+    open();
+    open();
+    assert_eq!(derived.runs(), 1, "an untouched sequence is reused");
+
+    // Same pattern, same count, same size: only the middle image's time says it was replaced.
+    let replaced = fs::File::options()
+        .write(true)
+        .open(image(2))
+        .expect("image");
+    replaced
+        .set_modified(SystemTime::now() + Duration::from_secs(60))
+        .expect("a new time");
+    open();
+    assert_eq!(derived.runs(), 2, "a replaced image rebuilt it");
 }

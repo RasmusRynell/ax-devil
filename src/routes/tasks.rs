@@ -21,7 +21,7 @@ use axum::{
 use bytes::Bytes;
 use foundation::{CancelToken, ErrorCode, Interrupt, ItemId, UserError};
 use futures_util::stream::unfold;
-use handler_api::{Bundle, BundleLane, BundleVideo, Settings, VideoRef};
+use handler_api::{Bundle, BundleLane, BundleVideo, Settings};
 use plugins::{PluginTask, TaskProgress};
 use scene_store::{Admission, Ingest, TrackRead, write_lane};
 use sessions::SessionId;
@@ -32,7 +32,7 @@ use std::{
     fs,
     io::{BufWriter, Write},
     thread,
-    time::{Duration, UNIX_EPOCH},
+    time::Duration,
 };
 use tokio::sync::mpsc;
 use workspace::Entry;
@@ -176,39 +176,6 @@ fn wait_complete(track: &dyn TrackRead, cancel: &CancelToken) -> Result<(), Inte
     }
 }
 
-/// The bundle entry of the entry's video: a file's size and modification time, or an image sequence's pattern and
-/// count.
-fn bundle_video(video: &VideoRef) -> Result<BundleVideo, UserError> {
-    let failed = |error: std::io::Error| {
-        UserError::new(
-            ErrorCode::Internal,
-            format!("Cannot read the video: {error}"),
-        )
-    };
-    match video {
-        VideoRef::File(path) => {
-            let path = fs::canonicalize(path).map_err(failed)?;
-            let stat = fs::metadata(&path).map_err(failed)?;
-            let mtime_ns = stat
-                .modified()
-                .ok()
-                .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
-                .and_then(|after| i128::try_from(after.as_nanos()).ok())
-                .unwrap_or(0);
-            Ok(BundleVideo {
-                path,
-                size: stat.len(),
-                mtime_ns,
-            })
-        }
-        VideoRef::ImageSequence(sequence) => Ok(BundleVideo {
-            path: sequence.pattern.clone(),
-            size: sequence.frame_count,
-            mtime_ns: 0,
-        }),
-    }
-}
-
 /// Opens and writes the lanes into `folder`, then runs the task over them, sending its progress to `lines`.
 fn execute(
     state: &AppState,
@@ -249,7 +216,12 @@ fn execute(
             .insert(key.clone(), BundleLane { path, sha256 });
     }
     if run.video {
-        bundle.video = Some(bundle_video(&run.entry.video).map_err(Interrupt::Failed)?);
+        bundle.video = Some(BundleVideo::of(&run.entry.video).map_err(|error| {
+            Interrupt::Failed(UserError::new(
+                ErrorCode::Internal,
+                format!("Cannot read the video: {error}"),
+            ))
+        })?);
     }
     let mut on_progress = |progress: TaskProgress| {
         let sent = lines.blocking_send(line(&TaskLine::Progress(TaskProgressInfo {

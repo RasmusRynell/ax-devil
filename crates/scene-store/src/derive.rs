@@ -10,7 +10,7 @@ use std::{
     io::{BufWriter, Write},
     path::{Path, PathBuf},
     thread,
-    time::{Duration, UNIX_EPOCH},
+    time::Duration,
 };
 
 use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
@@ -63,10 +63,17 @@ impl TrackRegistry {
                 },
             );
         }
-        bundle.video = video
-            .map(bundle_video)
-            .transpose()
-            .map_err(Interrupt::Failed)?;
+        if let Some(video) = video {
+            let named = match video {
+                VideoRef::File(path) => path,
+                VideoRef::ImageSequence(sequence) => &sequence.pattern,
+            };
+            bundle.video = Some(
+                BundleVideo::of(video)
+                    .map_err(|error| user_error("Cannot read the video", &error, named))
+                    .map_err(Interrupt::Failed)?,
+            );
+        }
         let bytes = bundle.to_bytes();
         let folder = root.join(DERIVED_FOLDER);
         let mut temp = temporary_in(&folder).map_err(Interrupt::Failed)?;
@@ -151,35 +158,4 @@ fn publish(
     }
     fs::canonicalize(&path)
         .map_err(|error| user_error("Cannot find the stored lane", &error, &path))
-}
-
-/// The bundle's entry for a video: its file's size and modification time. An image sequence is named by its pattern
-/// and image count.
-fn bundle_video(video: &VideoRef) -> Result<BundleVideo, UserError> {
-    match video {
-        VideoRef::File(path) => {
-            let file = fs::canonicalize(path)
-                .map_err(|error| user_error("Cannot find the video", &error, path))?;
-            let stat = fs::metadata(&file)
-                .map_err(|error| user_error("Cannot read the video", &error, &file))?;
-            let mtime_ns =
-                stat.modified()
-                    .map_or(0, |modified| match modified.duration_since(UNIX_EPOCH) {
-                        Ok(after) => i128::try_from(after.as_nanos()).unwrap_or(i128::MAX),
-                        Err(before) => {
-                            -i128::try_from(before.duration().as_nanos()).unwrap_or(i128::MAX)
-                        }
-                    });
-            Ok(BundleVideo {
-                path: file,
-                size: stat.len(),
-                mtime_ns,
-            })
-        }
-        VideoRef::ImageSequence(sequence) => Ok(BundleVideo {
-            path: sequence.pattern.clone(),
-            size: sequence.frame_count,
-            mtime_ns: 0,
-        }),
-    }
 }
