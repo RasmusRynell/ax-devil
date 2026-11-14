@@ -7,8 +7,9 @@
  * awaited; a lookup asks at once and shows nothing until it is answered. An answer is matched to its request by id, so
  * the host numbers the requests of all kinds in one sequence; an older request's answer, one made under other
  * revisions, or one that is not what was asked about is dropped. A page that could not be refreshed stays, flagged by
- * `unavailable`, while the file's data is what it showed. A follower is not answered; an owner is asked again a few
- * times, since the backend learns of a viewer's authority a moment after the viewer does.
+ * `unavailable`, while the file's data is what it showed. A follower is refused, and the question stays open: the
+ * backend holds it and answers it again under the same id when the viewer becomes the owner, so the client never
+ * retries.
  */
 
 import type { FileBody, FileScopeUnavailable } from "../generated/api";
@@ -18,10 +19,6 @@ import type { ClientMessage, ServerMessage } from "../stream/protocol";
 
 /** How long a change to a wanted list waits for another before it is sent. */
 export const DEBOUNCE_MS = 150;
-/** How long to wait before asking again after a follower's answer to a viewer that believes it owns its frames. */
-export const FOLLOWING_RETRY_MS = 1000;
-/** How often that is tried. */
-export const FOLLOWING_RETRIES = 3;
 
 /** The lane's Ready status, if it is ready. */
 export const readyOf = (state: LaneState | undefined): ReadyStatus | undefined =>
@@ -111,7 +108,6 @@ type Slot<W, T> = {
   asked: number | null;
   /** What the last request was made under, as JSON; `null` when none stands. */
   basis: string | null;
-  retries: number;
   cancel: (() => void) | null;
 };
 
@@ -163,7 +159,7 @@ export class FileRequests<
     }
     // A list is not asked again only for being wanted again: the answer in flight is stale and the pause starts over.
     const slot = held ?? this.#fresh(wanted);
-    if (held) Object.assign(held, { wanted, asked: null, retries: 0 });
+    if (held) Object.assign(held, { wanted, asked: null });
     this.#slots.set(lane, slot);
     this.#schedule(lane, slot, DEBOUNCE_MS);
     this.#replace(slot, { ...slot.view, pending: true });
@@ -187,7 +183,6 @@ export class FileRequests<
     if (!slot) return;
     slot.cancel?.();
     slot.cancel = null;
-    slot.retries = 0;
     this.#ask(lane, slot);
     this.#replace(slot, { ...slot.view, pending: true });
   }
@@ -206,7 +201,6 @@ export class FileRequests<
   refresh(): void {
     for (const [lane, slot] of this.#slots) {
       if (slot.cancel !== null || this.#key(lane) === slot.basis) continue;
-      slot.retries = 0;
       if (this.#spec.shape === "lookup") {
         this.#ask(lane, slot);
         continue;
@@ -248,16 +242,11 @@ export class FileRequests<
       this.#replace(slot, { pending: again?.pending ?? false, page, unavailable: null });
       return;
     }
-    slot.asked = null;
     const { unavailable } = answer;
-    const retry =
-      unavailable.state === "Following" && this.#host.owner() && slot.retries < FOLLOWING_RETRIES;
-    if (retry) {
-      slot.retries++;
-      this.#schedule(lane, slot, FOLLOWING_RETRY_MS);
-    }
+    // The backend holds a question refused as Following and answers it again, under the same id, once the viewer owns.
+    if (unavailable.state !== "Following") slot.asked = null;
     const keep = unavailable.state === "Failed" && slot.pageData === readyOf(state)?.data_revision;
-    this.#replace(slot, { pending: retry, page: keep ? slot.view.page : null, unavailable });
+    this.#replace(slot, { pending: false, page: keep ? slot.view.page : null, unavailable });
   }
 
   #fresh(wanted: W): Slot<W, T> {
@@ -268,7 +257,6 @@ export class FileRequests<
       pageData: null,
       asked: null,
       basis: null,
-      retries: 0,
       cancel: null,
     };
   }

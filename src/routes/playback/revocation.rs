@@ -133,6 +133,8 @@ async fn a_map_run_queued_with_a_frame_outside_a_narrowed_authority_is_dropped_w
             message: Message::Binary(vec![first as u8].into()),
             frames: Some(run.frames()),
             data: Some(OverlayEvent::Map(run)),
+            refusal: None,
+            whole_file: false,
         }
     };
 

@@ -2,12 +2,8 @@
 //! session then streams.
 
 use super::{
-    End, Flow, Incoming, Opening, Outbox,
-    gate::Gate,
-    live, next_client, stopped,
-    stream::{self, Setup},
-    text,
-    wire::Wire,
+    End, Flow, Incoming, Opening, Outbox, gate::Gate, live, next_client, setup::Setup, stopped,
+    stream, text, wire::Wire,
 };
 use crate::{
     AppState,

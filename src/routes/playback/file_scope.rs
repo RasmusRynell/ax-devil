@@ -5,14 +5,15 @@
 //! One query runs per lane and at most one waits behind it: a newer request cancels the running one, which is never
 //! answered, and replaces the waiting one, so a burst of requests never runs more than one blocking job per lane. A
 //! query that is refused or cannot be answered is answered at once. Answers name the revisions they were made under and
-//! no frame, so the gate never holds them back; only the viewer's own authority reaches the whole file, so a follower is refused when it asks
-//! and again if it became one while the query ran. The history, placement and listing of the last query of each lane are
-//! kept within a byte budget so paging and typing a search do not read them again; a lane the viewer releases keeps
-//! nothing.
+//! no frame, so the gate never holds frames back; only the viewer's own authority reaches the whole file, so a follower
+//! is refused when it asks, and by the writer if it became one while the query ran. The question stays held, and is answered again
+//! when the viewer becomes the owner ([`FileScopes::authority`]). The history, placement and listing of the last query
+//! of each lane are kept within a byte budget so paging and typing a search do not read them again; a lane the viewer
+//! releases keeps nothing.
 //!
-//! Where one object is (`Appearances`) and the lane's recorded events (`EventQuery`, `Event`) are answered beside the
-//! list, from the same kept history and placement: none cancels or waits for the lane's list query, and a newer request
-//! of its kind replaces its older one ([`latest`], [`appearances`], [`events`]).
+//! The list, where one object is (`Appearances`) and the lane's recorded events (`EventQuery`, `Event`) are answered
+//! beside each other, from the same kept history and placement: none cancels or waits for another kind, and a newer
+//! request of its kind replaces its older one ([`latest`], [`appearances`], [`events`]).
 
 pub(super) use self::appearances::Ask as AppearancesAsk;
 use self::cache::{CACHE_BYTES, Cache, Cached};
@@ -28,11 +29,7 @@ use api_types::{
 use foundation::{CancelToken, Cancelled, ErrorCode, UserError};
 use overlays::{FileScopeBlocked, FileScopeInput, ViewerOverlays};
 use scene_store::{EventPlacement, HistoryUnavailable, Placement, Query, Search, Sort};
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::Arc,
-};
-use tokio::task::{Id, JoinSet};
+use std::sync::Arc;
 
 /// The most rows a request may ask for.
 const MAX_LIMIT: u32 = 200;
@@ -98,21 +95,26 @@ impl Reply {
         }
     }
 
-    /// The message to send. An answer goes only to a viewer that still has the authority over the whole file; the rest
-    /// is told that it follows.
-    pub(super) fn outgoing(self, own: bool) -> Outgoing {
-        let message = match self.message {
+    /// The message to send. A found answer carries the whole file, so the writer sends it only to a viewer that has
+    /// the authority over it when it does; otherwise the viewer is told that it follows, which is built from the
+    /// request alone.
+    pub(super) fn outgoing(self) -> Outgoing {
+        let refusal = match &self.message {
             ServerMessage::File {
                 lane,
                 request,
                 answer: FileAnswer::Found { .. },
-            } if !own => {
+            } => {
                 let why = FileScopeUnavailable::Following;
-                return text(&Self::unavailable(lane, request, why).message).into();
+                Some(text(&Self::unavailable(*lane, *request, why).message))
             }
-            other => other,
+            _ => None,
         };
-        text(&message).into()
+        Outgoing {
+            whole_file: refusal.is_some(),
+            refusal,
+            ..Outgoing::from(text(&self.message))
+        }
     }
 }
 
@@ -155,25 +157,14 @@ impl From<Cancelled> for Stop {
     }
 }
 
-/// A request that is accepted and waits for its lane's blocking job.
-struct Job {
-    ask: Ask,
-    input: FileScopeInput,
-}
-
 /// A viewer's File scope queries.
 pub(super) struct FileScopes {
     audience: Audience,
-    /// The token that stops each lane's running query.
-    running: HashMap<u16, CancelToken>,
-    /// The lane and request each running task answers.
-    lanes: HashMap<Id, (u16, u32)>,
-    /// The newest request of a lane that has to wait for its running query to end.
-    waiting: HashMap<u16, Job>,
-    tasks: JoinSet<Option<Reply>>,
-    /// Answers already known, in the order asked.
-    ready: VecDeque<Reply>,
+    /// Whether the viewer had the authority over the whole file at the last refresh and at every question since; a
+    /// question taken while it followed clears this, so the next refresh as the owner answers it again.
+    was_own: bool,
     cache: Arc<Cache>,
+    objects: Latest,
     appearances: Latest,
     events: Events,
 }
@@ -183,12 +174,9 @@ impl FileScopes {
     pub(super) fn new(audience: Audience) -> Self {
         Self {
             audience,
-            running: HashMap::new(),
-            lanes: HashMap::new(),
-            waiting: HashMap::new(),
-            tasks: JoinSet::new(),
-            ready: VecDeque::new(),
+            was_own: false,
             cache: Arc::new(Cache::new(CACHE_BYTES)),
+            objects: Latest::new(audience),
             appearances: Latest::new(audience),
             events: Events::new(audience),
         }
@@ -203,6 +191,7 @@ impl FileScopes {
         ask: AppearancesAsk,
     ) -> Flow<()> {
         check_lane(overlays, ask.lane)?;
+        self.was_own &= own;
         let (lane, request) = (ask.lane, ask.request);
         self.appearances.ask(
             overlays,
@@ -225,6 +214,7 @@ impl FileScopes {
         ask: EventsAsk,
     ) -> Flow<()> {
         check_lane(overlays, ask.lane())?;
+        self.was_own &= own;
         self.events.ask(overlays, &self.cache, own, ask);
         Ok(())
     }
@@ -232,33 +222,41 @@ impl FileScopes {
     /// Takes a request, replacing the lane's older one. `own` says whether the viewer chooses its own frames. A lane
     /// the video does not have ends the session.
     pub(super) fn ask(&mut self, overlays: &ViewerOverlays, own: bool, ask: Ask) -> Flow<()> {
-        let lane = ask.lane;
-        self.drop_requests(overlays, lane)?;
-        let request = ask.request;
+        check_lane(overlays, ask.lane)?;
+        self.was_own &= own;
+        let (lane, request) = (ask.lane, ask.request);
         if ask.limit == 0 || ask.limit > MAX_LIMIT || ask.bins > MAX_BINS {
+            self.objects.release(lane);
             // Only a client that is wrong asks this, and the owner is told what it got wrong.
             if self.audience.host_details {
                 let reason = format!(
                     "A file query asks for 1 to {MAX_LIMIT} rows and 0 to {MAX_BINS} spans, not {} and {}",
                     ask.limit, ask.bins
                 );
-                self.ready.push_back(Reply::problem(lane, reason));
+                self.objects.say(Reply::problem(lane, reason));
             }
             return Ok(());
         }
-        match input(overlays, own, lane, self.audience) {
-            Ok(input) => {
-                self.cache.open(lane);
-                let job = Job { ask, input };
-                if self.running.contains_key(&lane) {
-                    self.waiting.insert(lane, job);
-                } else {
-                    self.start(job);
-                }
-            }
-            Err(why) => self.ready.push_back(Reply::unavailable(lane, request, why)),
-        }
+        self.objects.ask(
+            overlays,
+            &self.cache,
+            own,
+            (lane, request),
+            move |input, cache, cancel, audience| answer(&ask, input, cache, cancel, audience),
+        );
         Ok(())
+    }
+
+    /// Tells the queries whether the viewer has the authority over the whole file now, and `refused` whether an
+    /// answer was refused for want of it. A viewer that became the owner, or was refused as one, is answered again
+    /// for the questions it asked while it did not have it.
+    pub(super) fn authority(&mut self, overlays: &ViewerOverlays, own: bool, refused: bool) {
+        if own && (!self.was_own || refused) {
+            self.objects.ask_again(overlays, &self.cache);
+            self.appearances.ask_again(overlays, &self.cache);
+            self.events.ask_again(overlays, &self.cache);
+        }
+        self.was_own = own;
     }
 
     /// Releases only the detail job, independently of list subscriptions.
@@ -271,82 +269,21 @@ impl FileScopes {
     /// The lane's list and spans are no longer wanted: its running and waiting queries are dropped without an answer,
     /// and what was kept for it is freed. A lane the video does not have ends the session.
     pub(super) fn release(&mut self, overlays: &ViewerOverlays, lane: u16) -> Flow<()> {
-        self.drop_requests(overlays, lane)?;
+        check_lane(overlays, lane)?;
+        self.objects.release(lane);
         self.appearances.release(lane);
         self.events.release(lane);
         self.cache.release(lane);
         Ok(())
     }
 
-    /// Cancels the lane's running query, which is never answered, and forgets what waited or was ready for it.
-    fn drop_requests(&mut self, overlays: &ViewerOverlays, lane: u16) -> Flow<()> {
-        check_lane(overlays, lane)?;
-        if let Some(cancel) = self.running.get(&lane) {
-            cancel.cancel();
-        }
-        self.waiting.remove(&lane);
-        self.ready.retain(|reply| reply.lane != lane);
-        Ok(())
-    }
-
-    /// Runs `job` on a blocking thread; its lane has none running.
-    fn start(&mut self, job: Job) {
-        let Job { ask, input } = job;
-        let (lane, request) = (ask.lane, ask.request);
-        let cancel = CancelToken::new();
-        let (cache, audience, token) = (Arc::clone(&self.cache), self.audience, cancel.clone());
-        let task = self.tasks.spawn_blocking(move || {
-            match answer(&ask, &input, &cache, &token, audience) {
-                Ok(answer) => Some(Reply::file(lane, request, answer)),
-                Err(Stop::Cancelled) => None,
-                Err(Stop::Unavailable(why)) => Some(Reply::unavailable(lane, request, why)),
-            }
-        });
-        self.lanes.insert(task.id(), (lane, request));
-        self.running.insert(lane, cancel);
-    }
-
-    /// The task `id` ended: its lane is free, so the request that waited runs now. Gives the lane and request the
-    /// task answered when its answer still counts, which it does not once a newer request cancelled it.
-    fn ended(&mut self, id: Id) -> Option<(u16, u32)> {
-        let (lane, request) = self.lanes.remove(&id)?;
-        let current = self
-            .running
-            .remove(&lane)
-            .is_some_and(|cancel| !cancel.is_cancelled());
-        if let Some(job) = self.waiting.remove(&lane) {
-            self.start(job);
-        }
-        current.then_some((lane, request))
-    }
-
     /// The next answer; waits while there is none. A running query that a newer request replaced is not answered.
     pub(super) async fn next(&mut self) -> Reply {
-        loop {
-            if let Some(reply) = self.ready.pop_front() {
-                return reply;
-            }
-            // Only the sets are polled, so a dropped call loses nothing. `appearances` never ends, and a set with nothing
-            // running gives `None`, which no arm takes.
-            tokio::select! {
-                Some(joined) = self.tasks.join_next_with_id() => match joined {
-                    Ok((id, reply)) => {
-                        if self.ended(id).is_some()
-                            && let Some(reply) = reply
-                        {
-                            return reply;
-                        }
-                    }
-                    Err(error) => {
-                        tracing::warn!("A file query failed: {error}");
-                        if let Some((lane, request)) = self.ended(error.id()) {
-                            return Reply::crashed(lane, request, self.audience);
-                        }
-                    }
-                },
-                reply = self.appearances.next() => return reply,
-                reply = self.events.next() => return reply,
-            }
+        // Only the sets are polled, so a dropped call loses nothing; none of them ends.
+        tokio::select! {
+            reply = self.objects.next() => reply,
+            reply = self.appearances.next() => reply,
+            reply = self.events.next() => reply,
         }
     }
 }
@@ -360,14 +297,6 @@ fn check_lane(overlays: &ViewerOverlays, lane: u16) -> Flow<()> {
         )));
     }
     Ok(())
-}
-
-impl Drop for FileScopes {
-    fn drop(&mut self) {
-        for cancel in self.running.values() {
-            cancel.cancel();
-        }
-    }
 }
 
 /// The answer to the request, or why there is none. The lane's history and placement are reused while the lane's revisions

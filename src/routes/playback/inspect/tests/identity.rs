@@ -48,25 +48,6 @@ async fn a_cursor_cannot_cross_sockets_or_outlast_its_held_sample() {
     assert!(frames.is_some());
     let position = inspections.cursor.as_ref().unwrap().5.clone();
     assert!(position.lock().unwrap().scene.is_some());
-    let prepared = position.lock().unwrap().traversal.clone().unwrap();
-    // A delayed first reply may be retried after its worker finished, without another permutation allocation.
-    inspections.ask(&viewer, 0, 0, revision, 10, "2".into());
-    let (retry, _) = answer(&mut inspections).await;
-    let InspectionWire::Found {
-        continuation: Some(retried),
-        ..
-    } = verdict(retry)
-    else {
-        panic!("retried cursor");
-    };
-    assert_eq!(retried.token, read.token);
-    assert!(
-        Arc::ptr_eq(
-            &prepared,
-            position.lock().unwrap().traversal.as_ref().unwrap()
-        ),
-        "a retry must reuse the classification order"
-    );
     inspections.release();
     assert!(
         position.lock().unwrap().traversal.is_none(),

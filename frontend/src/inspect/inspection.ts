@@ -1,11 +1,5 @@
 import { readMessage, validChunk, type InspectionRead } from "./inspectionRead";
 import { utf8Bytes } from "./utf8";
-import {
-  afterInspection,
-  INSPECTION_RETRIES,
-  INSPECTION_RETRY_MS,
-  INSPECTION_WAIT_MS,
-} from "./requestTiming";
 /** Inspection state and ordering for a viewer. */
 
 import {
@@ -32,9 +26,6 @@ type Reply = Extract<ServerMessage, { type: "Inspected" }>;
 export class Inspections {
   readonly #changed: () => void;
   #serial = 0;
-  readonly #after: typeof afterInspection;
-  #cancelInitial: (() => void) | null = null;
-  #cancelWait: (() => void) | null = null;
   readonly #pins = new InspectionPins();
   #accessRevision = 0;
   #pageOffset = 0;
@@ -57,7 +48,6 @@ export class Inspections {
     key: string;
     columns: unknown;
     request: number;
-    retries: number;
     state: "pending" | "unavailable";
   } | null = null;
   #visible = true;
@@ -83,9 +73,7 @@ export class Inspections {
     send: (message: ClientMessage) => void,
     now: () => number = () => performance.now(),
     changed: () => void = () => {},
-    after: typeof afterInspection = afterInspection,
   ) {
-    this.#after = after;
     this.#changed = changed;
     this.#send = send;
     this.#now = now;
@@ -225,8 +213,6 @@ export class Inspections {
       this.#refuseInitial();
     } else {
       this.#initial = null;
-      this.#cancelInitial?.();
-      this.#cancelInitial = null;
       if (message.inspection.state === "Found" && message.inspection.continuation)
         this.#cap = { type: "InspectRelease", token: message.inspection.continuation.token };
       if (message.inspection.state === "Refused") this.#abandon();
@@ -271,8 +257,6 @@ export class Inspections {
   }
 
   #abandon(): void {
-    this.#cancelInitial?.();
-    this.#cancelInitial = null;
     if (this.#cap) this.#send(this.#cap);
     this.#cap = null;
     this.#cancelRead();
@@ -282,8 +266,6 @@ export class Inspections {
   }
 
   #cancelRead(): void {
-    this.#cancelWait?.();
-    this.#cancelWait = null;
     if (this.#pending?.field === "pins") this.#pins.restart();
     this.#serial++;
     if (this.#writingCopy) this.#writingCopy.value = "";
@@ -355,13 +337,6 @@ export class Inspections {
       this.#notify();
       return;
     }
-    this.#cancelWait?.();
-    const request = pending.request;
-    this.#cancelWait = this.#after(() => {
-      if (this.#pending?.request !== request) return;
-      this.#failRead("Details are not available");
-      this.#notify();
-    }, INSPECTION_WAIT_MS);
     this.#send(message);
   }
 
@@ -383,8 +358,6 @@ export class Inspections {
       !this.#visible
     )
       return false;
-    this.#cancelWait?.();
-    this.#cancelWait = null;
     const result = message.result;
     if (result.state === "Refused") {
       this.#failRead(result.reason);
@@ -456,40 +429,19 @@ export class Inspections {
       this.#cache.delete(this.#cache.keys().next().value as string);
   }
 
-  /** Only the response timer retries an existing initial request. */
-  #ask(frame: LaneFrame, entity: string, retry = false): void {
+  /** Asks once; the backend's one answer, or the release of the selection, ends the question. */
+  #ask(frame: LaneFrame, entity: string): void {
     const key = keyOf(frame.source, frame.dataRevision, frame.sample, entity);
     if (!this.#visible || this.#awaiting || this.#cache.has(key)) return;
     if (this.#initial && (this.#initial.key !== key || this.#initial.columns !== frame.columns))
       this.#abandon();
-    if (this.#initial) {
-      if (this.#initial.state === "unavailable" || !retry) return;
-      if (this.#initial.retries >= INSPECTION_RETRIES) {
-        this.#refuseInitial();
-        return;
-      }
-      this.#initial.retries++;
-    }
-    this.#initial ??= {
-      key,
-      columns: frame.columns,
-      request: ++this.#serial,
-      retries: 0,
-      state: "pending",
-    };
+    if (this.#initial) return;
+    this.#initial = { key, columns: frame.columns, request: ++this.#serial, state: "pending" };
     if (utf8Bytes(entity, MAX_INSPECTION_ENTITY_BYTES) > MAX_INSPECTION_ENTITY_BYTES) {
       this.#refuseInitial();
       return;
     }
     this.#cap = { type: "InspectRelease", request: this.#initial.request };
-    const request = this.#initial.request;
-    this.#cancelInitial?.();
-    this.#cancelInitial = this.#after(() => {
-      if (this.#initial?.request !== request) return;
-      this.#ask(frame, entity, true);
-      this.#update();
-      this.#changed();
-    }, INSPECTION_RETRY_MS);
     this.#send({
       type: "Inspect",
       request: this.#initial.request,

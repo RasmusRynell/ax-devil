@@ -92,32 +92,12 @@ describe("Frame scope", () => {
     search("score>0.5");
     expect(says("Loading…")).toBe(true);
     expect(screen.queryByText("No matching objects")).toBeNull();
-    act(() => {
-      vi.advanceTimersByTime(8000);
-    });
-    expect(says("Loading…")).toBe(false);
-    expect(says("Details are not available")).toBe(true);
     for (const query of ["", "class:car"]) {
       search(query);
       expect(says("Loading…")).toBe(false);
       search("score>0.5");
       expect(says("Loading…")).toBe(true);
-      act(() => {
-        vi.advanceTimersByTime(8000);
-      });
-      expect(says("Details are not available")).toBe(true);
     }
-  }, 5000);
-
-  it("asks again for the leaves of the sample on screen when the panel is opened again", () => {
-    const { hold } = mount();
-    hold(true);
-    search("score>0.7");
-    expect(says("Loading…")).toBe(true);
-    hold(false);
-    fireEvent.click(screen.getByRole("button", { name: "Close media tools" }));
-    fireEvent.click(screen.getByRole("button", { name: "Open media tools" }));
-    expect(ids()).toEqual(["12", "7"]);
   });
 
   it("does not call a search done when the next sample's leaves are awaited", () => {

@@ -2,7 +2,7 @@
 //! and their wire forms. A policy that cannot be applied, and a lane's problems, are told only to an audience with
 //! host details; the lane keeps its last matching, adopts the new revision and the session goes on.
 
-use super::{End, Flow, Outgoing, stream::Setup, text};
+use super::{End, Flow, Outgoing, setup::Setup, text};
 use api_types::{
     Audience,
     playback::{
@@ -190,12 +190,16 @@ impl Lanes {
                 message: Message::Binary(envelope::sample(&sample)),
                 frames: Some(sample.frame..=sample.frame),
                 data: Some(OverlayEvent::Sample(sample)),
+                refusal: None,
+                whole_file: false,
             }),
             LaneEvent::Overlay(OverlayEvent::Map(run)) => Some(Outgoing {
                 inspection: None,
                 message: Message::Binary(envelope::frame_map(&run)),
                 frames: Some(run.frames()),
                 data: Some(OverlayEvent::Map(run)),
+                refusal: None,
+                whole_file: false,
             }),
             // Control messages are never gated: they name nothing the authority did not allow when it was chosen.
             LaneEvent::Overlay(OverlayEvent::Window { first, last }) => {

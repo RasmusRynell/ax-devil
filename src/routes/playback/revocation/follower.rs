@@ -1,9 +1,13 @@
 //! A viewer made a follower of a presenter: what it is sent is judged against the presenter's window, and it ends once
 //! revoked.
 
+use super::setup::Setup;
 use super::*;
 use crate::video_sources::VideoSources;
-use api_types::playback::{Direction, LanePolicyWire, StickyWire, Want as WireWant};
+use api_types::playback::{
+    Direction, FileAnswer, FileScopeUnavailable, LanePolicyWire, LaneStatusWire, StickyWire,
+    Want as WireWant,
+};
 use foundation::FrameSize;
 use overlays::OverlayService;
 use playback::{CachePool, Registry};
@@ -44,35 +48,94 @@ fn entry_with_a_lane(folder: &Path) -> Entry {
     }
 }
 
-#[tokio::test]
-async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_window_and_ends_once_revoked()
- {
-    let folder = tempfile::tempdir().unwrap();
-    let videos = Arc::new(VideoSources::new(
-        Registry::new(CachePool::new(256 << 20)),
-        &folder.path().join("cache"),
-    ));
-    let entry = entry_with_a_lane(folder.path());
-    let opened = videos
-        .open(&entry.video, &CancelToken::new(), &mut |_| {})
-        .unwrap_or_else(|_| panic!("the video opens"));
-    let mut session = opened.session;
-    let handlers = handlers::Handlers::built_in();
-    let service = OverlayService::new(scene_store::TrackRegistry::new(
-        handlers.decoder_lookup(),
-        None,
-    ));
-    let library = ::catalogs::Library::built_in();
-    let content = workspace::Content::SeekableVideo(workspace::SeekableVideoContent {
-        item_id: foundation::ItemId::generate(),
-        entry: entry.clone(),
-    });
-    let settings = ::settings::Settings::load(&folder.path().join("settings.json")).unwrap();
-    let (holder, authority) = watch::channel(Authority::default());
-    let gate = Gate::new(authority, || 0);
-    let (_stop, mut closing) = watch::channel(false);
-    let overlay_service = Arc::new(service.clone());
-    let preparer = crate::prepare::Preparer::new(videos.clone(), overlay_service, closing.clone());
+/// What a stream over `entry_with_a_lane` stands on, kept alive for the `Setup` it borrows.
+struct Rig {
+    _folder: tempfile::TempDir,
+    entry: Entry,
+    matching: BTreeMap<String, scene::matching::MatchPolicy>,
+    videos: Arc<VideoSources>,
+    service: OverlayService,
+    library: ::catalogs::Library,
+    content: workspace::Content,
+    settings: ::settings::Settings,
+    preparer: crate::prepare::Preparer,
+    exports: Arc<crate::exports::ExportService>,
+}
+
+impl Rig {
+    /// The rig and the Session of its video.
+    fn new(closing: watch::Receiver<bool>) -> (Self, playback::Session) {
+        let folder = tempfile::tempdir().unwrap();
+        let videos = Arc::new(VideoSources::new(
+            Registry::new(CachePool::new(256 << 20)),
+            &folder.path().join("cache"),
+        ));
+        let entry = entry_with_a_lane(folder.path());
+        let session = videos
+            .open(&entry.video, &CancelToken::new(), &mut |_| {})
+            .unwrap_or_else(|_| panic!("the video opens"))
+            .session;
+        let service = OverlayService::new(scene_store::TrackRegistry::new(
+            handlers::Handlers::built_in().decoder_lookup(),
+            None,
+        ));
+        let content = workspace::Content::SeekableVideo(workspace::SeekableVideoContent {
+            item_id: foundation::ItemId::generate(),
+            entry: entry.clone(),
+        });
+        let settings = ::settings::Settings::load(&folder.path().join("settings.json")).unwrap();
+        let preparer =
+            crate::prepare::Preparer::new(videos.clone(), Arc::new(service.clone()), closing);
+        let rig = Self {
+            _folder: folder,
+            entry,
+            matching: BTreeMap::new(),
+            videos,
+            service,
+            library: ::catalogs::Library::built_in(),
+            content,
+            settings,
+            preparer,
+            exports: Arc::new(crate::exports::ExportService::electron()),
+        };
+        (rig, session)
+    }
+
+    /// The stream's setup for a host viewer that opened on `start_frame`.
+    fn setup(&self, start_frame: u64) -> Setup<'_> {
+        Setup {
+            entry: &self.entry,
+            matching: &self.matching,
+            start_frame: Some(start_frame),
+            data_bytes: SAMPLE_BUDGET,
+            audience: Audience::HOST,
+            session: sessions::SessionId::generate(),
+            size: FrameSize {
+                width: 64,
+                height: 48,
+            },
+            wire: super::wire::Wire::Raw,
+            warnings: Vec::new(),
+            pts: None,
+            cadence: None,
+            frame_rate: None,
+            library: &self.library,
+            overlays: &self.service,
+            exports: &self.exports,
+            videos: &self.videos,
+            content: &self.content,
+            preparer: &self.preparer,
+            settings: &self.settings,
+        }
+    }
+}
+
+/// A socket that takes each message only when a permit lets it through, and what it took.
+fn socket() -> (
+    impl Sink<Message, Error = ()> + Unpin + Send + 'static,
+    Arc<Mutex<Vec<Message>>>,
+    Arc<Semaphore>,
+) {
     let delivered = Arc::new(Mutex::new(Vec::<Message>::new()));
     let permits = Arc::new(Semaphore::new(0));
     let socket = Box::pin(sink::unfold((), {
@@ -86,35 +149,23 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
             }
         }
     }));
+    (socket, delivered, permits)
+}
+
+#[tokio::test]
+async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_window_and_ends_once_revoked()
+ {
+    let (holder, authority) = watch::channel(Authority::default());
+    let gate = Gate::new(authority, || 0);
+    let (_stop, mut closing) = watch::channel(false);
+    let (rig, mut session) = Rig::new(closing.clone());
+    let (socket, delivered, permits) = socket();
     let (outbox, writer) = spawn_writer(socket, gate.clone());
     let (asks, asked) = mpsc::channel::<Message>(1);
     let mut viewer = Box::pin(streams::unfold(asked, |mut asked| async {
         asked.recv().await.map(|message| (Ok(message), asked))
     }));
-    let setup = stream::Setup {
-        entry: &entry,
-        matching: &BTreeMap::new(),
-        start_frame: Some(60),
-        data_bytes: SAMPLE_BUDGET,
-        audience: Audience::HOST,
-        session: sessions::SessionId::generate(),
-        size: FrameSize {
-            width: 64,
-            height: 48,
-        },
-        wire: super::wire::Wire::Raw,
-        warnings: Vec::new(),
-        pts: None,
-        cadence: None,
-        frame_rate: None,
-        library: &library,
-        overlays: &service,
-        exports: &Arc::new(crate::exports::ExportService::electron()),
-        videos: &videos,
-        content: &content,
-        preparer: &preparer,
-        settings: &settings,
-    };
+    let setup = rig.setup(60);
     // An exploring viewer asks for the whole video around frame 60, once.
     let everything = serde_json::to_string(&ClientMessage::Want(WireWant {
         playhead: 60,
@@ -290,5 +341,129 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
     assert!(
         held.iter().all(|sample| (6..=14).contains(sample)),
         "the viewer still holds {held:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_question_a_follower_asked_is_answered_under_its_request_once_the_viewer_owns() {
+    let (holder, authority) = watch::channel(paused_on(10));
+    let gate = Gate::new(authority, || 0);
+    let (_stop, mut closing) = watch::channel(false);
+    let (rig, mut session) = Rig::new(closing.clone());
+    let (socket, delivered, permits) = socket();
+    permits.add_permits(1 << 20);
+    let (outbox, writer) = spawn_writer(socket, gate.clone());
+    let (asks, asked) = mpsc::channel::<Message>(1);
+    let mut viewer = Box::pin(streams::unfold(asked, |mut asked| async {
+        asked.recv().await.map(|message| (Ok(message), asked))
+    }));
+    let subscribe = ClientMessage::LanePolicy {
+        lane: 0,
+        revision: 1,
+        policy: LanePolicyWire {
+            basis: None,
+            tolerance_ms: None,
+            sticky: StickyWire {
+                enabled: false,
+                timeout_ms: None,
+            },
+        },
+        subscribed: true,
+    };
+    let question = ClientMessage::FileQuery {
+        lane: 0,
+        request: 7,
+        query: scene_store::Search { groups: Vec::new() },
+        classes: vec![u32::MAX],
+        sort: scene_store::Sort {
+            key: scene_store::SortKey::Id,
+            descending: false,
+        },
+        offset: 0,
+        limit: 10,
+        bins: 0,
+        locate: None,
+    };
+    let told = || -> Vec<ServerMessage> {
+        let text = |message: &Message| match message {
+            Message::Text(body) => serde_json::from_str(body).ok(),
+            _ => None,
+        };
+        delivered.lock().unwrap().iter().filter_map(text).collect()
+    };
+    let files = || {
+        told()
+            .into_iter()
+            .filter_map(|message| match message {
+                ServerMessage::File {
+                    request, answer, ..
+                } => Some((request, answer)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let streaming = stream::stream(
+        &mut session,
+        rig.setup(10),
+        &mut viewer,
+        &outbox,
+        &mut closing,
+        gate,
+    );
+    let watching = async {
+        let send = |message: &ClientMessage| {
+            asks.send(Message::text(serde_json::to_string(message).unwrap()))
+        };
+        send(&subscribe).await.unwrap();
+        // The file is ready once its lane says so with the alignment of a file that was read to its end.
+        while !told().iter().any(|message| {
+            matches!(
+                message,
+                ServerMessage::LaneStatus {
+                    status: LaneStatusWire::Ready {
+                        alignment: Some(_),
+                        ..
+                    },
+                    ..
+                }
+            )
+        }) {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        // The question reaches the backend before the viewer's intent does: it is a follower, and told so.
+        send(&question).await.unwrap();
+        while files().is_empty() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        // The intent arrives, and the same question is answered without being asked again.
+        holder.send_replace(Authority::default());
+        while files().len() < 2 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        drop(asks);
+    };
+    let (ended, ()) = tokio::time::timeout(WAIT, async { tokio::join!(streaming, watching) })
+        .await
+        .expect("the question is answered again");
+    assert!(matches!(ended, Err(End::Closed)));
+    drop(outbox);
+    tokio::time::timeout(WAIT, writer).await.unwrap().unwrap();
+
+    let files = files();
+    assert!(
+        matches!(
+            &files[..],
+            [
+                (
+                    7,
+                    FileAnswer::Unavailable {
+                        unavailable: FileScopeUnavailable::Following
+                    }
+                ),
+                (7, FileAnswer::Found { .. })
+            ]
+        ),
+        "the follower was told it follows, then the owner was answered under the same request: {files:?}"
     );
 }

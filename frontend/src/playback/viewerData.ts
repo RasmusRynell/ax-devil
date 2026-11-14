@@ -73,8 +73,8 @@ export class ViewerData {
     this.files = new FileScope(lanes, send, after);
     this.catalogs = new Catalogs((id) => send({ type: "Catalog", id }));
     this.#laneCatalogs = new LaneCatalogs(this.catalogs, () => this.#fallback);
-    this.inspections = new Inspections(send, undefined, changed, after);
-    this.fields = new FrameFields(send, after);
+    this.inspections = new Inspections(send, undefined, changed);
+    this.fields = new FrameFields(send);
     this.next = new NextEntry(send);
   }
 

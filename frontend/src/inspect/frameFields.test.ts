@@ -1,13 +1,8 @@
 // @vitest-environment node
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import type { LaneFrame } from "../lanes/contract";
 import { FrameFields } from "./frameFields";
 import type { ClientMessage, ServerMessage } from "../stream/protocol";
-
-const after = (run: () => void, ms: number) => {
-  const timer = setTimeout(run, ms);
-  return () => clearTimeout(timer);
-};
 
 const columns = {};
 const frame = (sample: number, sampleColumns: unknown = columns) =>
@@ -39,7 +34,7 @@ const answer = (
 describe("the leaves of a frame's objects", () => {
   it("are asked once per sample and read for exactly that sample, with integers exact", () => {
     const sent: ClientMessage[] = [];
-    const fields = new FrameFields((message) => sent.push(message), after);
+    const fields = new FrameFields((message) => sent.push(message));
     const paths = ["id"];
 
     fields.ask(frame(1), paths);
@@ -75,7 +70,7 @@ describe("the leaves of a frame's objects", () => {
 
   it("settle a refusal without loading, and recover when permission returns or the sample is held anew", () => {
     const sent: ClientMessage[] = [];
-    const fields = new FrameFields((message) => sent.push(message), after);
+    const fields = new FrameFields((message) => sent.push(message));
     const held = {};
 
     fields.ask(frame(1, held), ["id"]);
@@ -96,32 +91,11 @@ describe("the leaves of a frame's objects", () => {
     expect(fields.view(frame(1), ["id"], true).state).toBe("ready");
   });
 
-  it("are asked afresh when a list reopens, ignoring a held refusal from its previous request", async () => {
+  it("ignore the answer of a request that was replaced", () => {
     const sent: ClientMessage[] = [];
-    const fields = new FrameFields((message) => sent.push(message), after);
+    const fields = new FrameFields((message) => sent.push(message));
     const held = frame(1);
 
-    const close = fields.subscribe(() => {});
-    fields.ask(held, ["id"]);
-    fields.ask(held, ["id"]);
-    expect(sent).toHaveLength(1);
-    let release!: () => void;
-    const heldReply = answer(sent, 1, null);
-    const waiting = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const late = waiting.then(() => fields.receive(heldReply));
-    close();
-
-    // The list opens again on the same sample, and nothing else asks.
-    fields.subscribe(() => {});
-    fields.ask(held, ["id"]);
-    expect(sent).toHaveLength(2);
-    release();
-    await late;
-    expect(fields.view(held, ["id"]).state).toBe("pending");
-    fields.receive(answer(sent, 1, []));
-    expect(fields.view(held, ["id"]).state).toBe("ready");
     for (const absent of [false, true]) {
       fields.reconnect();
       fields.ask(held, ["debug.foo"]);
@@ -137,67 +111,31 @@ describe("the leaves of a frame's objects", () => {
       expect(fields.view(held, ["debug.foo"]).state).toBe("ready");
     }
     fields.disconnect();
-  }, 5000);
+  });
 
-  it("are sent again while a list listens and the answer is dropped, a few times, and not once answered", () => {
-    vi.useFakeTimers();
+  it("are refused beyond the bounds of a request, and abandoned with the connection", () => {
     const sent: ClientMessage[] = [];
-    const fields = new FrameFields((message) => sent.push(message), after);
+    const fields = new FrameFields((message) => sent.push(message));
     const held = frame(1);
 
-    // Mounted, one sample, nothing else asks: the gate dropped the answer.
-    const close = fields.subscribe(() => {});
     fields.ask(held, ["id"]);
-    vi.advanceTimersByTime(2000);
-    expect(sent).toHaveLength(2);
-    expect(sent[1]).toEqual(sent[0]);
-    vi.advanceTimersByTime(60_000);
-    expect(sent).toHaveLength(4);
-    expect(fields.view(held, ["id"]).state).toBe("unavailable");
-    fields.ask(held, ["id"]);
-    fields.receive(answer(sent, 1, []));
-    expect(sent).toHaveLength(4);
-    expect(fields.view(held, ["id"]).state).toBe("unavailable");
-
-    fields.ask(frame(2), ["id"]);
-    fields.receive(answer(sent, 2, []));
-    vi.advanceTimersByTime(60_000);
-    expect(sent).toHaveLength(5);
-
-    // Wanting a sample already answered drops the request out for another, which is not sent again.
-    fields.ask(frame(3), ["id"]);
-    fields.ask(frame(2), ["id"]);
-    vi.advanceTimersByTime(60_000);
-    expect(sent).toHaveLength(6);
-
-    // A list that stops listening stops the asking.
-    fields.ask(frame(4), ["id"]);
-    close();
-    vi.advanceTimersByTime(60_000);
-    expect(sent).toHaveLength(7);
-    const count = sent.length;
     fields.disconnect();
-    expect(fields.view(frame(4), ["id"]).state).toBe("unavailable");
-    vi.advanceTimersByTime(60_000);
-    expect(sent).toHaveLength(count);
+    expect(fields.view(held, ["id"]).state).toBe("unavailable");
     fields.reconnect();
     fields.ask(held, ["id"]);
-    expect(sent).toHaveLength(count + 1);
+    expect(sent).toHaveLength(2);
     for (const paths of [
       ["界".repeat(1024)],
       Array(65).fill("id") as string[],
       Array(64).fill("x".repeat(1024)) as string[],
     ]) {
-      const before = sent.length;
       fields.ask(held, paths);
       expect(fields.view(held, paths).state).toBe("unavailable");
-      expect(sent).toHaveLength(before);
+      expect(sent).toHaveLength(2);
     }
     fields.ask(held, ["id"]);
-    expect(sent).toHaveLength(count + 2);
+    expect(sent).toHaveLength(3);
     fields.receive(answer(sent, 1, []));
     expect(fields.view(held, ["id"]).state).toBe("ready");
-    fields.disconnect();
-    vi.useRealTimers();
   });
 });
