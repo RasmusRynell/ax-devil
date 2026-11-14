@@ -266,13 +266,6 @@ impl From<NewLiveWire> for intake::NewLive {
     }
 }
 
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<WireSecret>();
-    types.visit::<NewLiveOverlayWire>();
-    types.visit::<NewLiveWire>();
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

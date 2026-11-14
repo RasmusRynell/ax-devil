@@ -38,11 +38,6 @@ pub use hidden::HiddenRef;
 pub use resolving::{Reload, ResolveJob, complete, resolve};
 pub use rows::{Row, RowKind, RowStatus, rows};
 
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    rows::visit_api_types(types);
-}
-
 /// Names one commit of an item's Content. Later commits have larger values, across all items of a state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ContentGen(pub u64);

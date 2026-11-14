@@ -199,11 +199,6 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
 /// Between an entry id and a lane label in a lane row's key; no file name holds it, so keys never collide.
 const KEY_SEPARATOR: char = '\u{1f}';
 
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<RowKind>();
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

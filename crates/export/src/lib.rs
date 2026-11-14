@@ -76,8 +76,3 @@ impl From<Cancelled> for ExportError {
 pub(crate) fn fail(reason: impl Into<String>) -> UserError {
     UserError::new(ErrorCode::Internal, reason)
 }
-
-/// Visits every type this crate sends to the frontend, for `export-types`.
-pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    render::visit_api_types(types);
-}

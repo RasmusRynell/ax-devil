@@ -67,13 +67,6 @@ const _: () = {
     assert!(!std::mem::needs_drop::<FindEventWire>());
 };
 
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<EventQueryWire>();
-    types.visit::<EventAskWire>();
-    types.visit::<FindEventWire>();
-}
-
 #[cfg(test)]
 mod tests {
     use crate::playback::ClientMessage;

@@ -169,12 +169,5 @@ const fn place(group: FieldGroup) -> Place {
     }
 }
 
-/// Visits the types this module sends to the frontend, and its modules' types.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<FieldGroup>();
-    types.visit::<FieldOrigin>();
-    leaf::visit_api_types(types);
-}
-
 #[cfg(test)]
 mod tests;

@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 
 /// The version of the TypeScript the frontend is built from under `generated`: every file in `types/` in name order,
-/// then `api.ts` and `settings.ts`. Line endings do not matter, so a checkout's conversion changes nothing.
+/// then `api.ts`, `settings.ts` and `routes.ts`. Line endings do not matter, so a checkout's conversion changes nothing.
 pub fn contract_version(generated: &Path) -> std::io::Result<String> {
     let mut stems = Vec::new();
     for entry in std::fs::read_dir(generated.join("types"))? {
@@ -27,6 +27,7 @@ pub fn contract_version(generated: &Path) -> std::io::Result<String> {
         .chain([
             ("api", "api.ts".to_owned()),
             ("settings", "settings.ts".to_owned()),
+            ("routes", "routes.ts".to_owned()),
         ])
     {
         let text = std::fs::read_to_string(generated.join(file))?.replace("\r\n", "\n");

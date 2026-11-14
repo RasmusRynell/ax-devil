@@ -225,21 +225,3 @@ pub struct LiveGapWire {
     #[ts(type = "number")]
     pub time_us: i64,
 }
-
-/// Visits the types this module sends to the frontend, and its modules' types.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<LiveOverlayKind>();
-    types.visit::<LiveReason>();
-    types.visit::<LiveFeedStatus>();
-    types.visit::<LiveAction>();
-    types.visit::<LiveOpenedWire>();
-    types.visit::<LiveStatusWire>();
-    types.visit::<LiveEventWire>();
-    types.visit::<LiveSampleEventsWire>();
-    types.visit::<LiveEventsWire>();
-    types.visit::<LiveGapWire>();
-    discovery::visit_api_types(types);
-    glance::visit_api_types(types);
-    kept::visit_api_types(types);
-    new_live::visit_api_types(types);
-}

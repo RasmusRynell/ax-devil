@@ -1,6 +1,5 @@
-//! The registry of exported types, the checks that it is complete, and the per-module TypeScript files.
+//! The registry of exported types, the check that no two share a name, and the per-module TypeScript files.
 
-use crate::scan::Found;
 use std::any::TypeId;
 use std::collections::{BTreeMap, BTreeSet};
 use ts_rs::{TS, TypeVisitor};
@@ -24,7 +23,7 @@ struct Registered {
     dependencies: Vec<(TypeId, String)>,
 }
 
-/// Every type the crates' `visit_api_types` functions visited, under the module that defines it.
+/// Every type reached from the roots, under the module that defines it.
 #[derive(Default)]
 pub struct Registry {
     types: Vec<Registered>,
@@ -34,7 +33,7 @@ pub struct Registry {
 impl TypeVisitor for Registry {
     fn visit<T: TS + 'static + ?Sized>(&mut self) {
         let id = TypeId::of::<T>();
-        if self.types.iter().any(|registered| registered.id == id) {
+        if T::output_path().is_none() || self.types.iter().any(|registered| registered.id == id) {
             return;
         }
         let full = std::any::type_name::<T>();
@@ -57,59 +56,15 @@ impl TypeVisitor for Registry {
                 .problems
                 .push(format!("{full} cannot be exported: {error}")),
         }
+        T::visit_dependencies(self);
     }
 }
 
-const HOW_TO_ADD: &str = "add types.visit::<T>() to visit_api_types in its module and make sure its crate's visit_api_types reaches it.";
-
 impl Registry {
-    /// Everything wrong with the registry: types that derive `TS` but are not registered, dependencies that are
-    /// not registered, and TypeScript names that two types or constants share.
-    pub fn problems(&self, found: &[Found], constants: &[Constant]) -> Vec<String> {
+    /// Everything wrong with the registry: types that cannot be exported and TypeScript names that two types or
+    /// constants share.
+    pub fn problems(&self, constants: &[Constant]) -> Vec<String> {
         let mut problems = self.problems.clone();
-        let registered: BTreeSet<(&str, &str)> = self
-            .types
-            .iter()
-            .map(|t| (t.module.as_str(), t.rust.as_str()))
-            .collect();
-        for Found {
-            file,
-            module,
-            name,
-            conditional,
-        } in found
-        {
-            if !registered.contains(&(module.as_str(), name.as_str())) {
-                let crate_name = module.split("::").next().unwrap_or_default();
-                let elsewhere = self
-                    .types
-                    .iter()
-                    .find(|t| t.rust == *name && t.module.split("::").next() == Some(crate_name));
-                problems.push(format!(
-                    "{file}: {name} derives TS but is not exported; add types.visit::<{name}>() to visit_api_types in that file and make sure its crate's visit_api_types reaches it.{}{}",
-                    if *conditional {
-                        " Its derive is conditional; the exporter must be built with that condition on, or derive TS unconditionally."
-                    } else {
-                        ""
-                    },
-                    elsewhere.map_or(String::new(), |t| format!(
-                        " A type named {name} is registered as {}::{name}; the scan takes the module from the file path, so a file outside the module tree is not supported.",
-                        t.module
-                    ))
-                ));
-            }
-        }
-        let ids: BTreeMap<TypeId, &Registered> = self.types.iter().map(|t| (t.id, t)).collect();
-        for t in &self.types {
-            for (id, name) in &t.dependencies {
-                if !ids.contains_key(id) {
-                    problems.push(format!(
-                        "{name} (used by {}) is not exported; {HOW_TO_ADD}",
-                        t.ts
-                    ));
-                }
-            }
-        }
         let mut names: BTreeMap<&str, Vec<String>> = BTreeMap::new();
         for t in &self.types {
             names

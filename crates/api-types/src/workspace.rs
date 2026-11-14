@@ -261,6 +261,14 @@ pub struct FileCheck {
     pub problem: Option<String>,
 }
 
+/// The query of `GET /api/files/folder` and `GET /api/files/exists`.
+#[derive(Deserialize, TS)]
+pub struct PathQuery {
+    /// An absolute path; the starting places only when absent.
+    #[ts(optional)]
+    pub path: Option<String>,
+}
+
 /// What `GET /api/files/folder` answers: one folder on the backend's machine, and where a listing can start.
 #[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
 pub struct FolderListing {
@@ -313,28 +321,4 @@ pub struct HiddenTarget {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub lane: Option<String>,
-}
-
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<WorkspaceState>();
-    types.visit::<RecentWorkspace>();
-    types.visit::<SourceChangesInfo>();
-    types.visit::<RowInfo>();
-    types.visit::<RowStatusInfo>();
-    types.visit::<ItemState>();
-    types.visit::<LiveShown>();
-    types.visit::<ReloadFailure>();
-    types.visit::<ItemRecipe>();
-    types.visit::<ItemKind>();
-    types.visit::<ResolutionState>();
-    types.visit::<NewItem>();
-    types.visit::<NewOverlayWire>();
-    types.visit::<CheckFilesRequest>();
-    types.visit::<FileCheck>();
-    types.visit::<FolderListing>();
-    types.visit::<PathExists>();
-    types.visit::<FolderEntry>();
-    types.visit::<FolderPlace>();
-    types.visit::<HiddenTarget>();
 }

@@ -202,23 +202,3 @@ pub struct NetworkSnapshot {
     /// it should or was stopped. Free text for whoever may watch scans.
     pub failure: Option<String>,
 }
-
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<NetworkIdentity>();
-    types.visit::<NetworkSignIn>();
-    types.visit::<NetworkRow>();
-    types.visit::<LiveResolution>();
-    types.visit::<LiveHeadResolutions>();
-    types.visit::<LiveResolutions>();
-    types.visit::<LiveSources>();
-    types.visit::<LiveConnection>();
-    types.visit::<ResolutionsRequest>();
-    types.visit::<SourcesOverlay>();
-    types.visit::<SourcesRequest>();
-    types.visit::<LiveTopics>();
-    types.visit::<SourcesAnswer>();
-    types.visit::<ScanRequestWire>();
-    types.visit::<ScanStarted>();
-    types.visit::<NetworkSnapshot>();
-}

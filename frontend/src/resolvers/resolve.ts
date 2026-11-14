@@ -10,8 +10,5 @@ export function resolvePlaylists(
   signal?: AbortSignal,
 ): Promise<Answer<ResolvedInfo>> {
   const request: ResolveRequest = { session, settings };
-  return ask<ResolvedInfo>(`/api/resolvers/${encodeURIComponent(resolver)}/resolve`, {
-    json: request,
-    signal,
-  });
+  return ask("POST /api/resolvers/{id}/resolve", { params: { id: resolver }, request, signal });
 }

@@ -5,25 +5,17 @@
 
 use super::handlers::refuse;
 use crate::Failure;
-use api_types::workspace::{FolderEntry, FolderListing, FolderPlace, PathExists};
+use api_types::workspace::{FolderEntry, FolderListing, FolderPlace, PathExists, PathQuery};
 use axum::{Json, extract::Query, http::StatusCode};
 use foundation::{ErrorCode, UserError};
-use serde::Deserialize;
 use std::{
     fs, io,
     path::{Path, PathBuf},
 };
 
-/// The folder to list.
-#[derive(Deserialize)]
-pub(super) struct Params {
-    /// An absolute path; the starting places only when absent.
-    path: Option<String>,
-}
-
 /// The folder asked for, or only the places to start from when none was. The host's folder is read on a blocking
 /// thread.
-pub(super) async fn list(Query(params): Query<Params>) -> Result<Json<FolderListing>, Failure> {
+pub(super) async fn list(Query(params): Query<PathQuery>) -> Result<Json<FolderListing>, Failure> {
     tokio::task::spawn_blocking(move || listing(params.path.as_deref()))
         .await
         .map_err(|error| {
@@ -37,7 +29,7 @@ pub(super) async fn list(Query(params): Query<Params>) -> Result<Json<FolderList
 
 /// Whether anything is at the absolute path asked, as the filesystem names it: hidden entries count, and on a
 /// case-insensitive filesystem so does another spelling. A link that leads nowhere is still there.
-pub(super) async fn exists(Query(params): Query<Params>) -> Result<Json<PathExists>, Failure> {
+pub(super) async fn exists(Query(params): Query<PathQuery>) -> Result<Json<PathExists>, Failure> {
     let path = PathBuf::from(params.path.unwrap_or_default());
     if !path.is_absolute() {
         return Err(refuse(

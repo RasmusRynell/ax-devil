@@ -249,12 +249,6 @@ pub struct LiveVideoContent {
     pub slot: String,
 }
 
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<Protocol>();
-    types.visit::<RtspRoute>();
-}
-
 fn invalid(field: &str, reason: impl Into<String>) -> UserError {
     UserError::new(ErrorCode::WorkspaceInvalid, reason).at(Location::field(field))
 }

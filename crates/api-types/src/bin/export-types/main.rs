@@ -1,17 +1,18 @@
 //! Writes the Rust API types and the playback constants to one file per Rust module under
 //! frontend/src/generated/types/ (re-exported by frontend/src/generated/api.ts), the settings and command
-//! tables to frontend/src/generated/settings.ts, the shell version and the reserved shortcuts to
-//! desktop/generated/api.json, and the API version (a hash of the TypeScript files, so it is not committed) to the
+//! tables to frontend/src/generated/settings.ts, the JSON route table to frontend/src/generated/routes.ts, the shell
+//! version and the reserved shortcuts to desktop/generated/api.json, and the API version (a hash of the TypeScript files, so it is not committed) to the
 //! untracked desktop/generated/api-version.json, only when they changed.
 
 #[path = "../../../contract_version.rs"]
 mod contract_version;
 mod modules;
-mod scan;
+mod routes;
 
 use contract_version::contract_version;
 use modules::{Constant, Registry, entry};
 use std::collections::BTreeSet;
+use ts_rs::TypeVisitor;
 
 /// The problems found, shown as plain text rather than a quoted string.
 struct Failed(String);
@@ -32,27 +33,33 @@ impl std::error::Error for Failed {}
 
 const TYPES_FOLDER: &str = "frontend/src/generated/types";
 
-/// The entry file, the settings tables and the desktop JSON, in the order they are written.
-const FIXED_OUTPUTS: [&str; 4] = [
+/// The entry file, the settings tables, the desktop JSON and the route table, in the order they are written (the route table last).
+const FIXED_OUTPUTS: [&str; 5] = [
     "frontend/src/generated/api.ts",
     "frontend/src/generated/settings.ts",
     "desktop/generated/api.json",
     "desktop/generated/api-version.json",
+    "frontend/src/generated/routes.ts",
 ];
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut registry = Registry::default();
-    api_types::visit_api_types(&mut registry);
-    export::visit_api_types(&mut registry);
-    foundation::visit_api_types(&mut registry);
-    playback::visit_api_types(&mut registry);
-    scene::visit_api_types(&mut registry);
-    scene_store::visit_api_types(&mut registry);
-    sessions::visit_api_types(&mut registry);
-    workspace::visit_api_types(&mut registry);
+    // The roots: ts-rs follows each one's fields, so a type a root reaches needs no entry here.
+    registry.visit::<api_types::playback::ClientMessage>();
+    registry.visit::<api_types::playback::ServerMessage>();
+    registry.visit::<api_types::SessionClientMessage>();
+    registry.visit::<api_types::SessionServerMessage>();
+    registry.visit::<api_types::render::PageMessage>();
+    registry.visit::<api_types::render::HostMessage>();
+    api_types::endpoints::visit_types(&mut registry);
+    // Named only inside `#[ts(type = "...")]` strings on the settings types, which the walk cannot see.
+    registry.visit::<api_types::SecretState>();
+    registry.visit::<api_types::LoginEdit>();
+    registry.visit::<api_types::LoginView>();
+    // Not reached from a root, but the frontend imports it.
+    registry.visit::<api_types::live::NetworkSnapshot>();
     let constants = constants();
-    let found = scan::scan(std::path::Path::new(&repo_path("crates"))).map_err(Failed)?;
-    let problems = registry.problems(&found, &constants);
+    let problems = registry.problems(&constants);
     if !problems.is_empty() {
         return Err(Failed(problems.join("\n")).into());
     }
@@ -70,6 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     write_if_changed(FIXED_OUTPUTS[0], &entry)?;
     write_if_changed(FIXED_OUTPUTS[1], &settings)?;
+    write_if_changed(FIXED_OUTPUTS[4], &routes::module())?;
     prune(&files.keys().map(|stem| format!("{stem}.ts")).collect())?;
     // The desktop shell and the development supervisor are CommonJS and read these from JSON. The version is
     // hashed from the files just written, as the backend hashes them when it is built; it has its own file so the

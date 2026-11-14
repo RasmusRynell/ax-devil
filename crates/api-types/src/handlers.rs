@@ -269,27 +269,3 @@ pub struct ChoiceInfo {
     /// A second line about the value; may be empty.
     pub detail: String,
 }
-
-/// Visits the types this module sends to the frontend.
-pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
-    types.visit::<HandlersInfo>();
-    types.visit::<DecoderInfo>();
-    types.visit::<PluginsInfo>();
-    types.visit::<InstallRequest>();
-    types.visit::<RemoveRequest>();
-    types.visit::<UpdateRequest>();
-    types.visit::<PluginInfo>();
-    types.visit::<PluginSource>();
-    types.visit::<PluginStatus>();
-    types.visit::<HandlerSummary>();
-    types.visit::<SkippedHandlerInfo>();
-    types.visit::<HandlerKind>();
-    types.visit::<ResolverInfo>();
-    types.visit::<FieldInfo>();
-    types.visit::<FieldKindWire>();
-    types.visit::<ScanCountInfo>();
-    types.visit::<ScanRequest>();
-    types.visit::<ResolveRequest>();
-    types.visit::<ResolvedInfo>();
-    types.visit::<ChoiceInfo>();
-}

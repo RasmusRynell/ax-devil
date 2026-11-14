@@ -8,8 +8,9 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { ask } from "./ask";
+import { ask, type Answer, type ReadKey } from "./ask";
 import type { ErrorWire, Topic } from "../generated/api";
+import type { Routes } from "../generated/routes";
 
 /** How long a failed read waits before it is tried again, one entry per retry. */
 const RETRY_MS = [1000, 2000, 4000];
@@ -75,15 +76,20 @@ export const refusalOf = (error: unknown): ErrorWire =>
       };
 
 /** Asks the backend and reads the answer; a failure is thrown as the `ErrorWire` the backend sent. */
-async function readJson<T>(path: string, signal: AbortSignal): Promise<T> {
-  const answer = await ask<T>(path, { signal });
+async function readJson<K extends ReadKey>(
+  key: K,
+  signal: AbortSignal,
+): Promise<Routes[K]["response"]> {
+  const answer = (await ask(key as ReadKey, { signal })) as Answer<Routes[K]["response"]>;
   if (answer.ok) return answer.value;
   throw answer.error;
 }
 
+type Read<T> = (key: ReadKey, signal: AbortSignal) => Promise<T>;
+
 interface Options<T> {
-  /** Reads the answer at `path`; the default is `ask`, which throws the backend's `ErrorWire`. */
-  read?: (path: string, signal: AbortSignal) => Promise<T>;
+  /** Reads the answer of the route; the default is `ask`, which throws the backend's `ErrorWire`. */
+  read?: Read<T>;
   /**
    * The revision a value already reflects, for an answer that carries its own (of one topic): a notice of that
    * revision asks for nothing, and `apply` ignores a value with a lower one.
@@ -93,7 +99,7 @@ interface Options<T> {
 
 /** What `useResource` gives. */
 export interface Resource<T> {
-  /** The last answer; `undefined` until there is one, and while `path` is `null`. */
+  /** The last answer; `undefined` until there is one, and while `key` is `null`. */
   value: T | undefined;
   /** Why the last read failed, until one succeeds; the last value stays. */
   error: unknown;
@@ -107,7 +113,7 @@ export interface Resource<T> {
 }
 
 interface Held {
-  path: string;
+  key: ReadKey;
   /** What the topics were announced as when the read started, and the revision the answer itself carries. */
   started: string | undefined;
   own: number | undefined;
@@ -115,30 +121,30 @@ interface Held {
   backend: number;
 }
 
-const reflects = (held: Held | null, path: string, noticed: string | undefined): boolean =>
-  held?.path === path && (held.started === noticed || String(held.own) === noticed);
+const reflects = (held: Held | null, key: ReadKey, noticed: string | undefined): boolean =>
+  held?.key === key && (held.started === noticed || String(held.own) === noticed);
 
 /**
- * The answer of `path`, read when the component mounts or `path` changes and again whenever the backend announces
+ * The answer of `key`, read when the component mounts or `key` changes and again whenever the backend announces
  * another revision of any of `topics` (also after a reconnect, and a restarted backend counts as one), so a topic
  * is named for every input of the answer. A notice that comes while a read runs lets it finish and asks once more.
- * A failed read is tried again after 1, 2 and 4 seconds, and by the next notice, repeated or not. `path` is `null`
+ * A failed read is tried again after 1, 2 and 4 seconds, and by the next notice, repeated or not. `key` is `null`
  * while the answer is not wanted.
  */
-export function useResource<T>(
+export function useResource<K extends ReadKey, T = Routes[K]["response"]>(
   topics: Topic | readonly Topic[],
-  path: string | null,
+  key: K | null,
   given: Options<T> = {},
 ): Resource<T> {
   const revisions = useContext(RevisionsContext);
   const names = typeof topics === "string" ? [topics] : topics;
   const noticed = useSyncExternalStore(revisions?.subscribe ?? never, () => revisions?.key(names));
   const notices = useSyncExternalStore(revisions?.subscribe ?? never, () => revisions?.notices());
-  const [shown, setShown] = useState<{ path: string | null; value?: T; error?: unknown }>({
-    path: null,
+  const [shown, setShown] = useState<{ key: ReadKey | null; value?: T; error?: unknown }>({
+    key: null,
   });
   const held = useRef<Held | null>(null);
-  const running = useRef<{ path: string; request: AbortController } | null>(null);
+  const running = useRef<{ key: ReadKey; request: AbortController } | null>(null);
   const retry = useRef<{ timer?: ReturnType<typeof setTimeout>; attempt: number }>({ attempt: 0 });
   const newest = useRef(noticed);
   const options = useRef(given);
@@ -155,29 +161,29 @@ export function useResource<T>(
   }, []);
 
   const begin = useCallback(
-    (path: string, retrying = false) => {
+    (key: ReadKey, retrying = false) => {
       stop();
       if (!retrying) retry.current.attempt = 0;
       const request = new AbortController();
-      running.current = { path, request };
+      running.current = { key, request };
       const started = newest.current;
-      const { read = readJson<T>, revisionOf } = options.current;
-      read(path, request.signal).then(
+      const { read = readJson as Read<T>, revisionOf } = options.current;
+      read(key, request.signal).then(
         (value) => {
           if (request.signal.aborted) return;
           running.current = null;
           const own = revisionOf?.(value);
-          held.current = { path, started, own, backend: revisions?.backends() ?? 0 };
-          setShown({ path, value });
+          held.current = { key, started, own, backend: revisions?.backends() ?? 0 };
+          setShown({ key, value });
           // Notices that came during the read: one more for the newest.
-          if (newest.current !== started) begin(path);
+          if (newest.current !== started) begin(key);
         },
         (error: unknown) => {
           if (request.signal.aborted) return;
           running.current = null;
-          setShown((now) => ({ path, value: now.path === path ? now.value : undefined, error }));
+          setShown((now) => ({ key, value: now.key === key ? now.value : undefined, error }));
           const wait = RETRY_MS[retry.current.attempt++];
-          if (wait !== undefined) retry.current.timer = setTimeout(() => begin(path, true), wait);
+          if (wait !== undefined) retry.current.timer = setTimeout(() => begin(key, true), wait);
         },
       );
     },
@@ -185,50 +191,45 @@ export function useResource<T>(
   );
 
   useEffect(() => {
-    if (path === null) {
+    if (key === null) {
       stop();
       held.current = null;
       return;
     }
-    if (reflects(held.current, path, noticed) || running.current?.path === path) return;
-    begin(path);
-  }, [path, noticed, notices, reloads, begin, stop]);
+    if (reflects(held.current, key, noticed) || running.current?.key === key) return;
+    begin(key);
+  }, [key, noticed, notices, reloads, begin, stop]);
   useEffect(() => stop, [stop]);
 
   const apply = useCallback(
     (value: T) => {
-      if (path === null) return;
+      if (key === null) return;
       const own = options.current.revisionOf?.(value);
       const backend = revisions?.backends() ?? 0;
       const now = held.current;
       // A save's answer that comes after a newer read is older than what is shown; revisions only order within a connection.
-      if (
-        own !== undefined &&
-        now?.path === path &&
-        now.backend === backend &&
-        own < (now.own ?? 0)
-      )
+      if (own !== undefined && now?.key === key && now.backend === backend && own < (now.own ?? 0))
         return;
       stop();
-      setShown({ path, value });
+      setShown({ key, value });
       // An answer with no revision of its own cannot be told from an older one, so it is shown but not trusted: the
       // newest is read once more. One with a revision is compared with what was announced.
       if (own === undefined) {
         held.current = null;
-        begin(path);
+        begin(key);
         return;
       }
-      held.current = { path, started: undefined, own, backend };
+      held.current = { key, started: undefined, own, backend };
       // A notice newer than the answer came while a read it replaced was running.
-      if (Number(newest.current) > own) begin(path);
+      if (Number(newest.current) > own) begin(key);
     },
-    [path, revisions, begin, stop],
+    [key, revisions, begin, stop],
   );
   const reload = useCallback(() => {
     held.current = null;
     stop();
     setReloads((count) => count + 1);
   }, [stop]);
-  const current = shown.path === path ? shown : null;
+  const current = shown.key === key ? shown : null;
   return { value: current?.value, error: current?.error, apply, reload };
 }
