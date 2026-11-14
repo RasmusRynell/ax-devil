@@ -8,7 +8,7 @@ Not here: user-visible behavior, rules one module keeps to itself, workarounds a
 rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs)). A rule with no test guarding it is a test gap that the
 implementing module closes.
 
-Rules for Workspace content, viewers, the sidebar, UI lifecycle, plugins and settings are in [app invariants](app-invariants.md).
+Rules for Workspace content, viewers, the sidebar, UI lifecycle, plugin loading and settings are in [app invariants](app-invariants.md).
 
 ## Coordinates
 
@@ -104,7 +104,8 @@ Rules for Workspace content, viewers, the sidebar, UI lifecycle, plugins and set
 
 - Pausing RTSP keeps its connection alive. Stopping is terminal; reopening creates a new source.
 - Scene file artifacts are invalid unless their complete identity matches: source content digest (a stat fingerprint
-  only spares hashing an unchanged file), decoder name (for a plugin, the hash of its manifest and code files),
+  only spares hashing an unchanged file; a derived lane's source is its bundle, so its identity is the bundle's digest
+  and any input change rebuilds it), decoder name (for a plugin, the hash of its manifest, settings and code files),
   artifact version, Scene version, decode options and store format version. If the source changed during the build, the artifact is persisted without a digest, so the
   next open sees the file as changed. Cache files are private and always rebuildable.
 - Samples with one start key are one group, merged or replaced as the decoder asks. A key below an earlier one freezes
@@ -149,3 +150,12 @@ Rules for Workspace content, viewers, the sidebar, UI lifecycle, plugins and set
   or lane, independent of filters and catalog authoring; hiding a feature keeps its inspection and hover data.
 - A failed catalog load or reload keeps the lane's last drawn catalog in use and reports the error; a lane is never
   left without a catalog.
+
+## Plugins
+
+- Nothing handed to a plugin is expanded: a request, option or setting holding `$HOME` or `$NAME` arrives as that text.
+- A view's bus call, `cancel` apart, carries the epoch of the context it was made under, and the page answers any other
+  epoch `stale` before doing anything. The epoch changes with the viewer, item or entry the view is bound to, and an
+  effect names that item and entry, so none lands on a later binding.
+- A view's bus reaches only its own plugin's decoders and tasks, sets only lanes named `<plugin id>.<name>`, and passes
+  no option the operation's form declares as `file` or `folder`.

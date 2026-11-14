@@ -57,7 +57,11 @@ Shared language for ax-devil's inspection workspace. Code, docs and UI use these
 | Export Job | One export of a viewer's lanes to an MP4 file or a PNG of one frame: the Owner asks on the viewer's playback socket, the backend freezes the lanes' catalogs, Lane Styles, Lane Policies and data revisions, and runs it, one at a time, until it ends or the socket closes. | Recording, render job |
 | Render Page | The hidden offscreen Electron page that draws an Export Job's pictures from the frozen inputs, with the same presentation code as the screen. | Export window, headless browser |
 | Plugin | An installed program, listed in the plugin registry and run as the user, that provides Handlers ([plugins](docs/plugins.md)). | Converter, script, adapter |
-| Handler | One decoder or playlist resolver, built in or provided by a Plugin, selected by its handler id. A Plugin's decoder turns an overlay file into Scenes as JSON Lines. | Converter, driver |
+| Handler | One decoder, playlist resolver, task, view or command, built in or provided by a Plugin, selected by its handler id. A Plugin's decoder turns an overlay file into Scenes as JSON Lines. | Converter, driver |
+| Derived Lane | A lane a decoder computes from other lanes of the same entry and optionally its video, declared on a Workspace Item by slot and stored like any lane; its identity is its Bundle's digest. | Result, computed track |
+| Bundle | The file the host writes for a Derived Lane or Task: its input lane files by key with their content hashes, and its video. Its digest is the Derived Lane's identity. | Job, manifest |
+| Task | A Handler that reads lanes of an entry and produces no Scenes; it writes where its own options say. One streaming request: progress is the response, cancel is dropping it. | Job, export |
+| Plugin View | A page a Plugin ships, shown in a sandboxed frame in the sidebar or over one lane's viewer; it reaches the app only through the bus the Owner's page fulfils. | Plugin UI, extension |
 | Ingest Watermark | While a file is still being read, the sample key below which every frame is decided. Frame Map cells exist only below it, and the first out-of-order key stops it until the read ends. | Progress, loaded up to |
 | Marks | The boxes, lines, circles, points, paths and labels a catalog produces from a Sample Item in a lane, laid out and painted by the frontend. | Drawing Instruction, Prepared Drawing |
 

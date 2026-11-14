@@ -1,6 +1,6 @@
 ---
 name: write-plugin
-description: Make ax-devil read overlay data in a format it does not read, by writing, checking and installing a plugin (a program in any language whose decoder handler prints Scenes, or whose playlist resolver handler prints a playlist, as JSON Lines). Use when the user wants their own annotation, tracking or detection files drawn on a video, or a change to such a plugin.
+description: Make ax-devil read overlay data in a format it does not read, by writing, checking and installing a plugin (a program in any language whose decoder handler prints Scenes, or whose playlist resolver handler prints a playlist, as JSON Lines; also a lane computed from other lanes, a task, or a page shown in the app). Use when the user wants their own annotation, tracking or detection files drawn on a video, results derived from lanes, or a change to such a plugin.
 ---
 
 # Write a plugin
@@ -37,6 +37,13 @@ development work. The contract is in
 
 A decoder for a live source (a camera's metadata documents) declares `"input": "records"` and `time` in `bases`: it
 answers one record at a time, which `fixtures/plugins/shell-records` shows. `check` reads such a decoder's file line by line.
+
+A decoder with `"input": "lanes"` computes a lane from other lanes of the entry, and a `task` reads lanes and writes
+where its own options say (`fixtures/plugins/derived-demo`; [reference](reference.md#lanes)). `check` reads one file, so
+run these by hand: pipe a request with lane files to the program, such as
+`echo '{"protocol":3,"op":"decode","handler":"ID","input":{"lanes":{"KEY":"a.jsonl"}},"options":{},"settings":{}}' | ./main.py`,
+then add the lane from the app. A page shown in the app, or a menu entry that runs a handler, is a view or command:
+[views.md](views.md) holds the bus contract and a helper to copy.
 
 A resolver has no `check`: `ax-devil playlist ID --help` shows its settings, and `ax-devil playlist ID ARGS` opens the
 playlist; a wrong path or name fails with the line it came from.

@@ -42,6 +42,11 @@ Each route row names who may call it: **Public**, **Owner**, **Full access**, or
 the server's own machine: the launch hand-off). A session socket is seated by its first message.
 No handler checks an address, a listener or a list of grants itself.
 
+A plugin view's files (`/views/{token}/...`) are Public rows admitted by the random token in the address alone: a
+sandboxed frame has no usable `Origin`, so the Local listener checks `Host` there and not `Origin`. Every response
+under that prefix, errors included, carries the view's own sandbox policy and never the app's CSP, so a view loads
+nothing but its own plugin's files.
+
 ## Sessions And Seats
 
 - A Session has one Presenter View. Every Owner seat drives it and shows it; an Owner has no private view.
@@ -56,6 +61,9 @@ No handler checks an address, a listener or a list of grants itself.
   Guest.
 - A Session lives while an Owner seat is attached. When the last one disconnects the grace period runs; when the
   last one leaves, the Session ends. A Guest never keeps a Session alive.
+- A Guest's demand never runs plugin code: an open from a Guest seat reuses a stored result, else the lane fails as
+  not built yet. Owner seats compute. The listing of plugins and the task and lane-scene routes are Owner's, so a Guest
+  has no views, commands or tokens.
 - A Guest receives a projection of the Session: never a setting, a credential, a reference, a host path or the
   detail of a failure.
 - A viewer's viewport is part of the Presenter View, as a rectangle in video coordinates, so a follower on a
@@ -110,6 +118,7 @@ to browse the server through `GET /api/files/folder`.
 |--------|--------|
 | A route | Public, Owner, Full access or Local, by the Full access test |
 | A setting | One table row: scope by the four questions, `secret`, `full_access` |
+| A bus call (a plugin view's request, fulfilled by the Owner page) | It is one of the closed table in `frontend/src/plugins/bus.ts`, fulfilled by an Owner route or command; it passes no `file` or `folder` option and reaches no Full access route |
 | A Session field | Whether a Guest receives it; if so, it passes the projection rule |
 | A native feature | The shell bridge offers it; what a remote Owner uses instead |
 | Something to choose from | The list lives with the server; the choice is a setting |

@@ -5,7 +5,8 @@ is `fixtures/plugins/python-tracks`; a second, in POSIX shell and awk, is `fixtu
 resolver is `fixtures/plugins/python-runs`.
 
 A plugin is a program and a manifest that lists the **handlers** it provides, of kind `decoder` (an overlay file in,
-Scenes out) or `playlist_resolver` (settings in, playlists out). One handler call is one run of the program.
+Scenes out) or `playlist_resolver` (settings in, playlists out), or `task` (lanes in, a side effect out). A `view`
+or `command` needs no program: [views.md](views.md). One handler call is one run of the program.
 
 ## Manifest `ax-devil-plugin.json`
 
@@ -18,10 +19,11 @@ field by its path, such as `handlers[1].options[0].kind`.
 | `id` | yes | The plugin id: 1-64 characters of `a-z 0-9 . _ -`, starting with a letter or digit. Must differ from every built-in and installed plugin id |
 | `name`, `version` | yes | Shown to the user; `version` is free text |
 | `protocol` | yes | `3`; any other value does not load |
-| `command` | yes | Program and arguments. A program containing `/` is relative to the folder and must be executable; otherwise it is looked up on `PATH`. Later items that name a file or folder of the plugin become absolute; items starting with `-` are passed as written. Nothing is appended: the request carries the path |
+| `command` | yes, unless only views and commands | Program and arguments. A program containing `/` is relative to the folder and must be executable; otherwise it is looked up on `PATH`. Later items that name a file or folder of the plugin become absolute; items starting with `-` are passed as written. Nothing is appended: the request carries the path |
 | `env` | no | Names of environment variables to pass through besides the standard few. `AX_DEVIL_*` is refused |
 | `code` | no | Paths in the folder (files or folders, no `..`) whose bytes identify the plugin; default the whole folder. Dot-names and `__pycache__` are skipped; at most 20,000 files and 256 MiB |
 | `idle_timeout_s` | no | 1 to 86,400; default 120. Seconds the plugin may print nothing before it is killed |
+| `settings` | no | A list of fields, below, of kind `text`, `file` or `folder`; the user's values are sent in every `decode` and `task` request as `settings`, literally (no `$NAME`), and are part of the code hash |
 | `handlers` | yes | A non-empty list of handlers, below |
 
 Every handler has `kind` and `id` (same characters as the plugin id; it may equal the plugin's own id, and must
@@ -33,12 +35,17 @@ Decoder handler (`"kind": "decoder"`):
 
 | Field | Required | Meaning |
 |-------|----------|---------|
-| `input` | yes | `"path"`: the request carries the overlay file's path. `"records"`: the request carries none and the records follow on stdin one at a time ([Records](#records)); a file is read line by line, and with `time` in `bases` the decoder also takes live sources |
-| `scene_version` | yes | The Scene version written, `"4.2"` (`"4.0"` and `"4.1"` output still loads); a different major or a newer minor does not load |
+| `input` | yes | `"path"`: the request carries the overlay file's path. `"records"`: the request carries none and the records follow on stdin one at a time ([Records](#records)); a file is read line by line, and with `time` in `bases` the decoder also takes live sources. `"lanes"`: a derived lane computed from lanes of the entry ([Lanes](#lanes)); needs `lanes` and takes `video` |
+| `scene_version` | yes | The Scene version written, `"4.3"` (`"4.0"` to `"4.2"` output still loads); a different major or a newer minor does not load |
 | `extensions` | no | File name endings the decoder opens, lowercase with the dot, such as `.acme.jsonl`. Without any, it is picked only by id |
 | `bases` | no | `["frame"]`, `["time"]` or both: what a lane may match your records to video frames by. Frame: record k belongs to frame k (or the frame number you key by); a record is a `skipped` line or the samples in a row with one start key. Time: by the records' timestamps. Default `["frame"]` |
 | `default_basis` | no | One of `bases`, the one a lane starts with; default the first listed |
 | `options` | no | A list of fields, below, of kind `text`, `file` or `folder` only. Values are always text |
+
+Task handler (`"kind": "task"`): `id`, `name`, optional `description`, `lanes` and `video` as under [Lanes](#lanes), and `options`
+as a decoder's. Its output has no Scenes: `{"progress":{"done"?,"total"?,"text"?}}`, `{"log":{"text"}}`, `warning`, `error` and
+`{"done":{}}`; the exit code decides the end, and the user dropping the run kills the program. A task writes where
+its own `folder` option or setting says.
 
 Playlist resolver handler (`"kind": "playlist_resolver"`): an `id` other than `help`, `description` (one sentence, required) and `settings`, an
 optional list of fields, below. The settings become a form in the app and arguments of `ax-devil playlist ID`.
@@ -58,7 +65,7 @@ starts with a letter or digit, and in a resolver is not `help`, `config`, `cache
 | `decoder_options` | a map of that decoder's options | `handler_field`: the key of the `handler` field it belongs to |
 | `scan` | a list of values the plugin's `scan` found; left out means all | `depends_on` (optional): keys of the other settings the scan reads, not a `scan` or `decoder_options`; `count` (optional): `{"missing","found","none"}` sentences, `found` containing `{count}`, which make the scan only report how many values it found: the setting then holds no value; at most one scan per resolver has it |
 
-The cache of a file's samples is keyed by the handler id, the SHA-256 of the manifest and the plugin's `code` files,
+The cache of a file's samples is keyed by the handler id, the SHA-256 of the manifest, the plugin's settings and its `code` files,
 the declared options (defaults filled in; undeclared keys are dropped with a warning). Editing a code file reruns the
 plugin the next time the file opens, and a lane already open keeps what it read.
 
@@ -84,6 +91,19 @@ line, then EOF:
 that has a value. The request says nothing of the video, so a file in pixels needs its image size as options. Read
 stdin, then the file at `input.path`; write to stdout. (A `records` decoder is read differently, below.)
 Stderr is drained: its last 20 lines (2 KiB) join a failure's reason, and it is logged at DEBUG only.
+
+### Lanes
+
+A `lanes` decoder and a task declare `"lanes": [{"key","label"}]` (the lanes the user picks, read under `key`) and
+`"video": true` to also get the entry's video. The request carries files, never a bundle:
+
+```json
+{"protocol":3,"op":"decode","handler":"acme_iou","input":{"lanes":{"truth":"/abs/a.jsonl","model":"/abs/b.jsonl"},"video":"/abs/v.mp4"},"options":{},"settings":{}}
+```
+
+(`"op":"task"` for a task.) A lane file is JSON Lines: `{"lane":{"basis","coverage","metadata"}}`, then one `{"sample": Scene}`
+per stored sample, keyed `{"frame":N}` or `{"us":N}`. A decoder prints Scenes as usual, and a lane that changes any
+input is recomputed. `fixtures/plugins/derived-demo` is the model.
 
 ### Records
 
