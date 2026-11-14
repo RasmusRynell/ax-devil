@@ -13,7 +13,7 @@ use export::{
     RenderJob, RenderSetup, Renderer, run,
 };
 use foundation::{CancelToken, ErrorCode, FrameRate, UserError};
-use handler_api::OverlayRef;
+use handler_api::{LaneSource, OverlayRef};
 use handlers::Handlers;
 use media::{
     Decoder, EncodeFormat, Encoder, FrameIndex, ImageSequenceInput, Picture, Quality, VideoInput,
@@ -375,7 +375,7 @@ fn two_sample_track(dir: &Path) -> (PathBuf, Arc<Track>) {
     let overlay = OverlayRef {
         label: "det".into(),
         slot: "det".into(),
-        path: mot.clone(),
+        source: LaneSource::File(mot.clone()),
         handler: "ONVIF_XML".into(),
         options: serde_json::Map::new(),
         metadata: Default::default(),

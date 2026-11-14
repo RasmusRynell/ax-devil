@@ -321,7 +321,7 @@ fn failures_name_the_file_and_leave_no_artifact() {
     let token = CancelToken::new();
 
     let mut missing = fixture.overlay();
-    missing.path = fixture.dir.path().join("nope.txt");
+    missing.source = LaneSource::File(fixture.dir.path().join("nope.txt"));
     assert!(
         failure(fixture.registry.open(&missing, &token))
             .reason
@@ -371,7 +371,7 @@ fn the_real_mot_decoder_round_trips_through_an_artifact() {
     let overlay = |width: u32| OverlayRef {
         label: "GT".into(),
         slot: "GT".into(),
-        path: ground_truth.clone(),
+        source: LaneSource::File(ground_truth.clone()),
         handler: "MOT_FILE".into(),
         options: Settings::from_iter([
             ("width".to_owned(), width.into()),

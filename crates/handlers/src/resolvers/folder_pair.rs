@@ -6,7 +6,7 @@ use std::{
 
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
 use handler_api::{
-    Choice, Cli, Field, FieldKind, Form, OverlayRef, PlaylistResolver, ResolvedEntry,
+    Choice, Cli, Field, FieldKind, Form, LaneSource, OverlayRef, PlaylistResolver, ResolvedEntry,
     ResolvedPlaylist, ResolvedPlaylists, ResolverSpec, ScanCount, Values, VideoRef, invalid_field,
 };
 
@@ -117,7 +117,7 @@ impl PlaylistResolver for FolderPairResolver {
                 overlays: vec![OverlayRef {
                     label: pair.name.clone(),
                     slot: "overlay".to_owned(),
-                    path: pair.overlay,
+                    source: LaneSource::File(pair.overlay),
                     handler: handler.to_string(),
                     options: options.clone(),
                     metadata: Default::default(),

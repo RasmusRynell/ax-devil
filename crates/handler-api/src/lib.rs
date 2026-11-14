@@ -5,18 +5,20 @@
 //! stores what a decoder emits ([`SceneSink`]) and shows its warnings. Built-ins and installed plugins implement
 //! the same traits.
 
+mod bundle;
 mod decoder;
 mod form;
 mod refs;
 mod resolver;
 mod skipped;
 
+pub use bundle::{Bundle, BundleLane, BundleVideo};
 pub use decoder::{
     DecodeError, DecodeSummary, Decoder, Framing, Header, Input, OnEqualKey, Record, SceneSink,
     Spec,
 };
 pub use form::{Cli, Field, FieldKind, Form, ScanCount, Selection, Values, invalid_field};
-pub use refs::{ImageSequence, OverlayRef, VideoRef};
+pub use refs::{ImageSequence, LaneSource, OverlayRef, VideoRef};
 pub use resolver::{
     Choice, PlaylistResolver, ResolvedEntry, ResolvedPlaylist, ResolvedPlaylists, ResolverSpec,
 };

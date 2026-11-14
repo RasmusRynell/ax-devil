@@ -103,9 +103,13 @@ fn pairs_files_by_stripped_name_in_name_order() {
         (
             overlay.label.as_str(),
             overlay.handler.as_str(),
-            &overlay.path
+            overlay.file().unwrap()
         ),
-        ("beta", "ADF_BETA_FRAME", &overlays.join("beta.jsonl"))
+        (
+            "beta",
+            "ADF_BETA_FRAME",
+            overlays.join("beta.jsonl").as_path()
+        )
     );
     assert!(overlay.options.is_empty());
 }

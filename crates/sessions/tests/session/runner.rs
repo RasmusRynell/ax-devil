@@ -2,7 +2,7 @@
 
 use crate::{GRACE, authority, entry_key, playlist_in, showing, stream};
 use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
-use handler_api::{PlaylistResolver, ResolvedPlaylists, ResolverSpec, Values};
+use handler_api::{LaneSource, PlaylistResolver, ResolvedPlaylists, ResolverSpec, Values};
 use handlers::{HandlerSet, Handlers};
 use sessions::{
     CursorOptions,
@@ -76,7 +76,7 @@ impl PlaylistResolver for MovingOverlays {
         let file = &self.files[self.replacement.load(Ordering::SeqCst)];
         for playlist in &mut content.playlists {
             for entry in &mut playlist.entries {
-                entry.overlays[0].path = file.clone();
+                entry.overlays[0].source = LaneSource::File(file.clone());
             }
         }
         Ok(content)

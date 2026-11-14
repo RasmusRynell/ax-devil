@@ -18,8 +18,8 @@ mod workspace;
 
 pub use bookmark::{Bookmark, BookmarkKind, BookmarkTarget};
 pub use content::{
-    Content, ContentId, Entry, ImageSequence, OverlayRef, PlaylistContent, PlaylistSpan,
-    SeekableVideoContent, VideoRef, playlist_label,
+    Content, ContentId, Entry, ImageSequence, LaneSource, OverlayRef, PlaylistContent,
+    PlaylistSpan, SeekableVideoContent, VideoRef, playlist_label,
 };
 pub use credentials::{Environment, Secret};
 pub use foundation::{BookmarkId, ItemId};

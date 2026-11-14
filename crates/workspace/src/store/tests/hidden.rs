@@ -12,7 +12,7 @@ fn playlist_of(item: &WorkspaceItem, entries: &[(&str, bool)]) -> crate::Content
             overlays: vec![crate::OverlayRef {
                 label: "L".into(),
                 slot: "L".into(),
-                path: "/o.txt".into(),
+                source: crate::LaneSource::File("/o.txt".into()),
                 handler: "MOT_FILE".into(),
                 options: Default::default(),
                 metadata: Default::default(),

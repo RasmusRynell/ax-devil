@@ -10,8 +10,8 @@ use std::{
 
 use foundation::{FrameRate, Warning};
 use handler_api::{
-    Choice, ImageSequence, OverlayRef, ResolvedEntry, ResolvedPlaylist, ResolvedPlaylists,
-    Settings, VideoRef,
+    Choice, ImageSequence, LaneSource, OverlayRef, ResolvedEntry, ResolvedPlaylist,
+    ResolvedPlaylists, Settings, VideoRef,
 };
 use serde::Deserialize;
 
@@ -443,7 +443,7 @@ impl Collected {
             overlays.push(OverlayRef {
                 label: overlay.label,
                 slot: overlay.slot,
-                path: absolute("the overlay path", overlay.path)?,
+                source: LaneSource::File(absolute("the overlay path", overlay.path)?),
                 handler: overlay.handler,
                 options: overlay.options,
                 metadata: overlay.metadata,

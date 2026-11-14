@@ -9,7 +9,7 @@ mod viewer_model;
 
 use std::{
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
         mpsc::{Sender, channel},
@@ -18,7 +18,7 @@ use std::{
 };
 
 use foundation::{CancelToken, FrameRate, Interrupt, Timeline, UserError};
-use handler_api::{Decoder, OverlayRef};
+use handler_api::{Decoder, LaneSource, OverlayRef};
 use handlers::Handlers;
 use playback::{Direction, Priority, Want};
 use scene::matching::MatchPolicy;
@@ -47,7 +47,10 @@ impl TrackSource for Tracks {
         overlay: &OverlayRef,
         cancel: &CancelToken,
     ) -> Result<Arc<dyn TrackRead>, Interrupt<UserError>> {
-        let name = overlay.path.file_name().and_then(|name| name.to_str());
+        let name = overlay
+            .file()
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str());
         assert!(name != Some("panic.txt"), "the source thread dies");
         if name == self.held {
             while !cancel.is_cancelled() {
@@ -145,7 +148,7 @@ pub(super) fn overlay_at(label: &str, handler: &str, path: PathBuf) -> OverlayRe
     OverlayRef {
         label: label.into(),
         slot: label.into(),
-        path,
+        source: LaneSource::File(path),
         handler: handler.into(),
         options: ["width", "height"].into_iter().filter_map(size).collect(),
         metadata: Default::default(),

@@ -87,8 +87,10 @@ impl SourcePaths {
         let mut added = Self::default();
         for entry in content.entries() {
             for overlay in &entry.overlays {
-                if self.files.insert(overlay.path.clone()) {
-                    added.files.insert(overlay.path.clone());
+                for file in overlay.files() {
+                    if self.files.insert(file.to_path_buf()) {
+                        added.files.insert(file.to_path_buf());
+                    }
                 }
             }
         }

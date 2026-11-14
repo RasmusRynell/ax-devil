@@ -23,7 +23,7 @@ use media::{EncodeFormat, Quality};
 use overlays::ViewerOverlays;
 use std::{
     collections::{BTreeSet, VecDeque},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 use workspace::{Entry, VideoRef};
@@ -43,8 +43,8 @@ pub(super) struct Exports {
     service: Arc<ExportService>,
     videos: Arc<VideoSources>,
     video: VideoRef,
-    /// The overlay file of each lane; empty for an entry without overlays.
-    files: Vec<PathBuf>,
+    /// The overlay files each lane reads, by lane number; empty for an entry without overlays.
+    files: Vec<Vec<PathBuf>>,
     audience: Audience,
     running: Option<(u32, ExportJob)>,
     refused: VecDeque<(u32, UserError)>,
@@ -65,7 +65,7 @@ impl Exports {
             files: entry
                 .overlays
                 .iter()
-                .map(|overlay| overlay.path.clone())
+                .map(|overlay| overlay.files().into_iter().map(Path::to_path_buf).collect())
                 .collect(),
             audience,
             running: None,
@@ -172,7 +172,13 @@ impl Exports {
                     )));
                 }
                 Some(source) => {
-                    inputs.extend(self.files.get(usize::from(number)).cloned());
+                    inputs.extend(
+                        self.files
+                            .get(usize::from(number))
+                            .into_iter()
+                            .flatten()
+                            .cloned(),
+                    );
                     Some(FrozenSource {
                         track: Arc::clone(&source.track),
                         data_revision: source.data_revision,

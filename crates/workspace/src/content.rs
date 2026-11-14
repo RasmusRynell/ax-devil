@@ -8,7 +8,7 @@ use std::{
     fmt,
 };
 
-pub use handler_api::{ImageSequence, OverlayRef, Settings, VideoRef};
+pub use handler_api::{ImageSequence, LaneSource, OverlayRef, Settings, VideoRef};
 
 /// Names one Content, one playlist of a playlist item, or one entry of a playlist, for as long as its item exists.
 /// Derived from the item id (and the playlist and entry names), so it names the same thing after the item resolves

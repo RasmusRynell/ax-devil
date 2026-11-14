@@ -163,13 +163,14 @@ impl TrackRegistry {
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>> {
         cancel.check()?;
-        let path = std::fs::canonicalize(&overlay.path).map_err(|e| {
-            Interrupt::Failed(user_error(
-                "Cannot find the overlay file",
-                &e,
-                &overlay.path,
-            ))
-        })?;
+        let Some(file) = overlay.file() else {
+            return Err(Interrupt::Failed(UserError::new(
+                ErrorCode::UnknownHandler,
+                "Derived lanes are not supported yet",
+            )));
+        };
+        let path = std::fs::canonicalize(file)
+            .map_err(|e| Interrupt::Failed(user_error("Cannot find the overlay file", &e, file)))?;
         let decoder = (self.decoders)(&overlay.handler).ok_or_else(|| {
             Interrupt::Failed(
                 UserError::new(

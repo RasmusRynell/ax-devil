@@ -147,7 +147,7 @@ pub(super) fn overlays(key: &str, lanes: &[&str]) -> Vec<OverlayRef> {
         .map(|lane| OverlayRef {
             label: (*lane).into(),
             slot: (*lane).into(),
-            path: PathBuf::from(format!("/data/{key}/{lane}.txt")),
+            source: workspace::LaneSource::File(PathBuf::from(format!("/data/{key}/{lane}.txt"))),
             handler: "MOT_FILE".into(),
             options: mot_options(),
             metadata: Default::default(),

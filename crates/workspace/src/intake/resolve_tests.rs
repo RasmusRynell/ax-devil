@@ -32,7 +32,10 @@ fn overlays_in_different_folders_with_one_file_name_are_lanes_named_by_stem_and_
         panic!("distinct files with one name resolve");
     };
     assert_eq!(content.entry.lane_labels(), ["gt", "gt (2)", "gt (3)"]);
-    assert_eq!(content.entry.overlays[1].path, night.join("gt.txt"));
+    assert_eq!(
+        content.entry.overlays[1].file(),
+        Some(night.join("gt.txt").as_path())
+    );
 }
 
 #[test]

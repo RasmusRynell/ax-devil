@@ -21,8 +21,8 @@ use std::{
 
 use foundation::{CancelToken, Interrupt, MediaTime, Warning};
 use handler_api::{
-    DecodeError, DecodeSummary, Decoder, Field, FieldKind, Form, Framing, Input, OnEqualKey,
-    OverlayRef, SceneSink, Settings, Spec, Values,
+    DecodeError, DecodeSummary, Decoder, Field, FieldKind, Form, Framing, Input, LaneSource,
+    OnEqualKey, OverlayRef, SceneSink, Settings, Spec, Values,
 };
 use scene::matching::{FrameKey, KeyChunks, SampleKeys};
 use scene::{
@@ -257,7 +257,7 @@ impl Fixture {
         OverlayRef {
             label: "lane".into(),
             slot: "lane".into(),
-            path: self.source.clone(),
+            source: LaneSource::File(self.source.clone()),
             handler: "TEST".into(),
             options: Settings::new(),
             metadata: Default::default(),

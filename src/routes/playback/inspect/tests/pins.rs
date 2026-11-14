@@ -265,7 +265,7 @@ pub(super) async fn pin_viewer() -> (tempfile::TempDir, ViewerOverlays, u32) {
     let (mut viewer, revision) = open_overlay(OverlayRef {
         label: "Pins".into(),
         slot: "Pins".into(),
-        path,
+        source: workspace::LaneSource::File(path),
         handler: "CVAT".into(),
         options: handler_api::Settings::new(),
         metadata: Default::default(),

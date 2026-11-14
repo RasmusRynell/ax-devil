@@ -16,7 +16,7 @@ async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capab
     let overlay = OverlayRef {
         label: "Fields".into(),
         slot: "Fields".into(),
-        path,
+        source: workspace::LaneSource::File(path),
         handler: "CVAT".into(),
         options: handler_api::Settings::new(),
         metadata: Default::default(),

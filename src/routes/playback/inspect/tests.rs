@@ -30,7 +30,7 @@ async fn viewer(folder: &Path) -> (ViewerOverlays, u32) {
     let overlay = OverlayRef {
         label: "GT".into(),
         slot: "GT".into(),
-        path: gt,
+        source: workspace::LaneSource::File(gt),
         handler: "MOT_FILE".into(),
         options: handler_api::Settings::from_iter([
             ("width".to_owned(), 64.into()),

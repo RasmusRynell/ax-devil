@@ -183,10 +183,12 @@ pub(super) fn changed_entries(
         return DocCommand::SourceChanged(item, Vec::new(), true);
     };
     let whole_item = paths.iter().any(|path| {
-        !playlist
-            .entries
-            .iter()
-            .any(|entry| entry.overlays.iter().any(|overlay| &overlay.path == path))
+        !playlist.entries.iter().any(|entry| {
+            entry
+                .overlays
+                .iter()
+                .any(|overlay| overlay.files().contains(&path.as_path()))
+        })
     });
     let entries = playlist
         .entries
@@ -195,7 +197,7 @@ pub(super) fn changed_entries(
             let hidden = entry.lanes_hidden_at_first();
             entry.overlays.iter().any(|overlay| {
                 let lane = HiddenRef::Lane(entry.id.clone(), overlay.label.clone());
-                paths.contains(&overlay.path)
+                overlay.files().iter().any(|file| paths.contains(*file))
                     && !workspace.is_hidden(&lane, hidden.contains(overlay.label.as_str()))
             })
         })

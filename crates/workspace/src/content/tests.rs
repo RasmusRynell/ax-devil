@@ -116,7 +116,7 @@ fn several_playlists_give_ids_by_playlist_name_and_refuse_what_has_no_clear_iden
     let overlay = handler_api::OverlayRef {
         label: "GT".into(),
         slot: "gt".into(),
-        path: "/o.txt".into(),
+        source: handler_api::LaneSource::File("/o.txt".into()),
         handler: "MOT_FILE".into(),
         options: Default::default(),
         metadata: Default::default(),

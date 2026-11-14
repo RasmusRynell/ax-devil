@@ -94,7 +94,9 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
             let hidden_lanes = entry.lanes_hidden_at_first();
             for overlay in &entry.overlays {
                 rows.push(Row {
-                    location: Some(Location::File(overlay.path.clone())),
+                    location: overlay
+                        .file()
+                        .map(|file| Location::File(file.to_path_buf())),
                     ..row(
                         format!("{}{KEY_SEPARATOR}{}", entry.id, overlay.label),
                         RowKind::Lane,

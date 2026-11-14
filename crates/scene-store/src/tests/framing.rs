@@ -48,7 +48,7 @@ fn open(decoder: impl Decoder + 'static, text: &[u8]) -> Arc<Track> {
     let overlay = OverlayRef {
         label: "lane".into(),
         slot: "lane".into(),
-        path: source,
+        source: LaneSource::File(source),
         handler: "TEST".into(),
         options: Settings::new(),
         metadata: Default::default(),

@@ -35,7 +35,9 @@ fn entry(id: ContentId, label: &str, folder: &str) -> Entry {
         overlays: vec![OverlayRef {
             label: "tracks.txt".into(),
             slot: "tracks.txt".into(),
-            path: PathBuf::from(format!("/home/{folder}/tracks.txt")),
+            source: workspace::LaneSource::File(PathBuf::from(format!(
+                "/home/{folder}/tracks.txt"
+            ))),
             handler: "MOT_FILE".into(),
             options: Default::default(),
             metadata: sentinel(folder, "lane"),

@@ -168,7 +168,7 @@ impl State {
                 let source = overlay.map(|overlay| {
                     let known = sources.iter().position(|source| {
                         let held = &source.overlay;
-                        held.path == overlay.path
+                        held.source == overlay.source
                             && held.handler == overlay.handler
                             && held.options == overlay.options
                     });

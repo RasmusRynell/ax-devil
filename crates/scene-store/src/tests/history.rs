@@ -142,7 +142,7 @@ fn open(dir: &TempDir, registry: &TrackRegistry) -> Arc<Track> {
     let overlay = OverlayRef {
         label: "lane".into(),
         slot: "lane".into(),
-        path: source,
+        source: LaneSource::File(source),
         handler: "TEST".into(),
         options: Settings::new(),
         metadata: Default::default(),
@@ -453,7 +453,7 @@ fn cancellation_during_finalization_publishes_no_artifact() {
     let overlay = OverlayRef {
         label: "lane".into(),
         slot: "lane".into(),
-        path: source,
+        source: LaneSource::File(source),
         handler: "TEST".into(),
         options: Settings::new(),
         metadata: Default::default(),

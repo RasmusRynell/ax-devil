@@ -6,7 +6,7 @@ use api_types::handlers::{PluginSource, PluginStatus, PluginsInfo};
 use ax_devil::plugins::Plugins;
 use clap::{Subcommand, ValueHint};
 use foundation::{CancelToken, Interrupt, UserError};
-use handler_api::{OverlayRef, Settings};
+use handler_api::{LaneSource, OverlayRef, Settings};
 use handlers::Handlers;
 use scene::SceneTime;
 use scene_store::{Ingest, TrackRead, TrackRegistry};
@@ -205,7 +205,7 @@ fn check(
     let overlay = OverlayRef {
         label: id.to_owned(),
         slot: id.to_owned(),
-        path: file.to_path_buf(),
+        source: LaneSource::File(file.to_path_buf()),
         handler: id.to_owned(),
         options: options
             .into_iter()

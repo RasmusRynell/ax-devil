@@ -12,7 +12,7 @@ use api_types::playback::{
 use ax_devil::plugins::Plugins;
 use common::{Backend, Event, fixture};
 use foundation::{CancelToken, ErrorCode};
-use handler_api::OverlayRef;
+use handler_api::{LaneSource, OverlayRef};
 use handlers::Handlers;
 use plugins::{Registry, Reserved};
 use scene::MatchBasis;
@@ -196,7 +196,7 @@ fn a_plugin_that_writes_out_of_order_has_its_samples_sorted_and_the_replaced_one
     let overlay = OverlayRef {
         label: "times".into(),
         slot: "times".into(),
-        path: plugin("shell-times/sample.times.txt"),
+        source: LaneSource::File(plugin("shell-times/sample.times.txt")),
         handler: "shell-times".into(),
         options: Default::default(),
         metadata: Default::default(),
@@ -242,7 +242,7 @@ fn a_records_plugin_reads_a_file_line_by_line_and_a_bad_line_costs_one_record() 
     let overlay = OverlayRef {
         label: "records".into(),
         slot: "records".into(),
-        path: plugin("shell-records/sample.records.txt"),
+        source: LaneSource::File(plugin("shell-records/sample.records.txt")),
         handler: "shell-records".into(),
         options: Default::default(),
         metadata: Default::default(),

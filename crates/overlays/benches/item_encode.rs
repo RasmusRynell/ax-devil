@@ -13,7 +13,7 @@ use std::{
 };
 
 use foundation::CancelToken;
-use handler_api::OverlayRef;
+use handler_api::{LaneSource, OverlayRef};
 use handlers::Handlers;
 use scene::serial::columns::encode_sample_item;
 use scene_store::{TrackRead, TrackRegistry};
@@ -42,7 +42,7 @@ fn main() {
         let overlay = OverlayRef {
             label: "det".into(),
             slot: "det".into(),
-            path,
+            source: LaneSource::File(path),
             handler: "MOT_FILE".into(),
             options: serde_json::Map::from_iter([
                 ("width".to_owned(), 1920.into()),

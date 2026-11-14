@@ -178,8 +178,8 @@ fn lanes_are_detections_then_one_ground_truth() {
 
     let det = &by_name("SEQ-01").overlays[0];
     assert_eq!(
-        (det.handler.as_str(), &det.path),
-        ("MOT_FILE", &root.join("SEQ-01/det/det.txt"))
+        (det.handler.as_str(), det.file().unwrap()),
+        ("MOT_FILE", root.join("SEQ-01/det/det.txt").as_path())
     );
     assert_eq!(
         det.options,

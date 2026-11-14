@@ -1,6 +1,6 @@
 use crate::content::{
-    Content, ContentId, Entry, OverlayRef, SeekableVideoContent, VideoRef, check_unique_lanes,
-    playlist_content,
+    Content, ContentId, Entry, LaneSource, OverlayRef, SeekableVideoContent, VideoRef,
+    check_unique_lanes, playlist_content,
 };
 use crate::credentials::Environment;
 use crate::live::LiveRecipe;
@@ -43,7 +43,7 @@ impl VideoRecipe {
             overlays.push(OverlayRef {
                 label: overlay.label.clone(),
                 slot: overlay.label.clone(),
-                path: path.to_path_buf(),
+                source: LaneSource::File(path.to_path_buf()),
                 handler: overlay.handler.clone(),
                 options,
                 metadata: Default::default(),

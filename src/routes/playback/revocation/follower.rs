@@ -30,7 +30,7 @@ fn entry_with_a_lane(folder: &Path) -> Entry {
         overlays: vec![OverlayRef {
             label: "GT".into(),
             slot: "GT".into(),
-            path: gt,
+            source: handler_api::LaneSource::File(gt),
             handler: "MOT_FILE".into(),
             options: handler_api::Settings::from_iter([
                 ("width".to_owned(), 64.into()),

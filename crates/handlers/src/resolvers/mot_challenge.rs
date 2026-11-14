@@ -10,9 +10,9 @@ use foundation::{
     parse_seqinfo,
 };
 use handler_api::{
-    Choice, Field, FieldKind, Form, ImageSequence, OverlayRef, PlaylistResolver, ResolvedEntry,
-    ResolvedPlaylist, ResolvedPlaylists, ResolverSpec, Selection, Settings, SkippedRecords, Values,
-    VideoRef, invalid_field,
+    Choice, Field, FieldKind, Form, ImageSequence, LaneSource, OverlayRef, PlaylistResolver,
+    ResolvedEntry, ResolvedPlaylist, ResolvedPlaylists, ResolverSpec, Selection, Settings,
+    SkippedRecords, Values, VideoRef, invalid_field,
 };
 
 use crate::resolvers::resolved_file_type;
@@ -378,7 +378,7 @@ fn mot_overlay(label: String, path: PathBuf, info: &SeqInfo) -> OverlayRef {
     OverlayRef {
         slot: label.clone(),
         label,
-        path,
+        source: LaneSource::File(path),
         handler: MOT_HANDLER.to_string(),
         options: Settings::from_iter([
             ("width".to_owned(), info.width.into()),
