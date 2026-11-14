@@ -82,8 +82,11 @@ export interface BusHost {
     onProgress: (progress: TaskProgressInfo) => void,
     signal: AbortSignal,
   ): Promise<void>;
-  /** Runs the command the pressed `key` is bound to, if `allowed` accepts its id. */
-  runKey(key: string, allowed: (command: string) => boolean): void;
+  /**
+   * Runs the command the pressed `key` is bound to, if `allowed` accepts its id, for the viewer `binding` names:
+   * a command that cannot reach that viewer is not run.
+   */
+  runKey(binding: Binding, key: string, allowed: (command: string) => boolean): void;
 }
 
 /** The most a `lanes.set` carries in options: they are kept in the workspace. */
@@ -176,9 +179,10 @@ export interface Bus {
 
 /**
  * The bus of one view over one `MessageChannel`. The view sends `{type: "call", id, call, epoch, args}` and gets
- * `{type: "reply", id, ok, value | error, reason}`; it sends `{type: "key", key}` for a key it did not handle. The
+ * `{type: "reply", id, ok, value | error, reason}`; it sends `{type: "key", key, epoch}` for a key it did not handle. The
  * host sends `context`, `playhead`, `command` and (for a running task) `progress` events, each `{type, ...}`.
- * A call whose epoch is not the one of the last `context` is answered `stale` and reaches nothing. The one table of
+ * A call whose epoch is not the one of the last `context` is answered `stale` and reaches nothing; a `key` of another
+ * epoch is dropped, as it has no reply. The one table of
  * calls is `calls` below.
  */
 export function createBus(plugin: PluginView, host: BusHost): Bus {
@@ -324,8 +328,13 @@ export function createBus(plugin: PluginView, host: BusHost): Bus {
   hostPort.onmessage = ({ data }: MessageEvent<unknown>) => {
     if (!isRecord(data)) return;
     if (data.type === "call") void answer(data);
-    else if (data.type === "key" && typeof data.key === "string")
-      host.runKey(data.key, (id) => ownCommands.has(id) || scopeOf(id) === "view");
+    else if (
+      data.type === "key" &&
+      typeof data.key === "string" &&
+      bound !== null &&
+      bound.epoch === data.epoch
+    )
+      host.runKey(bound, data.key, (id) => ownCommands.has(id) || scopeOf(id) === "view");
   };
 
   const flush = () => {

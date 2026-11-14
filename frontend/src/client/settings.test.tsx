@@ -382,3 +382,34 @@ it("blocks settings startup for an incompatible Device snapshot", () => {
   expect(screen.getByRole("alert").textContent).toContain("Incompatible desktop shell");
   expect(screen.queryByText("Settings opened")).toBeNull();
 });
+
+it("reads the shortcuts again when the installed plugins change", async () => {
+  let served: unknown = { ...DEFAULT_SETTINGS, revision: 1 };
+  let changed!: NonNullable<ReturnType<typeof useNoticeSink>>;
+  function Keys() {
+    changed = useNoticeSink()!;
+    const { shortcuts } = useSettings();
+    return <p>{(shortcuts as Record<string, string | undefined>)["acme.export"] ?? "unbound"}</p>;
+  }
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json(served)),
+  );
+  render(
+    <AccessContext value={{ owner: true, fullAccess: false }}>
+      <ChangesProvider>
+        <SettingsProvider>
+          <Keys />
+        </SettingsProvider>
+      </ChangesProvider>
+    </AccessContext>,
+  );
+  await screen.findByText("unbound");
+  served = {
+    ...DEFAULT_SETTINGS,
+    revision: 1,
+    shortcuts: { ...DEFAULT_SETTINGS.shortcuts, "acme.export": "Ctrl+E" },
+  };
+  await act(async () => changed("plugins", 1, false));
+  await screen.findByText("Ctrl+E");
+});

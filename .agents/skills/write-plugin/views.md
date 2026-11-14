@@ -32,7 +32,7 @@ On its first load the host posts one `MessagePort`; everything below travels ove
 - The view sends `{"type": "call", "id", "call", "epoch", "args"}`; `id` is a number it picks. The reply is
   `{"type": "reply", "id", "ok": true, "value"}` or `{"type": "reply", "id", "ok": false, "error", "reason"}`, where
   `error` is `stale`, `no_viewer`, `refused`, `too_large`, `invalid`, `unknown_call`, `cancelled` or `failed`.
-- The view sends `{"type": "key", "key"}` for a key it did not handle, with no reply.
+- The view sends `{"type": "key", "key", "epoch"}` for a key it did not handle, with no reply; a key of an older `epoch` is dropped.
 - The host sends the events below, each `{"type": ...}`.
 - Every call but `cancel` carries the `epoch` of the last `context` event. The epoch changes when the view is bound to
   another viewer, item or entry (not when only the lanes, selection, theme or video rectangle change), and a call with
@@ -58,7 +58,8 @@ On its first load the host posts one `MessagePort`; everything below travels ove
 | `command` | `id`: a `command` whose `runs` is this view |
 | `progress` | `id` of the `task.run`, with `done`, `total`, `text` as the task gave them |
 
-`key` runs a command only if it is a built-in command of scope `view` or one of the plugin's own.
+`key` runs a command only if it is a built-in command of scope `view` or one of the plugin's own. A plugin command runs
+on the viewer the view is bound to; a built-in one runs only while that viewer is in front.
 
 A view reads what it needs with `scenes.read` and plots `values`, notes and events itself. It is not a place for secrets:
 it gets the whole bus and what it reads can be passed to a task ([trust](../../../docs/plugins.md#trust)).
@@ -86,7 +87,7 @@ const ready = new Promise((resolve) => addEventListener("message", (e) => {
   };
 }, { once: true }));
 export const on = (type, fn) => handlers.set(type, [...(handlers.get(type) ?? []), fn]);
-export const key = (k) => port?.postMessage({ type: "key", key: k });
+export const key = (k) => port?.postMessage({ type: "key", key: k, epoch });
 export const call = (name, args = {}, progress) => {
   const id = ++next;
   const reply = ready.then(() => new Promise((ok, fail) => {

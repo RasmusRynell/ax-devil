@@ -24,6 +24,7 @@ import type {
 } from "../generated/api";
 import type { PlaybackStream } from "../playback/stream";
 import { useCommand, useSession } from "../session/session";
+import { useViewers } from "../viewer/useViewers";
 import type { BusHost, PluginView, TaskRun } from "./bus";
 
 /** What a plugin view is called across the app: `<plugin id>.<view id>`, which is also its `SidebarView::Plugin` id. */
@@ -211,10 +212,12 @@ export function useBusHost(
   const command = useCommand();
   const { shortcuts } = useSettings();
   const run = useContext(RunCommandContext);
+  const own = usePluginCommands();
+  const { active } = useViewers();
   const latest = useRef<Latest>({ target, capturing, onCapture });
   latest.current = { target, capturing, onCapture };
-  const used = useRef({ session, command, shortcuts, run });
-  used.current = { session, command, shortcuts, run };
+  const used = useRef({ session, command, shortcuts, run, own, front: active?.id });
+  used.current = { session, command, shortcuts, run, own, front: active?.id };
   return useMemo<BusHost>(
     () => ({
       viewerSet(binding, set) {
@@ -256,11 +259,18 @@ export function useBusHost(
       runTask({ item, entry }, run, onProgress, signal) {
         return streamTask(used.current.session, { item, entry }, run, onProgress, signal);
       },
-      runKey(key, allowed) {
-        if (key === "Escape" && latest.current.capturing) return latest.current.onCapture(false);
-        const { shortcuts: keys, run: runCommand } = used.current;
+      runKey(binding, key, allowed) {
+        const { target: now, capturing: held, onCapture: capture } = latest.current;
+        if (!now || now.item !== binding.item || now.entry !== binding.entry) return;
+        if (key === "Escape" && held) return capture(false);
+        const { shortcuts: keys, run: runCommand, own: plugins, front } = used.current;
         const found = Object.keys(keys).find((id) => keys[id] === key && allowed(id));
-        if (found) runCommand(found);
+        if (!found) return;
+        // A plugin command is run on the viewer the view is bound to. A built-in one is the front viewer's, so a
+        // key from a view bound to another viewer runs nothing rather than act on the front one.
+        if (plugins.some(({ id }) => id === found))
+          runCommand(found, { item: binding.item ?? undefined, entry: binding.entry ?? undefined });
+        else if (now.viewer === front) runCommand(found);
       },
     }),
     [],

@@ -85,8 +85,9 @@ interface Options<T> {
   /** Reads the answer at `path`; the default is `ask`, which throws the backend's `ErrorWire`. */
   read?: (path: string, signal: AbortSignal) => Promise<T>;
   /**
-   * The revision a value already reflects, for an answer that carries its own (of one topic): a notice of that
-   * revision asks for nothing, and `apply` ignores a value with a lower one.
+   * The revision a value already reflects, for an answer that carries its own (of the first of `topics`): a notice of
+   * that revision asks for nothing while no other topic changed since the last read, and `apply` ignores a value with
+   * a lower one.
    */
   revisionOf?: (value: T) => number;
 }
@@ -111,12 +112,21 @@ interface Held {
   /** What the topics were announced as when the read started, and the revision the answer itself carries. */
   started: string | undefined;
   own: number | undefined;
+  /** What the topics after the first were announced as when the last read started. */
+  others: string | undefined;
   /** The connection the answer was read or applied under. */
   backend: number;
 }
 
-const reflects = (held: Held | null, path: string, noticed: string | undefined): boolean =>
-  held?.path === path && (held.started === noticed || String(held.own) === noticed);
+const reflects = (
+  held: Held | null,
+  path: string,
+  noticed: string | undefined,
+  first: string | undefined,
+  others: string | undefined,
+): boolean =>
+  held?.path === path &&
+  (held.started === noticed || (String(held.own) === first && held.others === others));
 
 /**
  * The answer of `path`, read when the component mounts or `path` changes and again whenever the backend announces
@@ -132,6 +142,7 @@ export function useResource<T>(
 ): Resource<T> {
   const revisions = useContext(RevisionsContext);
   const names = typeof topics === "string" ? [topics] : topics;
+  const first = names[0];
   const noticed = useSyncExternalStore(revisions?.subscribe ?? never, () => revisions?.key(names));
   const notices = useSyncExternalStore(revisions?.subscribe ?? never, () => revisions?.notices());
   const [shown, setShown] = useState<{ path: string | null; value?: T; error?: unknown }>({
@@ -141,11 +152,13 @@ export function useResource<T>(
   const running = useRef<{ path: string; request: AbortController } | null>(null);
   const retry = useRef<{ timer?: ReturnType<typeof setTimeout>; attempt: number }>({ attempt: 0 });
   const newest = useRef(noticed);
+  const rest = useRef(names.slice(1));
   const options = useRef(given);
   const [reloads, setReloads] = useState(0);
   useEffect(() => {
     newest.current = noticed;
     options.current = given;
+    rest.current = names.slice(1);
   });
 
   const stop = useCallback(() => {
@@ -161,13 +174,14 @@ export function useResource<T>(
       const request = new AbortController();
       running.current = { path, request };
       const started = newest.current;
+      const others = revisions?.key(rest.current);
       const { read = readJson<T>, revisionOf } = options.current;
       read(path, request.signal).then(
         (value) => {
           if (request.signal.aborted) return;
           running.current = null;
           const own = revisionOf?.(value);
-          held.current = { path, started, own, backend: revisions?.backends() ?? 0 };
+          held.current = { path, started, own, others, backend: revisions?.backends() ?? 0 };
           setShown({ path, value });
           // Notices that came during the read: one more for the newest.
           if (newest.current !== started) begin(path);
@@ -190,9 +204,19 @@ export function useResource<T>(
       held.current = null;
       return;
     }
-    if (reflects(held.current, path, noticed) || running.current?.path === path) return;
+    if (
+      reflects(
+        held.current,
+        path,
+        noticed,
+        revisions?.key([first]),
+        revisions?.key(rest.current),
+      ) ||
+      running.current?.path === path
+    )
+      return;
     begin(path);
-  }, [path, noticed, notices, reloads, begin, stop]);
+  }, [path, first, noticed, notices, reloads, revisions, begin, stop]);
   useEffect(() => stop, [stop]);
 
   const apply = useCallback(
@@ -218,11 +242,11 @@ export function useResource<T>(
         begin(path);
         return;
       }
-      held.current = { path, started: undefined, own, backend };
+      held.current = { path, started: undefined, own, others: now?.others, backend };
       // A notice newer than the answer came while a read it replaced was running.
-      if (Number(newest.current) > own) begin(path);
+      if (Number(revisions?.key([first])) > own) begin(path);
     },
-    [path, revisions, begin, stop],
+    [path, first, revisions, begin, stop],
   );
   const reload = useCallback(() => {
     held.current = null;

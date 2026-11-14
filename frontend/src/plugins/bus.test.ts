@@ -130,15 +130,26 @@ describe("the bus", () => {
   it("runs a key only for a view-scope command or the plugin's own", async () => {
     const { host, bus } = open();
     const run = host.runKey;
-    bus.port.postMessage({ type: "key", key: "Ctrl+Shift+K" });
+    bus.port.postMessage({ type: "key", key: "Ctrl+Shift+K", epoch: 2 });
     await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
-    const allowed = run.mock.calls[0][1];
+    const allowed = run.mock.calls[0][2];
     expect([allowed("zoom-in"), allowed("acme.export")]).toEqual([true, true]);
     expect([allowed("open-workspace"), allowed("settings"), allowed("other.export")]).toEqual([
       false,
       false,
       false,
     ]);
+  });
+
+  it("runs a key for the viewer the view is bound to and drops one of another epoch", async () => {
+    const { host, bus } = open();
+    const other = { ...binding(3), item: "j", entry: "f" };
+    bus.rebind(other);
+    bus.port.postMessage({ type: "key", key: "Space", epoch: 2 });
+    bus.port.postMessage({ type: "key", key: "Space" });
+    bus.port.postMessage({ type: "key", key: "K", epoch: 3 });
+    await vi.waitFor(() => expect(host.runKey).toHaveBeenCalledOnce());
+    expect(host.runKey).toHaveBeenCalledWith(other, "K", expect.any(Function));
   });
 
   it("cancels a running task by its call id", async () => {

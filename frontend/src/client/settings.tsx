@@ -206,9 +206,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const device = useDeviceValues();
   const savedDevice = useSavedDeviceValues();
   const recoveredDevice = useRecoveredDeviceKeys();
-  const settings = useResource<SettingsState>("settings", owner ? "/api/settings" : null, {
-    revisionOf: (state) => state.revision,
-  });
+  // The shortcuts follow the installed plugins' commands, so a plugin change reads them again.
+  const settings = useResource<SettingsState>(
+    ["settings", "plugins"],
+    owner ? "/api/settings" : null,
+    { revisionOf: (state) => state.revision },
+  );
   // A page that holds only a join link kept a copy of the Personal settings here; nothing stale stays behind.
   useEffect(() => {
     try {
