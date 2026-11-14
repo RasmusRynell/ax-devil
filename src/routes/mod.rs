@@ -11,6 +11,7 @@ mod folder;
 mod glance;
 mod handlers;
 mod intake;
+mod lane_scenes;
 mod launch;
 mod live;
 mod network;
@@ -18,7 +19,9 @@ pub mod playback;
 mod plugins;
 pub(crate) mod resolve;
 mod scan;
+mod tasks;
 mod thumbnails;
+mod views;
 mod workspaces;
 
 #[cfg(test)]
@@ -289,6 +292,27 @@ pub(crate) const ROUTES: &[Route] = &[
         listeners: MEMBERS,
         who: Who::Owner,
         handler: |method| on(method, thumbnails::get),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/tasks/{id}/run",
+        listeners: MEMBERS,
+        who: Who::Owner,
+        handler: |method| on(method, tasks::run).layer(tasks::limit()),
+    },
+    Route {
+        method: MethodFilter::GET,
+        path: "/api/lanes/scenes",
+        listeners: MEMBERS,
+        who: Who::Owner,
+        handler: |method| on(method, lane_scenes::get),
+    },
+    Route {
+        method: MethodFilter::GET,
+        path: "/views/{token}/{*path}",
+        listeners: MEMBERS,
+        who: Who::Public,
+        handler: |method| on(method, views::get),
     },
     Route {
         method: MethodFilter::GET,

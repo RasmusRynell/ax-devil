@@ -150,6 +150,10 @@ tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time"] }
 tungstenite = "0.29"
 
+# Opens a plugin's view file from the folder above it, so no link leads out of `views/`.
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true, features = ["fs"] }
+
 [dev-dependencies]
 # Camera values for the tests that build what a scan or a camera answers; only the live crate depends on camera otherwise.
 camera.workspace = true

@@ -1,5 +1,7 @@
 // Generated from api_types::handlers by make; do not edit.
 
+import type { ErrorWire } from "./api_types.error";
+
 /**
  * One value a scan found.
  */
@@ -168,6 +170,36 @@ export type InstallRequest = {
  * The absolute path of the plugin's folder, or of its `ax-devil-plugin.json`.
  */
 path: string, };
+
+/**
+ * The query of `GET /api/lanes/scenes`: up to [`MAX_LANE_SAMPLES`] samples of one lane of an entry, from sample
+ * number `from`.
+ */
+export type LaneScenesQuery = { 
+/**
+ * The Session of the window that asks.
+ */
+session: string, 
+/**
+ * The item that holds the entry.
+ */
+item: string, 
+/**
+ * The entry.
+ */
+entry: string, 
+/**
+ * The lane's slot.
+ */
+slot: string, 
+/**
+ * The number of the first sample.
+ */
+from: number, 
+/**
+ * How many samples; at most [`MAX_LANE_SAMPLES`].
+ */
+count: number, };
 
 /**
  * A lane decoder or task a plugin provides.
@@ -380,6 +412,58 @@ plugin: string,
  * The plugin's settings, checked against its form; replaces the stored ones.
  */
 values: Record<string, unknown>, };
+
+/**
+ * One line of the answer to a task run, a stream of JSON lines: any number of `progress`, then one `done` or
+ * `error`.
+ */
+export type TaskLine = { "progress": TaskProgressInfo } | { "done": Record<string, never> } | { "error": ErrorWire };
+
+/**
+ * How far a task is, as it last said.
+ */
+export type TaskProgressInfo = { 
+/**
+ * Units finished.
+ */
+done?: number, 
+/**
+ * Units in all, when the task knows.
+ */
+total?: number, 
+/**
+ * What it is doing now.
+ */
+text?: string, };
+
+/**
+ * The body of `POST /api/tasks/{id}/run`: the lanes of one entry, by the key the task reads them under.
+ */
+export type TaskRunRequest = { 
+/**
+ * The Session of the window that asks.
+ */
+session: string, 
+/**
+ * The item that holds the entry.
+ */
+item: string, 
+/**
+ * The entry whose lanes the task reads.
+ */
+entry: string, 
+/**
+ * The slot of the lane given to each input key the task declares.
+ */
+lanes: { [key in string]?: string }, 
+/**
+ * Whether the task is given the entry's video; it must match what the task declares.
+ */
+video: boolean, 
+/**
+ * The options the task declares.
+ */
+options: Record<string, unknown>, };
 
 /**
  * The body of `POST /api/plugins/update`.

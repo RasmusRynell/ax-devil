@@ -1,6 +1,8 @@
 //! Wire types for the decoders and playlist resolvers the app knows.
 
+use crate::ErrorWire;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use ts_rs::TS;
 
 /// The body of `GET /api/handlers`.
@@ -310,6 +312,75 @@ pub struct ResolvedInfo {
     pub item: foundation::ItemId,
 }
 
+/// The body of `POST /api/tasks/{id}/run`: the lanes of one entry, by the key the task reads them under.
+#[derive(Serialize, Deserialize, TS)]
+pub struct TaskRunRequest {
+    /// The Session of the window that asks.
+    pub session: String,
+    /// The item that holds the entry.
+    pub item: String,
+    /// The entry whose lanes the task reads.
+    pub entry: String,
+    /// The slot of the lane given to each input key the task declares.
+    pub lanes: BTreeMap<String, String>,
+    /// Whether the task is given the entry's video; it must match what the task declares.
+    pub video: bool,
+    /// The options the task declares.
+    #[ts(type = "Record<string, unknown>")]
+    pub options: serde_json::Map<String, serde_json::Value>,
+}
+
+/// How far a task is, as it last said.
+#[derive(Serialize, Deserialize, TS)]
+pub struct TaskProgressInfo {
+    /// Units finished.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
+    pub done: Option<u64>,
+    /// Units in all, when the task knows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
+    pub total: Option<u64>,
+    /// What it is doing now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub text: Option<String>,
+}
+
+/// One line of the answer to a task run, a stream of JSON lines: any number of `progress`, then one `done` or
+/// `error`.
+#[derive(Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskLine {
+    /// The task reported how far it is.
+    Progress(TaskProgressInfo),
+    /// The task finished.
+    Done {},
+    /// The task did not finish.
+    Error(ErrorWire),
+}
+
+/// The query of `GET /api/lanes/scenes`: up to [`MAX_LANE_SAMPLES`] samples of one lane of an entry, from sample
+/// number `from`.
+#[derive(Serialize, Deserialize, TS)]
+pub struct LaneScenesQuery {
+    /// The Session of the window that asks.
+    pub session: String,
+    /// The item that holds the entry.
+    pub item: String,
+    /// The entry.
+    pub entry: String,
+    /// The lane's slot.
+    pub slot: String,
+    /// The number of the first sample.
+    pub from: u32,
+    /// How many samples; at most [`MAX_LANE_SAMPLES`].
+    pub count: u32,
+}
+
+/// The most samples one `GET /api/lanes/scenes` answers.
+pub const MAX_LANE_SAMPLES: u32 = 2_000;
+
 /// One value a scan found.
 #[derive(Serialize, Deserialize, TS)]
 pub struct ChoiceInfo {
@@ -345,4 +416,8 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<ResolveRequest>();
     types.visit::<ResolvedInfo>();
     types.visit::<ChoiceInfo>();
+    types.visit::<TaskRunRequest>();
+    types.visit::<TaskProgressInfo>();
+    types.visit::<TaskLine>();
+    types.visit::<LaneScenesQuery>();
 }

@@ -37,6 +37,9 @@ if request["op"] == "decode":
 elif request["op"] == "task":
     count = len(samples(lanes["lane"]))
     emit({"progress": {"done": 0, "total": count, "text": "Counting"}})
+    if request["options"].get("out", "").endswith("/fail"):
+        emit({"error": {"reason": "Nothing can be saved there"}})
+        sys.exit(0)
     emit({"progress": {"done": count, "total": count, "text": f"{request['settings']['label']}|{request['options'].get('out', '')}"}})
     emit({"done": {}})
 else:

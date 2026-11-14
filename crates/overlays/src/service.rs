@@ -4,7 +4,7 @@ use std::{sync::Arc, thread, time::Duration};
 
 use foundation::{CancelToken, Interrupt, Timeline, UserError};
 use handler_api::OverlayRef;
-use scene_store::{Admission, Ingest, TrackRegistry};
+use scene_store::{Admission, Ingest, TrackRead, TrackRegistry};
 
 use crate::{
     ViewerOverlays,
@@ -30,6 +30,17 @@ impl OverlayService {
 
     pub(crate) fn from_sources(tracks: Arc<dyn TrackSource>) -> Self {
         Self { tracks }
+    }
+
+    /// Opens the track of `overlay` as `admission` allows, for a reader that is not a viewer: it may still be
+    /// reading, see [`TrackRead::snapshot`].
+    pub fn open_track(
+        &self,
+        overlay: &OverlayRef,
+        admission: Admission,
+        cancel: &CancelToken,
+    ) -> Result<Arc<dyn TrackRead>, Interrupt<UserError>> {
+        self.tracks.open(overlay, admission, cancel)
     }
 
     /// Reads the overlay file into the cache folder's artifact, so that a viewer opened on it later finds the artifact

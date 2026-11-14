@@ -4,7 +4,7 @@
 use super::{Listener, ROUTES};
 use crate::{
     AppState,
-    access::{Policy, Principal},
+    access::{Policy, Principal, VIEW_PREFIX, Who},
     app, lan_app,
     plugins::Plugins,
 };
@@ -109,6 +109,26 @@ async fn status(router: &Router, method: &Method, path: &str, caller: &Caller) -
         .extensions_mut()
         .insert(ConnectInfo(SocketAddr::from(([10, 0, 0, 9], 4000))));
     router.clone().oneshot(request).await.unwrap().status()
+}
+
+/// The rows a view's page may fulfil or load: none may need Full access, or a plugin's view could use what the
+/// Owner without it may not.
+#[tokio::test]
+async fn the_view_routes_are_rows_and_none_of_them_needs_full_access() {
+    let bus = ["/api/tasks/{id}/run", "/api/lanes/scenes"];
+    for path in bus.iter().chain(&["/views/{token}/{*path}"]) {
+        assert!(ROUTES.iter().any(|route| route.path == *path), "{path}");
+    }
+    for route in ROUTES {
+        if route.path.starts_with(VIEW_PREFIX) || bus.contains(&route.path) {
+            assert_ne!(route.who, Who::FullAccess, "{}", route.path);
+        }
+    }
+    // Without the password a task does not run.
+    let nobody = &callers()[3];
+    let (router, _folder, _stop) = router(nobody.listener);
+    let got = status(&router, &Method::POST, "/api/tasks/any/run", nobody).await;
+    assert_eq!(got, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

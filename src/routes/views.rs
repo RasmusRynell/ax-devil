@@ -1,0 +1,277 @@
+//! A plugin's views: the files of its `views/` folder, served to the sandboxed frame that shows them.
+//!
+//! The token in the address is the only credential and names one plugin; the files come from nothing but that plugin's
+//! `views/` folder. A file is reached by opening each part of the path from the folder above it without following a
+//! link, so no `..`, link or race can lead out of the folder. The sandbox headers are added for the whole prefix by
+//! [`security_headers`](crate::access::security_headers), errors included.
+
+use crate::AppState;
+use axum::{
+    body::Body,
+    extract::{Path, State},
+    http::{StatusCode, header},
+    response::{IntoResponse, Response},
+};
+use std::{
+    fs::File,
+    io::{self, Read},
+    path::Path as FsPath,
+};
+
+/// The only folder of a plugin that is served.
+const VIEWS_FOLDER: &str = "views";
+
+/// The largest file served.
+const MOST_BYTES: u64 = 32 << 20;
+
+/// The parts of `path` when it names something inside `views/`: every part is a plain name.
+fn parts(path: &str) -> Option<Vec<&str>> {
+    let parts: Vec<_> = path.split('/').collect();
+    let plain = |part: &&str| {
+        !part.is_empty() && *part != "." && *part != ".." && !part.contains(['\\', ':', '\0'])
+    };
+    (parts.len() >= 2 && parts[0] == VIEWS_FOLDER && parts.iter().all(plain)).then_some(parts)
+}
+
+/// Opens the file at `parts` below `root`, never following a link on the way: each part is opened from the folder
+/// before it.
+#[cfg(unix)]
+fn open_beneath(root: &FsPath, parts: &[&str]) -> io::Result<File> {
+    use rustix::fs::{CWD, Mode, OFlags, openat};
+    let flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW;
+    let Some((name, folders)) = parts.split_last() else {
+        return Err(io::ErrorKind::NotFound.into());
+    };
+    // The plugin's own folder may be reached through links: it was installed there.
+    let mut folder = openat(
+        CWD,
+        root,
+        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::DIRECTORY,
+        Mode::empty(),
+    )?;
+    for part in folders {
+        folder = openat(&folder, *part, flags | OFlags::DIRECTORY, Mode::empty())?;
+    }
+    // Not waiting on a pipe or a device that has nothing to give.
+    let file = openat(&folder, *name, flags | OFlags::NONBLOCK, Mode::empty())?;
+    Ok(File::from(file))
+}
+
+/// Opens the file at `parts` below `root`, refusing any link or other reparse point on the way.
+#[cfg(windows)]
+fn open_beneath(root: &FsPath, parts: &[&str]) -> io::Result<File> {
+    use std::os::windows::fs::MetadataExt;
+    const REPARSE_POINT: u32 = 0x400;
+    let mut path = root.to_path_buf();
+    for part in parts {
+        path.push(part);
+        if std::fs::symlink_metadata(&path)?.file_attributes() & REPARSE_POINT != 0 {
+            return Err(io::ErrorKind::PermissionDenied.into());
+        }
+    }
+    File::open(path)
+}
+
+/// The bytes of the regular file at `parts` below `root`, if it is one and not larger than [`MOST_BYTES`].
+fn read_file(root: &FsPath, parts: &[&str]) -> Option<Vec<u8>> {
+    let file = open_beneath(root, parts).ok()?;
+    if !file.metadata().ok()?.is_file() {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    file.take(MOST_BYTES + 1).read_to_end(&mut bytes).ok()?;
+    (bytes.len() as u64 <= MOST_BYTES).then_some(bytes)
+}
+
+/// What a browser needs to run a file of a view; anything else is opaque bytes.
+fn content_type(name: &str) -> &'static str {
+    let extension = name.rsplit_once('.').map(|(_, extension)| extension);
+    match extension.map(str::to_ascii_lowercase).as_deref() {
+        Some("html" | "htm") => "text/html; charset=utf-8",
+        Some("js" | "mjs") => "text/javascript; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("json" | "map") => "application/json",
+        Some("txt") => "text/plain; charset=utf-8",
+        Some("svg") => "image/svg+xml",
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("ico") => "image/x-icon",
+        Some("woff2") => "font/woff2",
+        Some("woff") => "font/woff",
+        Some("wasm") => "application/wasm",
+        _ => "application/octet-stream",
+    }
+}
+
+/// The file of a plugin's view, or 404 for an unknown token, a path outside `views/`, a link, or anything but a
+/// regular file.
+pub(super) async fn get(
+    State(state): State<AppState>,
+    Path((token, path)): Path<(String, String)>,
+) -> Response {
+    let Some(root) = state.plugins.view_root(&token) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let served = tokio::task::spawn_blocking(move || {
+        let parts = parts(&path)?;
+        let bytes = read_file(&root, &parts)?;
+        Some((content_type(parts[parts.len() - 1]), bytes))
+    })
+    .await
+    .ok()
+    .flatten();
+    match served {
+        Some((kind, bytes)) => (
+            [
+                (header::CONTENT_TYPE, kind),
+                (header::CACHE_CONTROL, "no-store"),
+            ],
+            Body::from(bytes),
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        plugins::Plugins,
+        test_support::{TestApp, json},
+    };
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode, header},
+    };
+    use handlers::Handlers;
+    use serde_json::json;
+
+    fn get(uri: &str) -> Request<Body> {
+        Request::builder()
+            .uri(uri)
+            .header("host", "127.0.0.1:1")
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_view_is_served_in_its_sandbox_and_only_from_its_views_folder() {
+        let test = TestApp::over(|folder| {
+            Plugins::new(Ok(folder.join("plugins.json")), Handlers::built_in())
+        });
+        let plugin = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/plugins/derived-demo");
+        let install = Request::builder()
+            .method("POST")
+            .uri("/api/plugins/install")
+            .header("content-type", "application/json")
+            .body(Body::from(json!({ "path": plugin }).to_string()))
+            .unwrap();
+        let (status, body) = test.send(install).await;
+        assert_eq!(status, StatusCode::OK);
+        let listed = json(&body)["plugins"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["source"]["kind"] == "installed")
+            .unwrap()["status"]
+            .clone();
+        let url = listed["views"][0]["url"].as_str().unwrap().to_owned();
+        let token = url.split('/').nth(2).unwrap().to_owned();
+
+        let served = test.open(get(&url)).await;
+        assert_eq!(served.status(), StatusCode::OK);
+        assert_eq!(
+            served.headers()[header::CONTENT_TYPE],
+            "text/html; charset=utf-8"
+        );
+        // Beside the view, a file of the plugin that is not under `views/`, a missing file and an unknown token.
+        let refused = [
+            format!("/views/{token}/ax-devil-plugin.json"),
+            format!("/views/{token}/views/missing.html"),
+            format!("/views/{token}/views/../ax-devil-plugin.json"),
+            format!("/views/{token}/views"),
+            "/views/not-a-token/views/review/index.html".to_owned(),
+        ];
+        let mut responses = vec![served];
+        for uri in &refused {
+            let response = test.open(get(uri)).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{uri}");
+            responses.push(response);
+        }
+        for response in responses {
+            let headers = response.headers();
+            let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+            assert!(policy.starts_with("sandbox allow-scripts"), "{policy}");
+            // Loads and fetches are limited to this view's own address, even for an unknown token's 404.
+            assert!(
+                policy.contains("connect-src 127.0.0.1:1/views/"),
+                "{policy}"
+            );
+            assert_eq!(policy.matches("'self'").count(), 1, "{policy}"); // frame-ancestors only
+            assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+            assert!(headers.get("x-frame-options").is_none());
+            assert_eq!(headers[header::REFERRER_POLICY], "no-referrer");
+        }
+        // Everywhere else the app's own policy stays.
+        let page = test.open(get("/api/info")).await;
+        assert!(
+            page.headers()[header::CONTENT_SECURITY_POLICY]
+                .to_str()
+                .unwrap()
+                .starts_with("frame-ancestors 'none'")
+        );
+        assert_eq!(page.headers()["x-frame-options"], "DENY");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_or_a_dot_dot_never_leads_out_of_the_views_folder() {
+        let plugin = tempfile::tempdir().unwrap();
+        let views = plugin.path().join("views");
+        std::fs::create_dir_all(views.join("inner")).unwrap();
+        std::fs::write(plugin.path().join("secret.txt"), "secret").unwrap();
+        std::fs::write(views.join("inner/page.html"), "page").unwrap();
+        std::os::unix::fs::symlink("../secret.txt", views.join("file")).unwrap();
+        std::os::unix::fs::symlink("..", views.join("inner/up")).unwrap();
+        let read =
+            |path: &str| super::parts(path).and_then(|p| super::read_file(plugin.path(), &p));
+        assert_eq!(read("views/inner/page.html").as_deref(), Some(&b"page"[..]));
+        for path in [
+            "views/file",
+            "views/inner/up/secret.txt",
+            "secret.txt",
+            "views/../secret.txt",
+            "views/inner",
+        ] {
+            assert_eq!(read(path), None, "{path}");
+        }
+    }
+
+    #[tokio::test]
+    async fn only_a_view_may_send_an_opaque_origin_to_the_local_listener() {
+        let test = TestApp::new();
+        let status = |uri: &'static str| {
+            let request = Request::builder()
+                .uri(uri)
+                .header("origin", "null")
+                .body(Body::empty())
+                .unwrap();
+            async { test.send(request).await.0 }
+        };
+        assert_eq!(status("/api/info").await, StatusCode::FORBIDDEN);
+        assert_eq!(
+            status("/views/token/views/a.js").await,
+            StatusCode::NOT_FOUND
+        );
+        // The host check stays.
+        let rebound = Request::builder()
+            .uri("/views/token/views/a.js")
+            .header("host", "evil.example")
+            .header("origin", "null")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(test.send(rebound).await.0, StatusCode::FORBIDDEN);
+    }
+}

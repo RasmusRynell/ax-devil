@@ -159,11 +159,18 @@ pub async fn require(
     }
 }
 
+/// Where a plugin's views are served. A view runs in a sandboxed frame whose `Origin` is `null`, so the Local guard
+/// does not compare it here, and its responses carry [`VIEW_CSP`] instead of the app's policy.
+pub(crate) const VIEW_PREFIX: &str = "/views/";
+
 /// Keeps other websites off the Local listener. A page reached through a rebound DNS name has the same `Origin` and
 /// `Host` as the real one, so `Host` must be a loopback name; a page from another site sends a foreign `Origin`, compared in full (scheme, host and port).
-/// Requests without `Origin` (the desktop shell, scripts, plain navigation) pass.
+/// Requests without `Origin` (the desktop shell, scripts, plain navigation) pass. Under [`VIEW_PREFIX`] the `Origin`
+/// is not compared (a sandboxed frame sends `null`) and the loopback `Host` still is: what a token admits is the
+/// token's business.
 pub async fn local_guard(request: Request, next: Next) -> Response {
-    if is_local_page(request.headers()) {
+    let view = request.uri().path().starts_with(VIEW_PREFIX);
+    if is_local_page(request.headers(), !view) {
         next.run(request).await
     } else {
         refuse(
@@ -174,7 +181,7 @@ pub async fn local_guard(request: Request, next: Next) -> Response {
     }
 }
 
-fn is_local_page(headers: &HeaderMap) -> bool {
+fn is_local_page(headers: &HeaderMap, compare_origin: bool) -> bool {
     let Some(host) = headers
         .get(header::HOST)
         .and_then(|value| value.to_str().ok())
@@ -188,11 +195,12 @@ fn is_local_page(headers: &HeaderMap) -> bool {
     );
     // The Local listener speaks plain HTTP, so a page of it has exactly this origin; any other scheme, host or port is
     // another site.
-    let same_origin = headers.get(header::ORIGIN).is_none_or(|origin| {
-        origin
-            .to_str()
-            .is_ok_and(|origin| origin.eq_ignore_ascii_case(&format!("http://{host}")))
-    });
+    let same_origin = !compare_origin
+        || headers.get(header::ORIGIN).is_none_or(|origin| {
+            origin
+                .to_str()
+                .is_ok_and(|origin| origin.eq_ignore_ascii_case(&format!("http://{host}")))
+        });
     loopback && same_origin
 }
 
@@ -201,11 +209,76 @@ fn is_local_page(headers: &HeaderMap) -> bool {
 const CONTENT_SECURITY_POLICY: &str =
     "frame-ancestors 'none'; default-src 'self'; img-src 'self' data:";
 
+/// What a view's frame gets instead: a sandbox without `allow-same-origin`, so the page has an opaque origin and no
+/// access to the app's storage or cookies, and the files of its own view address (`own`, see [`view_policy`]) as the
+/// only place anything loads or is fetched from. Inline script and style are allowed because a view is a page its
+/// plugin wrote; `'wasm-unsafe-eval'` and `blob:` workers are for its WebAssembly and threads; only the app may frame
+/// it, and nothing leaves it by form or `<base>`.
+fn view_policy(own: &str) -> HeaderValue {
+    let policy = format!(
+        "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' {own}; \
+         style-src 'unsafe-inline' {own}; img-src data: blob: {own}; font-src data: {own}; media-src blob: {own}; \
+         connect-src {own}; worker-src blob:; frame-ancestors 'self'; form-action 'none'; base-uri 'none'"
+    );
+    HeaderValue::from_str(&policy).unwrap_or_else(|_| HeaderValue::from_static("sandbox"))
+}
+
+/// The CSP source for the one view address a request is under, `host/views/<token>/`, so a view can load nothing but
+/// its own plugin's files: not the app's routes and not another view. A `Host` that is not a plain name with an
+/// optional port (an IPv6 literal, say) falls back to `'self'`, the app's origin.
+fn view_source(request: &Request) -> String {
+    let token = request.uri().path()[VIEW_PREFIX.len()..]
+        .split('/')
+        .next()
+        .unwrap_or_default();
+    let host = request
+        .headers()
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .filter(|host| {
+            host.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-.:".contains(&b))
+        });
+    match host {
+        Some(host)
+            if token
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b)) =>
+        {
+            format!("{host}{VIEW_PREFIX}{token}/")
+        }
+        _ => "'self'".to_owned(),
+    }
+}
+
 /// Adds the headers that keep any page from framing this backend and any injected script from loading code from
-/// elsewhere. Every response on every listener carries them, refusals included.
+/// elsewhere. Every response on every listener carries them, refusals included. A response under [`VIEW_PREFIX`]
+/// carries the sandbox of a view, which the app frames, instead of the app's policy and `X-Frame-Options`.
 pub async fn security_headers(request: Request, next: Next) -> Response {
+    let view = request
+        .uri()
+        .path()
+        .starts_with(VIEW_PREFIX)
+        .then(|| view_policy(&view_source(&request)));
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
+    if let Some(policy) = view {
+        headers.insert(header::CONTENT_SECURITY_POLICY, policy);
+        headers.insert(
+            header::ACCESS_CONTROL_ALLOW_ORIGIN,
+            HeaderValue::from_static("*"),
+        );
+        headers.insert(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("no-referrer"),
+        );
+        headers.insert(
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        );
+        headers.remove(HeaderName::from_static("x-frame-options"));
+        return response;
+    }
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(CONTENT_SECURITY_POLICY),

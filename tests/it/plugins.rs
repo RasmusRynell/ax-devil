@@ -26,11 +26,11 @@ use std::{
 };
 
 /// A backend over the plugins the registry at `registry` lists.
-async fn started(plugins: &Arc<Plugins>) -> Backend {
+pub(crate) async fn started(plugins: &Arc<Plugins>) -> Backend {
     Backend::start_with(false, Arc::clone(plugins), |_| {}).await
 }
 
-fn plugin(name: &str) -> PathBuf {
+pub(crate) fn plugin(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("fixtures/plugins")
         .join(name)
@@ -69,7 +69,7 @@ fn ax_devil(home: &Path, args: &[&std::ffi::OsStr]) -> Output {
 }
 
 /// Installs the fixture plugin `name` into the registry under `home` without the command line.
-fn install(home: &Path, name: &str) -> PathBuf {
+pub(crate) fn install(home: &Path, name: &str) -> PathBuf {
     let file = home.join("data/ax-devil/plugins.json");
     let mut registry = Registry::read(&file).unwrap();
     registry
