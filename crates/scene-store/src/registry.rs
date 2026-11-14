@@ -2,20 +2,20 @@
 
 use std::{
     collections::HashMap,
-    fmt::Write as _,
     path::{Path, PathBuf},
-    sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, Weak},
+    sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError, Weak},
     time::Duration,
 };
 
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, Location, UserError};
-use handler_api::{Decoder, OverlayRef, Values};
+use handler_api::{Decoder, LaneSource, OverlayRef, Values};
 use sha2::{Digest, Sha256};
 
 use crate::{
     ingest::Tuning,
     io::user_error,
-    load::{Request, load},
+    lanefile::hex,
+    load::{Loaded, Request, load, not_built},
     track::Track,
 };
 
@@ -28,6 +28,16 @@ pub const SCENE_CACHE_BYTES: usize = 32 << 20;
 
 /// How often a waiting open looks at its cancel token.
 const WAIT_SLICE: Duration = Duration::from_millis(20);
+
+/// Who is asking for a track, which decides whether it may start a decode that runs code outside the app.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Admission {
+    /// May decode: a stored artifact is used, else the decoder runs.
+    Compute,
+    /// Uses what is built: a stored artifact is used, but a decoder with code outside the app ([`Decoder::code_hash`])
+    /// is never run; the open fails as not built yet. Built-in decoders run as for [`Compute`](Self::Compute).
+    Reuse,
+}
 
 /// What identifies an opened track: the same key shares one decode.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -56,10 +66,7 @@ impl TrackKey {
             hash.update(part);
             hash.update([0]);
         }
-        hash.finalize().iter().fold(String::new(), |mut hex, byte| {
-            let _ = write!(hex, "{byte:02x}");
-            hex
-        })
+        hex(&hash.finalize())
     }
 }
 
@@ -67,11 +74,13 @@ type DecoderLookup = dyn Fn(&str) -> Option<Arc<dyn Decoder>> + Send + Sync;
 
 /// Opens and shares tracks.
 pub struct TrackRegistry {
-    cache_dir: Option<PathBuf>,
+    pub(crate) cache_dir: Option<PathBuf>,
     decoders: Arc<DecoderLookup>,
     scene_cache_bytes: usize,
     tuning: Tuning,
     slots: Mutex<HashMap<TrackKey, Slot>>,
+    /// Where lane files and bundles go when there is no cache folder; removed with the registry.
+    pub(crate) scratch: OnceLock<tempfile::TempDir>,
 }
 
 enum Slot {
@@ -131,6 +140,7 @@ impl TrackRegistry {
             scene_cache_bytes: SCENE_CACHE_BYTES,
             tuning: Tuning::default(),
             slots: Mutex::new(HashMap::new()),
+            scratch: OnceLock::new(),
         }
     }
 
@@ -149,28 +159,41 @@ impl TrackRegistry {
         self
     }
 
-    /// Blocking. Shares an open track with the same key; else loads a valid artifact or decodes the file and writes
-    /// one.
-    ///
-    /// The track is returned once it can be read: for a decoder that gave a header, after its first publication
-    /// while the decode goes on ([`snapshot`](crate::TrackRead::snapshot) says how far it is); otherwise when the
-    /// decode has ended.
-    /// Concurrent opens of one key decode once: the others wait, and one of them takes over if the opener is
-    /// cancelled before the track can be read.
+    /// Blocking. [`open_as`](Self::open_as) with [`Admission::Compute`].
     pub fn open(
         &self,
         overlay: &OverlayRef,
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>> {
+        self.open_as(overlay, Admission::Compute, cancel)
+    }
+
+    /// Blocking. Shares an open track with the same key; else loads a valid artifact or decodes the file and writes
+    /// one. A derived lane first has its input lanes opened with the same `admission` and written as a bundle, which
+    /// is then the file that is opened.
+    ///
+    /// The track is returned once it can be read: for a decoder that gave a header, after its first publication
+    /// while the decode goes on ([`snapshot`](crate::TrackRead::snapshot) says how far it is); otherwise when the
+    /// decode has ended.
+    /// Concurrent opens of one key decode once: the others wait, and one of them takes over if the opener is
+    /// cancelled before the track can be read; under [`Admission::Reuse`] none takes over, since that would start a
+    /// decode of plugin code.
+    pub fn open_as(
+        &self,
+        overlay: &OverlayRef,
+        admission: Admission,
+        cancel: &CancelToken,
+    ) -> Result<Arc<Track>, Interrupt<UserError>> {
         cancel.check()?;
-        let Some(file) = overlay.file() else {
-            return Err(Interrupt::Failed(UserError::new(
-                ErrorCode::UnknownHandler,
-                "Derived lanes are not supported yet",
-            )));
+        let file = match &overlay.source {
+            LaneSource::File(file) => file.clone(),
+            LaneSource::Derived { lanes, video } => {
+                self.derive(lanes, video.as_ref(), admission, cancel)?
+            }
         };
-        let path = std::fs::canonicalize(file)
-            .map_err(|e| Interrupt::Failed(user_error("Cannot find the overlay file", &e, file)))?;
+        let path = std::fs::canonicalize(&file).map_err(|e| {
+            Interrupt::Failed(user_error("Cannot find the overlay file", &e, &file))
+        })?;
         let decoder = (self.decoders)(&overlay.handler).ok_or_else(|| {
             Interrupt::Failed(
                 UserError::new(
@@ -196,11 +219,14 @@ impl TrackRegistry {
                 Claim::Shared(track) => return Ok(track),
                 Claim::Wait(pending) => match pending.wait(cancel)? {
                     Outcome::Done(result) => return result.map_err(Interrupt::Failed),
+                    Outcome::Abandoned if admission == Admission::Reuse && key.code.is_some() => {
+                        return Err(Interrupt::Failed(not_built(&key.path)));
+                    }
                     Outcome::Abandoned | Outcome::Running => continue,
                 },
                 Claim::Open(pending) => pending,
             };
-            return self.finish(&key, &decoder, &options, &pending, cancel);
+            return self.finish(&key, &decoder, &options, admission, &pending, cancel);
         }
     }
 
@@ -236,6 +262,7 @@ impl TrackRegistry {
         key: &TrackKey,
         decoder: &Arc<dyn Decoder>,
         options: &Values,
+        admission: Admission,
         pending: &Arc<Pending>,
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>> {
@@ -246,14 +273,24 @@ impl TrackRegistry {
             pending,
             done: false,
         };
-        let result = self.load(key, decoder, options, cancel);
-        let (slot, outcome) = match &result {
-            Ok(track) => (
-                Some(Slot::Open(Arc::downgrade(track))),
-                Outcome::Done(Ok(track.clone())),
+        // An open that was refused for want of a build is not an outcome for waiters: one that may compute takes over.
+        let (result, slot, outcome) = match self.load(key, decoder, options, admission, cancel) {
+            Ok(Loaded::Track(track)) => (
+                Ok(track.clone()),
+                Some(Slot::Open(Arc::downgrade(&track))),
+                Outcome::Done(Ok(track)),
             ),
-            Err(Interrupt::Failed(error)) => (None, Outcome::Done(Err(error.clone()))),
-            Err(Interrupt::Cancelled) => (None, Outcome::Abandoned),
+            Ok(Loaded::NotBuilt) => (
+                Err(Interrupt::Failed(not_built(&key.path))),
+                None,
+                Outcome::Abandoned,
+            ),
+            Err(Interrupt::Failed(error)) => (
+                Err(Interrupt::Failed(error.clone())),
+                None,
+                Outcome::Done(Err(error)),
+            ),
+            Err(Interrupt::Cancelled) => (Err(Interrupt::Cancelled), None, Outcome::Abandoned),
         };
         {
             let mut slots = self.slots();
@@ -272,8 +309,9 @@ impl TrackRegistry {
         key: &TrackKey,
         decoder: &Arc<dyn Decoder>,
         options: &Values,
+        admission: Admission,
         cancel: &CancelToken,
-    ) -> Result<Arc<Track>, Interrupt<UserError>> {
+    ) -> Result<Loaded, Interrupt<UserError>> {
         let artifact = self.cache_dir.as_ref().map(|dir| {
             dir.join(SCENE_FOLDER)
                 .join(format!("{}.{SCENE_EXTENSION}", key.digest()))
@@ -284,6 +322,7 @@ impl TrackRegistry {
                 key,
                 options,
                 artifact: artifact.as_deref(),
+                admission,
                 cache_bytes: self.scene_cache_bytes,
                 tuning: self.tuning.clone(),
             },

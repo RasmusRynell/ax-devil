@@ -5,6 +5,7 @@
 //! anyone holds it. A track can be read while its file is still being decoded; [`TrackRead::snapshot`] says how much is
 //! final. The artifact format, the ingest rules and the memory bound are in the crate README.
 
+mod derive;
 mod events;
 mod format;
 mod group;
@@ -13,6 +14,7 @@ mod ingest;
 mod input;
 mod io;
 mod keylog;
+mod lanefile;
 mod link;
 mod live;
 mod load;
@@ -41,15 +43,19 @@ pub fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
 #[cfg(test)]
 mod tests;
 
+pub use derive::{DERIVED_EXTENSION, DERIVED_FOLDER, LANE_EXTENSION, LANE_FOLDER};
 pub use events::{
     EventAnchor, EventDetail, EventMatches, EventObject, EventPlacement, EventQuery, EventRow,
     EventView, Involved,
 };
 pub use format::STORE_FORMAT_VERSION;
 pub use history::{EventRef, History, HistoryUnavailable};
+pub use lanefile::write_lane;
 pub use live::{Feed, LiveTrack};
 pub use placement::Placement;
 pub use query::{Matches, Op, Query, Row, Search, Sort, SortKey, Term, appearances};
 pub use read::TrackRead;
-pub use registry::{SCENE_CACHE_BYTES, SCENE_EXTENSION, SCENE_FOLDER, TrackKey, TrackRegistry};
+pub use registry::{
+    Admission, SCENE_CACHE_BYTES, SCENE_EXTENSION, SCENE_FOLDER, TrackKey, TrackRegistry,
+};
 pub use track::{Decided, Ingest, Track, TrackSnapshot};

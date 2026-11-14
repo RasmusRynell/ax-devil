@@ -21,7 +21,7 @@ fn event(sample: u64, operation: Operation) -> Event {
 }
 
 /// Five samples. `a` (a car) is in 0 and 1, `b` (a bus) in 0 to 3. Events: 0 deletes `a`; 1 renames `a` to `z`; 2 merges
-/// `a` and `b` into `c`; 3 splits `b`; 4 deletes `b`; 5 deletes `c`. Events 1 and 2 are on one sample.
+/// `a` and `b` into `c`; 3 splits `b`; 4 deletes `b`; 5 notes "lens cleaned"; 6 deletes `c`. Events 1 and 2 are on one sample.
 fn history() -> History {
     let at = |sample: u64, entities: &[(&str, &[&str])], events: Vec<Event>| {
         scene_of(sample, entities)
@@ -70,7 +70,15 @@ fn history() -> History {
             at(
                 3,
                 &[("b", &["bus"])],
-                vec![event(3, Operation::Delete { entity: id("b") })],
+                vec![
+                    event(3, Operation::Delete { entity: id("b") }),
+                    event(
+                        3,
+                        Operation::Note {
+                            text: "lens cleaned".into(),
+                        },
+                    ),
+                ],
             ),
             at(
                 4,
@@ -166,13 +174,13 @@ fn an_event_sits_on_the_first_frame_at_or_after_its_time_or_on_its_frame_and_nev
     // sample before the first frame and of the sample after the last are left out.
     assert_eq!(
         fixture(MatchBasis::Time).listed(Search::default()),
-        [(1, 1), (2, 1), (3, 1), (4, 2)]
+        [(1, 1), (2, 1), (3, 1), (4, 2), (5, 2)]
     );
     // Frame: each sample's own frame number, whatever the times say; frame 40 is not in the video.
     let by_frame = fixture(MatchBasis::Frame);
     assert_eq!(
         by_frame.listed(Search::default()),
-        [(0, 0), (1, 1), (2, 1), (3, 3), (4, 4)]
+        [(0, 0), (1, 1), (2, 1), (3, 3), (4, 4), (5, 4)]
     );
     // A basis the file has no keys for places nothing.
     let nothing = EventPlacement::new(
@@ -198,8 +206,13 @@ fn a_search_reads_kind_object_and_label_and_the_listing_pages_and_locates_the_li
     };
 
     assert_eq!(events(search(Some("kind"), "MERGE", false)), [2]);
+    assert_eq!(
+        events(search(None, "lens", false)),
+        [5],
+        "a note lists with no object"
+    );
     assert_eq!(events(search(Some("object"), "b", false)), [2, 3, 4]);
-    assert_eq!(events(search(Some("object"), "b", true)), [0, 1]);
+    assert_eq!(events(search(Some("object"), "b", true)), [0, 1, 5]);
     assert_eq!(
         events(search(None, "rename a", false)),
         [1],
@@ -208,7 +221,7 @@ fn a_search_reads_kind_object_and_label_and_the_listing_pages_and_locates_the_li
     assert!(events(search(Some("class"), "car", false)).is_empty());
 
     let all = fixture.run(Search::default());
-    assert_eq!((all.total(), all.matched()), (5, 5));
+    assert_eq!((all.total(), all.matched()), (6, 6));
     let paged: Vec<u32> = all
         .rows(fixture.view(), 1, 2)
         .iter()
@@ -218,7 +231,7 @@ fn a_search_reads_kind_object_and_label_and_the_listing_pages_and_locates_the_li
     assert_eq!(all.row_of(3), Some(3));
 
     let narrowed = fixture.run(search(Some("object"), "b", false));
-    assert_eq!((narrowed.total(), narrowed.matched()), (5, 3));
+    assert_eq!((narrowed.total(), narrowed.matched()), (6, 3));
     assert_eq!(narrowed.row_of(0), None);
     // The line goes before the first listed event after the frame.
     let line = |frame| narrowed.frame_row(&fixture.events, frame);
@@ -268,7 +281,7 @@ fn an_event_shows_each_object_once_where_it_is_seen_and_the_other_events_of_its_
         .collect();
     assert_eq!(chips, [Some("car"), None]);
 
-    assert!(view.detail(5, 4, 9).is_none(), "the video does not show it");
+    assert!(view.detail(6, 4, 9).is_none(), "the video does not show it");
     let events_of = |limit| {
         let (rows, more) = view.object_events("b", limit);
         (rows.iter().map(|r| r.event).collect::<Vec<_>>(), more)

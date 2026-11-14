@@ -22,7 +22,7 @@ use handler_api::{Decoder, LaneSource, OverlayRef};
 use handlers::Handlers;
 use playback::{Direction, Priority, Want};
 use scene::matching::MatchPolicy;
-use scene_store::{TrackRead, TrackRegistry};
+use scene_store::{Admission, TrackRead, TrackRegistry};
 use tempfile::TempDir;
 
 use crate::{
@@ -45,6 +45,7 @@ impl TrackSource for Tracks {
     fn open(
         &self,
         overlay: &OverlayRef,
+        admission: Admission,
         cancel: &CancelToken,
     ) -> Result<Arc<dyn TrackRead>, Interrupt<UserError>> {
         let name = overlay
@@ -60,7 +61,7 @@ impl TrackSource for Tracks {
             let _ = self.cancelled.lock().expect("sender").send(());
             return Err(Interrupt::Cancelled);
         }
-        TrackSource::open(&self.registry, overlay, cancel)
+        TrackSource::open(&self.registry, overlay, admission, cancel)
     }
 }
 
@@ -138,7 +139,7 @@ impl Env {
 
     pub(super) fn open(&self, lanes: Vec<Option<OverlayRef>>, frames: u64) -> ViewerOverlays {
         self.service
-            .open_viewer(lanes, timeline(frames), SAMPLE_BUDGET)
+            .open_viewer(lanes, timeline(frames), SAMPLE_BUDGET, Admission::Compute)
     }
 }
 

@@ -4,7 +4,7 @@ use std::{sync::Arc, thread, time::Duration};
 
 use foundation::{CancelToken, Interrupt, Timeline, UserError};
 use handler_api::OverlayRef;
-use scene_store::{Ingest, TrackRegistry};
+use scene_store::{Admission, Ingest, TrackRegistry};
 
 use crate::{
     ViewerOverlays,
@@ -37,7 +37,7 @@ impl OverlayService {
     /// stops the read when no viewer shares it. A file that cannot be read is an error, which a viewer opened on it
     /// reports itself.
     pub fn warm(&self, overlay: &OverlayRef, cancel: &CancelToken) -> Result<(), UserError> {
-        let track = match self.tracks.open(overlay, cancel) {
+        let track = match self.tracks.open(overlay, Admission::Compute, cancel) {
             Ok(track) => track,
             Err(Interrupt::Cancelled) => return Ok(()),
             Err(Interrupt::Failed(error)) => return Err(error),
@@ -60,11 +60,15 @@ impl OverlayService {
     ///
     /// Each source loads, then encodes, on its own thread (loads share decoding through the track registry), so
     /// nothing here blocks the caller. Lanes past `u16::MAX` are not opened.
+    ///
+    /// `admission` is what the viewer's demand may start: a viewer that is only [`Reuse`](Admission::Reuse)d never
+    /// runs plugin code, so a lane nobody has built fails as not built yet.
     pub fn open_viewer(
         &self,
         mut lanes: Vec<Option<OverlayRef>>,
         timeline: Timeline,
         sample_budget: u64,
+        admission: Admission,
     ) -> ViewerOverlays {
         lanes.truncate(usize::from(u16::MAX));
         let state = State::new(lanes, timeline.last(), sample_budget);
@@ -90,7 +94,9 @@ impl OverlayService {
             let (thread_shared, tracks) = (Arc::clone(&shared), Arc::clone(&self.tracks));
             let spawned = thread::Builder::new()
                 .name(format!("overlays-source-{}", lane_id(index)))
-                .spawn(move || worker::run(&thread_shared, tracks.as_ref(), index, &overlay));
+                .spawn(move || {
+                    worker::run(&thread_shared, tracks.as_ref(), index, &overlay, admission)
+                });
             match spawned {
                 Ok(handle) => threads.push(handle),
                 Err(error) => {

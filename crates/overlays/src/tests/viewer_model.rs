@@ -12,7 +12,7 @@ use handler_api::OverlayRef;
 use playback::{Direction, Priority, Want, rank};
 use scene::MatchBasis;
 use scene::matching::{MatchPolicy, Sticky, Tolerance};
-use scene_store::TrackRead;
+use scene_store::{Admission, TrackRead};
 
 use super::{Env, timeline, want};
 use crate::{OverlayEvent, sources::TrackSource, state::State, window::FIRST_NON_SAMPLE};
@@ -164,8 +164,13 @@ impl Rig {
     }
 
     pub(super) fn open(env: &Env, overlay: OverlayRef, timeline: Timeline, lanes: usize) -> Self {
-        let track =
-            TrackSource::open(&env.tracks.registry, &overlay, &CancelToken::new()).expect("opens");
+        let track = TrackSource::open(
+            &env.tracks.registry,
+            &overlay,
+            Admission::Compute,
+            &CancelToken::new(),
+        )
+        .expect("opens");
         let mut state = State::new(
             vec![Some(overlay); lanes],
             timeline.last(),

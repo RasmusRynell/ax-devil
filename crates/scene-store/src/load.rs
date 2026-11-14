@@ -13,7 +13,7 @@ use handler_api::{Decoder, Spec, Values};
 use scene::SCENE_VERSION;
 
 use crate::{
-    TrackKey,
+    Admission, TrackKey,
     format::{Identity, Index, Sections, Tail, write_tail},
     ingest::{First, Job, Tuning, spawn},
     io::user_error,
@@ -33,17 +33,31 @@ pub(crate) struct Request<'a> {
     pub options: &'a Values,
     /// Where the artifact lives; `None` keeps it in an unnamed temporary file.
     pub artifact: Option<&'a Path>,
+    pub admission: Admission,
     pub cache_bytes: usize,
     pub tuning: Tuning,
 }
 
+/// What an open ended with, besides failing or being cancelled.
+pub(crate) enum Loaded {
+    Track(Arc<Track>),
+    /// There is no valid artifact, and the request's [`Admission`] does not allow running the decoder's code.
+    NotBuilt,
+}
+
+/// The failure of an open that was refused because nothing is built.
+pub(crate) fn not_built(path: &Path) -> UserError {
+    UserError::new(ErrorCode::Forbidden, "Not built yet").at(HostPath::new(path))
+}
+
 /// Opens the track of `request.key`. A decode that must run is started on its own thread; this returns once the
-/// track can be read, which for a decoder without a header is the end of the decode.
+/// track can be read, which for a decoder without a header is the end of the decode. A decoder with code outside the
+/// app is not run for a [`Admission::Reuse`] request.
 pub(crate) fn load(
     decoder: &Arc<dyn Decoder>,
     request: &Request<'_>,
     cancel: &CancelToken,
-) -> Result<Arc<Track>, Interrupt<UserError>> {
+) -> Result<Loaded, Interrupt<UserError>> {
     let key = request.key;
     let spec = decoder.spec();
     let failed = |error: UserError| Interrupt::Failed(error);
@@ -73,6 +87,9 @@ pub(crate) fn load(
     };
     let track = match reused {
         Some(track) => track,
+        None if request.admission == Admission::Reuse && key.code.is_some() => {
+            return Ok(Loaded::NotBuilt);
+        }
         None => build(
             decoder,
             request,
@@ -83,7 +100,7 @@ pub(crate) fn load(
     };
     // Nobody else holds the track yet: the ingest keeps only its growth, and the registry publishes it after this.
     track.watch(watch);
-    Ok(track)
+    Ok(Loaded::Track(track))
 }
 
 /// The track of a valid artifact, republishing its stat when only that differs; `None` when it cannot be used.

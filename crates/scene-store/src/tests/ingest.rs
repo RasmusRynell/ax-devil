@@ -88,6 +88,15 @@ fn fragments_of_one_key_join_and_a_replace_drops_what_the_key_held() {
         "entities in order of first appearance, an id seen again joins its observations"
     );
     assert_eq!(contents(&track, 1), [pair("9", &[90])]);
+    let seen = |index| track.scene(index).expect("scene").values().to_vec();
+    assert_eq!(
+        seen(0),
+        [
+            ("seen".into(), Value::Int(2)),
+            ("seen".into(), Value::Int(2))
+        ],
+        "the values of every joined Scene are kept"
+    );
     let warnings = track.warnings();
     assert_eq!(warnings.len(), 1, "one replace dropped data: {warnings:?}");
     assert!(warnings[0].problem.starts_with("1 samples were replaced"));

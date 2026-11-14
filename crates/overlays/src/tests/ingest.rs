@@ -20,7 +20,7 @@ use scene::{
     BoundingBox, Coverage, Entity, EntityId, FilterPolicy, Geometry, MatchBasis, Observation,
     Scene, SceneTime, TimeSlice,
 };
-use scene_store::{Feed, Ingest, LiveTrack, TrackRead};
+use scene_store::{Admission, Feed, Ingest, LiveTrack, TrackRead};
 
 use super::{
     Env, SAMPLE_BUDGET, Sent, cells, next, overlay_at, sample_ids, settle_into, timeline, want,
@@ -417,6 +417,7 @@ impl TrackSource for Live {
     fn open(
         &self,
         _overlay: &OverlayRef,
+        _admission: Admission,
         _cancel: &CancelToken,
     ) -> Result<Arc<dyn TrackRead>, Interrupt<UserError>> {
         Ok(self.0.clone())
@@ -440,6 +441,7 @@ async fn lanes_of_a_live_track_fill_without_aligning_or_restarting_their_source(
         vec![Some(overlay.clone()), Some(overlay)],
         timeline(10),
         SAMPLE_BUDGET,
+        Admission::Compute,
     );
     viewer.want(want(0, 0, 9));
     for lane in 0..2 {

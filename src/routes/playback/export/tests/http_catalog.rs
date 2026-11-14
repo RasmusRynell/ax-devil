@@ -77,10 +77,12 @@ async fn http_validation_cannot_draw_a_revision_skipped_by_the_feed_frontend_fix
         .open(&video, &CancelToken::new(), &mut |_| {})
         .unwrap();
     let (_, index) = app.state.videos.open_input(&video).unwrap();
-    let overlays = app
-        .state
-        .overlays
-        .open_viewer(vec![None], index.timeline().clone(), 1024);
+    let overlays = app.state.overlays.open_viewer(
+        vec![None],
+        index.timeline().clone(),
+        1024,
+        scene_store::Admission::Compute,
+    );
     let entry = Entry {
         id: workspace::ContentId::of_item(&foundation::ItemId::generate()),
         label: "Video".into(),

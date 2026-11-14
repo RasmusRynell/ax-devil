@@ -46,7 +46,12 @@ async fn open_overlay(overlay: OverlayRef) -> (ViewerOverlays, u32) {
         handlers::Handlers::built_in().decoder_lookup(),
         None,
     ));
-    let mut viewer = service.open_viewer(vec![Some(overlay)], timeline(), SAMPLE_BUDGET);
+    let mut viewer = service.open_viewer(
+        vec![Some(overlay)],
+        timeline(),
+        SAMPLE_BUDGET,
+        scene_store::Admission::Compute,
+    );
     loop {
         match event(&mut viewer).await {
             OverlayEvent::Status {

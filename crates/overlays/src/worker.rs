@@ -4,7 +4,7 @@ use std::{sync::Arc, thread};
 
 use foundation::{ErrorCode, Interrupt, UserError};
 use handler_api::OverlayRef;
-use scene_store::{TrackRead, TrackSnapshot};
+use scene_store::{Admission, TrackRead, TrackSnapshot};
 
 use crate::{
     sources::TrackSource,
@@ -37,9 +37,10 @@ pub(crate) fn run(
     tracks: &dyn TrackSource,
     source: usize,
     overlay: &OverlayRef,
+    admission: Admission,
 ) {
     let _close = CloseOnPanic(shared);
-    let opened = match tracks.open(overlay, &shared.cancel) {
+    let opened = match tracks.open(overlay, admission, &shared.cancel) {
         Ok(track) => track,
         Err(Interrupt::Cancelled) => return,
         Err(Interrupt::Failed(error)) => {

@@ -43,6 +43,7 @@ pub(super) async fn viewer(folder: &Path) -> (ViewerOverlays, u32) {
         vec![Some(overlay.clone()), Some(overlay)],
         timeline,
         53_687_091,
+        scene_store::Admission::Compute,
     );
     let (mut ready, mut revision) = (0_u8, 0);
     while ready != 0b11 {

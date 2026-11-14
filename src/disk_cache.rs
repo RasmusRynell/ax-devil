@@ -14,12 +14,22 @@ use std::{
 };
 
 /// Where each kind of cache file lives under the cache folder: its label, subfolder and file extension.
-const KINDS: [(&str, &str, &str); 3] = [
+const KINDS: [(&str, &str, &str); 5] = [
     ("Frame indexes", media::INDEX_FOLDER, media::INDEX_EXTENSION),
     (
         "Overlay scenes",
         scene_store::SCENE_FOLDER,
         scene_store::SCENE_EXTENSION,
+    ),
+    (
+        "Derived lane inputs",
+        scene_store::LANE_FOLDER,
+        scene_store::LANE_EXTENSION,
+    ),
+    (
+        "Derived lane bundles",
+        scene_store::DERIVED_FOLDER,
+        scene_store::DERIVED_EXTENSION,
     ),
     ("Thumbnails", thumbnails::FOLDER, thumbnails::EXTENSION),
 ];

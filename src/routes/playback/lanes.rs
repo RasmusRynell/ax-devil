@@ -18,7 +18,7 @@ use foundation::{ErrorCode, HostPath, MediaTime, Timeline, UserError};
 use overlays::{LaneStatus, OverlayEvent, ViewerOverlays};
 use playback::{Rank, Want};
 use scene::matching::{MatchPolicy, Sticky, Tolerance, Verdict};
-use scene_store::Ingest;
+use scene_store::{Admission, Ingest};
 use std::collections::{BTreeMap, BTreeSet};
 use workspace::Entry;
 
@@ -83,8 +83,15 @@ impl Lanes {
             .filter_map(|(lane, _)| u16::try_from(lane).ok())
             .collect();
         let count = sources.len();
+        // An Owner seat, which also drives the Presenter View, may build what is missing; a Guest only uses what is
+        // built. The lease has no finer role: a Guest following the Presenter View is still a Guest here.
+        let admission = if audience.host_details {
+            Admission::Compute
+        } else {
+            Admission::Reuse
+        };
         Self {
-            overlays: overlays.open_viewer(sources, timeline, data_bytes),
+            overlays: overlays.open_viewer(sources, timeline, data_bytes, admission),
             live: true,
             count,
             working,
