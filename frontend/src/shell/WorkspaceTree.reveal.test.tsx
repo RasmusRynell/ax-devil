@@ -1,21 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vite-plus/test";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { scenario } from "../session/fakeScenario";
 import { FakeSocket, type Room } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
 import { SessionProvider } from "../session/session";
 import { KeptStateProvider } from "../kit/keptState";
 import { RevealShown } from "./RevealShown";
-import { labels, LISTING, renderTree } from "./WorkspaceTree.fixture";
+import { labels, LISTING, renderTree, useTreeHarness } from "./WorkspaceTree.fixture";
 import { WorkspaceTree } from "./WorkspaceTree";
 
-beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
-afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
-  window.sessionStorage.clear();
-  FakeSocket.reset();
-});
+useTreeHarness();
 
 const REVEAL = scenario("reveal");
 /** The rows of the playlist no viewer shows. */
@@ -93,6 +87,7 @@ describe("the item a viewer shows", () => {
     act(() => room.show(REVEAL));
     const tree = screen.getByRole("tree", { name: "Playlists" });
     expect(labels()).toEqual(["v.mp4", "mot", "A", "B", "other", "X"]);
+    act(() => tree.focus());
     fireEvent.keyDown(tree, { key: "ArrowDown" });
     fireEvent.keyDown(tree, { key: "Enter" });
     await act(async () => {});

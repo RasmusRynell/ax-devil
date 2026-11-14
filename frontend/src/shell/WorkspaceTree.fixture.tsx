@@ -1,5 +1,6 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { useLayoutEffect } from "react";
+import { afterEach, beforeEach, vi } from "vite-plus/test";
 import type { Access } from "../generated/api";
 import { scenario, type Scenario } from "../session/fakeScenario";
 import { FakeSocket, type Room } from "../session/fakeSession";
@@ -19,6 +20,18 @@ export const LISTING = {
   search: "Search items",
   empty: "No items",
 } as const;
+
+/** Gives each test a fake Session socket and clears everything it left behind. */
+export function useTreeHarness() {
+  beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    window.sessionStorage.clear();
+    FakeSocket.reset();
+  });
+}
 
 /** What the window shows, as the tree changed it. */
 function View() {

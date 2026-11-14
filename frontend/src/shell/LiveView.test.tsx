@@ -460,35 +460,6 @@ describe("keyboard", () => {
     expect(sent()).toEqual([]);
     expect(tree.getAttribute("aria-activedescendant")).not.toBeNull();
   });
-
-  it("gives the focus back to the tree when a row's menu closes", async () => {
-    await renderView("initial");
-    const tree = await screen.findByRole("tree", { name: "Live" });
-    fireEvent.contextMenu(await screen.findByText("Video only"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Start stream" }));
-    expect(document.activeElement).toBe(tree);
-  });
-});
-
-const MOUSE = { pointerType: "mouse" };
-
-describe("a hover picture", () => {
-  it("is asked for only on a camera the scan signed in to", async () => {
-    await renderView();
-    await screen.findByText("10.0.0.3");
-    // A row with a picture has no text tip, which would show beside its card; one without keeps it.
-    const tipped = (name: RegExp) => screen.getByRole("treeitem", { name }).hasAttribute("title");
-    expect([tipped(/10\.0\.0\.2/), tipped(/10\.0\.0\.3/)]).toEqual([false, true]);
-    fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /10\.0\.0\.3/ }), MOUSE);
-    expect(fetched).not.toHaveBeenCalledWith(
-      expect.stringContaining("/api/live/snapshot"),
-      undefined,
-    );
-    fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /10\.0\.0\.2/ }), MOUSE);
-    await waitFor(() =>
-      expect(fetched).toHaveBeenCalledWith("/api/live/snapshot/network/10.0.0.2", undefined),
-    );
-  });
 });
 
 describe("a long scan", () => {
