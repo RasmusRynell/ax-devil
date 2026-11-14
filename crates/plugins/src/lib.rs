@@ -35,7 +35,7 @@ use std::{
     sync::Arc,
 };
 
-use handler_api::{Decoder, PlaylistResolver, Settings};
+use handler_api::{Decoder, PlaylistResolver, Settings, Values};
 
 pub use decoder::PluginDecoder;
 pub use fields::RESERVED_SETTING_KEYS;
@@ -66,6 +66,8 @@ pub struct LoadedPlugin {
     /// The handlers it lists that this build cannot use: of a kind it does not know, or referring to something
     /// missing.
     pub skipped: Vec<SkippedHandler>,
+    /// The settings its program runs with: the stored values with the defaults filled in.
+    pub settings: Values,
 }
 
 impl LoadedPlugin {
@@ -77,10 +79,8 @@ impl LoadedPlugin {
     /// The handlers of a validated manifest, sharing one [`Program`] that runs with `settings`, the plugin's stored
     /// values (see [`Manifest::settings_values`]).
     pub fn new(manifest: Manifest, settings: &Settings) -> Result<Self, ManifestError> {
-        let program = Arc::new(Program::new(
-            manifest.clone(),
-            manifest.settings_values(settings)?,
-        ));
+        let settings = manifest.settings_values(settings)?;
+        let program = Arc::new(Program::new(manifest.clone(), settings.clone()));
         let mut decoders = Vec::new();
         let mut resolvers = Vec::new();
         let mut tasks = Vec::new();
@@ -107,6 +107,7 @@ impl LoadedPlugin {
             decoders,
             resolvers,
             tasks,
+            settings,
         })
     }
 }

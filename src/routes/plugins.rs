@@ -1,15 +1,21 @@
-//! Routes that install and remove plugins. Installed plugins belong to this machine, so only its own listener serves
-//! them (see the route table); listing is in [`super::handlers`].
+//! Routes that install, remove and configure plugins. Installing, removing and updating run code on this machine, so
+//! they need Full access; the settings of a plugin already installed are the Owner's (see the route table). Listing is
+//! in [`super::handlers`].
 
-use super::handlers::refuse;
-use crate::{AppState, Failure};
-use api_types::handlers::{InstallRequest, PluginsInfo, RemoveRequest, UpdateRequest};
+use crate::{AppState, Failure, access::Principal};
+use api_types::{
+    Audience,
+    handlers::{InstallRequest, PluginsInfo, RemoveRequest, SettingsRequest, UpdateRequest},
+    project,
+};
 use axum::{Json, extract::State, http::StatusCode};
 use foundation::{ErrorCode, UserError};
 use std::{path::PathBuf, sync::Arc};
 
-/// Runs a change of the installed plugins on a blocking thread and answers with the plugins as they are after it.
+/// Runs a change of the installed plugins on a blocking thread and answers with the plugins as they are after it. A
+/// refusal carries the host's reasons and paths only for `audience`.
 async fn changed(
+    audience: Audience,
     change: impl FnOnce() -> Result<Arc<PluginsInfo>, UserError> + Send + 'static,
 ) -> Result<Json<PluginsInfo>, Failure> {
     let answer = tokio::task::spawn_blocking(change)
@@ -29,9 +35,25 @@ async fn changed(
                 ErrorCode::UnknownHandler => StatusCode::NOT_FOUND,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
-            Err(refuse(status, &error))
+            Err((status, Json(project(&error, audience))))
         }
     }
+}
+
+/// Stores the settings of an installed plugin, which the plugin's form must accept, and rebuilds what depends on
+/// them. An Owner without Full access gets no host reasons or paths in a refusal.
+pub(crate) async fn settings(
+    principal: Principal,
+    State(state): State<AppState>,
+    Json(request): Json<SettingsRequest>,
+) -> Result<Json<PluginsInfo>, Failure> {
+    let audience = Audience {
+        host_details: principal.full_access(),
+    };
+    changed(audience, move || {
+        state.plugins.set_settings(&request.plugin, request.values)
+    })
+    .await
 }
 
 /// Installs the plugin in a folder, or at a manifest file, and loads it.
@@ -40,7 +62,7 @@ pub(crate) async fn install(
     Json(request): Json<InstallRequest>,
 ) -> Result<Json<PluginsInfo>, Failure> {
     let path = PathBuf::from(request.path);
-    changed(move || {
+    changed(Audience::HOST, move || {
         // A relative path would mean this backend's working folder, which nobody typing it has in mind.
         if !path.is_absolute() {
             return Err(UserError::new(
@@ -58,7 +80,10 @@ pub(crate) async fn remove(
     State(state): State<AppState>,
     Json(request): Json<RemoveRequest>,
 ) -> Result<Json<PluginsInfo>, Failure> {
-    changed(move || state.plugins.remove(&request.target)).await
+    changed(Audience::HOST, move || {
+        state.plugins.remove(&request.target)
+    })
+    .await
 }
 
 /// Reads an installed plugin's manifest again, which also retries one that failed.
@@ -66,7 +91,10 @@ pub(crate) async fn update(
     State(state): State<AppState>,
     Json(request): Json<UpdateRequest>,
 ) -> Result<Json<PluginsInfo>, Failure> {
-    changed(move || state.plugins.reread(&request.target)).await
+    changed(Audience::HOST, move || {
+        state.plugins.reread(&request.target)
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -152,5 +180,90 @@ mod tests {
             .await;
         assert_eq!(status, StatusCode::OK);
         assert!(installed(&json(&body)).is_empty());
+    }
+
+    #[tokio::test]
+    async fn saved_settings_are_checked_against_the_form_and_rebuild_the_plugins_decoders() {
+        let test = TestApp::over(|folder| {
+            Plugins::new(Ok(folder.join("plugins.json")), Handlers::built_in())
+        });
+        let plugin = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/plugins/derived-demo");
+        let (status, body) = test
+            .send(post("/api/plugins/install", json!({ "path": plugin })))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let listed = json(&body)["plugins"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["source"]["kind"] == "installed")
+            .unwrap()["status"]
+            .clone();
+        let kinds: Vec<_> = listed["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row["kind"].as_str().unwrap())
+            .collect();
+        assert_eq!(kinds, ["decoder", "task", "view", "command"]);
+        assert_eq!(listed["values"], json!({ "label": "demo" }));
+        assert_eq!(
+            listed["commands"][0]["id"],
+            "derived-demo.derived-count-run"
+        );
+        assert_eq!(listed["operations"].as_array().unwrap().len(), 2);
+        let url = listed["views"][0]["url"].as_str().unwrap();
+        let token = url
+            .strip_prefix("/views/")
+            .and_then(|rest| rest.strip_suffix("/views/review/index.html"))
+            .expect("a view address carries the plugin's token");
+        assert!(test.state.plugins.view_root(token).is_some());
+        assert!(test.state.plugins.task("derived-count").is_some());
+
+        let code_hash = || {
+            test.state
+                .plugins
+                .handlers()
+                .decoder("derived-union")
+                .unwrap()
+                .code_hash()
+        };
+        let before = code_hash();
+        assert!(before.is_some());
+        let (status, body) = test
+            .send(post(
+                "/api/plugins/settings",
+                json!({ "plugin": "derived-demo", "values": { "label": "changed", "stray": 1 } }),
+            ))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let stored = &json(&body)["plugins"];
+        assert!(
+            stored
+                .to_string()
+                .contains(r#""values":{"label":"changed"}"#)
+        );
+        assert_ne!(code_hash(), before, "another setting is another program");
+        assert!(
+            test.state.plugins.view_root(token).is_none(),
+            "a reload ends the old view tokens"
+        );
+
+        // A value the form refuses, or a plugin that is not installed, changes nothing.
+        let (status, body) = test
+            .send(post(
+                "/api/plugins/settings",
+                json!({ "plugin": "derived-demo", "values": { "label": 5 } }),
+            ))
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(json(&body)["location"], "label");
+        let (status, _) = test
+            .send(post(
+                "/api/plugins/settings",
+                json!({ "plugin": "nobody", "values": {} }),
+            ))
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 }

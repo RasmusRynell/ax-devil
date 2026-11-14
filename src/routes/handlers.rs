@@ -1,58 +1,18 @@
 //! Routes for the decoders and playlist resolvers the app knows and the plugins that provide them.
 
-use crate::{AppState, Failure};
+use crate::{AppState, Failure, plugins::field_infos};
 use api_types::{
     Audience,
-    handlers::{
-        DecoderInfo, FieldInfo, FieldKindWire, HandlersInfo, PluginSource, PluginStatus,
-        PluginsInfo, ResolverInfo, ScanCountInfo,
-    },
+    handlers::{DecoderInfo, HandlersInfo, PluginSource, PluginStatus, PluginsInfo, ResolverInfo},
 };
 use axum::{Json, extract::State, http::StatusCode};
 use foundation::UserError;
-use handler_api::{FieldKind, Form};
 use std::collections::HashMap;
 
 /// A refused request: the status and `error` as the host sees it. The routes that use it need the `Files` grant, so
 /// the caller may read the host's paths and reasons.
 pub(super) fn refuse(status: StatusCode, error: &UserError) -> Failure {
     (status, Json(api_types::project(error, Audience::HOST)))
-}
-
-fn field_kind(kind: &FieldKind) -> FieldKindWire {
-    match kind {
-        FieldKind::Folder => FieldKindWire::Folder,
-        FieldKind::File { extensions } => FieldKindWire::File {
-            extensions: extensions.clone(),
-        },
-        FieldKind::Text => FieldKindWire::Text,
-        FieldKind::Integer { min } => FieldKindWire::Integer { min: *min },
-        FieldKind::Handler => FieldKindWire::Handler,
-        FieldKind::DecoderOptions { handler_field } => FieldKindWire::DecoderOptions {
-            handler_field: handler_field.clone(),
-        },
-        FieldKind::Scan { depends_on, count } => FieldKindWire::Scan {
-            depends_on: depends_on.clone(),
-            count: count.as_ref().map(|count| ScanCountInfo {
-                missing: count.missing.clone(),
-                found: count.found.clone(),
-                none: count.none.clone(),
-            }),
-        },
-    }
-}
-
-fn field_infos(form: &Form) -> Vec<FieldInfo> {
-    form.fields
-        .iter()
-        .map(|field| FieldInfo {
-            key: field.key.clone(),
-            label: field.label.clone(),
-            kind: field_kind(&field.kind),
-            required: field.required,
-            default: field.default.clone(),
-        })
-        .collect()
 }
 
 /// The names of the installed plugins that loaded, by plugin id: a built-in is not "from" a plugin the user installed.
@@ -114,6 +74,7 @@ mod tests {
     use api_types::handlers::PluginInfo;
     use axum::{body::Body, http::Request};
     use foundation::{CancelToken, Interrupt};
+    use handler_api::Form;
     use handler_api::{
         DecodeError, DecodeSummary, Decoder, Framing, Input, SceneSink, Spec, Values,
     };
@@ -184,8 +145,12 @@ mod tests {
                 id: id.to_owned(),
                 name: name.to_owned(),
                 version: "1".to_owned(),
-                handlers: Vec::new(),
-                skipped: Vec::new(),
+                rows: Vec::new(),
+                settings: Vec::new(),
+                values: Default::default(),
+                views: Vec::new(),
+                commands: Vec::new(),
+                operations: Vec::new(),
             },
         };
         let installed = || PluginSource::Installed {
@@ -263,8 +228,8 @@ mod tests {
             info.plugins
                 .iter()
                 .find_map(|entry| match &entry.status {
-                    PluginStatus::Loaded { id, handlers, .. } if id == plugin => {
-                        Some(handlers.iter().map(|handler| handler.id.clone()).collect())
+                    PluginStatus::Loaded { id, rows, .. } if id == plugin => {
+                        Some(rows.iter().map(|row| row.id.clone()).collect())
                     }
                     _ => None,
                 })

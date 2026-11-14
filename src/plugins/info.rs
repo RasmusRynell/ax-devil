@@ -1,113 +1,276 @@
 //! What [`PluginsInfo`](api_types::handlers::PluginsInfo) lists: one entry per plugin, built-in or installed.
 
 use api_types::handlers::{
-    HandlerKind, HandlerSummary, PluginInfo, PluginSource, PluginStatus, SkippedHandlerInfo,
+    CommandInfo, ContributionRow, FieldInfo, FieldKindWire, OperationInfo, PluginInfo,
+    PluginSource, PluginStatus, PluginsInfo, ScanCountInfo, ViewInfo,
 };
-use handler_api::{Decoder, PlaylistResolver};
+use handler_api::{Decoder, FieldKind, Form, PlaylistResolver};
 use handlers::Handlers;
-use plugins::Loaded;
-use std::{path::Path, sync::Arc};
+use plugins::{DecoderInput, Handler, Loaded, LoadedPlugin, PluginTask};
+use std::{collections::HashMap, fmt::Write as _, path::PathBuf, sync::Arc};
 
-fn decoder_summary(decoder: &Arc<dyn Decoder>) -> HandlerSummary {
-    let spec = decoder.spec();
-    HandlerSummary {
-        kind: HandlerKind::Decoder,
-        id: spec.id.clone(),
-        name: spec.name.clone(),
-        extensions: spec.extensions.clone(),
+fn field_kind(kind: &FieldKind) -> FieldKindWire {
+    match kind {
+        FieldKind::Folder => FieldKindWire::Folder,
+        FieldKind::File { extensions } => FieldKindWire::File {
+            extensions: extensions.clone(),
+        },
+        FieldKind::Text => FieldKindWire::Text,
+        FieldKind::Integer { min } => FieldKindWire::Integer { min: *min },
+        FieldKind::Handler => FieldKindWire::Handler,
+        FieldKind::DecoderOptions { handler_field } => FieldKindWire::DecoderOptions {
+            handler_field: handler_field.clone(),
+        },
+        FieldKind::Scan { depends_on, count } => FieldKindWire::Scan {
+            depends_on: depends_on.clone(),
+            count: count.as_ref().map(|count| ScanCountInfo {
+                missing: count.missing.clone(),
+                found: count.found.clone(),
+                none: count.none.clone(),
+            }),
+        },
     }
 }
 
-fn resolver_summary(resolver: &Arc<dyn PlaylistResolver>) -> HandlerSummary {
+/// The wire form of each field of `form`, in order.
+pub(crate) fn field_infos(form: &Form) -> Vec<FieldInfo> {
+    form.fields
+        .iter()
+        .map(|field| FieldInfo {
+            key: field.key.clone(),
+            label: field.label.clone(),
+            kind: field_kind(&field.kind),
+            required: field.required,
+            default: field.default.clone(),
+        })
+        .collect()
+}
+
+fn row(kind: &str, id: &str, name: &str, detail: String) -> ContributionRow {
+    ContributionRow {
+        kind: kind.to_owned(),
+        id: id.to_owned(),
+        name: name.to_owned(),
+        detail,
+        skipped: None,
+    }
+}
+
+fn decoder_row(decoder: &Arc<dyn Decoder>) -> ContributionRow {
+    let spec = decoder.spec();
+    row("decoder", &spec.id, &spec.name, spec.extensions.join(" "))
+}
+
+fn resolver_row(resolver: &Arc<dyn PlaylistResolver>) -> ContributionRow {
     let spec = resolver.spec();
-    HandlerSummary {
-        kind: HandlerKind::PlaylistResolver,
-        id: spec.id.clone(),
-        name: spec.name.clone(),
-        extensions: Vec::new(),
+    row("playlist_resolver", &spec.id, &spec.name, String::new())
+}
+
+/// A plugin that ships with the app: it has handlers and nothing else.
+fn built_in(id: String, rows: Vec<ContributionRow>) -> PluginInfo {
+    PluginInfo {
+        source: PluginSource::BuiltIn,
+        status: PluginStatus::Loaded {
+            name: id.clone(),
+            id,
+            version: env!("CARGO_PKG_VERSION").to_owned(),
+            rows,
+            settings: Vec::new(),
+            values: serde_json::Map::new(),
+            views: Vec::new(),
+            commands: Vec::new(),
+            operations: Vec::new(),
+        },
     }
 }
 
 /// One entry per built-in plugin, in the order its first handler appears.
-pub(super) fn built_in_info(built_in: &Handlers) -> Vec<PluginInfo> {
-    let mut groups: Vec<(String, Vec<HandlerSummary>)> = Vec::new();
-    let mut add = |plugin: &str, summary: HandlerSummary| match groups
-        .iter_mut()
-        .find(|(id, _)| id == plugin)
-    {
-        Some((_, handlers)) => handlers.push(summary),
-        None => groups.push((plugin.to_owned(), vec![summary])),
-    };
-    for decoder in built_in.decoders() {
-        add(&decoder.spec().plugin, decoder_summary(decoder));
+pub(super) fn built_in_info(built_in_handlers: &Handlers) -> Vec<PluginInfo> {
+    let mut groups: Vec<(String, Vec<ContributionRow>)> = Vec::new();
+    let mut add =
+        |plugin: &str, row: ContributionRow| match groups.iter_mut().find(|(id, _)| id == plugin) {
+            Some((_, rows)) => rows.push(row),
+            None => groups.push((plugin.to_owned(), vec![row])),
+        };
+    for decoder in built_in_handlers.decoders() {
+        add(&decoder.spec().plugin, decoder_row(decoder));
     }
-    for resolver in built_in.resolvers() {
-        add(&resolver.spec().plugin, resolver_summary(resolver));
+    for resolver in built_in_handlers.resolvers() {
+        add(&resolver.spec().plugin, resolver_row(resolver));
     }
     groups
         .into_iter()
-        .map(|(id, handlers)| PluginInfo {
-            source: PluginSource::BuiltIn,
-            status: PluginStatus::Loaded {
-                name: id.clone(),
-                id,
-                version: env!("CARGO_PKG_VERSION").to_owned(),
-                handlers,
-                skipped: Vec::new(),
-            },
-        })
+        .map(|(id, rows)| built_in(id, rows))
         .collect()
 }
 
-/// One entry per registry entry.
-pub(super) fn installed_info(loaded: &Loaded) -> Vec<PluginInfo> {
-    loaded
-        .entries
-        .iter()
-        .map(|entry| PluginInfo {
-            source: PluginSource::Installed {
-                manifest: entry.manifest.display().to_string(),
-                folder: entry
-                    .manifest
-                    .parent()
-                    .unwrap_or_else(|| Path::new("."))
-                    .display()
-                    .to_string(),
-            },
-            status: match &entry.plugin {
-                Ok(plugin) => {
-                    let manifest = &plugin.manifest;
-                    PluginStatus::Loaded {
-                        id: manifest.id.clone(),
-                        name: manifest.name.clone(),
-                        version: manifest.version.clone(),
-                        handlers: plugin
-                            .decoders
-                            .iter()
-                            .map(|decoder| {
-                                decoder_summary(&(Arc::clone(decoder) as Arc<dyn Decoder>))
-                            })
-                            .chain(plugin.resolvers.iter().map(|resolver| {
-                                resolver_summary(
-                                    &(Arc::clone(resolver) as Arc<dyn PlaylistResolver>),
-                                )
-                            }))
-                            .collect(),
-                        skipped: plugin
-                            .skipped
-                            .iter()
-                            .map(|handler| SkippedHandlerInfo {
-                                kind: handler.kind.clone(),
-                                id: handler.id.clone(),
-                                reason: handler.reason.clone(),
-                            })
-                            .collect(),
-                    }
+/// What loading the registry made: the listing, and what the routes find a task or a view's files by.
+pub(super) struct Installed {
+    /// One entry per registry entry.
+    pub plugins: Vec<PluginInfo>,
+    /// The tasks of the plugins that loaded.
+    pub tasks: Vec<Arc<PluginTask>>,
+    /// The folder of each plugin that has views, by the token its view addresses carry.
+    pub roots: HashMap<String, PathBuf>,
+}
+
+/// A fresh unguessable token. Without operating-system randomness there is no sound way to make one; stopping is
+/// safer than falling back to something guessable.
+fn token() -> String {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes)
+        .unwrap_or_else(|error| panic!("the operating system has no randomness: {error}"));
+    bytes.iter().fold(String::new(), |mut text, byte| {
+        // Writing to a String cannot fail.
+        let _ = write!(text, "{byte:02x}");
+        text
+    })
+}
+
+/// `path` as a URL path: `/` between its parts, anything but letters, digits and `-._~` percent-encoded.
+fn url_path(path: &std::path::Path) -> String {
+    let mut encoded = String::new();
+    for byte in path.to_string_lossy().replace('\\', "/").bytes() {
+        if byte.is_ascii_alphanumeric() || b"-._~/".contains(&byte) {
+            encoded.push(char::from(byte));
+        } else {
+            // Writing to a String cannot fail.
+            let _ = write!(encoded, "%{byte:02X}");
+        }
+    }
+    encoded
+}
+
+/// The listing of one plugin that loaded, with the token its views are served under.
+fn loaded_status(plugin: &LoadedPlugin, token: &str) -> PluginStatus {
+    let manifest = &plugin.manifest;
+    let mut rows = Vec::new();
+    let mut views = Vec::new();
+    let mut commands = Vec::new();
+    let mut operations = Vec::new();
+    for handler in &manifest.handlers {
+        let (name, detail) = match handler {
+            Handler::Decoder(decoder) => {
+                if decoder.input == DecoderInput::Lanes {
+                    operations.push(OperationInfo {
+                        id: decoder.id.clone(),
+                        kind: "decoder".to_owned(),
+                        name: decoder.name.clone(),
+                        lanes: decoder.inputs.lanes.clone(),
+                        video: decoder.inputs.video,
+                        options: field_infos(&decoder.options),
+                    });
                 }
-                Err(error) => PluginStatus::Failed {
-                    reason: error.capitalised(),
-                },
+                (&decoder.name, decoder.extensions.join(" "))
+            }
+            Handler::PlaylistResolver(resolver) => (&resolver.name, String::new()),
+            Handler::Task(task) => {
+                operations.push(OperationInfo {
+                    id: task.id.clone(),
+                    kind: "task".to_owned(),
+                    name: task.name.clone(),
+                    lanes: task.inputs.lanes.clone(),
+                    video: task.inputs.video,
+                    options: field_infos(&task.options),
+                });
+                (&task.name, task.description.clone().unwrap_or_default())
+            }
+            Handler::View(view) => {
+                views.push(ViewInfo {
+                    id: view.id.clone(),
+                    title: view.title.clone(),
+                    icon: view.icon.clone(),
+                    place: view.place.as_str().to_owned(),
+                    url: format!("/views/{token}/{}", url_path(&view.document)),
+                });
+                (&view.title, view.place.as_str().to_owned())
+            }
+            Handler::Command(command) => {
+                commands.push(CommandInfo {
+                    id: format!("{}.{}", manifest.id, command.id),
+                    title: command.title.clone(),
+                    on: command.on.as_str().to_owned(),
+                    key: command.shortcut.clone(),
+                    runs: command.runs.clone(),
+                });
+                (
+                    &command.title,
+                    format!("{} runs {}", command.on.as_str(), command.runs),
+                )
+            }
+        };
+        rows.push(row(handler.kind(), handler.id(), name, detail));
+    }
+    rows.extend(plugin.skipped.iter().map(|skipped| ContributionRow {
+        kind: skipped.kind.clone(),
+        id: skipped.id.clone().unwrap_or_default(),
+        name: skipped.id.clone().unwrap_or_else(|| skipped.kind.clone()),
+        detail: String::new(),
+        skipped: Some(skipped.reason.clone()),
+    }));
+    PluginStatus::Loaded {
+        id: manifest.id.clone(),
+        name: manifest.name.clone(),
+        version: manifest.version.clone(),
+        rows,
+        settings: field_infos(&manifest.settings),
+        values: plugin.settings.declared(),
+        views,
+        commands,
+        operations,
+    }
+}
+
+/// One entry per registry entry, and a new token for each plugin that has views.
+pub(super) fn installed_info(loaded: &Loaded) -> Installed {
+    let mut installed = Installed {
+        plugins: Vec::new(),
+        tasks: Vec::new(),
+        roots: HashMap::new(),
+    };
+    for entry in &loaded.entries {
+        let source = PluginSource::Installed {
+            manifest: entry.manifest.display().to_string(),
+            folder: entry
+                .manifest
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .display()
+                .to_string(),
+        };
+        let status = match &entry.plugin {
+            Ok(plugin) => {
+                let token = token();
+                let status = loaded_status(plugin, &token);
+                if matches!(&status, PluginStatus::Loaded { views, .. } if !views.is_empty()) {
+                    installed
+                        .roots
+                        .insert(token, plugin.manifest.folder().to_path_buf());
+                }
+                installed.tasks.extend(plugin.tasks.iter().cloned());
+                status
+            }
+            Err(error) => PluginStatus::Failed {
+                reason: error.capitalised(),
             },
-        })
-        .collect()
+        };
+        installed.plugins.push(PluginInfo { source, status });
+    }
+    installed
+}
+
+/// Whether two listings say the same, which two loads of the same files do although each mints its own view tokens.
+pub(super) fn same_listing(a: &PluginsInfo, b: &PluginsInfo) -> bool {
+    let tokenless = |info: &PluginsInfo| {
+        let mut info = info.clone();
+        for plugin in &mut info.plugins {
+            if let PluginStatus::Loaded { views, .. } = &mut plugin.status {
+                for view in views {
+                    view.url.clear();
+                }
+            }
+        }
+        info
+    };
+    tokenless(a) == tokenless(b)
 }

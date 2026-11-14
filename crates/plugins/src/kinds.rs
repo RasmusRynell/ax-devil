@@ -38,6 +38,16 @@ pub enum Place {
     Video,
 }
 
+impl Place {
+    /// The manifest's word for it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sidebar => "sidebar",
+            Self::Video => "video",
+        }
+    }
+}
+
 /// A page the plugin ships, shown in a sandboxed frame.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ViewHandler {
@@ -62,6 +72,17 @@ pub enum On {
     Item,
     /// A lane.
     Lane,
+}
+
+impl On {
+    /// The manifest's word for it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::App => "app",
+            Self::Item => "item",
+            Self::Lane => "lane",
+        }
+    }
 }
 
 /// A menu entry and shortcut that runs one of the plugin's own decoders, tasks or views.

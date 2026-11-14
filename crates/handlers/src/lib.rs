@@ -81,7 +81,8 @@ impl Handlers {
     /// The decoders that may read the file called `path`, in registry order: the candidates to offer when the
     /// user has not named one. A decoder named explicitly is taken whatever its extensions say.
     ///
-    /// A decoder with no extensions may read any file. Otherwise one of its extensions must match the lowercased
+    /// A decoder that derives lanes from other lanes reads no file and is never a candidate. A decoder with no
+    /// extensions may read any file. Otherwise one of its extensions must match the lowercased
     /// file name: an extension with a single dot (`.json`) must equal the name's final suffix, as Python's
     /// `Path.suffix` finds it (none for `.json` alone or `name.`); a compound extension (`.tar.gz`), which only a
     /// decoder that declares it can be found by, must end the name.
@@ -94,10 +95,11 @@ impl Handlers {
             .iter()
             .filter(|decoder| {
                 let extensions = &decoder.spec().extensions;
-                extensions.is_empty()
-                    || extensions
-                        .iter()
-                        .any(|extension| matches_extension(&name, extension))
+                !decoder.derives_lanes()
+                    && (extensions.is_empty()
+                        || extensions
+                            .iter()
+                            .any(|extension| matches_extension(&name, extension)))
             })
             .collect()
     }
@@ -245,12 +247,16 @@ mod tests {
         assert_eq!(handlers.resolvers().len(), 2);
     }
 
-    /// A decoder that is only listed, with the given extensions.
-    struct Reads(Spec);
+    /// A decoder that is only listed, with the given extensions, and whether it derives lanes.
+    struct Reads(Spec, bool);
 
     impl Decoder for Reads {
         fn spec(&self) -> &Spec {
             &self.0
+        }
+
+        fn derives_lanes(&self) -> bool {
+            self.1
         }
 
         fn decode(
@@ -267,20 +273,26 @@ mod tests {
     #[test]
     fn candidates_are_found_by_final_suffix_or_declared_compound_and_no_extensions_reads_any_file()
     {
-        let like = |id: &str, extensions: &[&str]| -> Arc<dyn Decoder> {
+        let like = |id: &str, extensions: &[&str], derives_lanes: bool| -> Arc<dyn Decoder> {
             let mot = Handlers::built_in()
                 .decoder("MOT_FILE")
                 .unwrap()
                 .spec()
                 .clone();
-            Arc::new(Reads(Spec {
-                id: id.into(),
-                extensions: extensions.iter().map(|&e| e.to_owned()).collect(),
-                ..mot
-            }))
+            Arc::new(Reads(
+                Spec {
+                    id: id.into(),
+                    extensions: extensions.iter().map(|&e| e.to_owned()).collect(),
+                    ..mot
+                },
+                derives_lanes,
+            ))
         };
-        let handlers =
-            Handlers::built_in().with_decoders([like("ANY", &[]), like("ARCHIVE", &[".tar.gz"])]);
+        let handlers = Handlers::built_in().with_decoders([
+            like("ANY", &[], false),
+            like("ARCHIVE", &[".tar.gz"], false),
+            like("DERIVED", &[], true),
+        ]);
         let found = |name: &str| -> Vec<String> {
             handlers
                 .decoders_for(Path::new(name))

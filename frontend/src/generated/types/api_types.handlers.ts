@@ -18,6 +18,57 @@ label: string,
 detail: string, };
 
 /**
+ * A menu entry and shortcut a plugin adds.
+ */
+export type CommandInfo = { 
+/**
+ * `<plugin id>.<command id>`.
+ */
+id: string, 
+/**
+ * What the user reads.
+ */
+title: string, 
+/**
+ * What it applies to: `app`, `item` or `lane`.
+ */
+on: string, 
+/**
+ * The default key, such as `Ctrl+Alt+E`.
+ */
+key?: string, 
+/**
+ * The id of the plugin's own decoder, task or view it runs.
+ */
+runs: string, };
+
+/**
+ * One thing a plugin lists: a handler, or one it lists that this build cannot use.
+ */
+export type ContributionRow = { 
+/**
+ * The manifest `kind`: `decoder`, `playlist_resolver`, `task`, `view` or `command`; for a skipped row whatever
+ * the manifest says.
+ */
+kind: string, 
+/**
+ * The handler id; empty for a skipped row that has none.
+ */
+id: string, 
+/**
+ * What the user reads.
+ */
+name: string, 
+/**
+ * What else tells it apart: a decoder's file extensions, a view's place, a command's target. May be empty.
+ */
+detail: string, 
+/**
+ * Why it is not used; absent for a handler that runs.
+ */
+skipped?: string, };
+
+/**
  * An overlay file decoder.
  */
 export type DecoderInfo = { 
@@ -47,7 +98,7 @@ options: Array<FieldInfo>,
 live: boolean, };
 
 /**
- * One setting of a resolver or option of a decoder.
+ * One setting of a resolver or plugin, or option of a decoder or task.
  */
 export type FieldInfo = { 
 /**
@@ -97,32 +148,6 @@ depends_on: Array<string>,
 count?: ScanCountInfo, };
 
 /**
- * What a handler does.
- */
-export type HandlerKind = "decoder" | "playlist_resolver";
-
-/**
- * One handler a plugin provides.
- */
-export type HandlerSummary = { 
-/**
- * What it does.
- */
-kind: HandlerKind, 
-/**
- * The id that selects it.
- */
-id: string, 
-/**
- * What the user reads.
- */
-name: string, 
-/**
- * The file extensions a decoder reads, lowercase with the dot; empty for the other kinds.
- */
-extensions: Array<string>, };
-
-/**
  * The body of `GET /api/handlers`.
  */
 export type HandlersInfo = { 
@@ -143,6 +168,35 @@ export type InstallRequest = {
  * The absolute path of the plugin's folder, or of its `ax-devil-plugin.json`.
  */
 path: string, };
+
+/**
+ * A lane decoder or task a plugin provides.
+ */
+export type OperationInfo = { 
+/**
+ * The handler id.
+ */
+id: string, 
+/**
+ * `decoder` or `task`.
+ */
+kind: string, 
+/**
+ * What the user reads.
+ */
+name: string, 
+/**
+ * `(key, label)` of each lane it reads, in order.
+ */
+lanes: Array<[string, string]>, 
+/**
+ * Whether it is also given the video.
+ */
+video: boolean, 
+/**
+ * The options it takes, in the order they are shown.
+ */
+options: Array<FieldInfo>, };
 
 /**
  * One plugin.
@@ -187,13 +241,29 @@ name: string,
  */
 version: string, 
 /**
- * What it provides, in the order it lists them.
+ * What it provides, in the order it lists them, then what it lists that this build cannot use.
  */
-handlers: Array<HandlerSummary>, 
+rows: Array<ContributionRow>, 
 /**
- * The handlers it lists that this build cannot run, such as a kind added by a newer ax-devil.
+ * The form of the plugin's own settings; empty when it has none.
  */
-skipped: Array<SkippedHandlerInfo>, } | { "state": "failed", 
+settings: Array<FieldInfo>, 
+/**
+ * The settings the plugin runs with: the stored values with the defaults filled in.
+ */
+values: Record<string, unknown>, 
+/**
+ * The pages it shows.
+ */
+views: Array<ViewInfo>, 
+/**
+ * The menu entries and shortcuts it adds.
+ */
+commands: Array<CommandInfo>, 
+/**
+ * The lane decoders and tasks it provides, which take lanes and options.
+ */
+operations: Array<OperationInfo>, } | { "state": "failed", 
 /**
  * What is wrong, naming the manifest field when there is one.
  */
@@ -299,21 +369,17 @@ field: string,
 settings: Record<string, unknown>, };
 
 /**
- * A handler of a plugin that is listed but not used.
+ * The body of `POST /api/plugins/settings`.
  */
-export type SkippedHandlerInfo = { 
+export type SettingsRequest = { 
 /**
- * The kind the manifest gives.
+ * The id of an installed plugin, or the absolute path of its manifest or folder.
  */
-kind: string, 
+plugin: string, 
 /**
- * The handler id, when the manifest gives one.
+ * The plugin's settings, checked against its form; replaces the stored ones.
  */
-id?: string, 
-/**
- * Why it is not used.
- */
-reason: string, };
+values: Record<string, unknown>, };
 
 /**
  * The body of `POST /api/plugins/update`.
@@ -323,3 +389,28 @@ export type UpdateRequest = {
  * The id of an installed plugin, or the absolute path of its manifest or folder.
  */
 target: string, };
+
+/**
+ * A page a plugin shows.
+ */
+export type ViewInfo = { 
+/**
+ * The view id, unique within its plugin.
+ */
+id: string, 
+/**
+ * What the user reads.
+ */
+title: string, 
+/**
+ * The name of an icon.
+ */
+icon?: string, 
+/**
+ * Where it is shown: `sidebar` or `video`.
+ */
+place: string, 
+/**
+ * Where the page is served, `/views/<token>/<document>`. The token lasts until the plugins reload.
+ */
+url: string, };

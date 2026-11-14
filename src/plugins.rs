@@ -2,17 +2,23 @@
 //! Everything that installs, removes or reloads goes through [`Plugins`]; routes and the command line read from it.
 
 mod info;
+mod problems;
+mod seen;
 
-use api_types::handlers::{PluginSource, PluginStatus, PluginsInfo, SkippedHandlerInfo};
+use api_types::handlers::{CommandInfo, PluginSource, PluginStatus, PluginsInfo};
 use foundation::{ErrorCode, UserError};
+use handler_api::Settings;
 use handlers::{HandlerSet, Handlers};
-use info::{built_in_info, installed_info};
-use plugins::{Registry, Reserved};
+pub(crate) use info::field_infos;
+use info::{Installed, built_in_info, installed_info, same_listing};
+use plugins::{Manifest, PluginTask, Registry, Reserved};
+use problems::log_new_problems;
+use seen::{Seen, Stamp};
 use std::{
-    fs,
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock},
-    time::{Duration, UNIX_EPOCH},
+    time::Duration,
 };
 use tokio::{sync::watch, time::MissedTickBehavior};
 
@@ -52,54 +58,12 @@ pub fn reserved(handlers: &Handlers) -> Reserved {
     }
 }
 
-/// Length and modification time of the registry file and of each manifest it lists, which is what tells that
-/// something was installed, removed or edited. Code files are not in it: a plugin's code is looked at on each use.
-#[derive(Default, PartialEq, Eq)]
-struct Stamp(Vec<(PathBuf, Option<(u64, u128)>)>);
-
-impl Stamp {
-    fn of(registry: &Path) -> Self {
-        let mut files = vec![registry.to_path_buf()];
-        if let Ok(read) = Registry::read(registry) {
-            files.extend(read.manifests());
-        }
-        Self(
-            files
-                .into_iter()
-                .map(|file| {
-                    let stat = fs::metadata(&file).ok().map(|meta| {
-                        let modified = meta
-                            .modified()
-                            .ok()
-                            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-                            .map_or(0, |since| since.as_nanos());
-                        (meta.len(), modified)
-                    });
-                    (file, stat)
-                })
-                .collect(),
-        )
-    }
-}
-
-/// What the last load read, and how long to wait before loading again for a failed plugin: loading walks the
-/// plugins' folders, so a failure that may never clear by itself is retried less and less often.
-struct Seen {
-    stamp: Stamp,
-    /// [`WATCH_POLL`]s between retries.
-    wait: u32,
-    /// [`WATCH_POLL`]s since the last load.
-    waited: u32,
-}
-
-impl Default for Seen {
-    fn default() -> Self {
-        Self {
-            stamp: Stamp::default(),
-            wait: 1,
-            waited: 0,
-        }
-    }
+/// What one load of the plugins made besides the handlers: the listing, the tasks and the folders of the views.
+struct Current {
+    info: Arc<PluginsInfo>,
+    tasks: Vec<Arc<PluginTask>>,
+    /// The folder of each plugin that has views, by the token its view addresses carry.
+    roots: HashMap<String, PathBuf>,
 }
 
 /// The handlers the app runs with and what loading the installed plugins said, replaced as plugins change.
@@ -111,7 +75,7 @@ pub struct Plugins {
     registry: Result<PathBuf, String>,
     built_in: Handlers,
     set: Arc<HandlerSet>,
-    info: RwLock<Arc<PluginsInfo>>,
+    current: RwLock<Arc<Current>>,
     /// What the last load read. Held for a whole refresh, install, remove or update, so they do not interleave.
     seen: Mutex<Seen>,
     /// Rises, from 0, with every replacement of the handlers and `info`.
@@ -146,11 +110,16 @@ impl Plugins {
             plugins: built_in_info(&built_in),
             problem,
         };
+        let current = Current {
+            info: Arc::new(info),
+            tasks: Vec::new(),
+            roots: HashMap::new(),
+        };
         Self {
             registry,
             set: HandlerSet::new(built_in.clone()),
             built_in,
-            info: RwLock::new(Arc::new(info)),
+            current: RwLock::new(Arc::new(current)),
             seen: Mutex::default(),
             replaced: watch::channel(0).0,
         }
@@ -171,9 +140,40 @@ impl Plugins {
         self.set.current()
     }
 
+    fn current(&self) -> Arc<Current> {
+        Arc::clone(&self.current.read().unwrap_or_else(PoisonError::into_inner))
+    }
+
     /// What loading the plugins said.
     pub fn info(&self) -> Arc<PluginsInfo> {
-        Arc::clone(&self.info.read().unwrap_or_else(PoisonError::into_inner))
+        Arc::clone(&self.current().info)
+    }
+
+    /// The task with this handler id, of an installed plugin that loaded.
+    pub fn task(&self, id: &str) -> Option<Arc<PluginTask>> {
+        self.current()
+            .tasks
+            .iter()
+            .find(|task| task.spec().id == id)
+            .cloned()
+    }
+
+    /// The folder whose files the views under `token` are served from. A token lasts until the plugins reload.
+    pub fn view_root(&self, token: &str) -> Option<PathBuf> {
+        self.current().roots.get(token).cloned()
+    }
+
+    /// The commands of the plugins that loaded, in plugin order.
+    pub fn commands(&self) -> Vec<CommandInfo> {
+        self.info()
+            .plugins
+            .iter()
+            .filter_map(|plugin| match &plugin.status {
+                PluginStatus::Loaded { commands, .. } => Some(commands.iter().cloned()),
+                PluginStatus::Failed { .. } => None,
+            })
+            .flatten()
+            .collect()
     }
 
     /// Reloads when the registry or a manifest it lists changed since the last load, or, while an installed plugin
@@ -194,14 +194,14 @@ impl Plugins {
             }
         }
         let wait = seen.wait;
-        let (handlers, info) = self.read(registry, &mut seen);
-        // `info` leaves out what a manifest edit may change, so it only tells a retry apart from a reload when the
-        // files were the same before and when `read` stamped them.
-        if unchanged && seen.stamp == stamp && info == *self.info() {
+        let (handlers, current) = self.read(registry, &mut seen);
+        // The listing leaves out what a manifest edit may change, so it only tells a retry apart from a reload when
+        // the files were the same before and when `read` stamped them.
+        if unchanged && seen.stamp == stamp && same_listing(&current.info, &self.info()) {
             seen.wait = (wait * 2).min(MAX_RETRY_WAIT);
             return false;
         }
-        self.swap(handlers, info);
+        self.swap(handlers, current);
         true
     }
 
@@ -255,6 +255,44 @@ impl Plugins {
                 .update(index, &path, reserved)
                 .map(|_| true)
                 .map_err(|error| invalid(&path, &error))
+        })
+    }
+
+    /// Stores `values` as the settings of the plugin `target` names, after checking them against the form its
+    /// manifest declares, and loads it again, which rebuilds the lanes it derived. Blocking.
+    pub fn set_settings(
+        &self,
+        target: &str,
+        values: Settings,
+    ) -> Result<Arc<PluginsInfo>, UserError> {
+        self.change(target, |installed, _| {
+            let Some(index) = installed.find(target).map_err(ambiguous)? else {
+                return Ok(false);
+            };
+            let manifest = Manifest::load(&installed.manifests()[index])
+                .map_err(|error| UserError::new(ErrorCode::PluginInvalid, error.capitalised()))?;
+            manifest.settings.validate(&values).map_err(|error| {
+                let invalid = UserError::new(ErrorCode::PluginInvalid, error.reason);
+                match error.location {
+                    Some(location) => invalid.at(location),
+                    None => invalid,
+                }
+            })?;
+            // What the form declares and the user gave: a default is not stored, so a changed default reaches
+            // whoever never chose a value.
+            let stored: Settings = values
+                .into_iter()
+                .filter(|(key, value)| {
+                    !value.is_null()
+                        && manifest
+                            .settings
+                            .fields
+                            .iter()
+                            .any(|field| field.key == *key)
+                })
+                .collect();
+            installed.set_settings(index, stored);
+            Ok(true)
         })
     }
 
@@ -318,39 +356,48 @@ impl Plugins {
 
     /// Reads the registry and swaps in what it lists.
     fn load(&self, registry: &Path, seen: &mut Seen) {
-        let (handlers, info) = self.read(registry, seen);
-        self.swap(handlers, info);
+        let (handlers, current) = self.read(registry, seen);
+        self.swap(handlers, current);
     }
 
-    /// The handlers and info the registry lists now.
-    fn read(&self, registry: &Path, seen: &mut Seen) -> (Handlers, PluginsInfo) {
+    /// The handlers and listing the registry lists now, with new view tokens.
+    fn read(&self, registry: &Path, seen: &mut Seen) -> (Handlers, Current) {
         // Before the files are read, so a change made meanwhile is seen by the next refresh.
         *seen = Seen {
             stamp: Stamp::of(registry),
             ..Seen::default()
         };
         let loaded = plugins::load(registry, &reserved(&self.built_in));
+        let Installed {
+            plugins: installed,
+            tasks,
+            roots,
+        } = installed_info(&loaded);
         let mut plugins = built_in_info(&self.built_in);
-        plugins.extend(installed_info(&loaded));
-        let info = PluginsInfo {
-            plugins,
-            problem: loaded.registry.as_ref().map(ToString::to_string),
+        plugins.extend(installed);
+        let current = Current {
+            info: Arc::new(PluginsInfo {
+                plugins,
+                problem: loaded.registry.as_ref().map(ToString::to_string),
+            }),
+            tasks,
+            roots,
         };
         let handlers = self
             .built_in
             .clone()
             .with_decoders(loaded.decoders())
             .with_resolvers(loaded.resolvers());
-        (handlers, info)
+        (handlers, current)
     }
 
-    fn swap(&self, handlers: Handlers, info: PluginsInfo) {
+    fn swap(&self, handlers: Handlers, current: Current) {
         self.set.replace(handlers);
         let before = std::mem::replace(
-            &mut *self.info.write().unwrap_or_else(PoisonError::into_inner),
-            Arc::new(info),
+            &mut *self.current.write().unwrap_or_else(PoisonError::into_inner),
+            Arc::new(current),
         );
-        log_new_problems(&before, &self.info());
+        log_new_problems(&before.info, &self.info());
         self.replaced.send_modify(|revision| *revision += 1);
     }
 }
@@ -369,58 +416,4 @@ fn invalid(path: &Path, error: &plugins::ManifestError) -> UserError {
 /// Logs what did not load, which loading could not because logging starts after the command line is read.
 pub fn log_problems(info: &PluginsInfo) {
     log_new_problems(&PluginsInfo::default(), info);
-}
-
-/// Logs the problems in `info` that `before` did not have, so a plugin that stays broken is logged once, not on every
-/// reload retry.
-fn log_new_problems(before: &PluginsInfo, info: &PluginsInfo) {
-    if let Some(problem) = info
-        .problem
-        .as_ref()
-        .filter(|_| info.problem != before.problem)
-    {
-        tracing::warn!("plugins not loaded: {problem}");
-    }
-    let known: Vec<_> = failures(before).collect();
-    for (manifest, reason) in failures(info).filter(|failure| !known.contains(failure)) {
-        tracing::warn!("plugin {manifest} not loaded: {reason}");
-    }
-    let known: Vec<_> = skips(before).collect();
-    for (manifest, handler) in skips(info).filter(|skip| !known.contains(skip)) {
-        let id = handler.id.as_deref().unwrap_or("without an id");
-        tracing::warn!(
-            "plugin {manifest}: handler {} ({id}) skipped: {}",
-            handler.kind,
-            handler.reason
-        );
-    }
-}
-
-/// The handlers of installed plugins that are listed but not used, with their plugin's manifest.
-fn skips(info: &PluginsInfo) -> impl Iterator<Item = (&str, &SkippedHandlerInfo)> {
-    info.plugins
-        .iter()
-        .filter_map(|plugin| match (&plugin.source, &plugin.status) {
-            (PluginSource::Installed { manifest, .. }, PluginStatus::Loaded { skipped, .. }) => {
-                Some(
-                    skipped
-                        .iter()
-                        .map(move |handler| (manifest.as_str(), handler)),
-                )
-            }
-            _ => None,
-        })
-        .flatten()
-}
-
-/// The installed plugins that did not load, as manifest and reason.
-fn failures(info: &PluginsInfo) -> impl Iterator<Item = (&str, &str)> {
-    info.plugins
-        .iter()
-        .filter_map(|plugin| match (&plugin.source, &plugin.status) {
-            (PluginSource::Installed { manifest, .. }, PluginStatus::Failed { reason }) => {
-                Some((manifest.as_str(), reason.as_str()))
-            }
-            _ => None,
-        })
 }

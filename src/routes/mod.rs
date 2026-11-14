@@ -152,6 +152,13 @@ pub(crate) const ROUTES: &[Route] = &[
     },
     Route {
         method: MethodFilter::POST,
+        path: "/api/plugins/settings",
+        listeners: MEMBERS,
+        who: Who::Owner,
+        handler: |method| on(method, plugins::settings),
+    },
+    Route {
+        method: MethodFilter::POST,
         path: "/api/catalogs/copy",
         listeners: MEMBERS,
         who: Who::Owner,

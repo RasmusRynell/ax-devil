@@ -120,6 +120,7 @@ clap = { version = "4", features = ["derive", "string"] }
 export.workspace = true
 foundation.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+getrandom = "0.4"
 handler-api.workspace = true
 handlers.workspace = true
 live.workspace = true

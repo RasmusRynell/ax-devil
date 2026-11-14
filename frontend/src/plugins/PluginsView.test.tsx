@@ -4,6 +4,7 @@ import { AccessContext } from "../client/access";
 import type { PluginInfo, PluginsInfo } from "../generated/api";
 import { PluginsView } from "./PluginsView";
 
+const NOTHING = { settings: [], values: {}, views: [], commands: [], operations: [] };
 const MOT: PluginInfo = {
   source: { kind: "built_in" },
   status: {
@@ -11,8 +12,8 @@ const MOT: PluginInfo = {
     id: "mot",
     name: "mot",
     version: "0.1.0",
-    skipped: [],
-    handlers: [{ kind: "decoder", id: "MOT_FILE", name: "MOT", extensions: [".txt"] }],
+    rows: [{ kind: "decoder", id: "MOT_FILE", name: "MOT", detail: ".txt" }],
+    ...NOTHING,
   },
 };
 const ACME: PluginInfo = {
@@ -22,14 +23,21 @@ const ACME: PluginInfo = {
     id: "acme",
     name: "Acme",
     version: "1.4.0",
-    skipped: [
-      { kind: "encoder", id: "acme_out", reason: "this version has no encoders" },
-      { kind: "gadget", reason: "unknown kind" },
+    rows: [
+      { kind: "decoder", id: "acme_tracks", name: "Acme tracks", detail: ".acme.jsonl" },
+      { kind: "playlist_resolver", id: "acme_runs", name: "Acme runs", detail: "" },
+      { kind: "task", id: "acme_export", name: "Export", detail: "" },
+      {
+        kind: "encoder",
+        id: "acme_out",
+        name: "acme_out",
+        detail: "",
+        skipped: "this version has no encoders",
+      },
+      { kind: "gadget", id: "", name: "gadget", detail: "", skipped: "unknown kind" },
     ],
-    handlers: [
-      { kind: "decoder", id: "acme_tracks", name: "Acme tracks", extensions: [".acme.jsonl"] },
-      { kind: "playlist_resolver", id: "acme_runs", name: "Acme runs", extensions: [] },
-    ],
+    ...NOTHING,
+    settings: [{ key: "model", label: "Model file", kind: { kind: "Text" }, required: false }],
   },
 };
 const BROKEN: PluginInfo = {
@@ -99,6 +107,7 @@ describe("plugins view", () => {
     expect(within(installed).getByText("Acme tracks")).toBeTruthy();
     expect(within(installed).getByText(".acme.jsonl")).toBeTruthy();
     expect(within(installed).getByText("Acme runs")).toBeTruthy();
+    expect(within(installed).getByText("Export")).toBeTruthy();
     expect(within(screen.getByRole("region", { name: "Built-in" })).getByText("MOT")).toBeTruthy();
     expect(
       within(screen.getByRole("region", { name: "Built-in" })).queryByRole("button"),
@@ -129,6 +138,47 @@ describe("plugins view", () => {
     expect(install.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/p/new" } });
     expect(install.disabled).toBe(false);
+  });
+
+  it("saves a plugin's settings, sending only what is filled in, and shows what the plugin then runs with", async () => {
+    const posted: unknown[] = [];
+    let plugins = [ACME];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === "POST") {
+          const body = JSON.parse(init.body as string) as { values: Record<string, unknown> };
+          posted.push(body);
+          plugins = [
+            {
+              ...ACME,
+              status: { ...(ACME.status as object), values: body.values } as PluginInfo["status"],
+            },
+          ];
+        }
+        return { ok: true, json: async () => ({ plugins }) };
+      }),
+    );
+    view();
+    const save = (await screen.findByRole("button", {
+      name: "Save Acme settings",
+    })) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Model file"), { target: { value: " m.onnx " } });
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await vi.waitFor(() =>
+      expect(posted).toEqual([
+        { plugin: "/p/acme/ax-devil-plugin.json", values: { model: "m.onnx" } },
+      ]),
+    );
+    await vi.waitFor(() =>
+      expect((screen.getByLabelText("Model file") as HTMLInputElement).value).toBe("m.onnx"),
+    );
+    expect(
+      (screen.getByRole("button", { name: "Save Acme settings" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it("keeps a refused install visible after the list reloads, and recovers when the request fails outright", async () => {

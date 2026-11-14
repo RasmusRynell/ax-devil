@@ -56,6 +56,16 @@ pub struct RemoveRequest {
     pub target: String,
 }
 
+/// The body of `POST /api/plugins/settings`.
+#[derive(Serialize, Deserialize, TS)]
+pub struct SettingsRequest {
+    /// The id of an installed plugin, or the absolute path of its manifest or folder.
+    pub plugin: String,
+    /// The plugin's settings, checked against its form; replaces the stored ones.
+    #[ts(type = "Record<string, unknown>")]
+    pub values: serde_json::Map<String, serde_json::Value>,
+}
+
 /// The body of `POST /api/plugins/update`.
 #[derive(Serialize, Deserialize, TS)]
 pub struct UpdateRequest {
@@ -99,11 +109,19 @@ pub enum PluginStatus {
         name: String,
         /// Free text from the manifest; the app's version for a built-in.
         version: String,
-        /// What it provides, in the order it lists them.
-        handlers: Vec<HandlerSummary>,
-        /// The handlers it lists that this build cannot run, such as a kind added by a newer ax-devil.
-        #[serde(default)]
-        skipped: Vec<SkippedHandlerInfo>,
+        /// What it provides, in the order it lists them, then what it lists that this build cannot use.
+        rows: Vec<ContributionRow>,
+        /// The form of the plugin's own settings; empty when it has none.
+        settings: Vec<FieldInfo>,
+        /// The settings the plugin runs with: the stored values with the defaults filled in.
+        #[ts(type = "Record<string, unknown>")]
+        values: serde_json::Map<String, serde_json::Value>,
+        /// The pages it shows.
+        views: Vec<ViewInfo>,
+        /// The menu entries and shortcuts it adds.
+        commands: Vec<CommandInfo>,
+        /// The lane decoders and tasks it provides, which take lanes and options.
+        operations: Vec<OperationInfo>,
     },
     /// It provides none.
     Failed {
@@ -112,40 +130,73 @@ pub enum PluginStatus {
     },
 }
 
-/// One handler a plugin provides.
+/// One thing a plugin lists: a handler, or one it lists that this build cannot use.
 #[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
-pub struct HandlerSummary {
-    /// What it does.
-    pub kind: HandlerKind,
-    /// The id that selects it.
+pub struct ContributionRow {
+    /// The manifest `kind`: `decoder`, `playlist_resolver`, `task`, `view` or `command`; for a skipped row whatever
+    /// the manifest says.
+    pub kind: String,
+    /// The handler id; empty for a skipped row that has none.
     pub id: String,
     /// What the user reads.
     pub name: String,
-    /// The file extensions a decoder reads, lowercase with the dot; empty for the other kinds.
-    pub extensions: Vec<String>,
-}
-
-/// A handler of a plugin that is listed but not used.
-#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
-pub struct SkippedHandlerInfo {
-    /// The kind the manifest gives.
-    pub kind: String,
-    /// The handler id, when the manifest gives one.
+    /// What else tells it apart: a decoder's file extensions, a view's place, a command's target. May be empty.
+    pub detail: String,
+    /// Why it is not used; absent for a handler that runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub id: Option<String>,
-    /// Why it is not used.
-    pub reason: String,
+    pub skipped: Option<String>,
 }
 
-/// What a handler does.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "snake_case")]
-pub enum HandlerKind {
-    /// It turns an overlay file into Scenes.
-    Decoder,
-    /// It turns settings into a playlist.
-    PlaylistResolver,
+/// A page a plugin shows.
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct ViewInfo {
+    /// The view id, unique within its plugin.
+    pub id: String,
+    /// What the user reads.
+    pub title: String,
+    /// The name of an icon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub icon: Option<String>,
+    /// Where it is shown: `sidebar` or `video`.
+    pub place: String,
+    /// Where the page is served, `/views/<token>/<document>`. The token lasts until the plugins reload.
+    pub url: String,
+}
+
+/// A menu entry and shortcut a plugin adds.
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct CommandInfo {
+    /// `<plugin id>.<command id>`.
+    pub id: String,
+    /// What the user reads.
+    pub title: String,
+    /// What it applies to: `app`, `item` or `lane`.
+    pub on: String,
+    /// The default key, such as `Ctrl+Alt+E`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub key: Option<String>,
+    /// The id of the plugin's own decoder, task or view it runs.
+    pub runs: String,
+}
+
+/// A lane decoder or task a plugin provides.
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct OperationInfo {
+    /// The handler id.
+    pub id: String,
+    /// `decoder` or `task`.
+    pub kind: String,
+    /// What the user reads.
+    pub name: String,
+    /// `(key, label)` of each lane it reads, in order.
+    pub lanes: Vec<(String, String)>,
+    /// Whether it is also given the video.
+    pub video: bool,
+    /// The options it takes, in the order they are shown.
+    pub options: Vec<FieldInfo>,
 }
 
 /// A playlist resolver and the form its settings take.
@@ -165,8 +216,8 @@ pub struct ResolverInfo {
     pub fields: Vec<FieldInfo>,
 }
 
-/// One setting of a resolver or option of a decoder.
-#[derive(Serialize, Deserialize, TS)]
+/// One setting of a resolver or plugin, or option of a decoder or task.
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct FieldInfo {
     /// The key in the settings.
     pub key: String,
@@ -183,7 +234,7 @@ pub struct FieldInfo {
 }
 
 /// What kind of value a setting holds.
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind")]
 pub enum FieldKindWire {
     /// A folder path.
@@ -221,7 +272,7 @@ pub enum FieldKindWire {
 }
 
 /// The sentences of a count-only scan.
-#[derive(Clone, Serialize, Deserialize, TS)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct ScanCountInfo {
     /// Shown while a setting the scan reads is empty.
     pub missing: String,
@@ -278,12 +329,14 @@ pub(crate) fn visit_api_types(types: &mut impl ts_rs::TypeVisitor) {
     types.visit::<InstallRequest>();
     types.visit::<RemoveRequest>();
     types.visit::<UpdateRequest>();
+    types.visit::<SettingsRequest>();
     types.visit::<PluginInfo>();
     types.visit::<PluginSource>();
     types.visit::<PluginStatus>();
-    types.visit::<HandlerSummary>();
-    types.visit::<SkippedHandlerInfo>();
-    types.visit::<HandlerKind>();
+    types.visit::<ContributionRow>();
+    types.visit::<ViewInfo>();
+    types.visit::<CommandInfo>();
+    types.visit::<OperationInfo>();
     types.visit::<ResolverInfo>();
     types.visit::<FieldInfo>();
     types.visit::<FieldKindWire>();

@@ -124,8 +124,8 @@ pub async fn run(command: PluginsCommand, plugins: Arc<Plugins>) -> Report {
 fn provided_by_installed(info: &PluginsInfo, id: &str) -> bool {
     info.plugins.iter().any(|plugin| {
         matches!(plugin.source, PluginSource::Installed { .. })
-            && matches!(&plugin.status, PluginStatus::Loaded { handlers, .. }
-                if handlers.iter().any(|handler| handler.id == id))
+            && matches!(&plugin.status, PluginStatus::Loaded { rows, .. }
+                if rows.iter().any(|row| row.skipped.is_none() && row.id == id))
     })
 }
 
@@ -163,23 +163,20 @@ fn list(loaded: &PluginsInfo, json: bool) -> Report {
         };
         let line = match &plugin.status {
             PluginStatus::Loaded {
-                id,
-                version,
-                handlers,
-                skipped,
-                ..
+                id, version, rows, ..
             } => {
-                let extensions: Vec<_> = handlers
+                let extensions: Vec<_> = rows
                     .iter()
-                    .flat_map(|handler| handler.extensions.iter().map(String::as_str))
+                    .filter(|row| row.kind == "decoder" && row.skipped.is_none())
+                    .map(|row| row.detail.replace(' ', ", "))
+                    .filter(|detail| !detail.is_empty())
                     .collect();
                 let mut line = format!("{id}  {version}  {}  {folder}", extensions.join(", "));
-                for handler in skipped {
-                    let id = handler.id.as_deref().unwrap_or("-");
-                    line.push_str(&format!(
-                        "\n  skipped  {}  {id}  {}",
-                        handler.kind, handler.reason
-                    ));
+                for row in rows {
+                    if let Some(reason) = &row.skipped {
+                        let id = if row.id.is_empty() { "-" } else { &row.id };
+                        line.push_str(&format!("\n  skipped  {}  {id}  {reason}", row.kind));
+                    }
                 }
                 line
             }

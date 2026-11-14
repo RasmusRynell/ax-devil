@@ -5,14 +5,14 @@ import { ask } from "../client/ask";
 import { reasonOf } from "../client/errors";
 import { useResource } from "../client/resource";
 import type {
+  ContributionRow,
   ErrorWire,
-  HandlerKind,
-  HandlerSummary,
+  FieldInfo,
   InstallRequest,
   PluginInfo,
   PluginsInfo,
   RemoveRequest,
-  SkippedHandlerInfo,
+  SettingsRequest,
   UpdateRequest,
 } from "../generated/api";
 import { BrowseButton, Button } from "../kit/Button";
@@ -20,12 +20,17 @@ import { Chip } from "../kit/Chips";
 import { TextField } from "../kit/Fields";
 import { SectionCaption, type CaptionMark } from "../kit/SectionCaption";
 import { Refusal } from "../kit/Refusal";
+import { FieldControl, misread, needsValue, type FieldForm } from "../resolvers/fields";
+import type { Settings } from "../resolvers/scan";
 import { failedIn, reportFailedPlugins } from "./failed";
 
-/** What the handlers of each kind are called in a plugin's row; a new kind is a new entry. */
-const KINDS: Record<HandlerKind, string> = {
+/** What the contributions of each kind are called in a plugin's row; a new kind is a new entry. */
+const KINDS: Record<string, string> = {
   decoder: "Decoders",
   playlist_resolver: "Playlists",
+  task: "Tasks",
+  view: "Views",
+  command: "Commands",
 };
 
 /** What the buttons of an installed plugin are called, by the route they call. */
@@ -55,26 +60,25 @@ const nameOf = ({ source, status }: PluginInfo) =>
     ? status.name
     : lastPart(source.kind === "installed" ? source.folder : "");
 
-/** A plugin's handlers by kind, then the file extensions its decoders read, then the ones it lists that are not used. */
-function Handlers({
-  handlers,
-  skipped,
-}: {
-  handlers: readonly HandlerSummary[];
-  skipped: readonly SkippedHandlerInfo[];
-}) {
-  const extensions = [...new Set(handlers.flatMap((handler) => handler.extensions))];
+/** A plugin's contributions by kind, then the file extensions its decoders read, then the ones it lists that are not used. */
+function Contributions({ rows }: { rows: readonly ContributionRow[] }) {
+  const used = rows.filter((row) => row.skipped === undefined);
+  const extensions = [
+    ...new Set(
+      used.filter((row) => row.kind === "decoder").flatMap((row) => row.detail.split(" ")),
+    ),
+  ].filter(Boolean);
   return (
     <>
-      {(Object.keys(KINDS) as HandlerKind[]).map((kind) => {
-        const ofKind = handlers.filter((handler) => handler.kind === kind);
+      {Object.entries(KINDS).map(([kind, heading]) => {
+        const ofKind = used.filter((row) => row.kind === kind);
         return (
           ofKind.length > 0 && (
             <div key={kind} className="flex flex-wrap items-center gap-s">
-              <span className="text-muted">{KINDS[kind]}</span>
-              {ofKind.map((handler) => (
-                <Chip key={handler.id} title={handler.id}>
-                  {handler.name}
+              <span className="text-muted">{heading}</span>
+              {ofKind.map((row) => (
+                <Chip key={row.id} title={row.id}>
+                  {row.name}
                 </Chip>
               ))}
             </div>
@@ -82,12 +86,88 @@ function Handlers({
         );
       })}
       {extensions.length > 0 && <span className="text-muted">{extensions.join(" ")}</span>}
-      {skipped.map((handler, index) => (
-        <span key={index} className="text-muted [overflow-wrap:anywhere]">
-          {`${handler.kind} ${handler.id ?? "-"}: ${handler.reason}`}
-        </span>
-      ))}
+      {rows
+        .filter((row) => row.skipped !== undefined)
+        .map((row, index) => (
+          <span key={index} className="text-muted [overflow-wrap:anywhere]">
+            {`${row.kind} ${row.id || "-"}: ${row.skipped}`}
+          </span>
+        ))}
     </>
+  );
+}
+
+/** The text each field of `fields` shows for the stored `values`. */
+const textOf = (fields: readonly FieldInfo[], values: Settings): Settings =>
+  Object.fromEntries(
+    fields.flatMap(({ key }) => (values[key] == null ? [] : [[key, String(values[key])]])),
+  );
+
+/** What a form's text sends: a value per filled field, a number for an `Integer` one. */
+function settingsOf(fields: readonly FieldInfo[], text: Settings): Settings {
+  const values: Settings = {};
+  for (const field of fields) {
+    const typed = String(text[field.key] ?? "").trim();
+    if (typed !== "") values[field.key] = field.kind.kind === "Integer" ? Number(typed) : typed;
+  }
+  return values;
+}
+
+/** The form of a plugin's own settings, with Save while it differs from what the plugin runs with. */
+function SettingsForm({
+  name,
+  fields,
+  values,
+  busy,
+  onSave,
+}: {
+  name: string;
+  fields: readonly FieldInfo[];
+  values: Settings;
+  busy: boolean;
+  onSave: (values: Settings) => void;
+}) {
+  const [draft, setDraft] = useState(() => textOf(fields, values));
+  const pickPath = usePickPath();
+  const form: FieldForm = {
+    decoders: [],
+    values: draft,
+    scans: {},
+    pickPath,
+    set: (key, value) => setDraft((current) => ({ ...current, [key]: value })),
+    canScan: () => false,
+    scan: () => undefined,
+    toggle: () => undefined,
+    toggleAll: () => undefined,
+  };
+  const sent = settingsOf(fields, draft);
+  const unchanged =
+    JSON.stringify(sent) === JSON.stringify(settingsOf(fields, textOf(fields, values)));
+  const incomplete = fields.some(
+    (field) => misread(field, draft) || (needsValue(field) && sent[field.key] === undefined),
+  );
+  return (
+    <form
+      aria-label={`${name} settings`}
+      className="flex flex-col gap-s"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSave(sent);
+      }}
+    >
+      {fields.map((field) => (
+        <FieldControl key={field.key} field={field} form={form} />
+      ))}
+      <Button
+        type="submit"
+        size="small"
+        className="self-end"
+        disabled={busy || unchanged || incomplete}
+        aria-label={`Save ${name} settings`}
+      >
+        Save
+      </Button>
+    </form>
   );
 }
 
@@ -95,10 +175,12 @@ function Row({
   plugin,
   busy,
   onChange,
+  onSave,
 }: {
   plugin: PluginInfo;
   busy: boolean;
   onChange?: (action: "update" | "remove", manifest: string) => void;
+  onSave: (manifest: string, values: Settings) => void;
 }) {
   const { source, status } = plugin;
   const installed = source.kind === "installed" ? source : null;
@@ -112,9 +194,20 @@ function Row({
         {status.state === "loaded" && <span className="text-muted">{status.version}</span>}
       </div>
       {status.state === "loaded" ? (
-        <Handlers handlers={status.handlers} skipped={status.skipped} />
+        <Contributions rows={status.rows} />
       ) : (
         <Refusal reason={status.reason} />
+      )}
+      {installed && status.state === "loaded" && status.settings.length > 0 && (
+        <SettingsForm
+          // Shows what the plugin runs with whenever that changes, such as after a save or in another window.
+          key={JSON.stringify(status.values)}
+          name={name}
+          fields={status.settings}
+          values={status.values}
+          busy={busy}
+          onSave={(values) => onSave(installed.manifest, values)}
+        />
       )}
       {installed && onChange && (
         <div className="flex justify-end gap-s">
@@ -152,7 +245,10 @@ export function PluginsView() {
   const [refused, setRefused] = useState<string | null>(null);
   const pick = usePickPath();
 
-  const change = async (url: string, body: InstallRequest | RemoveRequest | UpdateRequest) => {
+  const change = async (
+    url: string,
+    body: InstallRequest | RemoveRequest | UpdateRequest | SettingsRequest,
+  ) => {
     setBusy(true);
     setRefused(null);
     try {
@@ -234,6 +330,9 @@ export function PluginsView() {
                     key={keyOf(plugin)}
                     plugin={plugin}
                     busy={busy}
+                    onSave={(plugin, values) =>
+                      void change("/api/plugins/settings", { plugin, values })
+                    }
                     onChange={
                       mayChange
                         ? (action, manifest) =>

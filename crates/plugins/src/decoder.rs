@@ -221,6 +221,10 @@ impl Decoder for PluginDecoder {
         self.program.code_hash().ok()
     }
 
+    fn derives_lanes(&self) -> bool {
+        self.input == DecoderInput::Lanes
+    }
+
     /// A live track keys by time, so the decoder must read records and be able to key by it.
     fn reads_live(&self) -> bool {
         self.spec.framing == Framing::Records && self.spec.bases.contains(&MatchBasis::Time)

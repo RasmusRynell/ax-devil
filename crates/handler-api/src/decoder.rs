@@ -150,6 +150,12 @@ pub trait Decoder: Send + Sync {
         self.spec().framing == Framing::Records
     }
 
+    /// Whether the decoder derives a lane from other lanes, reading the bundle that lists them instead of an overlay
+    /// file. It has no extensions and is never a candidate for a file the user opens.
+    fn derives_lanes(&self) -> bool {
+        false
+    }
+
     /// Reads `input`, handing each Scene to `sink`. Frame-keyed decoders give ascending frames, one Scene per
     /// frame; time-keyed ones give them in record order. `options` fit [`Spec::options`].
     fn decode(
