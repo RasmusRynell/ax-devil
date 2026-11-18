@@ -139,9 +139,11 @@ async function remote(local, shell) {
         `Add Video must fit the 640x480 window at ${zoom * 100}% zoom with a failure showing`,
       );
     }
-    window.webContents.setZoomFactor(1);
+    // The restored layout is settled before the keyboard goes to the field, and the field has it before the text.
+    await setView(window, [bounds.width, bounds.height], 1);
     window.setBounds(bounds);
     await js(`${videoPath}.focus()`);
+    await wait(`document.activeElement === ${videoPath}`);
     window.webContents.selectAll();
     window.webContents.insertText(FIXTURE);
     await wait(`document.querySelector('dialog[open] input').value === ${JSON.stringify(FIXTURE)}`);
