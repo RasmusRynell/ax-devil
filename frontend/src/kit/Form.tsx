@@ -12,6 +12,7 @@ import { Checkbox, useSelectOnOpen } from "./Fields";
 import { Icon } from "./Icon";
 import { FIELD, FIELD_IN } from "./look";
 import { ownKeys } from "./keys";
+import { Refusal } from "./Refusal";
 import { SectionCaption } from "./SectionCaption";
 
 /** Rows of a label and its control: one label column as wide as the longest label, up to `spacing-label`, the controls filling the rest. */
@@ -115,10 +116,28 @@ interface RowProps {
   children: ReactNode;
   /** A line under the control, such as a question about it. */
   note?: ReactNode;
+  /** Why the value is refused, under the note; the control with this `id` is then invalid and described by it. */
+  error?: string;
+}
+
+/** The id of the refusal in the row whose control has `id`. */
+const errorId = (id: string) => `${id}-error`;
+
+/** What a control says about itself: whether its row needs a value, and the refusal that describes it. */
+function aria(
+  id: string,
+  { required, error, describedBy }: { required?: boolean; error?: string; describedBy?: string },
+) {
+  return {
+    "aria-required": required || undefined,
+    "aria-invalid": error ? true : undefined,
+    "aria-describedby":
+      [describedBy, error ? errorId(id) : undefined].filter(Boolean).join(" ") || undefined,
+  };
 }
 
 /** A label and any control: the row the other `Form` rows are made of. `id` is the control's, when it can be named. */
-export function FormRow({ label, marker, id, children, note }: RowProps) {
+export function FormRow({ label, marker, id, children, note, error }: RowProps) {
   return (
     <>
       <label
@@ -131,6 +150,7 @@ export function FormRow({ label, marker, id, children, note }: RowProps) {
       <div className="flex min-w-0 flex-col gap-xs">
         <div className="flex min-w-0 items-center gap-s">{children}</div>
         {note}
+        {error && <Refusal id={id && errorId(id)} reason={error} />}
       </div>
     </>
   );
@@ -181,6 +201,10 @@ interface Common {
   /** Sits after the control. */
   extra?: ReactNode;
   note?: ReactNode;
+  /** The value is needed: the control says so to assistive technology. */
+  required?: boolean;
+  /** Why the value is refused; shown under the control, which is then invalid. */
+  error?: string;
   disabled?: boolean;
   /** Shown as a tooltip on the control. */
   title?: string;
@@ -202,6 +226,8 @@ export function FormInput({
   describedBy,
   extra,
   note,
+  required,
+  error,
   disabled,
   title,
 }: Common & {
@@ -218,7 +244,7 @@ export function FormInput({
   const list = `${id}-suggestions`;
   const input = useSelectOnOpen(selectOnOpen);
   return (
-    <FormRow label={label} marker={marker} id={id} note={note}>
+    <FormRow label={label} marker={marker} id={id} note={note} error={error}>
       <input
         ref={input}
         id={id}
@@ -230,7 +256,7 @@ export function FormInput({
         autoComplete="off"
         spellCheck={false}
         list={suggestions?.length ? list : undefined}
-        aria-describedby={describedBy}
+        {...aria(id, { required, error, describedBy })}
         onChange={(event) => onChange(event.target.value)}
         className={`${FIELD} min-w-0 flex-1`}
       />
@@ -270,6 +296,8 @@ export function FormSelect<T extends string>({
   failed = false,
   extra,
   note,
+  required,
+  error,
   disabled,
   title,
 }: Common & {
@@ -281,7 +309,7 @@ export function FormSelect<T extends string>({
 }) {
   const id = useId();
   return (
-    <FormRow label={label} marker={marker} id={id} note={note}>
+    <FormRow label={label} marker={marker} id={id} note={note} error={error}>
       <span className="relative flex min-w-0 flex-1 items-center">
         {failed && (
           <Icon name="triangle-alert" className="pointer-events-none absolute left-s text-danger" />
@@ -291,6 +319,7 @@ export function FormSelect<T extends string>({
           value={value}
           disabled={disabled}
           title={title}
+          {...aria(id, { required, error })}
           onChange={(event) => onChange(event.target.value as T)}
           className={`${FIELD} min-w-0 flex-1 ${failed ? "pl-row text-danger" : ""}`}
         >
@@ -331,6 +360,8 @@ export function FormCombo({
   options,
   onOpen,
   note,
+  required,
+  error,
   disabled,
 }: Common & {
   value: string;
@@ -431,7 +462,7 @@ export function FormCombo({
   };
 
   return (
-    <FormRow label={label} marker={marker} id={id} note={note}>
+    <FormRow label={label} marker={marker} id={id} note={note} error={error}>
       <span
         ref={box}
         onBlur={(event) => {
@@ -448,6 +479,7 @@ export function FormCombo({
           aria-controls={listId}
           aria-autocomplete="none"
           aria-activedescendant={open ? `${id}-${active}` : undefined}
+          {...aria(id, { required, error })}
           value={value}
           placeholder={placeholder}
           disabled={disabled}

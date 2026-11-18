@@ -24,8 +24,14 @@ export interface FieldForm {
   tried?: boolean;
 }
 
-/** A control draws its row; `note` is what is said about it, under the control. */
-type Control = (field: Field, form: FieldForm, note: ReactNode) => ReactNode;
+/** What a row says about its field: whether it needs a value, and what is refused about it. */
+interface RowState {
+  required: boolean;
+  error?: string;
+}
+
+/** A control draws the row of a field. */
+type Control = (field: Field, form: FieldForm, row: RowState) => ReactNode;
 
 /** The text a field shows: what was typed, else its default. */
 export function shown(field: Field, values: Settings): string {
@@ -55,25 +61,25 @@ const placeholder = (field: Field) =>
   fallback(field) || (needsValue(field) ? "Required" : undefined);
 
 /** A text box for the field's text; typing sets it, and so does the folder or file picked beside it. */
-const pathBox = (field: Field, form: FieldForm, request: PathRequest, note: ReactNode) => (
+const pathBox = (field: Field, form: FieldForm, request: PathRequest, row: RowState) => (
   <PathField
     label={field.label}
     what={field.label}
     value={text(form, field)}
     placeholder={placeholder(field)}
     request={request}
-    note={note}
+    {...row}
     onChange={(path, picked) => form.set(field.key, path, picked)}
   />
 );
 
 /** A text box; the form sends an `Integer` field's text as the number (see `settingsOf`). */
-const textBox: Control = (field, form, note) => (
+const textBox: Control = (field, form, row) => (
   <FormInput
     label={field.label}
     value={text(form, field)}
     placeholder={placeholder(field)}
-    note={note}
+    {...row}
     onChange={(value) => form.set(field.key, value)}
   />
 );
@@ -93,15 +99,7 @@ export function decoderOptions(
 }
 
 /** A `Scan` field whose found values are checked: Scan in the row, the found values under it. */
-function ScanListControl({
-  field,
-  form,
-  note,
-}: {
-  field: Field;
-  form: FieldForm;
-  note: ReactNode;
-}) {
+function ScanListControl({ field, form, row }: { field: Field; form: FieldForm; row: RowState }) {
   const view = form.scans[field.key];
   const items: CheckItem[] = view
     ? [
@@ -137,9 +135,9 @@ function ScanListControl({
                 onToggleAll={() => form.toggleAll(field.key)}
               />
             ))}
-          {note}
         </>
       }
+      error={row.error}
     >
       <Button
         icon="rotate-cw"
@@ -157,12 +155,12 @@ function ScanCountControl({
   field,
   count,
   form,
-  note,
+  row,
 }: {
   field: Field;
   count: ScanCount;
   form: FieldForm;
-  note: ReactNode;
+  row: RowState;
 }) {
   const view = form.scans[field.key];
   const status = countStatus(view, count, form.canScan(field.key));
@@ -180,9 +178,9 @@ function ScanCountControl({
               </p>
             )
           )}
-          {note}
         </>
       }
+      error={row.error}
     >
       <Button icon="rotate-cw" onClick={() => form.scan(field.key)}>
         Scan
@@ -193,15 +191,15 @@ function ScanCountControl({
 
 /** The control for each kind of field; a new kind is a new entry here, not a branch. */
 const CONTROLS: Record<FieldKind["kind"], Control> = {
-  Folder: (field, form, note) => pathBox(field, form, chooseFolder(), note),
-  File: (field, form, note) =>
-    pathBox(field, form, chooseFile(field.kind.kind === "File" ? field.kind.extensions : []), note),
+  Folder: (field, form, row) => pathBox(field, form, chooseFolder(), row),
+  File: (field, form, row) =>
+    pathBox(field, form, chooseFile(field.kind.kind === "File" ? field.kind.extensions : []), row),
   Text: textBox,
   Integer: textBox,
-  Handler: (field, form, note) => (
+  Handler: (field, form, row) => (
     <FormSelect
       label={field.label}
-      note={note}
+      {...row}
       value={text(form, field)}
       options={[
         ["", "Select a decoder"],
@@ -213,7 +211,7 @@ const CONTROLS: Record<FieldKind["kind"], Control> = {
     />
   ),
   // The chosen decoder's own options, drawn by the controls of their kinds.
-  DecoderOptions: (field, form, note) => (
+  DecoderOptions: (field, form, row) => (
     <>
       {decoderOptions(field, form.values, form.decoders).map((option) => (
         <FieldControl
@@ -222,14 +220,18 @@ const CONTROLS: Record<FieldKind["kind"], Control> = {
           form={form}
         />
       ))}
-      {note && <div className="col-span-full">{note}</div>}
+      {row.error && (
+        <div className="col-span-full">
+          <Refusal reason={row.error} />
+        </div>
+      )}
     </>
   ),
-  Scan: (field, form, note) =>
+  Scan: (field, form, row) =>
     field.kind.kind === "Scan" && field.kind.count ? (
-      <ScanCountControl field={field} count={field.kind.count} form={form} note={note} />
+      <ScanCountControl field={field} count={field.kind.count} form={form} row={row} />
     ) : (
-      <ScanListControl field={field} form={form} note={note} />
+      <ScanListControl field={field} form={form} row={row} />
     ),
 };
 
@@ -246,12 +248,19 @@ export function FieldControl({
   form: FieldForm;
   failures?: readonly string[];
 }) {
+  const { kind } = field.kind;
+  // A list of found values must be scanned before the form can go on.
+  const unscanned =
+    field.kind.kind === "Scan" &&
+    !field.kind.count &&
+    (form.scans[field.key]?.phase ?? "idle") === "idle";
   const own =
-    field.kind.kind === "DecoderOptions" || field.kind.kind === "Scan"
+    kind === "DecoderOptions"
       ? undefined
       : (misread(field, form.values) ??
-        (form.tried && needsValue(field) && !text(form, field).trim() ? "Required" : undefined));
-  const reasons = [...(own ? [own] : []), ...failures];
-  const note = reasons.map((reason) => <Refusal key={reason} reason={reason} />);
-  return CONTROLS[field.kind.kind](field, form, note.length ? note : null);
+        (form.tried && (unscanned || (needsValue(field) && !text(form, field).trim()))
+          ? "Required"
+          : undefined));
+  const error = [...(own ? [own] : []), ...failures].join(" ") || undefined;
+  return CONTROLS[kind](field, form, { required: needsValue(field), error });
 }

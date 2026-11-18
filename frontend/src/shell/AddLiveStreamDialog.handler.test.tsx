@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS, FakeSettings } from "../client/fakeSettings";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { AddLiveStreamDialog } from "./AddLiveStreamDialog";
+import { waits } from "./dialogTesting";
 
 const HANDLERS = {
   decoders: [
@@ -89,7 +90,7 @@ it("keeps an explicit None chosen while discovery was pending", async () => {
   pick("Handler type", "");
   await discovered();
   expect(value("Handler type")).toBe("");
-  expect((screen.getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(waits(screen.getByRole("button", { name: "Add" }))).toBe(true);
 });
 
 it.each(["", "ONVIF_XML"])(

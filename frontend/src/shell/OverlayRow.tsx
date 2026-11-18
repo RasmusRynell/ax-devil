@@ -2,7 +2,6 @@ import { useLayoutEffect } from "react";
 import type { DecoderInfo, NewOverlayWire, ResolverInfo } from "../generated/api";
 import { Button } from "../kit/Button";
 import { FormPath, FormSection, FormSelect } from "../kit/Form";
-import { Refusal } from "../kit/Refusal";
 import { ResolverForm, useResolverForm } from "../resolvers/ResolverForm";
 import type { Settings } from "../resolvers/scan";
 
@@ -123,7 +122,7 @@ export function OverlayRow({
         what="overlay file"
         value={entry.path}
         selectOnOpen={focus}
-        note={problem && <Refusal reason={problem} />}
+        error={problem}
         browse={onBrowse}
         onChange={(path) => onChange(withPath(entry, path, decoders))}
       />
@@ -131,6 +130,8 @@ export function OverlayRow({
         label="Data handler"
         value={entry.picked}
         disabled={!named}
+        required={named}
+        error={tried && undecided(entry) ? "Required" : undefined}
         options={[
           ["", named ? "Required" : "(None)"],
           ...decoders.map((one) => [one.handler, one.display_name] as const),

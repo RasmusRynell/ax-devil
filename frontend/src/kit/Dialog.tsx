@@ -1,7 +1,9 @@
 import {
+  useEffect,
   useLayoutEffect,
   useId,
   useRef,
+  useState,
   type FormEvent,
   type ReactEventHandler,
   type ReactNode,
@@ -84,8 +86,11 @@ export function DialogFrame({
 interface Props {
   title: ReactNode;
   children: ReactNode;
-  /** Without it the dialog has no OK button: its body holds the submit button, and Enter clicks that. */
-  onOk?: () => void;
+  /**
+   * Without it the dialog has no OK button: its body holds the submit button, and Enter clicks that. Returns false
+   * when it found something missing that `incomplete` did not know, which is then treated like an incomplete OK.
+   */
+  onOk?: () => void | false;
   /** Without it the dialog has only OK, and Escape runs OK. */
   onCancel?: () => void;
   okLabel?: string;
@@ -97,6 +102,13 @@ interface Props {
   footerStart?: ReactNode;
   /** While true, OK is disabled, so the action cannot run twice. */
   busy?: boolean;
+  /**
+   * While true, a required field is still empty: OK looks disabled but can be pressed, and click, Enter and Space run
+   * `onIncomplete` instead of `onOk`, then move the focus to the first field that is invalid (`aria-invalid`).
+   */
+  incomplete?: boolean;
+  /** Shows what is missing, as a refusal at each empty required field; the dialog focuses the first one. */
+  onIncomplete?: () => void;
   /** Why the dialog could not do what OK asked, over the buttons and outside the scrolling body. */
   error?: string | null;
 }
@@ -112,15 +124,26 @@ export function Dialog({
   footerStart,
   focusOk = false,
   busy = false,
+  incomplete = false,
+  onIncomplete,
   error,
 }: Props) {
+  const form = useRef<HTMLFormElement | null>(null);
+  // Counts the presses that found something missing; the focus follows once the fields show it.
+  const [missed, setMissed] = useState(0);
+  useEffect(() => {
+    if (missed) form.current?.querySelector<HTMLElement>("[aria-invalid=true]")?.focus();
+  }, [missed]);
   return (
     <DialogFrame
       title={title}
       focusSubmit={focusOk}
       onSubmit={(event) => {
         event.preventDefault();
-        if (!busy) onOk?.();
+        form.current = event.currentTarget as HTMLFormElement;
+        if (busy) return;
+        if (incomplete) onIncomplete?.();
+        if (incomplete || onOk?.() === false) setMissed((count) => count + 1);
       }}
       onCancel={(event) => {
         event.preventDefault();
@@ -134,7 +157,7 @@ export function Dialog({
             {footerStart}
             <div className="ml-auto flex gap-m">
               {onOk && (
-                <Button type="submit" disabled={busy}>
+                <Button type="submit" disabled={busy} aria-disabled={incomplete || undefined}>
                   {okLabel}
                 </Button>
               )}

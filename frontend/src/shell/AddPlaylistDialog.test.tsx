@@ -5,6 +5,7 @@ import { scenario } from "../session/fakeScenario";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { AddPlaylistDialog } from "./AddPlaylistDialog";
+import { waits } from "./dialogTesting";
 
 const HANDLERS: HandlersInfo = {
   decoders: [
@@ -192,7 +193,7 @@ describe("add playlist dialog", () => {
     expect(commands()).toHaveLength(0);
     expect(onClose).not.toHaveBeenCalled();
     expect(locked("Dataset folder")).toBe(false);
-    expect(add()).toHaveProperty("disabled", false);
+    expect(waits(add())).toBe(false);
 
     clickAdd();
     await waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -252,7 +253,7 @@ describe("add playlist dialog", () => {
     await scanMot();
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-01/ }));
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-02/ }));
-    expect(add()).toHaveProperty("disabled", false);
+    expect(waits(add())).toBe(false);
     clickAdd();
     expect((await screen.findByRole("alert")).textContent).toBe("No sequences selected.");
     expect(commands()).toEqual([]);
@@ -272,14 +273,14 @@ describe("add playlist dialog", () => {
     expect(decoder.value).toBe("");
     fireEvent.change(screen.getByLabelText("Videos"), { target: { value: "/videos" } });
     fireEvent.change(screen.getByLabelText("Overlays"), { target: { value: "/overlays" } });
-    expect(add()).toHaveProperty("disabled", true);
+    expect(waits(add())).toBe(true);
     fireEvent.change(decoder, { target: { value: "MOT_FILE" } });
     expect((decoder.selectedOptions[0] as HTMLOptionElement).text).toBe(
       "MOT Annotations (MOT_FILE)",
     );
-    expect(add()).toHaveProperty("disabled", true);
+    expect(waits(add())).toBe(true);
     fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "1920" } });
-    expect(add()).toHaveProperty("disabled", false);
+    expect(waits(add())).toBe(false);
     return { held, decoder };
   }
 
@@ -296,7 +297,7 @@ describe("add playlist dialog", () => {
     // Load scans first; a decoder picked meanwhile keeps it from going on.
     clickAdd();
     await screen.findByText("Scanning…");
-    expect(add()).toHaveProperty("disabled", true);
+    expect(waits(add())).toBe(true);
     fireEvent.change(decoder, { target: { value: "" } });
     held.settle(reply(200, [{ value: "a", label: "a", detail: "" }]));
     await screen.findByText("Found 1 pair(s).");

@@ -25,7 +25,7 @@ import {
   formValues,
   headOf,
   hiddenSecrets,
-  incomplete,
+  missingFields,
   savedChoices,
   isField,
   newLive,
@@ -111,6 +111,8 @@ export function AddLiveStreamDialog({
   const [handlers, setHandlers] = useState<HandlersInfo | null>(null);
   const [adding, setAdding] = useState(false);
   const [refused, setRefused] = useState<Refused | null>(null);
+  // Add was pressed with something missing: the empty required fields say so.
+  const [attempted, setAttempted] = useState(false);
   // The connection the camera was last asked about for each mode's list, which is read on choosing the mode and on Refresh.
   // A changed connection forgets both, so coming back to an earlier one lists nothing until a mode choice or Refresh.
   const [asked, setAsked] = useState<Record<Listed, string | null>>({ mqtt: null, datahub: null });
@@ -218,10 +220,9 @@ export function AddLiveStreamDialog({
   // What is refused, at the field it names or else over the buttons: the camera's judgments of what was typed, and the
   // backend's refusal of the last Add. A host reference that names nothing is refused outside any field; when the
   // form's host is blank, that is the configured default naming nothing, which the blank Host already says.
+  const judged = invalid.filter((error) => isField(error.location) || form.host.trim());
   const problems = [
-    ...invalid
-      .filter((error) => isField(error.location) || form.host.trim())
-      .map((error) => ({ location: error.location, reason: reasonOf(error) })),
+    ...judged.map((error) => ({ location: error.location, reason: reasonOf(error) })),
     ...(refusal ? [{ location: refusal.location, reason: refusal.reason }] : []),
   ];
   const errors: PanelProps["errors"] = {};
@@ -229,7 +230,10 @@ export function AddLiveStreamDialog({
     if (isField(location)) errors[location as FieldKey] ??= reason;
   }
   const general = problems.find((problem) => !isField(problem.location))?.reason;
-  const blocked = incomplete(sent, hostKnown) || invalid.length > 0 || !!refusal?.judged;
+  // What the form still needs, which Add names once pressed. A refused form waits for a change instead.
+  const missing = missingFields(sent, !form.host.trim() && !hostUsable);
+  for (const field of attempted ? missing : []) errors[field] ??= "Required";
+  const blocked = judged.length > 0 || !!refusal?.judged;
 
   // Only Full access may ask what a reference expands to.
   const expansions = useExpansions(form.host, form.broker_host, useAccess().fullAccess);
@@ -243,6 +247,12 @@ export function AddLiveStreamDialog({
     expansions,
     hidden: editing ? hiddenSecrets(start) : null,
     errors,
+    required: [
+      ...(!hostDefault.trim() || missing.includes("host") ? ["host" as const] : []),
+      ...(mode === "none" ? [] : ["handler" as const]),
+      ...(mode === "mqtt" ? ["source_key" as const] : []),
+      ...(mode === "datahub" ? ["topic" as const] : []),
+    ],
   };
 
   const add = async () => {
@@ -278,6 +288,8 @@ export function AddLiveStreamDialog({
       onOk={() => void add()}
       onCancel={onClose}
       busy={adding || blocked}
+      incomplete={missing.length > 0}
+      onIncomplete={() => setAttempted(true)}
       error={general}
     >
       <fieldset disabled={adding} className="contents">

@@ -8,9 +8,9 @@ export const CONTROL =
 /** Border, text and hover tint of a `CONTROL`. */
 export const EDGE = "border-line-strong text-fg enabled:hover:bg-hover";
 
-/** The primary action, the one Enter runs: a `CONTROL` box filled with the accent (the border matches the fill, and shows under forced colours), the page colour as text; disabled it is a muted fill. */
+/** The primary action, the one Enter runs: a `CONTROL` box filled with the accent (the border matches the fill, and shows under forced colours), the page colour as text; disabled, or `aria-disabled` while a required field is empty, it is a muted fill. */
 export const PRIMARY =
-  "inline-flex min-h-row cursor-pointer items-center gap-m rounded-control border border-accent bg-accent px-m text-surface enabled:hover:border-accent-hover enabled:hover:bg-accent-hover enabled:active:border-accent-press enabled:active:bg-accent-press focus-ring focus-ring-apart disabled:border-line-strong/50 disabled:bg-hover disabled:text-disabled";
+  "inline-flex min-h-row cursor-pointer items-center gap-m rounded-control border border-accent bg-accent px-m text-surface enabled:not-aria-disabled:hover:border-accent-hover enabled:not-aria-disabled:hover:bg-accent-hover enabled:not-aria-disabled:active:border-accent-press enabled:not-aria-disabled:active:bg-accent-press focus-ring focus-ring-apart disabled:border-line-strong/50 disabled:bg-hover disabled:text-disabled aria-disabled:border-line-strong/50 aria-disabled:bg-hover aria-disabled:text-disabled";
 
 /** `CONTROL` for a label that wraps a hidden checkbox or radio, so state comes from `:has()` instead of the element. */
 export const CONTROL_IN =

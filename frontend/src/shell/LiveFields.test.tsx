@@ -18,6 +18,7 @@ function show(settings = values, change: Partial<LiveForm> = {}) {
       expansions={null}
       hidden={null}
       errors={{}}
+      required={[]}
       resolutions={{ state: { phase: "idle" }, reload: () => {} }}
       sizes={[]}
       hostUsable={false}

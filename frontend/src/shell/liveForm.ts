@@ -245,15 +245,19 @@ export const chosen = (value: string, choices: readonly string[]) =>
   choices.includes(value) ? value : "";
 
 /**
- * Whether something is still to choose: the host (`hostKnown`: typed or configured), the decoder of a mode, and the
- * data source or topic, which `form` holds as the camera's lists give them (see `chosen`). Every value rule is the
- * backend's, shown on its refusal.
+ * What is still to choose, in form order: the host (`hostMissing`: none typed and no usable configured one), the
+ * decoder of a mode, and the data source or topic, which `form` holds as the camera's lists give them (see `chosen`).
+ * Every value rule is the backend's, shown on its refusal.
  */
-export const incomplete = (form: LiveForm, hostKnown: boolean) =>
-  !hostKnown ||
-  (form.overlay !== "none" && !form.handler) ||
-  (form.overlay === "mqtt" && !form.source_key.trim()) ||
-  (form.overlay === "datahub" && !form.topic.trim());
+export function missingFields(form: LiveForm, hostMissing: boolean): FieldKey[] {
+  const { overlay } = form;
+  return [
+    ...(hostMissing ? ["host" as const] : []),
+    ...(overlay !== "none" && !form.handler ? ["handler" as const] : []),
+    ...(overlay === "mqtt" && !form.source_key.trim() ? ["source_key" as const] : []),
+    ...(overlay === "datahub" && !form.topic.trim() ? ["topic" as const] : []),
+  ];
+}
 
 /**
  * The camera a question is about. Blank fields are the configured ones, except in an edit, where the login is sent as

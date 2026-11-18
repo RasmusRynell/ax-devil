@@ -34,7 +34,7 @@ module.exports.run = async (window) => {
       Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'information');
       select.dispatchEvent(new Event('change', { bubbles: true }));
     })()`);
-    await wait(`${button("Add")}?.disabled === false`);
+    await wait(`${button("Add")}?.matches(':enabled:not([aria-disabled=true])')`);
     await js(`${button("Add")}.click()`);
     await wait(`!document.querySelector('dialog') && ${row}`);
     await js(`(() => {

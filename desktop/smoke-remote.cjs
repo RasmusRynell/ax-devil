@@ -7,6 +7,7 @@ const path = require("node:path");
 const { backendExecutable, startProcess } = require("./backend.cjs");
 const { shellApi } = require("./generated/api.json");
 const { supportsRestoreDrag } = require("./restore-drag.cjs");
+const { pressShortcut } = require("./shortcut-input.cjs");
 const fit = require("./fit.cjs");
 const {
   SCREENSHOTS,
@@ -108,8 +109,17 @@ async function remote(local, shell) {
     await frames({ js });
     await openAddVideo(window);
     await wait("document.querySelector('dialog[open] input')");
+    // Enter on the blank form names the missing path and puts the focus on it.
+    const videoPath = "document.querySelector('dialog[open] input')";
+    await js(`${videoPath}.focus()`);
+    pressShortcut(window, "Enter", { character: true });
+    await wait(
+      `${videoPath}.getAttribute('aria-invalid') === 'true' && document.activeElement === ${videoPath} && document.getElementById(${videoPath}.getAttribute('aria-describedby')).textContent === 'Required'`,
+    );
     // A path that is no file: Add is disabled and says why at the path; the dialog still fits the smallest window at
     // 200% zoom.
+    await js(`${videoPath}.focus()`);
+    window.webContents.selectAll();
     window.webContents.insertText("/no/such/video.mp4");
     await wait(
       "document.querySelector('dialog[open] [role=alert]') && [...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Add').disabled",
@@ -131,6 +141,7 @@ async function remote(local, shell) {
     }
     window.webContents.setZoomFactor(1);
     window.setBounds(bounds);
+    await js(`${videoPath}.focus()`);
     window.webContents.selectAll();
     window.webContents.insertText(FIXTURE);
     await wait(`document.querySelector('dialog[open] input').value === ${JSON.stringify(FIXTURE)}`);
@@ -185,7 +196,7 @@ async function remote(local, shell) {
     })()`);
     // Add waits for the backend's word on the files typed.
     await wait(
-      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Add').disabled === false",
+      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Add').matches(':enabled:not([aria-disabled=true])')",
     );
     await js(
       "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Add').click()",

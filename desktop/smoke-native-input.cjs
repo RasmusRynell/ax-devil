@@ -21,10 +21,17 @@ module.exports.run = async ({ window }) => {
 
   // The keyboard shortcut opens over the user's current control. Both dismissal routes must give it back.
   const opener = "document.querySelector('[aria-label=Settings]')";
-  for (const close of ["Cancel", "Escape"]) {
+  for (const [chord, dialogTitle, close] of [
+    ["Ctrl+N", "Add Video", "Cancel"],
+    ["Ctrl+N", "Add Video", "Escape"],
+    // The playlist dialog is built once its sources arrive; it must still return the focus to its opener.
+    ["Ctrl+Shift+N", "Add Playlist", "Cancel"],
+    ["Ctrl+Shift+N", "Add Playlist", "Escape"],
+  ]) {
     await js(`${opener}.focus()`);
-    press("Ctrl+N");
-    await wait("document.querySelector('dialog[open] h2')?.textContent === 'Add Video'");
+    press(chord);
+    await wait(`document.querySelector('dialog[open] h2')?.textContent === '${dialogTitle}'`);
+    await wait("document.querySelector('dialog[open] select, dialog[open] input')");
     await wait("document.activeElement?.closest('dialog')");
     assert.equal(await js("document.querySelector('dialog[open]').matches(':modal')"), true);
     if (close === "Cancel") await answer(close);
@@ -35,7 +42,7 @@ module.exports.run = async ({ window }) => {
     assert.equal(
       await js(`document.activeElement === ${opener}`),
       true,
-      `${close} restores the pre-dialog focus`,
+      `${close} restores the pre-dialog focus of ${dialogTitle}`,
     );
   }
 

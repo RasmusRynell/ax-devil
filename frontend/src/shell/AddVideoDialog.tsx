@@ -3,6 +3,7 @@ import type { NewOverlayWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { Form, FormInput, FormPath } from "../kit/Form";
+import type { Settings } from "../resolvers/scan";
 import { HandlersFailure, useHandlers } from "../resolvers/useHandlers";
 import { useCommand } from "../session/session";
 import {
@@ -13,7 +14,6 @@ import {
   type OverlayEntry,
   type OverlayRead,
 } from "./OverlayRow";
-import { Refusal } from "../kit/Refusal";
 import { checkFiles, useFileProblems } from "./useFileProblems";
 import { chooseFile, usePickPath, VIDEO, type PickPath } from "../client/pickPath";
 
@@ -94,13 +94,17 @@ export function AddVideoDialog({
     setEntries(entries.map((one) => (one.key === entry.key ? entry : one)));
     setFailure(null);
   };
-  const ok = async () => {
+  // What is still missing is found out here when the options of a handler, which only their rows know, are incomplete.
+  const ok = () => {
     const overlays = entries.filter((entry) => entry.path.trim());
     const settings = overlays.map((entry) => readers.current.get(entry.key)?.().settings ?? null);
     if (settings.includes(null)) {
       setTried(true);
-      return;
+      return false;
     }
+    void send(overlays, settings as Settings[]);
+  };
+  const send = async (overlays: readonly OverlayEntry[], settings: readonly Settings[]) => {
     setBusy(true);
     submission.current?.abort();
     const mine = new AbortController();
@@ -123,7 +127,7 @@ export function AddVideoDialog({
           path: entry.path.trim(),
           handler: entry.picked,
           label: entry.label ?? null,
-          options: settings[at] ?? {},
+          options: settings[at],
         })),
       };
       await command({
@@ -142,19 +146,15 @@ export function AddVideoDialog({
     <Dialog
       title={editing ? "Edit Video" : "Add Video"}
       okLabel={editing ? "Save" : "Add"}
-      onOk={() => void ok()}
+      onOk={ok}
       onCancel={() => {
         submission.current?.abort();
         onClose();
       }}
       error={failure}
-      busy={
-        busy ||
-        !path.trim() ||
-        entries.some(undecided) ||
-        checking ||
-        [path.trim(), ...named].some((one) => problems.has(one))
-      }
+      busy={busy || checking || [path.trim(), ...named].some((one) => problems.has(one))}
+      incomplete={!path.trim() || entries.some(undecided)}
+      onIncomplete={() => setTried(true)}
     >
       <DialogBody>
         <div className="flex w-form max-w-full min-w-0 flex-col gap-l">
@@ -164,7 +164,8 @@ export function AddVideoDialog({
               what="video file"
               value={path}
               placeholder="Required"
-              note={videoProblem && <Refusal reason={videoProblem} />}
+              required
+              error={videoProblem ?? (tried && !path.trim() ? "Required" : undefined)}
               browse={pick && (() => void choose(VIDEO, (chosen) => setPath(chosen)))}
               onChange={(text) => {
                 setPath(text);

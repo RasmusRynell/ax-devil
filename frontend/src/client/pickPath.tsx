@@ -162,7 +162,8 @@ export function PathField(props: {
   value: string;
   placeholder?: string;
   request: PathRequest;
-  note?: ReactNode;
+  required?: boolean;
+  error?: string;
   onChange: (path: string, picked: boolean) => void;
 }): ReactNode {
   const { request, onChange, ...row } = props;

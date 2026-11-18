@@ -5,6 +5,7 @@ import { FakeSocket } from "../session/fakeSession";
 import { scenario } from "../session/fakeScenario";
 import { SessionProvider } from "../session/session";
 import { AddLiveStreamDialog } from "./AddLiveStreamDialog";
+import { waits } from "./dialogTesting";
 
 const HANDLERS = {
   decoders: [
@@ -109,7 +110,7 @@ const ok = () => screen.getByRole("button", { name: "Add" }) as HTMLButtonElemen
 const refresh = (label: string) =>
   fireEvent.click(screen.getByLabelText(label).closest("div")?.querySelector("button") as Element);
 /** The camera has listed the topics, and the configured one is chosen. */
-const listed = () => waitFor(() => expect(ok().disabled).toBe(false));
+const listed = () => waitFor(() => expect(waits(ok())).toBe(false));
 const commands = () => FakeSocket.latest.received.filter((message) => message.type === "command");
 
 describe("add live stream dialog", () => {
@@ -129,7 +130,7 @@ describe("add live stream dialog", () => {
       "Resolution",
       "Custom stream URL",
     ]);
-    expect(ok().disabled).toBe(true);
+    expect(waits(ok())).toBe(true);
     expect((screen.getByLabelText("Host") as HTMLInputElement).placeholder).toBe("Required");
     expect(screen.queryByRole("alert")).toBeNull();
     type("Host", "10.0.0.7");
@@ -137,6 +138,25 @@ describe("add live stream dialog", () => {
     refresh("DataHub topic");
     await listed();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("names what is missing, at its field, when Add is pressed on an incomplete form, and drops it once filled in", async () => {
+    await open(() => {}, NO_HOST);
+    const host = screen.getByLabelText("Host") as HTMLInputElement;
+    expect(host.getAttribute("aria-required")).toBe("true");
+    expect(host.getAttribute("aria-invalid")).toBeNull();
+    // Add only looks disabled, so a press, or Enter in a field, reaches the form.
+    expect(ok().disabled).toBe(false);
+    fireEvent.click(ok());
+    const [alert] = await screen.findAllByRole("alert");
+    expect(alert.textContent).toBe("Required");
+    expect(host.getAttribute("aria-invalid")).toBe("true");
+    expect(host.getAttribute("aria-describedby")).toBe(alert.id);
+    await waitFor(() => expect(document.activeElement).toBe(host));
+
+    type("Host", "10.0.0.7");
+    expect(host.getAttribute("aria-invalid")).toBeNull();
+    expect(screen.queryByText("Required", { selector: "span" })).not.toBe(alert);
   });
 
   it("keeps what was typed for each overlay while another is chosen, and adds the chosen one as the overlay", async () => {
@@ -339,12 +359,12 @@ describe("add live stream dialog", () => {
     fireEvent.click(ok());
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toBe("Camera head must be a positive integer.");
-    expect(ok().disabled).toBe(true);
+    expect(waits(ok())).toBe(true);
     expect(onClose).not.toHaveBeenCalled();
 
     type("Camera head", "2");
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(ok().disabled).toBe(false);
+    expect(waits(ok())).toBe(false);
   });
 
   it("adds the data source or topic shown, which the camera's list has, and none else", async () => {
@@ -355,7 +375,7 @@ describe("add live stream dialog", () => {
     );
     // A changed camera has not listed anything: the old topic is no longer offered or added.
     type("Host", "10.0.0.8");
-    await waitFor(() => expect(ok().disabled).toBe(true));
+    await waitFor(() => expect(waits(ok())).toBe(true));
     expect((screen.getByLabelText("DataHub topic") as HTMLSelectElement).value).toBe("");
     expect(screen.queryByRole("option", { name: "com.axis.scene.frame.v1" })).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -377,7 +397,7 @@ describe("add live stream dialog", () => {
     // The first answer was for a connection the form has left, and coming back does not ask again by itself.
     expect(screen.getByRole("option", { name: "Refresh to load DataHub topics" })).toBeTruthy();
     expect(listings).toEqual(["datahub"]);
-    expect(ok().disabled).toBe(true);
+    expect(waits(ok())).toBe(true);
 
     refresh("DataHub topic");
     await listed();

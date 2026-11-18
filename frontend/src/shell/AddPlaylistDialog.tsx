@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { reasonOf } from "../client/errors";
 import type { HandlersInfo, ResolverInfo } from "../generated/api";
 import { Dialog, DialogBody } from "../kit/Dialog";
@@ -18,6 +26,24 @@ export interface PlaylistDraft {
   resolver: string;
   label?: string | null;
   settings?: Settings;
+}
+
+/** What the form tells its dialog, which owns the footer: whether Add must wait, lacks something, and why it was refused. */
+interface Controls {
+  /** A resolve is running, or there is no session to add to. */
+  busy: boolean;
+  /** No source is chosen, or its settings are not complete. */
+  incomplete: boolean;
+  /** The source of an edited playlist is gone, so there is nothing to save. */
+  lost: boolean;
+  error: string | null;
+}
+
+/** What the dialog's footer asks of the form. */
+interface Actions {
+  add: () => Promise<void>;
+  /** Add was pressed with something missing. */
+  incomplete: () => void;
 }
 
 /**
@@ -52,12 +78,39 @@ export function AddPlaylistDialog({
     request.current?.abort();
     close();
   };
-  // The form starts from the saved settings, so it is built once the sources are known.
-  return handlers ? (
-    <PlaylistDialog {...{ handlers, initial, editing, request, closed, close, cancel }} />
-  ) : (
-    <Dialog title={editing ? "Edit Playlist" : "Add Playlist"} onCancel={cancel}>
-      {failure ? (
+  // One dialog from loading to loaded, so the focus it took from its opener comes back to it. Its footer follows the
+  // form, which is built once the sources are known because it starts from the saved settings.
+  const [controls, setControls] = useState<Controls | null>(null);
+  const report = useCallback(
+    (next: Controls) =>
+      setControls((now) =>
+        now &&
+        now.busy === next.busy &&
+        now.incomplete === next.incomplete &&
+        now.lost === next.lost &&
+        now.error === next.error
+          ? now
+          : next,
+      ),
+    [],
+  );
+  const actions = useRef<Actions | null>(null);
+  return (
+    <Dialog
+      title={editing ? "Edit Playlist" : "Add Playlist"}
+      okLabel={editing ? "Save" : "Add"}
+      onOk={controls && !controls.lost ? () => void actions.current?.add() : undefined}
+      busy={!controls || controls.busy}
+      incomplete={controls?.incomplete}
+      onIncomplete={() => actions.current?.incomplete()}
+      error={controls?.error}
+      onCancel={cancel}
+    >
+      {handlers ? (
+        <PlaylistForm
+          {...{ handlers, initial, editing, request, closed, close, report, actions }}
+        />
+      ) : failure ? (
         <HandlersFailure failure={failure} retry={retry} />
       ) : (
         <p role="status" className="m-0 text-muted">
@@ -68,14 +121,15 @@ export function AddPlaylistDialog({
   );
 }
 
-function PlaylistDialog({
+function PlaylistForm({
   handlers,
   initial,
   editing,
   request,
   closed,
   close,
-  cancel,
+  report,
+  actions,
 }: {
   handlers: HandlersInfo;
   initial?: PlaylistDraft;
@@ -83,7 +137,8 @@ function PlaylistDialog({
   request: RefObject<AbortController | null>;
   closed: RefObject<boolean>;
   close: () => void;
-  cancel: () => void;
+  report: (controls: Controls) => void;
+  actions: RefObject<Actions | null>;
 }) {
   const resolvers = handlers.resolvers;
   const command = useCommand();
@@ -97,20 +152,22 @@ function PlaylistDialog({
   // An edited playlist's source that this installation does not have, which nothing can restore.
   const lost = editing !== undefined && resolver.id === "" ? initial?.resolver : undefined;
   const [resolving, setResolving] = useState(false);
+  // Add was pressed with something missing: the empty required fields say so.
+  const [tried, setTried] = useState(false);
   const [refused, setRefused] = useState<{ reason: string; stamp: string } | null>(null);
 
   // A refusal is about the settings it answered; any change since makes it stale.
   const stamp = JSON.stringify([resolver.id, form.settings]);
   const refusal = refused?.stamp === stamp ? refused.reason : null;
 
-  // Adding needs a source, its settings, a session to add to and no resolve already running; Add is disabled
-  // otherwise.
+  // Adding needs a source, its settings, a session to add to and no resolve already running; until then Add waits,
+  // and names what is missing when pressed.
   const settings = form.settings;
-  const canAdd =
-    !resolving && resolver.id !== "" && settings !== null && session !== undefined && !lost;
+  const busy = resolving || session === undefined;
+  const incomplete = resolver.id === "" || settings === null;
 
   const add = async () => {
-    if (!canAdd) return;
+    if (busy || incomplete || lost) return;
     if (form.unchosen) {
       setRefused({ reason: form.unchosen, stamp });
       return;
@@ -165,6 +222,10 @@ function PlaylistDialog({
       setResolving(false);
     }
   };
+  useLayoutEffect(() => {
+    actions.current = { add, incomplete: () => setTried(true) };
+    report({ busy, incomplete, lost: !!lost, error: refusal });
+  });
   // The page in view, with the other pages drawn as the person left them, out of sight, so the dialog is as big as the
   // biggest page and choosing a source does not resize it.
   const pages: Record<string, ReactNode> = {
@@ -179,19 +240,13 @@ function PlaylistDialog({
         <ResolverForm
           key={candidate.id}
           form={candidate.id === resolver.id ? form : draftForm(form, candidate)}
+          tried={tried}
         />,
       ]),
     ),
   };
   return (
-    <Dialog
-      title={editing ? "Edit Playlist" : "Add Playlist"}
-      okLabel={editing ? "Save" : "Add"}
-      onOk={lost ? undefined : () => void add()}
-      onCancel={cancel}
-      busy={!canAdd}
-      error={refusal}
-    >
+    <>
       <DialogBody>
         <div className="w-form max-w-full min-w-0">
           <Form>
@@ -209,6 +264,8 @@ function PlaylistDialog({
               <FormSelect
                 label="Playlist source"
                 value={resolver.id}
+                required
+                error={tried && resolver.id === "" && !lost ? "Required" : undefined}
                 disabled={editing !== undefined}
                 options={[
                   ["", "Select a source"],
@@ -226,6 +283,6 @@ function PlaylistDialog({
           Finding playlists…
         </p>
       )}
-    </Dialog>
+    </>
   );
 }

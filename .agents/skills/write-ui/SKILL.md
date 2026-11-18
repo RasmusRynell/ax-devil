@@ -36,8 +36,8 @@ decode work ([UI Lifecycle](../../../docs/domain/app-invariants.md#ui-lifecycle)
 | Banner with actions | `Banner`, its `actions` slot |
 | Text input, drop-down, search | `TextField`, `Select`, `SearchField` |
 | Checkbox, checkbox list, on/off applied at once | `Checkbox`, `CheckList`, `Switch` |
-| Labelled rows in a dialog, labels in one column | `Form`: `FormInput`, `FormPath`, `FormSelect`, `FormCombo`, `FormCheck`, `FormRow` (any other control), `FormSection`, `FormStack` |
-| Modal with OK, then Cancel | `Dialog` |
+| Labelled rows in a dialog, labels in one column | `Form`: `FormInput`, `FormPath`, `FormSelect`, `FormCombo`, `FormCheck`, `FormRow` (any other control), `FormSection`, `FormStack`; rows take `required` and `error` |
+| Modal with OK, then Cancel; OK while a required field is empty (`incomplete`, `onIncomplete`: OK looks off, still presses, and the form names the field) | `Dialog` |
 | Question only a choice dismisses (Escape does nothing, Enter gives `defaultId`) | `ChoiceDialog` |
 | Menu, context menu, free floating panel | `Menu`, `ContextMenu`, `Popup` |
 | Panel of controls beside a button | `Popover` |

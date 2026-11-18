@@ -10,7 +10,6 @@ import type { Asked } from "../live/discovery";
 import { referenceIn, SET_PASSWORD, viaText } from "../live/expansions";
 import { Button } from "../kit/Button";
 import { FormCombo, FormInput, FormSection, FormSelect, FormStack } from "../kit/Form";
-import { Refusal } from "../kit/Refusal";
 import {
   chosen,
   typable,
@@ -45,15 +44,17 @@ export interface PanelProps {
   expansions: LiveExpansions | null;
   /** In an edit, the password fields whose saved literal is kept while they are blank; `null` when adding. */
   hidden: readonly FieldKey[] | null;
-  /** What the backend or the camera refused about a field, shown in its row. */
+  /** What the backend or the camera refused about a field, or that it is required, shown in its row. */
   errors: Partial<Record<FieldKey, string>>;
+  /** The fields the form needs a value for in its current mode. */
+  required: readonly FieldKey[];
 }
 
-/** The refusal of `field`, in the note slot of its row. */
-const refusalAt = (props: PanelProps, field: FieldKey) => {
-  const reason = props.errors[field];
-  return reason && <Refusal reason={reason} />;
-};
+/** What a row says about `field`: whether it is required and why it is refused. */
+const rowState = (props: PanelProps, field: FieldKey) => ({
+  required: props.required.includes(field),
+  error: props.errors[field],
+});
 
 /** What the backend said a default reference expands to, per field: `null` when it did not say. */
 const EXPANDED: Partial<Record<FieldKey, (shown: LiveExpansions) => string | null>> = {
@@ -107,7 +108,7 @@ function input(
       masked={more.masked}
       selectOnOpen={more.selectOnOpen}
       title={more.title}
-      note={refusalAt(props, field)}
+      {...rowState(props, field)}
       onChange={(value) => props.set(field, value)}
     />
   );
@@ -128,7 +129,7 @@ function number(
       placeholder={more.placeholder ?? hint(props, field)}
       disabled={more.disabled}
       title={more.title}
-      note={refusalAt(props, field)}
+      {...rowState(props, field)}
       onChange={(value) => {
         if (typable(value, limit)) props.set(field, value);
       }}
@@ -187,7 +188,7 @@ export function ConnectionRows({
       {input(props, "password", "Password", { masked: true })}
       <FormSelect
         label="Protocol"
-        note={refusalAt(props, "protocol")}
+        {...rowState(props, "protocol")}
         value={form.protocol}
         options={[
           ["", `Default (${nameOf("camera.protocol", textOf(settings["camera.protocol"]))})`],
@@ -199,7 +200,7 @@ export function ConnectionRows({
       {number(props, "head", "Camera head", 9999)}
       <FormSelect
         label="RTSP route"
-        note={refusalAt(props, "rtsp_route")}
+        {...rowState(props, "rtsp_route")}
         value={form.rtsp_route}
         options={[
           ["", `Default (${nameOf("camera.rtsp_route", textOf(settings["camera.rtsp_route"]))})`],
@@ -213,7 +214,7 @@ export function ConnectionRows({
       {number(props, "rtsp_port", "RTSP port", 65535, { disabled: viaWebApi })}
       <FormCombo
         label="Resolution"
-        note={refusalAt(props, "resolution")}
+        {...rowState(props, "resolution")}
         value={form.resolution}
         placeholder="Camera default"
         options={[
@@ -293,7 +294,7 @@ function Choice({
   return (
     <FormSelect
       label={label}
-      note={refusalAt(props, field)}
+      {...rowState(props, field)}
       value={value}
       disabled={state.phase === "loading"}
       failed={status.failed}
@@ -370,14 +371,14 @@ export function OverlayGroup({
     <FormSection heading="Overlay">
       <FormSelect
         label="Overlay mode"
-        note={refusalAt(props, "overlay")}
+        {...rowState(props, "overlay")}
         value={mode}
         options={modes}
         onChange={onMode}
       />
       <FormSelect
         label="Handler type"
-        note={refusalAt(props, "handler")}
+        {...rowState(props, "handler")}
         value={form.handler}
         disabled={mode === "none"}
         options={[

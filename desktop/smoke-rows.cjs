@@ -114,7 +114,7 @@ module.exports.run = async ({ window }) => {
     await wait(`${handler}?.value === 'ADF_V1_FRAME'`);
     const add =
       "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Add')";
-    await wait(`${add}?.disabled === false`);
+    await wait(`${add}?.matches(':enabled:not([aria-disabled=true])')`);
     await js(`${add}.click()`);
     await wait("!document.querySelector('dialog')");
     const live = "document.querySelector('[data-section=live] [role=treeitem]')";
