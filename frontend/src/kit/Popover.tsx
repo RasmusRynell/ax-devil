@@ -52,10 +52,13 @@ function placement(button: HTMLElement, panel: HTMLElement): CSSProperties {
   // Below the button; above it when it does not fit below and there is more room above.
   const above = height > bottom - at.bottom && at.top - top > bottom - at.bottom;
   const y = within(above ? at.top - height : at.bottom, height, top, bottom);
+  const x = within(at.left, width, left, right);
   return {
-    left: within(at.left, width, left, right),
+    left: x,
     top: y,
-    maxWidth: `min(48ch, ${right - left}px)`,
+    // Only the room to the right of the panel's left edge, so a panel that grows after it was placed (a scrollbar
+    // joins it once its height is capped) narrows instead of leaving the area.
+    maxWidth: `min(48ch, ${right - x}px)`,
     maxHeight: (above ? at.top : bottom) - y,
   };
 }
@@ -74,17 +77,23 @@ export function Popover({ label, trigger, children, onCanvas = false, className 
   const panelId = useId();
   const close = () => setOpen(false);
 
-  // The panel is placed when it opens and again whenever its content changes its size (another tab, a scrollbar).
+  // The panel is placed when it opens and again whenever its content, the window or the area it stays in changes size:
+  // a placement made for a layout that has since changed would leave the window.
   useLayoutEffect(() => {
     if (!open) return setPlace(undefined);
     const [trigger, box] = [button.current, panel.current];
     if (!trigger || !box) return;
     const update = () => setPlace(placement(trigger, box));
     update();
-    if (typeof ResizeObserver === "undefined") return;
-    const watch = new ResizeObserver(update);
-    watch.observe(box);
-    return () => watch.disconnect();
+    window.addEventListener("resize", update);
+    const area = trigger.closest("[data-popover-bounds]");
+    const watch = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(update);
+    watch?.observe(box);
+    if (area) watch?.observe(area);
+    return () => {
+      window.removeEventListener("resize", update);
+      watch?.disconnect();
+    };
   }, [open]);
 
   useOutsidePress(() => root.current, close, open);
