@@ -104,7 +104,8 @@ interface Props {
   busy?: boolean;
   /**
    * While true, a required field is still empty: OK looks disabled but can be pressed, and click, Enter and Space run
-   * `onIncomplete` instead of `onOk`, then move the focus to the first field that is invalid (`aria-invalid`).
+   * `onIncomplete` instead of `onOk`, then move the focus to the first invalid control (`aria-invalid`) that can take
+   * it. With none, the focus stays on OK, and the refusals, which are alerts, are still announced.
    */
   incomplete?: boolean;
   /** Shows what is missing, as a refusal at each empty required field; the dialog focuses the first one. */
@@ -132,7 +133,14 @@ export function Dialog({
   // Counts the presses that found something missing; the focus follows once the fields show it.
   const [missed, setMissed] = useState(0);
   useEffect(() => {
-    if (missed) form.current?.querySelector<HTMLElement>("[aria-invalid=true]")?.focus();
+    // Out of reach are controls that are disabled or inside a page kept out of sight (`inert`, `hidden`, `aria-hidden`,
+    // as `FormStack` hides its other pages); layout is not asked, which jsdom does not do.
+    const reachable = (element: HTMLElement) =>
+      !element.matches(":disabled") && !element.closest("[inert],[hidden],[aria-hidden=true]");
+    if (missed)
+      [...(form.current?.querySelectorAll<HTMLElement>("[aria-invalid=true]") ?? [])]
+        .find(reachable)
+        ?.focus();
   }, [missed]);
   return (
     <DialogFrame

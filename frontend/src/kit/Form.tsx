@@ -118,13 +118,15 @@ interface RowProps {
   note?: ReactNode;
   /** Why the value is refused, under the note; the control with this `id` is then invalid and described by it. */
   error?: string;
+  /** The id of the control its error describes, when it is not the one the label names. */
+  errorFor?: string;
 }
 
 /** The id of the refusal in the row whose control has `id`. */
 const errorId = (id: string) => `${id}-error`;
 
 /** What a control says about itself: whether its row needs a value, and the refusal that describes it. */
-function aria(
+export function controlAria(
   id: string,
   { required, error, describedBy }: { required?: boolean; error?: string; describedBy?: string },
 ) {
@@ -137,7 +139,7 @@ function aria(
 }
 
 /** A label and any control: the row the other `Form` rows are made of. `id` is the control's, when it can be named. */
-export function FormRow({ label, marker, id, children, note, error }: RowProps) {
+export function FormRow({ label, marker, id, children, note, error, errorFor }: RowProps) {
   return (
     <>
       <label
@@ -150,7 +152,7 @@ export function FormRow({ label, marker, id, children, note, error }: RowProps) 
       <div className="flex min-w-0 flex-col gap-xs">
         <div className="flex min-w-0 items-center gap-s">{children}</div>
         {note}
-        {error && <Refusal id={id && errorId(id)} reason={error} />}
+        {error && <Refusal id={(errorFor ?? id) && errorId((errorFor ?? id)!)} reason={error} />}
       </div>
     </>
   );
@@ -256,7 +258,7 @@ export function FormInput({
         autoComplete="off"
         spellCheck={false}
         list={suggestions?.length ? list : undefined}
-        {...aria(id, { required, error, describedBy })}
+        {...controlAria(id, { required, error, describedBy })}
         onChange={(event) => onChange(event.target.value)}
         className={`${FIELD} min-w-0 flex-1`}
       />
@@ -319,7 +321,7 @@ export function FormSelect<T extends string>({
           value={value}
           disabled={disabled}
           title={title}
-          {...aria(id, { required, error })}
+          {...controlAria(id, { required, error })}
           onChange={(event) => onChange(event.target.value as T)}
           className={`${FIELD} min-w-0 flex-1 ${failed ? "pl-row text-danger" : ""}`}
         >
@@ -479,7 +481,7 @@ export function FormCombo({
           aria-controls={listId}
           aria-autocomplete="none"
           aria-activedescendant={open ? `${id}-${active}` : undefined}
-          {...aria(id, { required, error })}
+          {...controlAria(id, { required, error })}
           value={value}
           placeholder={placeholder}
           disabled={disabled}

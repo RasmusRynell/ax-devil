@@ -150,12 +150,20 @@ function stubScans(ignoreAbort = false) {
 const found = (...names: string[]) =>
   names.map((name) => ({ value: name, label: name, detail: "64×48 · 25 fps" }));
 
-function Harness({ initial, resolver = MOT }: { initial?: Settings; resolver?: ResolverInfo }) {
+function Harness({
+  initial,
+  resolver = MOT,
+  tried,
+}: {
+  initial?: Settings;
+  resolver?: ResolverInfo;
+  tried?: boolean;
+}) {
   const form = useResolverForm(resolver, DECODERS, initial);
   const [after, setAfter] = useState("unset");
   return (
     <>
-      <ResolverForm form={form} />
+      <ResolverForm form={form} tried={tried} />
       <div data-testid="settings">{JSON.stringify(form.settings)}</div>
       <button
         disabled={!form.settingsAfterScan}
@@ -201,6 +209,16 @@ describe("resolver form", () => {
     // Nothing checked still loads; the dialog says why it does not go on.
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-01/ }));
     expect(settings()).toEqual({ root: "/data", stride: 2, sequences: [] });
+  });
+
+  it("says a list of found values still has to be scanned, at its Scan button, once the form was tried", () => {
+    render(<Harness tried />);
+    type("/data");
+    const button = screen.getByRole("button", { name: "Scan" });
+    expect(button.getAttribute("aria-invalid")).toBe("true");
+    expect(
+      document.getElementById(button.getAttribute("aria-describedby") ?? "")?.textContent,
+    ).toBe("Required");
   });
 
   it("empties the list when the root is edited, and stops the scan it started", async () => {

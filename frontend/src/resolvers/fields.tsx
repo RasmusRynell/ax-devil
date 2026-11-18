@@ -1,9 +1,9 @@
 import { chooseFile, chooseFolder, PathField, type PathRequest } from "../client/pickPath";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import type { DecoderInfo, Field, FieldKind, ScanCount } from "../generated/api";
 import { Button } from "../kit/Button";
 import { CheckList, type CheckItem } from "../kit/CheckList";
-import { FormInput, FormRow, FormSelect } from "../kit/Form";
+import { controlAria, FormInput, FormRow, FormSelect } from "../kit/Form";
 import { Refusal } from "../kit/Refusal";
 import { countStatus, listed, type ScanView, type Settings } from "./scan";
 
@@ -100,6 +100,7 @@ export function decoderOptions(
 
 /** A `Scan` field whose found values are checked: Scan in the row, the found values under it. */
 function ScanListControl({ field, form, row }: { field: Field; form: FieldForm; row: RowState }) {
+  const scanId = useId();
   const view = form.scans[field.key];
   const items: CheckItem[] = view
     ? [
@@ -138,8 +139,11 @@ function ScanListControl({ field, form, row }: { field: Field; form: FieldForm; 
         </>
       }
       error={row.error}
+      errorFor={scanId}
     >
       <Button
+        id={scanId}
+        {...controlAria(scanId, { error: row.error })}
         icon="rotate-cw"
         disabled={!form.canScan(field.key)}
         onClick={() => form.scan(field.key)}
@@ -162,6 +166,7 @@ function ScanCountControl({
   form: FieldForm;
   row: RowState;
 }) {
+  const scanId = useId();
   const view = form.scans[field.key];
   const status = countStatus(view, count, form.canScan(field.key));
   return (
@@ -181,8 +186,14 @@ function ScanCountControl({
         </>
       }
       error={row.error}
+      errorFor={scanId}
     >
-      <Button icon="rotate-cw" onClick={() => form.scan(field.key)}>
+      <Button
+        id={scanId}
+        {...controlAria(scanId, { error: row.error })}
+        icon="rotate-cw"
+        onClick={() => form.scan(field.key)}
+      >
         Scan
       </Button>
     </FormRow>
