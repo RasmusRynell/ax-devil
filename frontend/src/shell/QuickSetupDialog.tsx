@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { SETTINGS, type SettingKey } from "../generated/settings";
 import { SegmentedControl, TileChoice } from "../kit/Chips";
 import { Dialog, DialogBody } from "../kit/Dialog";
-import { SectionCaption } from "../kit/SectionCaption";
+import { FormSection } from "../kit/Form";
 import { isEmpty, settingsPatch, useAppearance, useSettings } from "../client/settings";
 import { textOf, type Row } from "./SettingField";
 import { useRepairIntent } from "./useRepairIntent";
@@ -147,7 +147,7 @@ export function QuickSetupDialog({
             const preview = PREVIEWS[row.key];
             return (
               <section key={row.key} className="flex flex-col gap-s">
-                <SectionCaption heading={row.label} plain />
+                <FormSection heading={row.label} />
                 {preview ? (
                   <TileChoice {...choice} preview={preview} />
                 ) : (
@@ -157,7 +157,6 @@ export function QuickSetupDialog({
             );
           })}
         </fieldset>
-        <p className="m-0 text-small text-muted">You can change these later in File → Settings.</p>
       </DialogBody>
     </Dialog>
   );

@@ -42,7 +42,11 @@ const shape = (logins: readonly Login[]) =>
 /** A long value is shown from its start, not its end. */
 const atStart = (field: HTMLInputElement | null) => field?.setSelectionRange(0, 0);
 
-type Props = { logins: readonly Login[] } & (
+type Props = {
+  logins: readonly Login[];
+  /** Keeps the headings Username and Password over the columns, where there is room for them side by side. */
+  headed?: boolean;
+} & (
   | {
       /** Resolves to why the backend refused the logins, else `null`. */
       onSave: (logins: Login[]) => Promise<string | null>;
@@ -63,7 +67,7 @@ type Props = { logins: readonly Login[] } & (
  * a `$NAME` reference as it is. Why a
  * save was refused shows under the list.
  */
-export function LoginsEditor({ logins, onSave, onChange }: Props) {
+export function LoginsEditor({ logins, headed = false, onSave, onChange }: Props) {
   const [draft, setDraft] = useState<readonly Login[]>(logins);
   const [added, setAdded] = useState<number | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
@@ -122,13 +126,23 @@ export function LoginsEditor({ logins, onSave, onChange }: Props) {
   };
 
   return (
-    <div className="flex flex-col gap-s">
+    <div className="flex min-w-0 flex-col gap-s">
+      {headed && draft.length > 0 && (
+        <div aria-hidden className="hidden gap-s text-small text-muted @sm:flex">
+          <span className="min-w-0 flex-1 basis-0">Username</span>
+          <span className="min-w-0 flex-1 basis-0">Password</span>
+          <span className="w-row" />
+        </div>
+      )}
       <div className="flex max-h-logins flex-col gap-s overflow-y-auto">
         {draft.map((login, at) => {
           const state = stateOf(login);
           const saved = typeof login.password !== "string" && state.state === "literal";
           return (
-            <div key={at} className="flex shrink-0 flex-wrap items-center gap-s">
+            <div
+              key={at}
+              className={`flex shrink-0 flex-wrap items-center gap-s ${headed ? "@sm:flex-nowrap" : ""}`}
+            >
               <input
                 ref={atStart}
                 aria-label="Username"
@@ -140,7 +154,7 @@ export function LoginsEditor({ logins, onSave, onChange }: Props) {
                 onChange={(event) => edit(at, "user", event.target.value)}
                 onBlur={() => commit(draft)}
                 onKeyDown={(event) => event.key === "Enter" && commit(draft)}
-                className={`${FIELD} min-w-field flex-1 text-small`}
+                className={`${FIELD} min-w-field flex-1 text-small ${headed ? "@sm:min-w-0 @sm:basis-0" : ""}`}
               />
               <input
                 ref={atStart}
@@ -154,7 +168,7 @@ export function LoginsEditor({ logins, onSave, onChange }: Props) {
                 onChange={(event) => edit(at, "password", event.target.value)}
                 onBlur={() => commit(draft)}
                 onKeyDown={(event) => event.key === "Enter" && commit(draft)}
-                className={`${FIELD} min-w-field flex-1 text-small`}
+                className={`${FIELD} min-w-field flex-1 text-small ${headed ? "@sm:min-w-0 @sm:basis-0" : ""}`}
               />
               <Button size="small" icon="trash-2" label="Remove login" onClick={() => remove(at)} />
             </div>

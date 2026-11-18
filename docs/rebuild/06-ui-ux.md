@@ -31,6 +31,7 @@ Port the token sets by purpose; take values from `chrome/tokens.py`.
 - The video canvas, letterbox and on-video controls stay near-black with white controls in both themes.
 - Anything using a fixed color re-applies on theme change.
 - Contrast target: D10 (taken: WCAG 2.x AA, 4.5:1 text, 3:1 large text and component boundaries).
+  In dark, control boundaries are a recessed fill plus a soft border (about 1.9:1), by owner decision; the keyboard focus ring stays fully visible.
 
 ## Component kit
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { CHECK } from "./look";
 
 export interface CheckItem {
   id: string;
@@ -34,7 +35,7 @@ export function CheckList({ label, items, checked, onToggle, onToggleAll }: Prop
           type="checkbox"
           checked={items.length > 0 && count === items.length}
           onChange={onToggleAll}
-          className="size-icon accent-accent"
+          className={CHECK}
         />
         All
       </label>
@@ -46,7 +47,7 @@ export function CheckList({ label, items, checked, onToggle, onToggleAll }: Prop
                 type="checkbox"
                 checked={checked.has(item.id)}
                 onChange={() => onToggle(item.id)}
-                className="size-icon shrink-0 accent-accent"
+                className={CHECK}
               />
               <span className="min-w-0 flex-1">{item.label}</span>
               {item.detail && <span className="text-muted">{item.detail}</span>}

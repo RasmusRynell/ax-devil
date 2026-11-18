@@ -145,6 +145,15 @@ export function usePickPath(): PickPath | undefined {
 }
 
 /**
+ * The action that chooses a path for a control and hands it to `onPicked`, or undefined where {@link usePickPath}
+ * offers no way, so the control shows no button.
+ */
+export function useBrowse(request: PathRequest, onPicked: (path: string) => void) {
+  const pick = usePickPath();
+  return pick && (() => void pick(request).then((path) => path !== null && onPicked(path)));
+}
+
+/**
  * A text box for a path on the backend's machine, with a button to choose it wherever {@link usePickPath} offers a
  * way. `onChange` says whether the path was picked rather than typed, so it is final.
  */
@@ -157,23 +166,12 @@ export function PathField(props: {
   onChange: (path: string, picked: boolean) => void;
 }): ReactNode {
   const { what, request, onChange, ...box } = props;
-  const pick = usePickPath();
+  const browse = useBrowse(request, (path) => onChange(path, true));
   return (
     <TextField
       {...box}
       onChange={(path) => onChange(path, false)}
-      action={
-        pick && (
-          <BrowseButton
-            what={what}
-            onBrowse={() =>
-              void pick(request).then((path) => {
-                if (path !== null) onChange(path, true);
-              })
-            }
-          />
-        )
-      }
+      action={browse && <BrowseButton what={what} onBrowse={browse} />}
     />
   );
 }

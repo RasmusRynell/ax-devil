@@ -71,7 +71,7 @@ describe("shortcuts dialog", () => {
     expect(chip.textContent).toBe("Press a key…");
   });
 
-  it("stages every default again with Reset to Defaults, and keeps it for OK", async () => {
+  it("stages every default again with Reset to defaults, and keeps it for OK", async () => {
     const save = vi.fn(async () => null);
     const state = {
       ...DEFAULT_SETTINGS,
@@ -86,7 +86,7 @@ describe("shortcuts dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear Exit" }));
     fireEvent.click(key("Save Workspace"));
     fireEvent.keyDown(key("Save Workspace"), { key: "j", ctrlKey: true });
-    fireEvent.click(screen.getByRole("button", { name: "Reset to Defaults" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" }));
     expect(screen.getByRole("button", { name: "Reset Exit" }).hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     await act(async () => {});

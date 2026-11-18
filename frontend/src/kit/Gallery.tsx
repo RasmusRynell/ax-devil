@@ -2,7 +2,19 @@ import { useState, type ReactNode } from "react";
 import { Banner } from "./Banner";
 import { BrowseButton, Button, MenuButton } from "./Button";
 import { Checkbox, SearchField, Select, TextField } from "./Fields";
-import { Form, FormCombo, FormInput, FormNote, FormSelect } from "./Form";
+import { Dialog } from "./Dialog";
+import {
+  Form,
+  FormCheck,
+  FormCombo,
+  FormInput,
+  FormNote,
+  FormPath,
+  FormRow,
+  FormSection,
+  FormSelect,
+  FormStack,
+} from "./Form";
 import { Chip, ChipRow, ChoiceChips, SegmentedControl, TileChoice, ToggleChip } from "./Chips";
 import { IconButton } from "./IconButton";
 import { IconToggle } from "./IconToggle";
@@ -57,6 +69,7 @@ const MENU: readonly MenuEntry[] = [
   { kind: "action", id: "remove", label: "Remove", disabled: true },
 ];
 const TABS = ["General", "Display", "Network"] as const;
+const PAGES = ["General", "Playback", "Stream defaults", "Storage"] as const;
 const MARKS = [
   "muted",
   "accent",
@@ -70,9 +83,21 @@ const MARKS = [
 ] as const;
 const FILTERS = ["Boxes", "Tracks", "Labels", "Events", "Attributes", "Heatmap"];
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  title,
+  children,
+  wide = false,
+}: {
+  title: string;
+  children: ReactNode;
+  /** Takes the whole row, for a block that needs more room than a column. */
+  wide?: boolean;
+}) {
   return (
-    <section aria-label={title} className="flex min-w-0 flex-col gap-m">
+    <section
+      aria-label={title}
+      className={`flex min-w-0 flex-col gap-m ${wide ? "col-span-full" : ""}`}
+    >
       <h2 className="m-0 text-small font-semibold text-muted">{title}</h2>
       {children}
     </section>
@@ -94,6 +119,7 @@ export function Gallery() {
   const [filters, setFilters] = useState<ReadonlySet<string>>(new Set(["Boxes", "Labels"]));
   const [open, setOpen] = useState(true);
   const [asking, setAsking] = useState(false);
+  const [failing, setFailing] = useState(false);
   const [picking, setPicking] = useState(false);
   const [answer, setAnswer] = useState("none");
   const [text, setText] = useState("");
@@ -101,6 +127,8 @@ export function Gallery() {
   const [on, setOn] = useState(true);
   const [eye, setEye] = useState(false);
   const [tab, setTab] = useState<(typeof TABS)[number]>("General");
+  const [page, setPage] = useState<(typeof PAGES)[number]>("General");
+  const [ticked, setTicked] = useState(true);
   return (
     <main className="fixed inset-0 grid grid-cols-3 content-start items-start gap-xl overflow-y-auto p-xl">
       <Section title="Buttons">
@@ -128,6 +156,7 @@ export function Gallery() {
         </div>
         <Button onClick={() => setAsking(true)}>Open choice dialog</Button>
         <Button onClick={() => setPicking(true)}>Open path picker</Button>
+        <Button onClick={() => setFailing(true)}>Open dialog with error</Button>
         <output aria-label="Last choice">{answer}</output>
       </Section>
 
@@ -264,6 +293,79 @@ export function Gallery() {
             ]}
           />
         </Form>
+      </Section>
+
+      <Section title="Pages" wide>
+        <div className="@container w-form max-w-full">
+          <div className="flex flex-col gap-m @pages:flex-row @pages:gap-xl">
+            <Tabs
+              label="Pages"
+              tabs={PAGES}
+              value={page}
+              onChange={setPage}
+              panelId="gallery-page"
+              orientation="vertical"
+            />
+            <div className="min-w-0 flex-1">
+              <Form>
+                <FormStack
+                  current={page}
+                  panelId="gallery-page"
+                  pages={{
+                    General: (
+                      <>
+                        <FormSection heading="Appearance" />
+                        <FormRow label="Theme">
+                          <SegmentedControl
+                            label="Theme"
+                            options={MODES}
+                            value={mode}
+                            onChange={setMode}
+                          />
+                        </FormRow>
+                        <FormSelect
+                          label="A longer label"
+                          value={mode}
+                          options={MODES}
+                          onChange={setMode}
+                        />
+                        <FormSection heading="Options" />
+                        <FormCheck
+                          label="A checkbox whose label is long enough that a label column would grow to hold it"
+                          checked={ticked}
+                          onChange={setTicked}
+                        />
+                        <FormPath
+                          label="Folder"
+                          what="folder"
+                          value={text}
+                          onChange={setText}
+                          browse={() => undefined}
+                        />
+                        <FormRow label="Read-only">
+                          <span className="select-text text-muted">/home/me/settings.json</span>
+                        </FormRow>
+                      </>
+                    ),
+                    Playback: <FormInput label="Cache" value={text} onChange={setText} />,
+                    "Stream defaults": <FormInput label="Host" value={text} onChange={setText} />,
+                    Storage: <FormInput label="Folder" value={text} onChange={setText} />,
+                  }}
+                />
+              </Form>
+            </div>
+          </div>
+        </div>
+        <div className="@container w-[30ch] max-w-full border border-line">
+          <Tabs
+            label="Pages, narrow"
+            tabs={PAGES}
+            value={page}
+            onChange={setPage}
+            panelId="gallery-page"
+            orientation="vertical"
+          />
+        </div>
       </Section>
 
       <Section title="Tabs">
@@ -422,6 +524,18 @@ export function Gallery() {
           onChoose={() => setPicking(false)}
           onCancel={() => setPicking(false)}
         />
+      )}
+      {failing && (
+        <Dialog
+          title="Save"
+          error={LONG}
+          onOk={() => setFailing(false)}
+          onCancel={() => setFailing(false)}
+        >
+          <Form>
+            <FormInput label="Name" value={text} onChange={setText} />
+          </Form>
+        </Dialog>
       )}
       {asking && (
         <ChoiceDialog

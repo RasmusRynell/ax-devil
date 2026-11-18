@@ -3,6 +3,9 @@ import { ownKeys } from "./keys";
 import { QUIET } from "./look";
 
 const tabKeys = ownKeys(new Set(["ArrowLeft", "ArrowRight", "Home", "End"]));
+const columnKeys = ownKeys(
+  new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"]),
+);
 
 interface Props<T extends string> {
   /** The accessible name of the tab strip. */
@@ -23,6 +26,12 @@ interface Props<T extends string> {
   trailing?: ReactNode;
   /** Keeps one row, scrolling the selected tab into view when space is limited or changes. */
   scrollable?: boolean;
+  /**
+   * `vertical` stands the tabs in a column of the `spacing-nav` width, for a strip beside its panel in a flex row
+   * inside a `@container`; there the up and down arrow keys also move. In a container narrower than `container-pages`
+   * it is the scrolling strip again, and the row around it must stack.
+   */
+  orientation?: "vertical";
 }
 
 /** A strip of tabs over one panel; the left and right arrow keys, Home and End move between them. */
@@ -37,13 +46,17 @@ export function Tabs<T extends string>({
   help = {},
   trailing,
   scrollable = false,
+  orientation,
 }: Props<T>) {
+  const column = orientation === "vertical";
+  const scrolls = scrollable || column;
+  const keys = column ? columnKeys : tabKeys;
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const strip = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const row = strip.current;
     const tab = buttons.current[tabs.indexOf(value)];
-    if (!scrollable || !row || !tab) return;
+    if (!scrolls || !row || !tab) return;
     const reveal = () => {
       const box = row.getBoundingClientRect();
       const selected = tab.getBoundingClientRect();
@@ -57,20 +70,21 @@ export function Tabs<T extends string>({
     observer.observe(row);
     observer.observe(tab);
     return () => observer.disconnect();
-  }, [scrollable, tabs, value]);
+  }, [scrolls, tabs, value]);
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, at: number) => {
     if (event.ctrlKey || event.altKey || event.metaKey) return;
     const last = tabs.length - 1;
-    const to =
-      event.key === "ArrowRight"
-        ? (at + 1) % tabs.length
-        : event.key === "ArrowLeft"
-          ? (at + last) % tabs.length
-          : event.key === "Home"
-            ? 0
-            : event.key === "End"
-              ? last
-              : undefined;
+    const next = event.key === "ArrowRight" || (column && event.key === "ArrowDown");
+    const previous = event.key === "ArrowLeft" || (column && event.key === "ArrowUp");
+    const to = next
+      ? (at + 1) % tabs.length
+      : previous
+        ? (at + last) % tabs.length
+        : event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? last
+            : undefined;
     const tab = to === undefined ? undefined : tabs[to];
     if (tab === undefined) return;
     event.preventDefault();
@@ -82,7 +96,8 @@ export function Tabs<T extends string>({
       ref={strip}
       role="tablist"
       aria-label={label}
-      className={`flex border-b border-line ${scrollable ? "min-w-0 shrink-0 overflow-x-auto overflow-y-hidden" : ""}`}
+      aria-orientation={column ? "vertical" : undefined}
+      className={`flex border-b border-line ${scrolls ? "min-w-0 shrink-0 overflow-x-auto overflow-y-hidden" : ""} ${column ? "@pages:w-nav @pages:flex-col @pages:self-start @pages:overflow-visible @pages:border-b-0 @pages:border-l" : ""}`}
     >
       {tabs.map((name, at) => (
         <button
@@ -100,11 +115,11 @@ export function Tabs<T extends string>({
           tabIndex={name === value ? 0 : -1}
           onClick={() => onChange(name)}
           onKeyDown={(event) => {
-            tabKeys(event);
+            keys(event);
             onKeyDown(event, at);
           }}
-          onKeyUp={tabKeys}
-          className={`${QUIET} ${scrollable ? "shrink-0 whitespace-nowrap" : "-mb-hairline"} [--stroke-focus:var(--spacing-hairline)] border-b-edge border-transparent aria-selected:border-accent data-[active=true]:bg-accent/15 data-[active=true]:text-accent`}
+          onKeyUp={keys}
+          className={`${QUIET} ${scrolls ? "shrink-0 whitespace-nowrap" : "-mb-hairline"} ${column ? "focus-ring-inset aria-selected:bg-accent/25 aria-selected:font-medium aria-selected:enabled:hover:bg-accent/25 @pages:-ml-hairline @pages:border-b-0 @pages:border-l-edge" : "[--stroke-focus:var(--spacing-hairline)]"} border-b-edge border-transparent aria-selected:border-accent data-[active=true]:bg-accent/15 data-[active=true]:text-accent`}
         >
           {name}
           {counts[name] !== undefined && (

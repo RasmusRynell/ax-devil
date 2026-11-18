@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { Button } from "./Button";
+import { Refusal } from "./Refusal";
 
 interface FrameProps {
   title: ReactNode;
@@ -63,12 +64,12 @@ export function DialogFrame({
       data-cursor-region="popup"
       onCancel={onCancel}
       onClose={onClose}
-      className="m-auto open:flex open:flex-col max-h-full min-h-[min(12.5rem,100%)] min-w-[min(20rem,100%)] max-w-full overflow-auto rounded-popup border border-line-strong bg-popup p-0 text-fg backdrop:bg-scrim"
+      className="m-auto open:flex open:flex-col max-h-[calc(100%-2*var(--spacing-xl))] [@media(max-height:20rem)]:max-h-[calc(100%-2*var(--spacing-xs))] min-h-[min(12.5rem,100%)] min-w-[min(20rem,100%)] max-w-full overflow-auto rounded-popup border border-line-strong bg-popup p-0 text-fg backdrop:bg-scrim"
     >
       {/* The footer (the form's last child) sits at the bottom of a dialog taller than its content, as in Python's base dialog. */}
       <form
         onSubmit={onSubmit}
-        className="[&>:last-child]:mt-auto flex min-h-0 max-h-[calc(100vh-var(--spacing-s))] flex-1 flex-col gap-l p-xl [@media(max-height:20rem)]:gap-s [@media(max-height:20rem)]:p-m"
+        className="[&>:last-child]:mt-auto flex min-h-0 flex-1 flex-col gap-l p-xl [@media(max-height:20rem)]:gap-s [@media(max-height:20rem)]:p-m"
       >
         <h2 id={titleId} className="m-0 text-heading font-semibold">
           {title}
@@ -96,6 +97,8 @@ interface Props {
   footerStart?: ReactNode;
   /** While true, OK is disabled, so the action cannot run twice. */
   busy?: boolean;
+  /** Why the dialog could not do what OK asked, over the buttons and outside the scrolling body. */
+  error?: string | null;
 }
 
 /** A modal dialog with OK, then Cancel. Enter runs OK and Escape cancels; the browser traps focus inside. */
@@ -109,6 +112,7 @@ export function Dialog({
   footerStart,
   focusOk = false,
   busy = false,
+  error,
 }: Props) {
   return (
     <DialogFrame
@@ -124,16 +128,19 @@ export function Dialog({
         else if (!busy) onOk?.();
       }}
       footer={
-        <div className="flex gap-m">
-          {footerStart}
-          <div className="ml-auto flex gap-m">
-            {onOk && (
-              <Button type="submit" disabled={busy}>
-                {okLabel}
-              </Button>
-            )}
-            {footer}
-            {onCancel && <Button onClick={onCancel}>Cancel</Button>}
+        <div className="flex flex-col gap-m">
+          {error && <Refusal reason={error} />}
+          <div className="flex gap-m">
+            {footerStart}
+            <div className="ml-auto flex gap-m">
+              {onOk && (
+                <Button type="submit" disabled={busy}>
+                  {okLabel}
+                </Button>
+              )}
+              {footer}
+              {onCancel && <Button onClick={onCancel}>Cancel</Button>}
+            </div>
           </div>
         </div>
       }

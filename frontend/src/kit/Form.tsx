@@ -7,18 +7,22 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { useSelectOnOpen } from "./Fields";
+import { BrowseButton } from "./Button";
+import { Checkbox, useSelectOnOpen } from "./Fields";
 import { Icon } from "./Icon";
 import { FIELD, FIELD_IN } from "./look";
 import { ownKeys } from "./keys";
+import { SectionCaption } from "./SectionCaption";
 
-/** Rows of a label and its control: one label column as wide as the longest label, the controls filling the rest. */
+/** Rows of a label and its control: one label column as wide as the longest label, up to `spacing-label`, the controls filling the rest. */
 const GRID =
-  "grid min-w-0 grid-cols-[max-content_minmax(0,1fr)] gap-x-l gap-y-s @max-sm:grid-cols-[minmax(0,1fr)]";
+  "grid min-w-0 grid-cols-[fit-content(var(--spacing-label))_minmax(0,1fr)] gap-x-l gap-y-s @max-sm:grid-cols-[minmax(0,1fr)]";
 
 /**
  * A form of labelled rows. The labels sit in one column left of the controls; in a container too narrow for both,
- * each label sits over its control. Rows are `FormInput`, `FormSelect`, `FormCombo` and `FormNote`.
+ * each label sits over its control. Rows are `FormInput`, `FormPath`, `FormSelect`, `FormCombo`, `FormRow` around any
+ * other control, `FormCheck`, with `FormSection` captions and `FormNote` lines between them. Text boxes, drop-downs
+ * and paths fill the control column; a segmented control keeps its own width at its left.
  */
 export function Form({ children }: { children: ReactNode }) {
   return (
@@ -33,46 +37,74 @@ export function FormNote({ children }: { children: ReactNode }) {
   return <p className="col-span-full m-0 min-w-0 [overflow-wrap:anywhere]">{children}</p>;
 }
 
+/** A caption across the whole form, flush with the labels, that names the group of rows after it. */
+export function FormSection({ heading }: { heading: string }) {
+  return (
+    <div className="col-span-full -ml-m mt-m first:mt-0">
+      <SectionCaption heading={heading} plain />
+    </div>
+  );
+}
+
 /**
  * Pages of rows that share the form's columns, so their labels line up with the rows around them. Only the `current`
- * page shows, and the stack is as tall as its tallest page, so the form keeps its size from page to page.
+ * page shows, and the stack is as tall as its tallest page, so the form keeps its size from page to page; in a window
+ * too short for that, only the page it shows counts. With a `panelId` the pages are the panels of tabs: the current
+ * one is the tab panel with that id.
  */
 export function FormStack({
   current,
   pages,
+  panelId,
 }: {
   current: string;
   pages: Record<string, ReactNode>;
+  panelId?: string;
 }) {
   return (
     <div className="col-span-full grid grid-cols-subgrid">
-      {Object.entries(pages).map(([name, rows]) => (
-        <div
-          key={name}
-          className={`col-span-full row-start-1 grid grid-cols-subgrid content-start gap-y-s ${name === current ? "" : "invisible"}`}
-        >
-          {rows}
-        </div>
-      ))}
+      {Object.entries(pages).map(([name, rows]) => {
+        const shown = name === current;
+        return (
+          <div
+            key={name}
+            id={panelId && shown ? panelId : undefined}
+            role={panelId && shown ? "tabpanel" : undefined}
+            aria-label={panelId && shown ? name : undefined}
+            inert={!shown}
+            // Positioned, so the hidden radios of a toggle further down stay in their page.
+            className={`relative col-span-full row-start-1 grid grid-cols-subgrid content-start gap-y-s ${shown ? "" : "invisible [@media(max-height:40rem)]:max-h-0 [@media(max-height:40rem)]:overflow-hidden"}`}
+          >
+            {rows}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 interface RowProps {
   label: string;
+  /** What sits after the label, such as a mark. */
+  marker?: ReactNode;
   /** The id of the control, which the label names. */
-  id: string;
+  id?: string;
   /** The control, then anything that sits after it in the row. */
   children: ReactNode;
   /** A line under the control, such as a question about it. */
   note?: ReactNode;
 }
 
-function Row({ label, id, children, note }: RowProps) {
+/** A label and any control: the row the other `Form` rows are made of. `id` is the control's, when it can be named. */
+export function FormRow({ label, marker, id, children, note }: RowProps) {
   return (
     <>
-      <label htmlFor={id} className="flex min-h-row min-w-0 items-center [overflow-wrap:anywhere]">
+      <label
+        htmlFor={id}
+        className="flex min-h-row min-w-0 items-center gap-s self-start [overflow-wrap:anywhere]"
+      >
         {label}
+        {marker}
       </label>
       <div className="flex min-w-0 flex-col gap-xs">
         <div className="flex min-w-0 items-center gap-s">{children}</div>
@@ -82,8 +114,48 @@ function Row({ label, id, children, note }: RowProps) {
   );
 }
 
+/** A box to tick across the whole row, its label after it, so a long label never widens the label column. */
+export function FormCheck({
+  label,
+  marker,
+  checked,
+  onChange,
+  disabled,
+  title,
+  note,
+}: {
+  label: string;
+  marker?: ReactNode;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  title?: string;
+  note?: ReactNode;
+}) {
+  return (
+    <div className="col-span-full flex min-w-0 flex-col gap-xs">
+      <Checkbox
+        leading
+        label={
+          <span className="flex items-center gap-s [overflow-wrap:anywhere]">
+            {label}
+            {marker}
+          </span>
+        }
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        title={title}
+        className="min-h-row"
+      />
+      {note}
+    </div>
+  );
+}
+
 interface Common {
   label: string;
+  marker?: ReactNode;
   /** Sits after the control. */
   extra?: ReactNode;
   note?: ReactNode;
@@ -92,14 +164,20 @@ interface Common {
   title?: string;
 }
 
-/** A labelled text box that fills its row; `masked` hides what is typed. */
+/**
+ * A labelled text box that fills its row; `masked` hides what is typed, `suggestions` are offered to pick from, each
+ * as `[value, name]`, while any text stays allowed, and `describedBy` names a note about it.
+ */
 export function FormInput({
   label,
+  marker,
   value,
   onChange,
   placeholder,
   masked = false,
   selectOnOpen = false,
+  suggestions,
+  describedBy,
   extra,
   note,
   disabled,
@@ -111,11 +189,14 @@ export function FormInput({
   masked?: boolean;
   /** Takes the focus with its text selected once it is on screen, as an edit of this value starts. */
   selectOnOpen?: boolean;
+  suggestions?: readonly (readonly [string, string])[];
+  describedBy?: string;
 }) {
   const id = useId();
+  const list = `${id}-suggestions`;
   const input = useSelectOnOpen(selectOnOpen);
   return (
-    <Row label={label} id={id} note={note}>
+    <FormRow label={label} marker={marker} id={id} note={note}>
       <input
         ref={input}
         id={id}
@@ -126,17 +207,41 @@ export function FormInput({
         title={title}
         autoComplete="off"
         spellCheck={false}
+        list={suggestions?.length ? list : undefined}
+        aria-describedby={describedBy}
         onChange={(event) => onChange(event.target.value)}
         className={`${FIELD} min-w-0 flex-1`}
       />
+      {suggestions?.length ? (
+        <datalist id={list}>
+          {suggestions.map(([suggestion, name]) => (
+            <option key={suggestion} value={suggestion} label={name} />
+          ))}
+        </datalist>
+      ) : null}
       {extra}
-    </Row>
+    </FormRow>
   );
+}
+
+/** A `FormInput` for a path, with the folder button after it where `browse` says how to choose one. */
+export function FormPath({
+  what,
+  browse,
+  ...input
+}: Parameters<typeof FormInput>[0] & {
+  /** What the button chooses, as in "Choose folder". */
+  what: string;
+  /** Runs the choice; without it there is no button. */
+  browse?: () => void;
+}) {
+  return <FormInput {...input} extra={browse && <BrowseButton what={what} onBrowse={browse} />} />;
 }
 
 /** A labelled drop-down over a closed set; `failed` marks the chosen status line as an error. */
 export function FormSelect<T extends string>({
   label,
+  marker,
   value,
   options,
   onChange,
@@ -154,7 +259,7 @@ export function FormSelect<T extends string>({
 }) {
   const id = useId();
   return (
-    <Row label={label} id={id} note={note}>
+    <FormRow label={label} marker={marker} id={id} note={note}>
       <span className="relative flex min-w-0 flex-1 items-center">
         {failed && (
           <Icon name="triangle-alert" className="pointer-events-none absolute left-s text-danger" />
@@ -175,7 +280,7 @@ export function FormSelect<T extends string>({
         </select>
       </span>
       {extra}
-    </Row>
+    </FormRow>
   );
 }
 
@@ -197,6 +302,7 @@ const KEYS = new Set(["ArrowDown", "ArrowUp", "Enter", "Escape"]);
  */
 export function FormCombo({
   label,
+  marker,
   value,
   onChange,
   placeholder,
@@ -303,7 +409,7 @@ export function FormCombo({
   };
 
   return (
-    <Row label={label} id={id} note={note}>
+    <FormRow label={label} marker={marker} id={id} note={note}>
       <span
         ref={box}
         onBlur={(event) => {
@@ -370,6 +476,6 @@ export function FormCombo({
           ))}
         </ul>
       )}
-    </Row>
+    </FormRow>
   );
 }

@@ -83,7 +83,7 @@ module.exports.run = async ({ window }) => {
             await wait("document.querySelector('[role=tabpanel] input[role=spinbutton]')");
             assert.equal(
               await js(
-                `(() => { const panel = document.querySelector('[role=tabpanel]'); return panel.scrollHeight <= panel.clientHeight + 1; })()`,
+                `(() => { let box = document.querySelector('[role=tabpanel]'); while (getComputedStyle(box).overflowY !== 'auto') box = box.parentElement; return box.scrollHeight <= box.clientHeight + 1; })()`,
               ),
               true,
               `Playback controls fit without scrolling at ${zoom * 100}%`,

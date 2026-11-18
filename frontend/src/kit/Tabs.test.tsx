@@ -7,9 +7,18 @@ afterEach(cleanup);
 
 const TABS = ["Look", "Filter", "Timing"] as const;
 
-function Harness() {
+function Harness({ orientation }: { orientation?: "vertical" }) {
   const [value, setValue] = useState<(typeof TABS)[number]>("Look");
-  return <Tabs label="Lane" tabs={TABS} value={value} onChange={setValue} panelId="panel" />;
+  return (
+    <Tabs
+      label="Lane"
+      tabs={TABS}
+      value={value}
+      onChange={setValue}
+      panelId="panel"
+      orientation={orientation}
+    />
+  );
 }
 
 describe("tabs", () => {
@@ -24,6 +33,18 @@ describe("tabs", () => {
     fireEvent.keyDown(selected(), { key: "ArrowLeft" });
     fireEvent.keyDown(selected(), { key: "ArrowLeft" });
     expect(selected().textContent).toBe("Timing");
+  });
+
+  it("moves with the up and down arrow keys only when it is vertical", () => {
+    const { rerender } = render(<Harness />);
+    const selected = () => screen.getByRole("tab", { selected: true });
+    fireEvent.keyDown(selected(), { key: "ArrowDown" });
+    expect(selected().textContent).toBe("Look");
+    rerender(<Harness orientation="vertical" />);
+    fireEvent.keyDown(selected(), { key: "ArrowDown" });
+    expect(selected().textContent).toBe("Filter");
+    fireEvent.keyDown(selected(), { key: "ArrowUp" });
+    expect(selected().textContent).toBe("Look");
   });
 
   it("keeps its own keys from the shell's shortcuts, but not Ctrl combinations", () => {

@@ -161,6 +161,13 @@ async function gallery(window) {
     await wait("!document.querySelector('dialog[open]')");
     assert.equal(await answer(), "later", `Enter must give the default choice (${theme})`);
 
+    // A dialog's error sits over its buttons; Escape cancels.
+    await clickButton("Open dialog with error");
+    await wait("document.querySelector('dialog[open] [role=alert]')");
+    await shoot(`kit-dialog-error-${theme}.png`);
+    key(window, "Escape");
+    await wait("!document.querySelector('dialog[open]')");
+
     // The path picker lists the server's folders; Escape cancels it.
     await openPicker();
     await shoot(`kit-path-picker-${theme}.png`);
@@ -175,6 +182,12 @@ async function gallery(window) {
   await frames({ js });
   assert.deepEqual(await js(`(${fit.dialog.toString()})()`), [], "the choice dialog at 200% zoom");
   key(window, "Return");
+  await wait("!document.querySelector('dialog[open]')");
+  await clickButton("Open dialog with error");
+  await wait("document.querySelector('dialog[open] [role=alert]')");
+  await frames({ js });
+  assert.deepEqual(await js(`(${fit.dialog.toString()})()`), [], "the error dialog at 200% zoom");
+  key(window, "Escape");
   await wait("!document.querySelector('dialog[open]')");
   // The path picker's list scrolls and its buttons stay in view at the same size.
   await openPicker();

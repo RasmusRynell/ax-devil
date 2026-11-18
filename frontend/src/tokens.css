@@ -17,8 +17,12 @@
   --color-disabled: light-dark(#7c8794, #6e6e6e);
   --color-line: light-dark(#d5dee8, #252627);
   --color-line-strong-light: #7b8d9f;
-  --color-line-strong-dark: #393a3b;
+  --color-line-strong-dark: #4e4f50; /* a quiet border on a recessed fill: about 1.9:1 on the popup, by decision */
   --color-line-strong: light-dark(var(--color-line-strong-light), var(--color-line-strong-dark));
+  /* Fields and buttons: white or see-through in light; in dark a recessed fill, so a control reads without a bright outline. */
+  --color-recess-dark: #1a1b1c;
+  --color-field: light-dark(#ffffff, var(--color-recess-dark));
+  --color-control: light-dark(transparent, var(--color-recess-dark));
   --color-accent-light: #23678d;
   --color-accent-dark: #3994bc;
   --color-accent: light-dark(var(--color-accent-light), var(--color-accent-dark));
@@ -152,6 +156,9 @@
   --spacing-field: 24ch;
   --spacing-field-wide: 42ch; /* a field that holds a `$NAME` reference */
   --spacing-form: 72ch; /* the form of the Add Live Stream dialog */
+  --spacing-label: 22ch; /* the most a form's label column takes; a longer label wraps */
+  --spacing-nav: 16ch; /* the vertical list of pages, wide enough for "Stream defaults" */
+  --container-pages: 64ch; /* the room a list of pages needs beside its page; in less it runs along the top */
   --spacing-panel: 48ch;
   --spacing-setup: calc(var(--text-size-larger) * 26); /* room for all five text-size tiles */
   --spacing-preview: calc(var(--text-size-system) * 6.4); /* the miniature window on a theme tile */
@@ -200,6 +207,18 @@
 /* The lower-right half of a box: the dark half of the System theme tile. */
 @utility clip-diagonal {
   clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+/* The tick of a checked box on its accent fill, so the box looks the same in both themes. */
+@utility check-mark {
+  &:indeterminate {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M4 8h8'/%3E%3C/svg%3E");
+    background-size: 100% 100%;
+  }
+  &:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-7'/%3E%3C/svg%3E");
+    background-size: 100% 100%;
+  }
 }
 
 /* A readout that keeps the room for --chars characters, inside xs padding and a hairline border, so it does not move

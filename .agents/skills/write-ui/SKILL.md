@@ -29,13 +29,14 @@ decode work ([UI Lifecycle](../../../docs/domain/app-invariants.md#ui-lifecycle)
 | Icon (Lucide SVG in `assets/icons/`, listed in `icons.ts`) | `Icon`; colour a kind with `KIND` |
 | Status tag, clickable tag | `Chip` (`tone`, `onClick`) |
 | Any-number choice; one-of-many; mode switch; one-of-many by picture | `ToggleChip`, `ChoiceChips` in a `ChipRow`, `SegmentedControl`, `TileChoice` |
-| Tabs over one panel | `Tabs` |
+| Tabs over one panel; pages in a column beside it | `Tabs` (`orientation="vertical"`) |
 | Group heading (count, note, aside, mark, fold) | `SectionCaption` (`mark`: `muted`, `accent`, a `Tone` or a `Kind`) |
 | Sidebar view: header, action, scrolling body | `ViewPanel` |
 | Captioned action rows | `RowList` |
 | Banner with actions | `Banner`, its `actions` slot |
 | Text input, drop-down, search | `TextField`, `Select`, `SearchField` |
 | Checkbox, checkbox list, on/off applied at once | `Checkbox`, `CheckList`, `Switch` |
+| Labelled rows in a dialog, labels in one column | `Form`: `FormInput`, `FormPath`, `FormSelect`, `FormCombo`, `FormCheck`, `FormRow` (any other control), `FormSection`, `FormStack` |
 | Modal with OK, then Cancel | `Dialog` |
 | Question only a choice dismisses (Escape does nothing, Enter gives `defaultId`) | `ChoiceDialog` |
 | Menu, context menu, free floating panel | `Menu`, `ContextMenu`, `Popup` |

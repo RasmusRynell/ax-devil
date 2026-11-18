@@ -3,14 +3,14 @@
 
 /** Box of a bordered control (button, pill); an edge from `EDGE` supplies the border colour and text. */
 export const CONTROL =
-  "inline-flex min-h-row cursor-pointer items-center gap-m rounded-control border bg-transparent px-m focus-ring disabled:border-line-strong/50 disabled:text-disabled";
+  "inline-flex min-h-row cursor-pointer items-center gap-m rounded-control border bg-control px-m focus-ring disabled:border-line-strong/50 disabled:text-disabled";
 
 /** Border, text and hover tint of a `CONTROL`; the Enter action looks like any other action. */
 export const EDGE = "border-line-strong text-fg enabled:hover:bg-hover";
 
 /** `CONTROL` for a label that wraps a hidden checkbox or radio, so state comes from `:has()` instead of the element. */
 export const CONTROL_IN =
-  "inline-flex min-h-row cursor-pointer items-center gap-s rounded-control border border-line-strong bg-transparent px-m text-fg focus-ring-within has-enabled:not-has-checked:hover:bg-hover has-disabled:cursor-default has-disabled:border-line-strong/50 has-disabled:text-disabled";
+  "inline-flex min-h-row cursor-pointer items-center gap-s rounded-control border border-line-strong bg-control px-m text-fg focus-ring-within has-enabled:not-has-checked:hover:bg-hover has-disabled:cursor-default has-disabled:border-line-strong/50 has-disabled:text-disabled";
 
 /** Chrome without a border: menu-bar triggers, list rows, tabs, headers, dismiss and on-canvas icon buttons. */
 export const QUIET =
@@ -68,11 +68,15 @@ export const KIND: Record<Kind, string> = {
 
 /** A text input, drop-down or other single-line field; focus shows as an accent border, not the ring buttons use. */
 export const FIELD =
-  "h-row rounded-control border border-line-strong bg-popup px-s text-fg placeholder:text-muted focus:border-accent focus:outline-none disabled:border-line-strong/50 disabled:text-disabled";
+  "h-row rounded-control border border-line-strong bg-field px-s text-fg placeholder:text-muted focus:border-accent focus:outline-none disabled:border-line-strong/50 disabled:text-disabled";
 
 /** `FIELD` for a label around a search input: the accent border follows focus inside it. */
 export const FIELD_IN =
-  "h-row rounded-control border border-line-strong bg-popup px-s text-fg placeholder:text-muted focus-within:border-accent has-disabled:border-line-strong/50 has-disabled:text-disabled";
+  "h-row rounded-control border border-line-strong bg-field px-s text-fg placeholder:text-muted focus-within:border-accent has-disabled:border-line-strong/50 has-disabled:text-disabled";
+
+/** The box of a checkbox, drawn the same in both themes: a field fill and soft border, accent with a tick once checked or part-checked. */
+export const CHECK =
+  "size-icon shrink-0 appearance-none rounded-control border border-line-strong bg-field check-mark checked:border-accent checked:bg-accent indeterminate:border-accent indeterminate:bg-accent focus-ring disabled:border-line-strong/50 disabled:checked:border-disabled disabled:checked:bg-disabled";
 
 /** Pill sizing: small text, never wider than its container, no wrapping. */
 export const PILL = "max-w-full min-w-0 whitespace-nowrap text-small";

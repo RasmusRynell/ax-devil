@@ -138,7 +138,7 @@ module.exports.run = async ({ window }) => {
   assert.equal(await js("!!document.querySelector('dialog[open]')"), true);
   assert.deepEqual(await binding(play), ["Space"], "Escape keeps the previous binding");
   await js(
-    "[...document.querySelectorAll('dialog button')].find(b => b.textContent === 'Reset to Defaults').click()",
+    "[...document.querySelectorAll('dialog button')].find(b => b.textContent === 'Reset to defaults').click()",
   );
   await answer("OK");
 };
