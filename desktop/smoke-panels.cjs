@@ -21,12 +21,18 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
       button: "left",
       clickCount,
     });
-  const fits = async (selector, what, ellipsised = false) =>
+  // A panel that follows its button and the window takes a frame or two to land, so it is judged where it stays.
+  const fits = async (selector, what, ellipsised = false) => {
+    await settled(
+      window,
+      `(() => { const r = document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect(); return r && [r.left, r.top, r.right, r.bottom]; })()`,
+    );
     assert.deepEqual(
       await js(`(${fit.panel.toString()})(${JSON.stringify(selector)}, ${ellipsised})`),
       [],
       what,
     );
+  };
   const tools = () => pressShortcut(window, "Ctrl+B");
   const PANEL = 'aside[aria-label="Media tools"]';
   const PAGE = `${PANEL} section[aria-label="Object page"]`;
@@ -114,6 +120,10 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
   );
   await js(`document.querySelector('${menu} input[type=checkbox]').click()`);
   await wait(`document.querySelector('${menu} [role=tab][data-active=true]')`);
+  // A window taller than the popover, which is open at its natural size, shrinks straight to 200%: the popover follows.
+  await setView(window, [1100, 1100], 1);
+  await setView(window, [640, 480], 2);
+  await fits(menu, "The active filter must follow a window that shrinks from tall to 200%");
   for (const zoom of [1, 2]) {
     await setView(window, zoom === 1 ? [1100, 720] : [640, 480], zoom);
     for (const theme of THEMES) {
@@ -127,6 +137,24 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
   await js(
     `[...document.querySelectorAll('${menu} button')].find((b) => b.textContent === 'Reset').click()`,
   );
+  // The largest text in the smallest window, unzoomed: the widest the popover gets next to the window's edge.
+  await js("document.documentElement.dataset.textSize = 'larger'");
+  await setView(window, [640, 480], 1);
+  for (const tab of ["Look", "Filter", "Timing"]) {
+    await js(
+      `[...document.querySelectorAll(${JSON.stringify(`${menu} [role=tab]`)})].find((b) => b.textContent.startsWith('${tab}')).click()`,
+    );
+    await wait(
+      `document.querySelector(${JSON.stringify(`${menu} [role=tabpanel][aria-label=${tab}]`)})`,
+    );
+    await toStart();
+    await frames({ js });
+    await fits(
+      menu,
+      `The ${tab} tab of the lane menu must fit the 640x480 window at the largest text size`,
+    );
+  }
+  await js("document.documentElement.dataset.textSize = 'system'");
   await setView(window, [640, 480], 2);
   for (const theme of THEMES) {
     await setTheme(theme);

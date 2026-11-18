@@ -163,6 +163,7 @@
   --spacing-nav: 16ch; /* the vertical list of pages, wide enough for "Stream defaults" */
   --container-pages: 64ch; /* the room a list of pages needs beside its page; in less it runs along the top */
   --spacing-panel: 48ch;
+  --spacing-popover: 44ch; /* the content of the lane settings popover, inside the 48ch a popover may take */
   --spacing-setup: calc(var(--text-size-larger) * 26); /* room for all five text-size tiles */
   --spacing-preview: calc(var(--text-size-system) * 6.4); /* the miniature window on a theme tile */
   --spacing-sample: calc(

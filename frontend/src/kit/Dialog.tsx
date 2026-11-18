@@ -83,6 +83,37 @@ export function DialogFrame({
   );
 }
 
+/**
+ * A dialog's refusal on the buttons' line, so a short error adds no height; where the dialog has a button of its own
+ * at the left (`alone`), on a line of its own. In a short window a long one scrolls in a line's height, the one thing
+ * that does, and only then is it a tab stop, so the keyboard can reach the rest of the text.
+ */
+function ErrorLine({ reason, alone }: { reason: string; alone: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [scrolls, setScrolls] = useState(false);
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    const measure = () => setScrolls(element.scrollHeight > element.clientHeight);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(measure);
+    watch.observe(element);
+    if (element.firstElementChild) watch.observe(element.firstElementChild);
+    return () => watch.disconnect();
+  }, [reason]);
+  return (
+    <div
+      ref={box}
+      data-scroll="variable"
+      tabIndex={scrolls ? 0 : undefined}
+      className={`min-w-0 ${alone ? "basis-full" : "flex-1"} [@media(max-height:20rem)]:max-h-row [@media(max-height:20rem)]:overflow-y-auto [@media(max-height:20rem)]:[&>p]:items-start`}
+    >
+      <Refusal reason={reason} />
+    </div>
+  );
+}
+
 interface Props {
   title: ReactNode;
   children: ReactNode;
@@ -159,19 +190,17 @@ export function Dialog({
         else if (!busy) onOk?.();
       }}
       footer={
-        <div className="flex flex-col gap-m">
-          {error && <Refusal reason={error} />}
-          <div className="flex gap-m">
-            {footerStart}
-            <div className="ml-auto flex gap-m">
-              {onOk && (
-                <Button type="submit" disabled={busy} aria-disabled={incomplete || undefined}>
-                  {okLabel}
-                </Button>
-              )}
-              {footer}
-              {onCancel && <Button onClick={onCancel}>Cancel</Button>}
-            </div>
+        <div className="flex flex-wrap items-end gap-m">
+          {error && <ErrorLine reason={error} alone={Boolean(footerStart)} />}
+          {footerStart}
+          <div className="ml-auto flex gap-m">
+            {onOk && (
+              <Button type="submit" disabled={busy} aria-disabled={incomplete || undefined}>
+                {okLabel}
+              </Button>
+            )}
+            {footer}
+            {onCancel && <Button onClick={onCancel}>Cancel</Button>}
           </div>
         </div>
       }

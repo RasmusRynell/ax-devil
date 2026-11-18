@@ -1,10 +1,9 @@
-import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { ExportFormatWire, ExportQualityWire } from "../generated/api";
-import { Button } from "../kit/Button";
-import { Dialog, DialogFrame } from "../kit/Dialog";
-import { Checkbox, Select, TextField } from "../kit/Fields";
-import { MiddleElided } from "../kit/MiddleElided";
+import { Dialog, DialogBody } from "../kit/Dialog";
+import { controlAria, Form, FormCheck, FormRow, FormSection, FormSelect } from "../kit/Form";
+import { FIELD } from "../kit/look";
 import type { PlaybackView } from "../playback/view";
 import { exportFile, usePickPath } from "../client/pickPath";
 import { choicesOf } from "./lanes";
@@ -25,7 +24,7 @@ const QUALITIES: readonly (readonly [ExportQualityWire, string])[] = [
 ];
 
 /** The dialog's title in every state. */
-const TITLE = "Export Video with Overlays";
+const TITLE = "Export Video";
 
 /** `path` as it is when it ends in `.kind` (any case), otherwise with `.kind` appended: `clip.mov` becomes `clip.mov.mp4`. */
 const withExtension = (path: string, kind: Kind): string =>
@@ -35,63 +34,44 @@ const withExtension = (path: string, kind: Kind): string =>
 const wholeNumber = (text: string): number | null =>
   /^\d+$/.test(text.trim()) ? Number(text) : null;
 
-/**
- * The dialog's box: the answer button, then Cancel. Escape runs `onEscape`. Cancel is disabled unless `onCancel` is
- * given, so a dialog with nothing to cancel still shows where it will be.
- */
-function Frame({
+/** The dialog's box in every state: the answer button, then Cancel when `onCancel` is given. Escape runs `onCancel`, else the answer. */
+function Screen({
   okLabel,
   busy = false,
+  error,
   onOk,
   onCancel,
-  onEscape,
   children,
 }: {
   okLabel: string;
   busy?: boolean;
+  error?: string | null;
   onOk: () => void;
   onCancel?: () => void;
-  onEscape: () => void;
   children: ReactNode;
 }) {
   return (
-    <DialogFrame
+    <Dialog
       title={TITLE}
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!busy) onOk();
-      }}
-      onCancel={(event) => {
-        event.preventDefault();
-        onEscape();
-      }}
-      footer={
-        <div className="ml-auto flex gap-m">
-          <Button type="submit" disabled={busy}>
-            {okLabel}
-          </Button>
-          <Button disabled={!onCancel} onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
-      }
+      okLabel={okLabel}
+      onOk={onOk}
+      onCancel={onCancel}
+      busy={busy}
+      error={error}
     >
-      {children}
-    </DialogFrame>
+      <DialogBody>
+        <div className="flex w-panel max-w-full min-w-0 flex-col gap-m">{children}</div>
+      </DialogBody>
+    </Dialog>
   );
 }
 
-/** The text of an export that finished or could not start: shown under the bar in place of the form. */
+/** What an export that finished or could not start adds under the bar; why it failed is the dialog's error. */
 function Outcome({ status }: { status: Exclude<ExportStatus, { phase: "idle" | "running" }> }) {
   if (status.phase === "failed")
-    return (
-      <div role="alert" className="flex flex-col gap-s">
-        <p className="m-0 break-words whitespace-pre-line text-danger">{`Error: ${status.reason}`}</p>
-        {status.location && (
-          <p className="m-0 text-small break-all text-muted">{status.location}</p>
-        )}
-      </div>
-    );
+    return status.location ? (
+      <p className="m-0 text-small break-all text-muted">{status.location}</p>
+    ) : null;
   return (
     <p role="status" className="m-0 break-all">
       {status.phase === "done" ? `Done: ${status.path}` : "Cancelled"}
@@ -119,11 +99,57 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
   );
 }
 
+/** The first and last frame of an mp4 side by side in one row, so the fixed fields stay short; the row shows the first problem in reading order, and only the box that owns it is invalid. */
+function Frames({
+  from,
+  to,
+  fromError,
+  toError,
+  onFrom,
+  onTo,
+}: {
+  from: string;
+  to: string;
+  fromError?: string;
+  toError?: string;
+  onFrom: (text: string) => void;
+  onTo: (text: string) => void;
+}) {
+  const id = useId();
+  const shown = fromError ?? toError;
+  const owner = fromError ? "from" : toError ? "to" : null;
+  const box = (
+    which: "from" | "to",
+    label: string,
+    value: string,
+    onChange: (text: string) => void,
+  ) => (
+    <input
+      id={which === "from" ? id : undefined}
+      type="text"
+      aria-label={label}
+      value={value}
+      autoComplete="off"
+      spellCheck={false}
+      {...controlAria(id, { error: owner === which ? shown : undefined })}
+      onChange={(event) => onChange(event.target.value)}
+      className={`${FIELD} min-w-0 flex-1`}
+    />
+  );
+  return (
+    <FormRow label="Frames" id={id} error={shown}>
+      {box("from", "From frame", from, onFrom)}
+      <span className="text-muted">to</span>
+      {box("to", "To frame", to, onTo)}
+    </FormRow>
+  );
+}
+
 /** What an export asked for while a render catalog is still loading says; the export does not start. */
 export function ExportNotice({ onClose }: { onClose: () => void }) {
   return createPortal(
     <div className="contents" onKeyDown={(event) => event.stopPropagation()}>
-      <Dialog title="Export video" onOk={onClose} focusOk>
+      <Dialog title={TITLE} onOk={onClose} focusOk>
         <p className="m-0">Render catalogs are still loading. Try again in a moment.</p>
       </Dialog>
     </div>,
@@ -184,6 +210,15 @@ export function ExportDialog({
   const last = kind === "png" ? view.playhead : wholeNumber(to);
   const framesOk = first !== null && last !== null && first <= last && last < view.frameCount;
   const ready = picked.length > 0 && framesOk && pick !== undefined;
+  // Why a typed frame cannot be exported; nothing for the text a PNG ignores.
+  const frameProblem = (frame: number | null) =>
+    frame === null
+      ? "Not a whole number"
+      : frame >= view.frameCount
+        ? "Past the last frame"
+        : undefined;
+  const orderProblem =
+    first !== null && last !== null && first > last ? "After To frame" : undefined;
 
   const start = async () => {
     if (first === null || last === null) return;
@@ -218,77 +253,79 @@ export function ExportDialog({
   const dialog = (() => {
     if (status.phase === "running")
       return (
-        <Frame
-          okLabel="Export"
-          onOk={() => undefined}
-          onCancel={() => jobs.cancel()}
-          onEscape={() => jobs.cancel()}
-          busy
-        >
-          <div className="flex flex-col gap-m">
-            <ProgressBar done={status.done} total={status.total} />
-            <span role="status" className="tabular-nums">
-              {status.done > 0 ? `Frame ${status.done} / ${status.total}` : "Exporting…"}
-            </span>
-          </div>
-        </Frame>
+        <Screen okLabel="Export" onOk={() => undefined} onCancel={() => jobs.cancel()} busy>
+          <ProgressBar done={status.done} total={status.total} />
+          <span role="status" className="tabular-nums">
+            {status.done > 0 ? `Frame ${status.done} / ${status.total}` : "Exporting…"}
+          </span>
+        </Screen>
       );
     if (status.phase !== "idle")
       return (
-        <Frame okLabel="Close" onOk={close} onEscape={close}>
-          <div className="flex flex-col gap-m">
-            <ProgressBar done={status.done} total={status.total} />
-            <Outcome status={status} />
-          </div>
-        </Frame>
+        <Screen
+          okLabel="Close"
+          onOk={close}
+          error={status.phase === "failed" ? status.reason : null}
+        >
+          <ProgressBar done={status.done} total={status.total} />
+          <Outcome status={status} />
+        </Screen>
       );
     return (
-      <Frame okLabel="Export" onOk={() => void start()} onEscape={close} busy={!ready || choosing}>
-        {choices.length > 1 && (
-          <fieldset className="m-0 flex min-w-0 flex-col gap-s border-0 p-0">
-            <legend className="p-0">Lanes</legend>
-            {choices.map(({ lane, label, wire }) => (
-              <Checkbox
-                key={lane}
-                label={<MiddleElided text={label} className="flex-1" />}
-                checked={wire !== null && !unchecked.has(lane)}
-                disabled={wire === null}
-                onChange={(on) =>
-                  setUnchecked((now) => {
-                    const next = new Set(now);
-                    if (on) next.delete(lane);
-                    else next.add(lane);
-                    return next;
-                  })
-                }
+      <Screen
+        okLabel="Export"
+        onOk={() => void start()}
+        onCancel={close}
+        busy={!ready || choosing}
+        error={failure ?? aloneWhy}
+      >
+        <Form>
+          {choices.length > 1 && (
+            <FormSection heading="Lanes">
+              {choices.map(({ lane, label, wire }) => (
+                <FormCheck
+                  key={lane}
+                  label={label}
+                  checked={wire !== null && !unchecked.has(lane)}
+                  disabled={wire === null}
+                  onChange={(on) =>
+                    setUnchecked((now) => {
+                      const next = new Set(now);
+                      if (on) next.delete(lane);
+                      else next.add(lane);
+                      return next;
+                    })
+                  }
+                />
+              ))}
+            </FormSection>
+          )}
+          <FormSelect label="Format" value={kind} options={KINDS} onChange={setKind} />
+          {kind === "mp4" && (
+            <>
+              <Frames
+                from={from}
+                to={to}
+                fromError={frameProblem(first) ?? orderProblem}
+                toError={frameProblem(last)}
+                onFrom={setFrom}
+                onTo={setTo}
               />
-            ))}
-          </fieldset>
-        )}
-        <Select label="Format" value={kind} options={KINDS} onChange={setKind} />
-        {kind === "mp4" && (
-          <>
-            <TextField label="From frame" value={from} onChange={setFrom} />
-            <TextField label="To frame" value={to} onChange={setTo} />
-            <Select label="Quality" value={quality} options={QUALITIES} onChange={setQuality} />
-          </>
-        )}
+              <FormSelect
+                label="Quality"
+                value={quality}
+                options={QUALITIES}
+                onChange={setQuality}
+              />
+            </>
+          )}
+        </Form>
         {loading && (
           <p role="status" className="m-0">
             Render catalogs are still loading.
           </p>
         )}
-        {aloneWhy && (
-          <p role="alert" className="m-0 break-words">
-            {aloneWhy}
-          </p>
-        )}
-        {failure && (
-          <p role="alert" className="m-0">
-            {failure}
-          </p>
-        )}
-      </Frame>
+      </Screen>
     );
   })();
   // The page's body holds it, so a viewer that is hidden (a narrow window showing the sidebar) does not hide the
