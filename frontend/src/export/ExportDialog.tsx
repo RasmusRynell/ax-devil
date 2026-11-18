@@ -1,8 +1,9 @@
-import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { ExportFormatWire, ExportQualityWire } from "../generated/api";
 import { Dialog, DialogBody } from "../kit/Dialog";
-import { Form, FormCheck, FormInput, FormSection, FormSelect } from "../kit/Form";
+import { controlAria, Form, FormCheck, FormRow, FormSection, FormSelect } from "../kit/Form";
+import { FIELD } from "../kit/look";
 import type { PlaybackView } from "../playback/view";
 import { exportFile, usePickPath } from "../client/pickPath";
 import { choicesOf } from "./lanes";
@@ -95,6 +96,50 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
         {percent}%
       </span>
     </div>
+  );
+}
+
+/** The first and last frame of an mp4 side by side in one row, so the fixed fields stay short; a problem shows under the row. */
+function Frames({
+  from,
+  to,
+  fromError,
+  toError,
+  onFrom,
+  onTo,
+}: {
+  from: string;
+  to: string;
+  fromError?: string;
+  toError?: string;
+  onFrom: (text: string) => void;
+  onTo: (text: string) => void;
+}) {
+  const id = useId();
+  const box = (
+    label: string,
+    value: string,
+    error: string | undefined,
+    onChange: (text: string) => void,
+  ) => (
+    <input
+      id={label === "From frame" ? id : undefined}
+      type="text"
+      aria-label={label}
+      value={value}
+      autoComplete="off"
+      spellCheck={false}
+      {...controlAria(id, { error })}
+      onChange={(event) => onChange(event.target.value)}
+      className={`${FIELD} min-w-0 flex-1`}
+    />
+  );
+  return (
+    <FormRow label="Frames" id={id} error={fromError ?? toError}>
+      {box("From frame", from, fromError, onFrom)}
+      <span className="text-muted">to</span>
+      {box("To frame", to, toError, onTo)}
+    </FormRow>
   );
 }
 
@@ -256,13 +301,14 @@ export function ExportDialog({
           <FormSelect label="Format" value={kind} options={KINDS} onChange={setKind} />
           {kind === "mp4" && (
             <>
-              <FormInput
-                label="From frame"
-                value={from}
-                error={frameProblem(first) ?? orderProblem}
-                onChange={setFrom}
+              <Frames
+                from={from}
+                to={to}
+                fromError={frameProblem(first) ?? orderProblem}
+                toError={frameProblem(last)}
+                onFrom={setFrom}
+                onTo={setTo}
               />
-              <FormInput label="To frame" value={to} error={frameProblem(last)} onChange={setTo} />
               <FormSelect
                 label="Quality"
                 value={quality}

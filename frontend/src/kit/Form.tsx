@@ -144,7 +144,7 @@ export function FormRow({ label, marker, id, children, note, error, errorFor }: 
     <>
       <label
         htmlFor={id}
-        className="flex min-h-row min-w-0 items-center gap-s self-start [overflow-wrap:anywhere] @max-sm:mt-m @max-sm:first:mt-0"
+        className="flex min-h-row min-w-0 items-center gap-s self-start [overflow-wrap:anywhere] @max-sm:mt-m [@media(max-height:20rem)]:@max-sm:mt-s @max-sm:first:mt-0"
       >
         {label}
         {marker}
