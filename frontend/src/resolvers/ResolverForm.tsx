@@ -1,7 +1,6 @@
-import { useEffect, useLayoutEffect, useReducer, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useReducer, useRef } from "react";
 import { reasonOf } from "../client/errors";
 import type { Choice, DecoderInfo, ErrorWire, Field, ResolverInfo } from "../generated/api";
-import { Refusal } from "../kit/Refusal";
 import { decoderOptions, FieldControl, misread, needsValue, shown, type FieldForm } from "./fields";
 import {
   checkedCount,
@@ -396,24 +395,21 @@ export function draftForm(form: ResolverFormState, resolver: ResolverInfo): Reso
 }
 
 /**
- * The fields of a resolver, each with the failed scans that are about it. `action` is the dialog's own button: it
- * sits beside the Scan button of a count-only scan, or else closes the form on a row of its own.
+ * The rows of a resolver's fields, each with the failed scans that are about it. `tried` marks the required fields
+ * still blank.
  */
-export function ResolverForm({ form, action }: { form: ResolverFormState; action?: ReactNode }) {
-  const fieldForm = { ...form, action };
+export function ResolverForm({ form, tried }: { form: ResolverFormState; tried?: boolean }) {
+  const fieldForm = { ...form, tried };
   return (
     <>
       {form.resolver.fields.map((field) => (
-        <div key={field.key} className="flex flex-col gap-s">
-          <FieldControl field={field} form={fieldForm} />
-          {failuresAt(form.resolver, form.scans, field).map((problem) => (
-            <Refusal key={reasonOf(problem)} reason={reasonOf(problem)} />
-          ))}
-        </div>
+        <FieldControl
+          key={field.key}
+          field={field}
+          form={fieldForm}
+          failures={failuresAt(form.resolver, form.scans, field).map(reasonOf)}
+        />
       ))}
-      {action && countFields(form.resolver).length === 0 && (
-        <div className="flex justify-end">{action}</div>
-      )}
     </>
   );
 }

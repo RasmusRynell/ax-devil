@@ -55,7 +55,7 @@ export function SectionCaption({
   fold,
 }: Props) {
   return (
-    <div className={`flex items-center gap-s px-m ${plain ? "min-h-row" : "h-row"}`}>
+    <div className={`flex items-center gap-s ${plain ? "min-h-row pl-m" : "h-row px-m"}`}>
       {/* The button is the keyboard's way in; its click reaches the caption's, which does the folding. */}
       <div
         onClick={fold?.onToggle}

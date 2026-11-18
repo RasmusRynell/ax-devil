@@ -63,7 +63,7 @@ it("shows the value of a default's reference and the variable it comes from, and
   expect(placeholder("Password")).toBe("••••••••  (via $AX_DEVIL_TARGET_PASS)");
   expect(placeholder("Name")).toBe("172.20.1.1");
   // What the backend may not expand stays the reference.
-  expect(placeholder("MQTT Host")).not.toContain("via");
+  expect(placeholder("MQTT host")).not.toContain("via");
   expect(JSON.parse(asked.mock.calls[0]?.[0] as string)).toEqual({});
 });
 

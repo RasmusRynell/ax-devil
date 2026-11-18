@@ -12,8 +12,8 @@ const { SCREENSHOTS, dialogSize, frames, page, setView } = require("./smoke-kit.
 const MODES = [
   ["none", null],
   ["rtsp", null],
-  ["mqtt", "MQTT Port"],
-  ["datahub", "Topic Channel"],
+  ["mqtt", "MQTT port"],
+  ["datahub", "Topic channel"],
 ];
 
 module.exports.run = async ({ window }) => {
@@ -108,8 +108,8 @@ module.exports.run = async ({ window }) => {
     await wait("document.querySelector('dialog[open] h2')?.textContent === 'Add Live Stream'");
     let size;
     for (const [mode, field] of MODES) {
-      await choose("Overlay Mode", mode);
-      await wait(`${picked("Overlay Mode")} === '${mode}'`);
+      await choose("Overlay mode", mode);
+      await wait(`${picked("Overlay mode")} === '${mode}'`);
       if (field) await wait(labelled(field));
       await frames({ js });
       // The dialog is as big as its biggest mode's page, so choosing a mode does not resize it.

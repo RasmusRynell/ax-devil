@@ -21,8 +21,8 @@ const GRID =
 /**
  * A form of labelled rows. The labels sit in one column left of the controls; in a container too narrow for both,
  * each label sits over its control. Rows are `FormInput`, `FormPath`, `FormSelect`, `FormCombo`, `FormRow` around any
- * other control, `FormCheck`, with `FormSection` captions and `FormNote` lines between them. Text boxes, drop-downs
- * and paths fill the control column; a segmented control keeps its own width at its left.
+ * other control, `FormCheck`, with `FormSection` captions between them. Text boxes, drop-downs and paths fill the
+ * control column; a segmented control keeps its own width at its left.
  */
 export function Form({ children }: { children: ReactNode }) {
   return (
@@ -32,17 +32,37 @@ export function Form({ children }: { children: ReactNode }) {
   );
 }
 
-/** A line of text across the whole form, such as the description of the choice above it. */
-export function FormNote({ children }: { children: ReactNode }) {
-  return <p className="col-span-full m-0 min-w-0 [overflow-wrap:anywhere]">{children}</p>;
-}
-
-/** A caption across the whole form, flush with the labels, that names the group of rows after it. */
-export function FormSection({ heading }: { heading: string }) {
-  return (
-    <div className="col-span-full -ml-m mt-m first:mt-0">
-      <SectionCaption heading={heading} plain />
+/**
+ * A caption across the whole form, flush with the labels, that names the group of rows after it. With `children`
+ * the rows are inside it, a group that shares the form's columns and is named by the caption; `action` sits at the
+ * caption's right edge.
+ */
+export function FormSection({
+  heading,
+  action,
+  children,
+}: {
+  heading: string;
+  action?: ReactNode;
+  children?: ReactNode;
+}) {
+  const grouped = children !== undefined;
+  const caption = (
+    <div className={`col-span-full -ml-m ${grouped ? "" : "mt-m first:mt-0"}`}>
+      <SectionCaption heading={heading} action={action} plain />
     </div>
+  );
+  return grouped ? (
+    <div
+      role="group"
+      aria-label={heading}
+      className="col-span-full mt-m grid grid-cols-subgrid gap-y-s first:mt-0"
+    >
+      {caption}
+      {children}
+    </div>
+  ) : (
+    caption
   );
 }
 
@@ -73,6 +93,7 @@ export function FormStack({
             role={panelId && shown ? "tabpanel" : undefined}
             aria-label={panelId && shown ? name : undefined}
             inert={!shown}
+            aria-hidden={shown ? undefined : true}
             // Positioned, so the hidden radios of a toggle further down stay in their page.
             className={`relative col-span-full row-start-1 grid grid-cols-subgrid content-start gap-y-s ${shown ? "" : "invisible"}`}
           >

@@ -1,11 +1,10 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useLayoutEffect } from "react";
 import type { DecoderInfo, NewOverlayWire, ResolverInfo } from "../generated/api";
-import { BrowseButton, Button } from "../kit/Button";
-import { FormInput, FormSelect } from "../kit/Form";
-import { needsValue, shown } from "../resolvers/fields";
+import { Button } from "../kit/Button";
+import { FormPath, FormSection, FormSelect } from "../kit/Form";
+import { Refusal } from "../kit/Refusal";
 import { ResolverForm, useResolverForm } from "../resolvers/ResolverForm";
 import type { Settings } from "../resolvers/scan";
-import { Refusal } from "../kit/Refusal";
 
 /** One overlay of the dialog: the file typed and the handler picked for it, `""` while none is. */
 export interface OverlayEntry {
@@ -18,7 +17,7 @@ export interface OverlayEntry {
   options?: NewOverlayWire["options"];
 }
 
-/** What a row has to say when OK is pressed: its decoder's options, or `null` while they are incomplete. */
+/** What a row has to say when Add is pressed: its decoder's options, or `null` while they are incomplete. */
 export interface OverlayRead {
   settings: Settings | null;
 }
@@ -76,7 +75,7 @@ const optionsForm = (decoder?: DecoderInfo): ResolverInfo => ({
 
 /**
  * An overlay file with the handler that reads it and the options that handler declares. `read` is how the dialog
- * asks for the options when OK is pressed; `tried` shows what a required option still lacks.
+ * asks for the options when Add is pressed; `tried` shows what a required option still lacks.
  */
 export function OverlayRow({
   number,
@@ -108,61 +107,37 @@ export function OverlayRow({
   const decoder = decoders.find((one) => one.handler === entry.picked);
   const form = useResolverForm(optionsForm(decoder), decoders, entry.options);
   const named = entry.path.trim() !== "";
-  const missing = form.resolver.fields.find(
-    (field) => needsValue(field) && !shown(field, form.values).trim(),
-  );
-  const row = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (focus) row.current?.querySelector("input")?.focus();
-  }, [focus]);
   useLayoutEffect(() => {
     register(entry.key, () => ({ settings: form.settings }));
     return () => register(entry.key, null);
   });
   return (
-    <div
-      ref={row}
-      role="group"
-      aria-label={`Overlay ${number}`}
-      className="col-span-full grid grid-cols-subgrid gap-y-s"
+    <FormSection
+      heading={`Overlay ${number}`}
+      action={
+        <Button size="small" icon="trash-2" label={`Remove overlay ${number}`} onClick={onRemove} />
+      }
     >
-      <FormInput
+      <FormPath
         label="Overlay path"
+        what="overlay file"
         value={entry.path}
+        selectOnOpen={focus}
+        note={problem && <Refusal reason={problem} />}
+        browse={onBrowse}
         onChange={(path) => onChange(withPath(entry, path, decoders))}
-        extra={
-          <>
-            {onBrowse && <BrowseButton what="overlay file" onBrowse={onBrowse} />}
-            <Button
-              size="small"
-              icon="trash-2"
-              label={`Remove overlay ${number}`}
-              onClick={onRemove}
-            />
-          </>
-        }
       />
       <FormSelect
         label="Data handler"
         value={entry.picked}
         disabled={!named}
         options={[
-          ["", "(None)"],
+          ["", named ? "Required" : "(None)"],
           ...decoders.map((one) => [one.handler, one.display_name] as const),
         ]}
         onChange={(picked) => onChange({ ...entry, picked })}
       />
-      <div className="col-span-full flex flex-col gap-s empty:hidden">
-        {problem ? (
-          <Refusal reason={problem} />
-        ) : (
-          undecided(entry) && (
-            <Refusal reason={`Choose the data handler that reads ${fileName(entry.path)}.`} />
-          )
-        )}
-        {named && decoder && <ResolverForm form={form} />}
-        {tried && named && missing && <Refusal reason={`${missing.label} is required`} />}
-      </div>
-    </div>
+      {named && decoder && <ResolverForm form={form} tried={tried} />}
+    </FormSection>
   );
 }

@@ -9,7 +9,6 @@ import {
   FormCheck,
   FormCombo,
   FormInput,
-  FormNote,
   FormPath,
   FormRow,
   FormSection,
@@ -138,6 +137,10 @@ export function Gallery() {
           <Button>Normal</Button>
           <Button icon="plus">With icon</Button>
           <Button disabled>Disabled</Button>
+          <Button type="submit">Primary</Button>
+          <Button type="submit" disabled>
+            Primary disabled
+          </Button>
         </div>
         <div className="flex flex-wrap items-center gap-m">
           <Button size="small">Small</Button>
@@ -249,7 +252,6 @@ export function Gallery() {
             className={`${FIELD} w-field`}
           />
           <Button>Apply</Button>
-          <Button type="submit">Save</Button>
         </div>
         <div className="flex flex-wrap items-center gap-m">
           <SearchField placeholder="Search" />
@@ -296,7 +298,6 @@ export function Gallery() {
 
       <Section title="Form">
         <Form>
-          <FormNote>Labels share one column; the controls fill the rest.</FormNote>
           <FormInput label="Name" value={text} onChange={setText} placeholder="Optional" />
           <FormSelect label="A longer label" value={mode} options={MODES} onChange={setMode} />
           <FormCombo

@@ -48,9 +48,10 @@ module.exports.run = async ({ window }) => {
     nativeTheme.themeSource = theme;
     await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
   };
+  // The form keeps the other sources' pages out of sight, inert, with their own Scan buttons.
   const clickButton = (label) =>
     js(
-      `[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === '${label}').click()`,
+      `[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === '${label}' && !b.closest('[inert]')).click()`,
     );
   const closeMenu = () =>
     js(
@@ -116,7 +117,7 @@ module.exports.run = async ({ window }) => {
     assert.equal(
       await dialogSize({ js }),
       size,
-      `The Add Playlist dialog must keep its size on ${source || "the list of sources"}`,
+      `The Add Playlist dialog must keep its size on ${source || "no source"}`,
     );
   }
   // A source's page stays as filled in: with both folders and a decoder chosen, the status the folders bring and the
@@ -162,7 +163,7 @@ module.exports.run = async ({ window }) => {
   await setTheme("light");
   window.setSize(1100, 720);
   await openAddPlaylist();
-  await clickButton("Load Playlist");
+  await clickButton("Add");
   await wait("!document.querySelector('dialog')");
   // Adding the playlist replaces the active video preview; these scenarios read that one viewer.
   const panes = "[...document.querySelectorAll('[role=group][data-cursor-id^=\"pane:\"]')]";

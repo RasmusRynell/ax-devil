@@ -136,7 +136,7 @@ function deferred() {
   const promise = new Promise<ReturnType<typeof reply>>((done) => (settle = done));
   return { promise, settle };
 }
-const add = () => screen.getByRole("button", { name: "Load Playlist" });
+const add = () => screen.getByRole("button", { name: "Add" });
 const clickAdd = () => fireEvent.click(add());
 const commands = () => FakeSocket.latest.received.filter((message) => message.type === "command");
 
@@ -410,17 +410,7 @@ describe("add playlist dialog", () => {
     expect(await screen.findByLabelText("Playlist source")).toBeTruthy();
   });
 
-  it("explains the choice and lists the sources until one is chosen", async () => {
-    stubBackend();
-    await open();
-    expect(screen.getByText(/^Build a playlist from video and overlay files/)).toBeTruthy();
-    expect(screen.getByText("MOT Challenge: Reads MOT sequences.")).toBeTruthy();
-    choose("folder_pair");
-    // The page stays, drawn out of sight, so choosing a source does not resize the dialog.
-    expect(screen.getByText(/^Build a playlist/).closest("[inert]")).not.toBeNull();
-  });
-
-  it("opens on the source it is given, and on the list when there is no such source", async () => {
+  it("opens on the source it is given, and on none when there is no such source", async () => {
     stubBackend();
     await open(() => {}, "folder_pair");
     expect(screen.getByLabelText<HTMLSelectElement>("Playlist source").value).toBe("folder_pair");
@@ -428,7 +418,6 @@ describe("add playlist dialog", () => {
     cleanup();
     await open(() => {}, "gone");
     expect(screen.getByLabelText<HTMLSelectElement>("Playlist source").value).toBe("");
-    expect(screen.getByText(/^Build a playlist/)).toBeTruthy();
   });
 });
 

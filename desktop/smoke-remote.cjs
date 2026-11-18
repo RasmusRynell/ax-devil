@@ -108,7 +108,9 @@ async function remote(local, shell) {
     await frames({ js });
     await openAddVideo(window);
     await wait("document.querySelector('dialog[open] input')");
-    // With a blank path, Add is disabled and says why; the dialog still fits the smallest window at 200% zoom.
+    // A path that is no file: Add is disabled and says why at the path; the dialog still fits the smallest window at
+    // 200% zoom.
+    window.webContents.insertText("/no/such/video.mp4");
     await wait(
       "document.querySelector('dialog[open] [role=alert]') && [...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Add').disabled",
     );
@@ -129,6 +131,7 @@ async function remote(local, shell) {
     }
     window.webContents.setZoomFactor(1);
     window.setBounds(bounds);
+    window.webContents.selectAll();
     window.webContents.insertText(FIXTURE);
     await wait(`document.querySelector('dialog[open] input').value === ${JSON.stringify(FIXTURE)}`);
     for (const theme of ["light", "dark"]) {

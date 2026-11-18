@@ -50,7 +50,7 @@ async function open(saved?: string) {
       </SessionProvider>
     </FakeSettings>,
   );
-  await screen.findByLabelText("Overlay Mode");
+  await screen.findByLabelText("Overlay mode");
 }
 const pick = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
@@ -71,10 +71,10 @@ it.each(dialogs.flatMap((dialog) => orders.map((order) => ({ ...dialog, order })
   async ({ saved, handler, order }) => {
     await open(saved);
     if (order === "discovery first") await discovered();
-    if (order !== "no mode edit") pick("Overlay Mode", "mqtt");
+    if (order !== "no mode edit") pick("Overlay mode", "mqtt");
     if (order !== "discovery first") await discovered();
-    expect(value("Handler Type")).toBe(handler);
-    expect(value("Overlay Mode")).toBe(
+    expect(value("Handler type")).toBe(handler);
+    expect(value("Overlay mode")).toBe(
       order === "no mode edit" ? (saved === undefined ? "datahub" : "rtsp") : "mqtt",
     );
     if (handler === "GONE_V1")
@@ -85,11 +85,11 @@ it.each(dialogs.flatMap((dialog) => orders.map((order) => ({ ...dialog, order })
 
 it("keeps an explicit None chosen while discovery was pending", async () => {
   await open();
-  pick("Overlay Mode", "rtsp");
-  pick("Handler Type", "");
+  pick("Overlay mode", "rtsp");
+  pick("Handler type", "");
   await discovered();
-  expect(value("Handler Type")).toBe("");
-  expect((screen.getByRole("button", { name: "OK" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(value("Handler type")).toBe("");
+  expect((screen.getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 it.each(["", "ONVIF_XML"])(
@@ -97,10 +97,10 @@ it.each(["", "ONVIF_XML"])(
   async (handler) => {
     await open();
     await discovered();
-    pick("Handler Type", handler);
-    pick("Overlay Mode", "none");
-    expect((screen.getByLabelText("Handler Type") as HTMLSelectElement).disabled).toBe(true);
-    pick("Overlay Mode", "rtsp");
-    expect(value("Handler Type")).toBe(handler);
+    pick("Handler type", handler);
+    pick("Overlay mode", "none");
+    expect((screen.getByLabelText("Handler type") as HTMLSelectElement).disabled).toBe(true);
+    pick("Overlay mode", "rtsp");
+    expect(value("Handler type")).toBe(handler);
   },
 );

@@ -112,13 +112,10 @@ it("offers every handler, chooses the sole one that reads the file, and waits fo
 
   await overlay("/data/v1.jsonl");
   expect(handlerAt().value).toBe("");
-  expect(screen.getByRole("alert").textContent).toBe(
-    "Choose the data handler that reads v1.jsonl.",
-  );
+  expect(handlerAt().options[0]?.text).toBe("Required");
   expect(add()).toHaveProperty("disabled", true);
 
   fireEvent.change(handlerAt(), { target: { value: "V2" } });
-  expect(screen.queryByRole("alert")).toBeNull();
   await answered();
 
   // A pick that does not read the new file is dropped, and does not come back for a later one.
@@ -149,7 +146,7 @@ it("adds overlays one by one, ignores a blank one and needs a video", async () =
 
   fireEvent.change(screen.getByLabelText("Video path"), { target: { value: "" } });
   expect(add()).toHaveProperty("disabled", true);
-  expect(screen.getByRole("alert").textContent).toBe("Choose a video file to continue.");
+  expect(screen.queryByRole("alert")).toBeNull();
   fireEvent.change(screen.getByLabelText("Video path"), { target: { value: "/a.mp4" } });
   await answered();
   fireEvent.click(add());
@@ -169,7 +166,7 @@ it("keeps a required option of the handler from being skipped: Add says it is re
   await answered();
 
   fireEvent.click(add());
-  expect((await screen.findByRole("alert")).textContent).toBe("Image width is required");
+  expect((await screen.findByRole("alert")).textContent).toBe("Required");
   expect(sentOverlays()).toEqual([]);
 
   fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "1920" } });

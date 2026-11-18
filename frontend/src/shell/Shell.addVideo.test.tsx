@@ -162,7 +162,7 @@ describe("add video with an overlay", () => {
     });
     await enabled();
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    expect(screen.getByRole("alert").textContent).toContain("Image width is required");
+    expect(screen.getByRole("alert").textContent).toBe("Required");
     const sent = () => FakeSocket.latest.received.filter((message) => message.type === "command");
     expect(sent()).toEqual([]);
 

@@ -5,8 +5,12 @@
 export const CONTROL =
   "inline-flex min-h-row cursor-pointer items-center gap-m rounded-control border bg-control px-m focus-ring disabled:border-line-strong/50 disabled:text-disabled";
 
-/** Border, text and hover tint of a `CONTROL`; the Enter action looks like any other action. */
+/** Border, text and hover tint of a `CONTROL`. */
 export const EDGE = "border-line-strong text-fg enabled:hover:bg-hover";
+
+/** The primary action, the one Enter runs: a `CONTROL` box filled with the accent (the border matches the fill, and shows under forced colours), the page colour as text; disabled it is a muted fill. */
+export const PRIMARY =
+  "inline-flex min-h-row cursor-pointer items-center gap-m rounded-control border border-accent bg-accent px-m text-surface enabled:hover:border-accent-hover enabled:hover:bg-accent-hover enabled:active:border-accent-press enabled:active:bg-accent-press focus-ring focus-ring-apart disabled:border-line-strong/50 disabled:bg-hover disabled:text-disabled";
 
 /** `CONTROL` for a label that wraps a hidden checkbox or radio, so state comes from `:has()` instead of the element. */
 export const CONTROL_IN =

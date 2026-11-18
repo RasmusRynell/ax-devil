@@ -14,7 +14,7 @@ decode work ([UI Lifecycle](../../../docs/domain/app-invariants.md#ui-lifecycle)
 
 1. **A kit component fits:** use it (table below).
 2. **None fits:** compose the constants of `frontend/src/kit/look.ts` and import one only for the element no component
-   can render. Constants: `CONTROL` + `EDGE` (outlined button), `CONTROL_IN` +
+   can render. Constants: `CONTROL` + `EDGE` (outlined button), `PRIMARY` (the filled Enter action), `CONTROL_IN` +
    `CHOSEN` / `CHECKED` (label around a hidden radio / checkbox), `QUIET` (chrome without an outline), `FIELD`,
    `FIELD_IN`, `PILL`, `SQUARE`, `TONE` (by `Tone`), `KIND` (by `Kind`).
 3. **A shape recurs, or two features need it:** add a block to `frontend/src/kit/`, built from `look.ts`, with an entry
@@ -23,7 +23,7 @@ decode work ([UI Lifecycle](../../../docs/domain/app-invariants.md#ui-lifecycle)
 
 | Need | Use (`frontend/src/kit/` unless noted) |
 |------|-----|
-| Action; the Enter action; icon-only; compact beside a field | `Button` (`type="submit"` is the Enter action; `label` without children makes it icon-only; `size="small"`) |
+| Action; the Enter action; icon-only; compact beside a field | `Button` (`type="submit"` is the Enter action and is filled with the accent; `label` without children makes it icon-only; `size="small"`) |
 | Menu opener; folder button after a path field | `MenuButton`, `BrowseButton` |
 | Borderless icon in a bar, header or over video | `IconButton` (`onCanvas` over video) |
 | Icon (Lucide SVG in `assets/icons/`, listed in `icons.ts`) | `Icon`; colour a kind with `KIND` |
@@ -52,9 +52,9 @@ A control that handles keys the shortcuts also use (Space, Enter, arrows) wraps 
   utilities (`bg-surface`, `text-muted`, `p-m`, `h-row`, `text-small`). No arbitrary values, inline styles or raw
   colours. Every colour is a light/dark pair; muted text has its own token, never reduced opacity. A fixed size comes
   from a text-size token so it grows with the zoom.
-- **Restrained.** Outlined or quiet, nothing more: no heavier rings, shadows or extra decoration. Every control is one
+- **Restrained.** Outlined or quiet, and the one filled accent button of a dialog, its Enter action: no heavier rings, shadows or extra decoration. Every control is one
   row high with a visible keyboard-focus ring and a muted disabled state.
-- **Colour carries meaning, only:** accent marks chosen and checked controls, the current tab or row edge, and a focused field.
+- **Colour carries meaning, only:** accent marks chosen and checked controls, the current tab or row edge, a focused field and the primary action.
   Tones (`success`, `caution`, `danger`) mark status.
   Kind colours mark video, playlist, live and lane, the same on icons and caption marks everywhere. Video controls
   keep their white-on-scrim look; the canvas stays near-black in both themes.

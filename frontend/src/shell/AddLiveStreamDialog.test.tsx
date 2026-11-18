@@ -100,12 +100,12 @@ const open = async (onClose = () => {}, state = DEFAULT_SETTINGS, seed = {}) => 
   );
   // The decoders arrive, and the form takes the overlay the settings choose.
   await waitFor(() =>
-    expect((screen.getByLabelText("Overlay Mode") as HTMLSelectElement).value).toBe("datahub"),
+    expect((screen.getByLabelText("Overlay mode") as HTMLSelectElement).value).toBe("datahub"),
   );
 };
 const type = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
-const ok = () => screen.getByRole("button", { name: "OK" }) as HTMLButtonElement;
+const ok = () => screen.getByRole("button", { name: "Add" }) as HTMLButtonElement;
 const refresh = (label: string) =>
   fireEvent.click(screen.getByLabelText(label).closest("div")?.querySelector("button") as Element);
 /** The camera has listed the topics, and the configured one is chosen. */
@@ -113,7 +113,7 @@ const listed = () => waitFor(() => expect(ok().disabled).toBe(false));
 const commands = () => FakeSocket.latest.received.filter((message) => message.type === "command");
 
 describe("add live stream dialog", () => {
-  it("is one page in the Python app's order, with OK waiting for a host and saying why", async () => {
+  it("is one page in the Python app's order, with Add waiting for a host and no error before anything is wrong", async () => {
     await open(() => {}, NO_HOST);
     const labels = [...document.querySelectorAll("form label")].map((label) => label.textContent);
     expect(labels.slice(0, 11)).toEqual([
@@ -123,17 +123,18 @@ describe("add live stream dialog", () => {
       "Password",
       "Protocol",
       "Port",
-      "Camera Head",
-      "RTSP Route",
-      "RTSP Port",
+      "Camera head",
+      "RTSP route",
+      "RTSP port",
       "Resolution",
-      "Custom Stream URL",
+      "Custom stream URL",
     ]);
     expect(ok().disabled).toBe(true);
-    expect(screen.getByRole("alert").textContent).toBe("Enter the device host.");
+    expect((screen.getByLabelText("Host") as HTMLInputElement).placeholder).toBe("Required");
+    expect(screen.queryByRole("alert")).toBeNull();
     type("Host", "10.0.0.7");
     // A changed host is a new camera: its topics are read on Refresh.
-    refresh("DataHub Topic");
+    refresh("DataHub topic");
     await listed();
     expect(screen.queryByRole("alert")).toBeNull();
   });
@@ -142,16 +143,16 @@ describe("add live stream dialog", () => {
     const onClose = vi.fn();
     await open(onClose);
     await listed();
-    type("Overlay Mode", "mqtt");
-    type("MQTT Host", "broker");
+    type("Overlay mode", "mqtt");
+    type("MQTT host", "broker");
     await waitFor(() =>
       expect(screen.getByRole("option", { name: "com.axis.scene.frame.v1#1" })).toBeTruthy(),
     );
-    type("Data Source", "com.axis.scene.frame.v1#1");
-    type("Overlay Mode", "datahub");
-    type("Topic Channel", "3");
-    type("Overlay Mode", "mqtt");
-    expect((screen.getByLabelText("MQTT Host") as HTMLInputElement).value).toBe("broker");
+    type("Data source", "com.axis.scene.frame.v1#1");
+    type("Overlay mode", "datahub");
+    type("Topic channel", "3");
+    type("Overlay mode", "mqtt");
+    expect((screen.getByLabelText("MQTT host") as HTMLInputElement).value).toBe("broker");
     // Each mode's list stays while the connection does.
     expect(listings).toEqual(["datahub", "mqtt"]);
 
@@ -198,12 +199,12 @@ describe("add live stream dialog", () => {
     fireEvent.keyDown(box, { key: "ArrowDown" });
     await screen.findByRole("option", { name: "1280x720" }, { timeout: 2000 });
     fireEvent.keyDown(box, { key: "Escape" });
-    type("Camera Head", "2");
+    type("Camera head", "2");
     expect(sizesOf()).toEqual(["Camera default", "800x600"]);
     // A head the camera lists no sizes for is not a reason to ask again.
-    type("Camera Head", "3");
+    type("Camera head", "3");
     expect(sizesOf()).toEqual(["Camera default", "Camera lists no resolutions"]);
-    type("Camera Head", "1");
+    type("Camera head", "1");
     expect(sizesOf()).toEqual(["Camera default", "1280x720"]);
     expect(sizeAsks).toBe(1);
 
@@ -239,7 +240,7 @@ describe("add live stream dialog", () => {
   it("asks the camera as the stream will be added, naming the stream it is another of", async () => {
     await open(() => {}, DEFAULT_SETTINGS, { like: "item-1" });
     await listed();
-    type("Overlay Mode", "mqtt");
+    type("Overlay mode", "mqtt");
     // Sizes and both lists: the backend authenticates them with that stream's saved login.
     await waitFor(() => expect(asked.length).toBeGreaterThanOrEqual(3));
     expect(asked.every((connection) => connection.like === "item-1")).toBe(true);
@@ -270,7 +271,7 @@ describe("add live stream dialog", () => {
         </SessionProvider>
       </FakeSettings>,
     );
-    const topic = () => screen.getByLabelText("DataHub Topic") as HTMLSelectElement;
+    const topic = () => screen.getByLabelText("DataHub topic") as HTMLSelectElement;
     await waitFor(() => expect(topic().value).toBe("saved.topic"));
     expect(screen.getByRole("dialog", { name: "Edit Live Stream" })).toBeTruthy();
     const name = screen.getByLabelText("Name") as HTMLInputElement;
@@ -279,13 +280,13 @@ describe("add live stream dialog", () => {
     await waitFor(() => expect(document.activeElement).toBe(name));
     expect([name.selectionStart, name.selectionEnd]).toEqual([0, 4]);
     expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("");
-    const handler = screen.getByLabelText("Handler Type") as HTMLSelectElement;
+    const handler = screen.getByLabelText("Handler type") as HTMLSelectElement;
     expect(handler.value).toBe("GONE_V1");
     expect(handler.selectedOptions[0]?.textContent).toBe("GONE_V1 (unavailable)");
-    type("Overlay Mode", "none");
+    type("Overlay mode", "none");
     expect(handler.disabled).toBe(true);
     expect(handler.value).toBe("GONE_V1");
-    type("Overlay Mode", "datahub");
+    type("Overlay mode", "datahub");
     expect(handler.disabled).toBe(false);
     expect(handler.selectedOptions[0]?.textContent).toBe("GONE_V1 (unavailable)");
     // The sizes are asked as the stream is saved: by its saved login.
@@ -293,7 +294,7 @@ describe("add live stream dialog", () => {
     expect(asked.every((connection) => connection.like === live.ids.a)).toBe(true);
 
     // The backend accepts only a handler it has: the saved one is shown, and a Save needs another.
-    type("Handler Type", "ADF_V1_FRAME");
+    type("Handler type", "ADF_V1_FRAME");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(commands()).toHaveLength(1));
     expect(commands()[0]).toMatchObject({
@@ -316,32 +317,32 @@ describe("add live stream dialog", () => {
     });
 
     // A source saved for the mode not in use is offered, listed by the camera or not, when that mode is chosen.
-    type("Overlay Mode", "mqtt");
-    expect((screen.getByLabelText("Data Source") as HTMLSelectElement).value).toBe("custom");
-    type("Overlay Mode", "datahub");
+    type("Overlay mode", "mqtt");
+    expect((screen.getByLabelText("Data source") as HTMLSelectElement).value).toBe("custom");
+    type("Overlay mode", "datahub");
 
     type("Host", "10.0.0.8");
     await waitFor(() => expect(topic().value).toBe(""));
     expect(screen.queryByRole("option", { name: "saved.topic" })).toBeNull();
   });
 
-  it("shows the backend's refusal under the form and keeps OK off until the form changes", async () => {
+  it("shows the backend's refusal at its field and keeps Add off until the form changes", async () => {
     const onClose = vi.fn();
     await open(onClose);
     await listed();
     FakeSocket.failContent = {
       code: "WorkspaceInvalid",
       params: {},
-      reason: "Camera Head must be a positive integer.",
+      reason: "Camera head must be a positive integer.",
       location: "head",
     };
     fireEvent.click(ok());
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("Camera Head must be a positive integer.");
+    expect(alert.textContent).toBe("Camera head must be a positive integer.");
     expect(ok().disabled).toBe(true);
     expect(onClose).not.toHaveBeenCalled();
 
-    type("Camera Head", "2");
+    type("Camera head", "2");
     expect(screen.queryByRole("alert")).toBeNull();
     expect(ok().disabled).toBe(false);
   });
@@ -349,17 +350,15 @@ describe("add live stream dialog", () => {
   it("adds the data source or topic shown, which the camera's list has, and none else", async () => {
     await open();
     await listed();
-    expect((screen.getByLabelText("DataHub Topic") as HTMLSelectElement).value).toBe(
+    expect((screen.getByLabelText("DataHub topic") as HTMLSelectElement).value).toBe(
       "com.axis.scene.frame.v1",
     );
     // A changed camera has not listed anything: the old topic is no longer offered or added.
     type("Host", "10.0.0.8");
     await waitFor(() => expect(ok().disabled).toBe(true));
-    expect((screen.getByLabelText("DataHub Topic") as HTMLSelectElement).value).toBe("");
+    expect((screen.getByLabelText("DataHub topic") as HTMLSelectElement).value).toBe("");
     expect(screen.queryByRole("option", { name: "com.axis.scene.frame.v1" })).toBeNull();
-    expect(screen.getByRole("alert").textContent).toBe(
-      "Topic is required for WebSocket overlay mode.",
-    );
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("forgets the camera's lists when the connection changes, even back to an earlier one, and ignores a late answer", async () => {
@@ -380,19 +379,20 @@ describe("add live stream dialog", () => {
     expect(listings).toEqual(["datahub"]);
     expect(ok().disabled).toBe(true);
 
-    refresh("DataHub Topic");
+    refresh("DataHub topic");
     await listed();
     // Refreshing under the same connection keeps the topic.
-    refresh("DataHub Topic");
+    refresh("DataHub topic");
     await screen.findByRole("option", { name: "Select DataHub topics" });
-    expect((screen.getByLabelText("DataHub Topic") as HTMLSelectElement).value).toBe(
+    expect((screen.getByLabelText("DataHub topic") as HTMLSelectElement).value).toBe(
       "com.axis.scene.frame.v1",
     );
   });
 
   it("says a host is needed, not a failure, while the host reference names nothing", async () => {
+    const urls: string[] = [];
     vi.stubGlobal("fetch", async (url: string) =>
-      url === "/api/handlers"
+      (urls.push(url), url === "/api/handlers")
         ? { ok: true, status: 200, json: async () => HANDLERS }
         : {
             ok: false,
@@ -406,10 +406,14 @@ describe("add live stream dialog", () => {
           },
     );
     await open();
+    // The configured host names nothing either, which the blank Host already says: no error before one is typed.
+    await waitFor(() => expect(urls).toContain("/api/live/resolutions"), { timeout: 2000 });
+    await act(async () => {});
+    expect(screen.queryByRole("alert")).toBeNull();
     type("Host", "$UNSET_HOST");
     // A changed connection is read again on choosing a mode, or on Refresh.
-    type("Overlay Mode", "none");
-    type("Overlay Mode", "datahub");
+    type("Overlay mode", "none");
+    type("Overlay mode", "datahub");
     await screen.findByRole("option", { name: "Enter a device host to load DataHub topics" });
     expect(screen.getByRole("alert").textContent).toBe("Enter the device host.");
     expect(screen.queryByText(/Could not load/)).toBeNull();
@@ -429,7 +433,7 @@ it("keeps the overlay chosen before the decoders arrive", async () => {
       </SessionProvider>
     </FakeSettings>,
   );
-  fireEvent.change(await screen.findByLabelText("Overlay Mode"), { target: { value: "none" } });
+  fireEvent.change(await screen.findByLabelText("Overlay mode"), { target: { value: "none" } });
   await screen.findByRole("option", { name: "ADF v1 Frame" });
-  expect((screen.getByLabelText("Overlay Mode") as HTMLSelectElement).value).toBe("none");
+  expect((screen.getByLabelText("Overlay mode") as HTMLSelectElement).value).toBe("none");
 });

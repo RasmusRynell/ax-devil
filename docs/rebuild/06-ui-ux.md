@@ -38,8 +38,8 @@ Port the token sets by purpose; take values from `chrome/tokens.py`.
 Rebuild the kit listed in the write-ui skill's building-blocks table (`.agents/skills/write-ui/SKILL.md`):
 window and dialog frames, segmented toggle, toggle chips, popover, ask/notify dialog, form layout, browse button,
 key chips, menu button, small button, sidebar view parts (panel, row list, caption, row, chip, banner), icons from
-one bundled set. Port its conventions (outlined buttons, accent only for checked/selected/focused, `…` only for work in
-progress, icons not glyphs) as the [write-ui skill](../../.agents/skills/write-ui/SKILL.md).
+one bundled set. Port its conventions (outlined buttons and one accent-filled primary action, accent otherwise only for
+checked/selected/focused, `…` only for work in progress, icons not glyphs) as the [write-ui skill](../../.agents/skills/write-ui/SKILL.md).
 
 ## Layout and sizing (MUST)
 

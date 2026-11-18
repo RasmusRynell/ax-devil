@@ -8,7 +8,6 @@ const path = require("node:path");
 const fit = require("./fit.cjs");
 const {
   delay,
-  dialogSize,
   frames,
   openAddVideo,
   page,
@@ -104,20 +103,14 @@ module.exports.run = async ({ window }) => {
         await fs.writeFile(path.join(SCREENSHOTS, `add-video-local-${shown}.png`), png);
         before = png;
       }
-      // The blank path's reason shows, and goes with it without moving the form.
-      await wait("document.querySelector('dialog[open] [role=alert]')");
-      const withReason = await dialogSize({ js });
+      // A blank path asks for no reason: Add is off until a path is typed.
+      assert.equal(await js("!!document.querySelector('dialog[open] [role=alert]')"), false);
       await js(`(() => {
         const input = document.querySelector('dialog[open] input');
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(path.join(folder, name))});
         input.dispatchEvent(new Event('input', { bubbles: true }));
       })()`);
       await wait(`${dialogButton("Add")}?.disabled === false`);
-      assert.equal(
-        await dialogSize({ js }),
-        withReason,
-        "The Add Video dialog must keep its size when its reason goes",
-      );
       await js(`${dialogButton("Add")}.click()`);
       await wait(`!document.querySelector('dialog') && ${row(name)}`);
     }

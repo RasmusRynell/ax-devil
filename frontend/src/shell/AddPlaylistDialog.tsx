@@ -1,20 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { reasonOf } from "../client/errors";
 import type { HandlersInfo, ResolverInfo } from "../generated/api";
-import { Button } from "../kit/Button";
 import { Dialog, DialogBody } from "../kit/Dialog";
-import { Select, TextField } from "../kit/Fields";
+import { Form, FormInput, FormSelect, FormStack } from "../kit/Form";
+import { Refusal } from "../kit/Refusal";
 import { ResolverForm, draftForm, sameSettings, useResolverForm } from "../resolvers/ResolverForm";
 import { resolvePlaylists } from "../resolvers/resolve";
 import type { Settings } from "../resolvers/scan";
 import { HandlersFailure, useHandlers } from "../resolvers/useHandlers";
 import { useCommand, useSession } from "../session/session";
-import { Refusal } from "../kit/Refusal";
 
 /** Stands for no resolver while none is chosen. */
 const NONE: ResolverInfo = { id: "", display_name: "", description: "", fields: [] };
-const INTRODUCTION =
-  "Build a playlist from video and overlay files on disk. Choose a source above, fill in its settings, and load the playlist to add it to the workspace. Available sources:";
 
 /** What the form starts with: a source, its settings and the playlist's name, as an item holds them. */
 export interface PlaylistDraft {
@@ -24,9 +21,8 @@ export interface PlaylistDraft {
 }
 
 /**
- * The Add Playlist dialog: the backend's handlers decide the resolvers and the form each takes. Until a source is
- * chosen, the sources are listed instead of a form; `initial` fills the form in (a source that is not there leaves
- * the list), read once. Loading, the form's own button, resolves the playlists first and
+ * The Add Playlist dialog: the backend's handlers decide the resolvers and the form each takes. `initial` fills the
+ * form in (a source that is not there leaves it on none), read once. Add resolves the playlists first and
  * adds the item only when that succeeds, so the dialog stays open meanwhile with the settings locked and Name and
  * Cancel live. A form with a count-only scan that has not answered scans first and goes on only if it found something
  * and the settings are the same when it answers. Cancel, Escape and closing abort the resolve, and a refusal stays here until the
@@ -56,12 +52,12 @@ export function AddPlaylistDialog({
     request.current?.abort();
     close();
   };
-  return (
+  // The form starts from the saved settings, so it is built once the sources are known.
+  return handlers ? (
+    <PlaylistDialog {...{ handlers, initial, editing, request, closed, close, cancel }} />
+  ) : (
     <Dialog title={editing ? "Edit Playlist" : "Add Playlist"} onCancel={cancel}>
-      {handlers ? (
-        // The form starts from the saved settings, so it is built once the sources are known.
-        <PlaylistForm {...{ handlers, initial, editing, request, closed, close }} />
-      ) : failure ? (
+      {failure ? (
         <HandlersFailure failure={failure} retry={retry} />
       ) : (
         <p role="status" className="m-0 text-muted">
@@ -72,13 +68,14 @@ export function AddPlaylistDialog({
   );
 }
 
-function PlaylistForm({
+function PlaylistDialog({
   handlers,
   initial,
   editing,
   request,
   closed,
   close,
+  cancel,
 }: {
   handlers: HandlersInfo;
   initial?: PlaylistDraft;
@@ -86,6 +83,7 @@ function PlaylistForm({
   request: RefObject<AbortController | null>;
   closed: RefObject<boolean>;
   close: () => void;
+  cancel: () => void;
 }) {
   const resolvers = handlers.resolvers;
   const command = useCommand();
@@ -105,7 +103,7 @@ function PlaylistForm({
   const stamp = JSON.stringify([resolver.id, form.settings]);
   const refusal = refused?.stamp === stamp ? refused.reason : null;
 
-  // Loading needs a source, its settings, a session to add to and no resolve already running; Load is disabled
+  // Adding needs a source, its settings, a session to add to and no resolve already running; Add is disabled
   // otherwise.
   const settings = form.settings;
   const canAdd =
@@ -167,88 +165,60 @@ function PlaylistForm({
       setResolving(false);
     }
   };
-  const actionLabel = editing ? "Save" : "Load Playlist";
   // The page in view, with the other pages drawn as the person left them, out of sight, so the dialog is as big as the
   // biggest page and choosing a source does not resize it.
-  const pages: [string, ReactNode][] = [
-    [
-      "",
-      lost ? (
+  const pages: Record<string, ReactNode> = {
+    "": lost && (
+      <div className="col-span-full">
         <Refusal reason={`Playlist source '${lost}' is unavailable.`} />
-      ) : (
-        <>
-          <p className="m-0">{INTRODUCTION}</p>
-          {resolvers.map((candidate) => (
-            <p key={candidate.id} className="m-0">
-              {candidate.description
-                ? `${candidate.display_name}: ${candidate.description}`
-                : candidate.display_name}
-            </p>
-          ))}
-        </>
-      ),
-    ],
-    ...resolvers.map((candidate): [string, ReactNode] => [
-      candidate.id,
-      <>
-        {candidate.description && <p className="m-0 text-muted">{candidate.description}</p>}
-        {candidate.id === resolver.id ? (
-          <ResolverForm
-            form={form}
-            action={
-              <Button type="submit" disabled={!canAdd} onClick={() => void add()}>
-                {actionLabel}
-              </Button>
-            }
-          />
-        ) : (
-          <ResolverForm form={draftForm(form, candidate)} action={<Button>{actionLabel}</Button>} />
-        )}
-      </>,
-    ]),
-  ];
+      </div>
+    ),
+    ...Object.fromEntries(
+      resolvers.map((candidate) => [
+        candidate.id,
+        <ResolverForm
+          key={candidate.id}
+          form={candidate.id === resolver.id ? form : draftForm(form, candidate)}
+        />,
+      ]),
+    ),
+  };
   return (
-    <>
+    <Dialog
+      title={editing ? "Edit Playlist" : "Add Playlist"}
+      okLabel={editing ? "Save" : "Add"}
+      onOk={lost ? undefined : () => void add()}
+      onCancel={cancel}
+      busy={!canAdd}
+      error={refusal}
+    >
       <DialogBody>
-        <div className="flex w-form max-w-full min-w-0 flex-col gap-l">
-          <TextField
-            label="Name"
-            value={name}
-            placeholder="Optional"
-            selectOnOpen={editing !== undefined}
-            onChange={(value) => {
-              latestName.current = value;
-              setName(value);
-            }}
-          />
-          <fieldset disabled={resolving || !!lost} className="contents">
-            <Select
-              label="Playlist source"
-              value={resolver.id}
-              disabled={editing !== undefined}
-              options={[
-                ["", "Select a source"],
-                ...resolvers.map((candidate) => [candidate.id, candidate.display_name] as const),
-              ]}
-              onChange={setResolverId}
+        <div className="w-form max-w-full min-w-0">
+          <Form>
+            <FormInput
+              label="Name"
+              value={name}
+              placeholder="Optional"
+              selectOnOpen={editing !== undefined}
+              onChange={(value) => {
+                latestName.current = value;
+                setName(value);
+              }}
             />
-            <div className="grid">
-              {/* The page in view comes first in the document, ahead of the others. */}
-              {[
-                ...pages.filter(([id]) => id === resolver.id),
-                ...pages.filter(([id]) => id !== resolver.id),
-              ].map(([id, page]) => (
-                <div
-                  key={id}
-                  aria-hidden={id !== resolver.id || undefined}
-                  inert={id !== resolver.id}
-                  className={`col-start-1 row-start-1 flex min-w-0 flex-col gap-l ${id === resolver.id ? "" : "invisible"}`}
-                >
-                  {page}
-                </div>
-              ))}
-            </div>
-          </fieldset>
+            <fieldset disabled={resolving || !!lost} className="contents">
+              <FormSelect
+                label="Playlist source"
+                value={resolver.id}
+                disabled={editing !== undefined}
+                options={[
+                  ["", "Select a source"],
+                  ...resolvers.map((candidate) => [candidate.id, candidate.display_name] as const),
+                ]}
+                onChange={setResolverId}
+              />
+              <FormStack current={resolver.id} pages={pages} />
+            </fieldset>
+          </Form>
         </div>
       </DialogBody>
       {resolving && (
@@ -256,7 +226,6 @@ function PlaylistForm({
           Finding playlists…
         </p>
       )}
-      {refusal && <Refusal reason={refusal} />}
-    </>
+    </Dialog>
   );
 }
