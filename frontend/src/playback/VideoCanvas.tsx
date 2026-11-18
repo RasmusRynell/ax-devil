@@ -321,7 +321,7 @@ export function VideoCanvas({
   }, [stream]);
   if (unavailable)
     return (
-      <p role="alert" className="m-auto p-xl">
+      <p role="alert" className="m-auto max-w-prose p-xl whitespace-pre-line select-text">
         The video cannot be drawn: {unavailable}
       </p>
     );
