@@ -9,6 +9,13 @@ use ffmpeg_next::software::scaling::{Context, Flags};
 use ffmpeg_next::{Error, Packet, frame};
 use foundation::Matrix;
 
+/// The time a decoded frame is matched to the index by: its own pts, else the decoder's best guess (a container that
+/// stores only decode timestamps, such as ASF, leaves pts unset). The guess is not used when pts exists, because it
+/// differs from a repeated pts.
+pub(crate) fn frame_time(frame: &frame::Video) -> Option<i64> {
+    frame.pts().or_else(|| frame.timestamp())
+}
+
 /// Whether the demuxer marked the packet as one that must not produce output (decode-only pre-roll).
 pub(crate) fn is_discard(packet: &Packet) -> bool {
     // SAFETY: `as_ptr` points at the `AVPacket` that `packet` owns, which is initialised and outlives this read.

@@ -95,3 +95,7 @@ done
 ffmpeg "${GLOBAL[@]}" -f lavfi -i color=c=blue:s=160x96 -frames:v 1 rtsp-snapshot.jpg
 # Distinct luma-coded images in pairs sharing PTS, including the first pair.
 ffmpeg -y -hide_banner -loglevel error -f lavfi -i "nullsrc=s=32x32:r=10,geq=lum='7*N':cb=128:cr=128,setpts=floor(N/2)/(10*TB)" -frames:v 8 -fps_mode passthrough -c:v ffv1 -g 1 duplicate_pts.mkv
+# The same pairs sharing PTS in an H.264 MP4 with B-frames, so decoded frames' best-effort timestamps differ from their PTS.
+ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(luma 64x48 10)" "${PLAIN[@]}" -frames:v 12 -vf "setpts='floor(N/2)/(10*TB)'" \
+  -fps_mode passthrough "${H264[@]}" -x264-params keyint=5:min-keyint=5:scenecut=0:bframes=2:b-adapt=0 \
+  -movflags +faststart repeated_pts_bframes_h264.mp4

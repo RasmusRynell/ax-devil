@@ -1,6 +1,7 @@
 //! The decoder: one file handle and codec context that turns positions of the frame index into frames.
 
 use crate::convert::Converter;
+use crate::ffi;
 use crate::index::FrameIndex;
 use crate::input::VideoInput;
 use crate::reader::Reader;
@@ -215,7 +216,7 @@ impl Decoder {
                 Ok(()) => {
                     // Some containers (ASF) drop the timestamp of the packet after a seek. The codec's output is in
                     // presentation order, so such a frame is the one after the frame before it.
-                    let sequence_id = match frame.timestamp() {
+                    let sequence_id = match ffi::frame_time(&frame) {
                         Some(pts) => self.index.sequence_id(pts, self.position.unwrap_or(0)),
                         None => self.last_matched.map(|id| id + 1),
                     };
@@ -226,7 +227,7 @@ impl Decoder {
                         return Some((sequence_id, frame));
                     }
                     // Decode-only frames and anything the index does not list have no place to go.
-                    debug!(path = %self.path.display(), pts = ?frame.timestamp(), "dropping a frame that is not in the index");
+                    debug!(path = %self.path.display(), pts = ?ffi::frame_time(&frame), "dropping a frame that is not in the index");
                 }
                 Err(ffmpeg_next::Error::Eof) => {
                     self.feed = Feed::Drained;

@@ -16,6 +16,7 @@ Committed test inputs, shared by Rust and frontend tests. Each one records where
 | `video/rtsp-{red,green}.h264`, `video/rtsp-snapshot.jpg` | FFmpeg lavfi `color=c=red` (or green/blue), 160x96, one frame; H.264 baseline with `keyint=1`, JPEG for blue. Loopback viewer recovery and snapshot identity | Generated for this repository (MIT) |
 | `video/pts_offset.mp4` | Same generator: 60 frames, `-output_ts_offset 10`, so the container starts at 10 s | Generated for this repository (MIT) |
 | `video/dts_only_h264.asf` | Same generator: 12 frames at 25 fps, GOP 5, in ASF, whose packets carry a decode timestamp and no presentation timestamp | Generated for this repository (MIT) |
+| `video/repeated_pts_bframes_h264.mp4` | Same generator: 12 frames, GOP 5, two B-frames, frames in pairs sharing a PTS (frame N shown at floor(N / 2) / 10 s) | Generated for this repository (MIT) |
 | `video/checker_h264_8x8.mp4` | Same generator: 8x8, 30 frames, 4x4-pixel blocks alternately luma 16 and 235 | Generated for this repository (MIT) |
 | `video/truncated.mp4` | `cfr_h264_gop10_bf2.mp4` with its last 30 bytes cut off by `generate.sh` | Generated for this repository (MIT) |
 | `video/not_video.mp4` | A line of text named like a video, written by `generate.sh` | Generated for this repository (MIT) |

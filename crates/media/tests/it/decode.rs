@@ -424,6 +424,33 @@ fn a_video_with_only_decode_timestamps_is_indexed_and_seeked_by_them() {
 }
 
 #[test]
+fn repeated_pts_with_b_frames_keep_their_own_times_and_seek_to_the_first_frame() {
+    let path = fixture("repeated_pts_bframes_h264.mp4");
+    let index = index_of(&path);
+    assert_eq!(index.scan(), Some(ScanKind::Decode));
+    let times: Vec<i64> = index
+        .timeline()
+        .as_slice()
+        .iter()
+        .map(|t| t.as_us())
+        .collect();
+    let expected: Vec<i64> = (0..12).map(|n| n / 2 * 100_000).collect();
+    assert_eq!(times, expected);
+    // A repeated PTS cannot be a seek target, so only the first frame is one.
+    assert_eq!(index.keyframes().as_slice(), [0]);
+    let mut decoder = open(&path, &index, 1);
+    for _ in 0..2 {
+        decoder
+            .seek_to_keyframe(index.keyframes().at_or_before(5))
+            .unwrap();
+        for sequence_id in 0..12 {
+            let frame = decoder.next_frame().unwrap().unwrap();
+            assert_eq!(flat_luma(&frame), expected_luma(sequence_id));
+        }
+    }
+}
+
+#[test]
 fn duplicate_pts_preserve_every_image_when_reading_and_seeking() {
     let path = fixture("duplicate_pts.mkv");
     let index = index_of(&path);
