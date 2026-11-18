@@ -209,15 +209,22 @@
   clip-path: polygon(100% 0, 100% 100%, 0 100%);
 }
 
-/* The tick of a checked box on its accent fill, so the box looks the same in both themes. */
+/* The tick of a checked box on its accent fill, so the box looks the same in both themes. Under forced colours the
+   native box is drawn instead (see CHECK), which tells unchecked, checked and mixed apart. */
 @utility check-mark {
   &:indeterminate {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M4 8h8'/%3E%3C/svg%3E");
     background-size: 100% 100%;
+    @media (forced-colors: active) {
+      background-image: none;
+    }
   }
   &:checked {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-7'/%3E%3C/svg%3E");
     background-size: 100% 100%;
+    @media (forced-colors: active) {
+      background-image: none;
+    }
   }
 }
 

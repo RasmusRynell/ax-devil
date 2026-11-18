@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Banner } from "./Banner";
 import { BrowseButton, Button, MenuButton } from "./Button";
+import { CheckList } from "./CheckList";
 import { Checkbox, SearchField, Select, TextField } from "./Fields";
 import { Dialog } from "./Dialog";
 import {
@@ -129,6 +130,7 @@ export function Gallery() {
   const [tab, setTab] = useState<(typeof TABS)[number]>("General");
   const [page, setPage] = useState<(typeof PAGES)[number]>("General");
   const [ticked, setTicked] = useState(true);
+  const [lanes, setLanes] = useState<ReadonlySet<string>>(new Set(["a"]));
   return (
     <main className="fixed inset-0 grid grid-cols-3 content-start items-start gap-xl overflow-y-auto p-xl">
       <Section title="Buttons">
@@ -263,6 +265,22 @@ export function Gallery() {
         <Select label="Mode" value={mode} options={MODES} onChange={(value) => setMode(value)} />
         <Checkbox label="A checkbox" checked={open} onChange={setOpen} />
         <Checkbox label="A checkbox with its box first" checked={open} onChange={setOpen} leading />
+        <CheckList
+          label="Lanes"
+          items={[
+            { id: "a", label: "Front door", detail: "1920x1080" },
+            { id: "b", label: "Garage" },
+          ]}
+          checked={lanes}
+          onToggle={(id) =>
+            setLanes((now) => {
+              const next = new Set(now);
+              if (!next.delete(id)) next.add(id);
+              return next;
+            })
+          }
+          onToggleAll={() => setLanes((now) => (now.size === 2 ? new Set() : new Set(["a", "b"])))}
+        />
         <Switch label="A switch" checked={on} onChange={setOn} />
         <Narrow>
           <TextField label="A label that is long" value={text} onChange={setText} />

@@ -48,8 +48,9 @@ export function FormSection({ heading }: { heading: string }) {
 
 /**
  * Pages of rows that share the form's columns, so their labels line up with the rows around them. Only the `current`
- * page shows, and the stack is as tall as its tallest page, so the form keeps its size from page to page; in a window
- * too short for that, only the page it shows counts. With a `panelId` the pages are the panels of tabs: the current
+ * page shows, and the stack is as tall as its tallest page, so the form keeps its size from page to page. Put it in
+ * a box that scrolls when the window cannot hold that height: the scrollbar then belongs to the box, not to a page.
+ * With a `panelId` the pages are the panels of tabs: the current
  * one is the tab panel with that id.
  */
 export function FormStack({
@@ -73,7 +74,7 @@ export function FormStack({
             aria-label={panelId && shown ? name : undefined}
             inert={!shown}
             // Positioned, so the hidden radios of a toggle further down stay in their page.
-            className={`relative col-span-full row-start-1 grid grid-cols-subgrid content-start gap-y-s ${shown ? "" : "invisible [@media(max-height:40rem)]:max-h-0 [@media(max-height:40rem)]:overflow-hidden"}`}
+            className={`relative col-span-full row-start-1 grid grid-cols-subgrid content-start gap-y-s ${shown ? "" : "invisible"}`}
           >
             {rows}
           </div>

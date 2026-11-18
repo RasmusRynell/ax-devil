@@ -74,9 +74,9 @@ export const FIELD =
 export const FIELD_IN =
   "h-row rounded-control border border-line-strong bg-field px-s text-fg placeholder:text-muted focus-within:border-accent has-disabled:border-line-strong/50 has-disabled:text-disabled";
 
-/** The box of a checkbox, drawn the same in both themes: a field fill and soft border, accent with a tick once checked or part-checked. */
+/** The box of a checkbox, drawn the same in both themes: a field fill and soft border, accent with a tick once checked or part-checked; the native box under forced colours. */
 export const CHECK =
-  "size-icon shrink-0 appearance-none rounded-control border border-line-strong bg-field check-mark checked:border-accent checked:bg-accent indeterminate:border-accent indeterminate:bg-accent focus-ring disabled:border-line-strong/50 disabled:checked:border-disabled disabled:checked:bg-disabled";
+  "size-icon shrink-0 appearance-none forced-colors:appearance-auto rounded-control border border-line-strong bg-field check-mark checked:border-accent checked:bg-accent indeterminate:border-accent indeterminate:bg-accent focus-ring disabled:border-line-strong/50 disabled:checked:border-disabled disabled:checked:bg-disabled";
 
 /** Pill sizing: small text, never wider than its container, no wrapping. */
 export const PILL = "max-w-full min-w-0 whitespace-nowrap text-small";

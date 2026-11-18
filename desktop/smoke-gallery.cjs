@@ -216,6 +216,39 @@ async function gallery(window) {
   }
   window.webContents.setZoomFactor(1);
 
+  // With forced colours (a high-contrast theme) a box that is unchecked, checked and mixed still looks different.
+  const emulation = window.webContents.debugger;
+  emulation.attach("1.3");
+  try {
+    await setView(window, [1280, 1000], 1);
+    for (const scheme of ["light", "dark"]) {
+      await emulation.sendCommand("Emulation.setEmulatedMedia", {
+        features: [
+          { name: "forced-colors", value: "active" },
+          { name: "prefers-color-scheme", value: scheme },
+        ],
+      });
+      await js(
+        "document.querySelector('[role=group][aria-label=Lanes]').scrollIntoView({ block: 'center' })",
+      );
+      await frames({ js });
+      const boxes = await js(
+        `[...document.querySelectorAll("[role=group][aria-label=Lanes] input")].map((box) => { const { x, y, width, height } = box.getBoundingClientRect(); return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) }; })`,
+      );
+      const picture = await window.webContents.capturePage();
+      const looks = boxes.map((rect) => picture.crop(rect).toBitmap().toString("base64"));
+      assert.equal(boxes.length, 3);
+      assert.equal(
+        new Set(looks).size,
+        3,
+        `mixed, checked and unchecked boxes differ in forced colours, ${scheme}`,
+      );
+    }
+  } finally {
+    await emulation.sendCommand("Emulation.setEmulatedMedia", { features: [] });
+    emulation.detach();
+  }
+
   await js("history.replaceState(null, '', location.pathname + location.search)");
   await reload(window);
   await wait("document.querySelector('h1')?.textContent === 'ax-devil'");
