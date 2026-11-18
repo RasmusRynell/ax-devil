@@ -43,6 +43,10 @@ ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(luma 64x48 30)" "${PLAIN[@]}" -frames:v 90 
 ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(luma 64x48 30)" "${PLAIN[@]}" -frames:v 60 "${H264[@]}" \
   -x264-params keyint=10:min-keyint=10:scenecut=0:bframes=2:b-adapt=0 -output_ts_offset 10 -movflags +faststart pts_offset.mp4
 
+# ASF stores a decode timestamp per packet and no presentation timestamp, so a decoder gets pts from dts.
+ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(luma 64x48 25)" "${PLAIN[@]}" -frames:v 12 "${H264[@]}" \
+  -x264-params keyint=5:min-keyint=5:scenecut=0:bframes=0 -f asf dts_only_h264.asf
+
 # The 90-frame video cut inside its last packet: the container lists every frame, the last cannot be decoded.
 cut=$(( $(stat -c %s cfr_h264_gop10_bf2.mp4) - 30 ))
 head -c "$cut" cfr_h264_gop10_bf2.mp4 > truncated.mp4
@@ -91,3 +95,7 @@ done
 ffmpeg "${GLOBAL[@]}" -f lavfi -i color=c=blue:s=160x96 -frames:v 1 rtsp-snapshot.jpg
 # Distinct luma-coded images in pairs sharing PTS, including the first pair.
 ffmpeg -y -hide_banner -loglevel error -f lavfi -i "nullsrc=s=32x32:r=10,geq=lum='7*N':cb=128:cr=128,setpts=floor(N/2)/(10*TB)" -frames:v 8 -fps_mode passthrough -c:v ffv1 -g 1 duplicate_pts.mkv
+# The same pairs sharing PTS in an H.264 MP4 with B-frames, so decoded frames' best-effort timestamps differ from their PTS.
+ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(luma 64x48 10)" "${PLAIN[@]}" -frames:v 12 -vf "setpts='floor(N/2)/(10*TB)'" \
+  -fps_mode passthrough "${H264[@]}" -x264-params keyint=5:min-keyint=5:scenecut=0:bframes=2:b-adapt=0 \
+  -movflags +faststart repeated_pts_bframes_h264.mp4
