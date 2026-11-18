@@ -187,6 +187,12 @@ async function gallery(window) {
   await wait("document.querySelector('dialog[open] [role=alert]')");
   await frames({ js });
   assert.deepEqual(await js(`(${fit.dialog.toString()})()`), [], "the error dialog at 200% zoom");
+  // Its three fields, one refused, and the buttons show whole; the long error scrolls in its own line.
+  assert.deepEqual(
+    await js(`(${fit.fixed.toString()})()`),
+    [],
+    "the error dialog's fields and buttons at 200% zoom",
+  );
   key(window, "Escape");
   await wait("!document.querySelector('dialog[open]')");
   // The path picker's list scrolls and its buttons stay in view at the same size.

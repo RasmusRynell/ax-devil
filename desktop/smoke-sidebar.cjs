@@ -88,7 +88,7 @@ module.exports.run = async ({ window }) => {
         "document.querySelector('dialog[open] input')",
         path.join(folder, site, "clip.mp4"),
       );
-      await wait(`${dialogButton("Add")}?.disabled === false`);
+      await wait(`${dialogButton("Add")}?.matches(':enabled:not([aria-disabled=true])')`);
       await js(`${dialogButton("Add")}.click()`);
       await wait(
         `!document.querySelector('dialog') && ${clips}.length === ${site === "north" ? 1 : 2}`,

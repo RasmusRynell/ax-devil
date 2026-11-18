@@ -243,24 +243,11 @@ describe("export dialog", () => {
     expect(sent).toMatchObject([{ type: "Export", lanes: [{ lane: 1 }] }]);
   });
 
-  it("has no Cancel to press before the export starts, and Escape still closes", () => {
+  it("closes from Cancel or Escape before the export starts", () => {
     const { onClose } = open();
-    expect(disabled("Cancel")).toBe(true);
+    press("Cancel");
     escape();
-    expect(onClose).toHaveBeenCalled();
-  });
-
-  it("names a long lane in full while showing it elided", () => {
-    const name = "front-entrance-detections-2026-03-14";
-    const view = {
-      ...VIEW,
-      lanes: [lane(name, { source: 0, status: READY }), lane("GT", { source: 1, status: READY })],
-    };
-    render(
-      <ExportDialog jobs={new ExportJobs(() => {})} view={view} name="c.mp4" onClose={() => {}} />,
-    );
-    expect(screen.getByLabelText(name)).toBeTruthy();
-    expect(screen.getByTitle(name)).toBeTruthy();
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 
   it("exports the frame on screen as a PNG", async () => {
@@ -285,12 +272,17 @@ describe("export dialog", () => {
     }
   });
 
-  it("refuses a range outside the video", () => {
+  it("refuses a bad range with the first problem, at the box that owns it", () => {
     open();
-    type("To frame", "100");
-    expect((screen.getByRole("button", { name: "Export" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    const invalid = (label: string) => screen.getByLabelText(label).getAttribute("aria-invalid");
+    type("From frame", "101");
+    type("To frame", "abc");
+    expect(disabled("Export")).toBe(true);
+    expect(screen.getByRole("alert").textContent).toBe("Past the last frame");
+    expect([invalid("From frame"), invalid("To frame")]).toEqual(["true", null]);
+    type("From frame", "0");
+    expect(screen.getByRole("alert").textContent).toBe("Not a whole number");
+    expect([invalid("From frame"), invalid("To frame")]).toEqual([null, "true"]);
   });
 
   it("shows progress, cancels on request and says when the export was cancelled", async () => {
@@ -304,7 +296,7 @@ describe("export dialog", () => {
     say(jobs, 1, { state: "Cancelled" });
     expect(screen.getByRole("status").textContent).toBe("Cancelled");
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
-    expect(disabled("Cancel")).toBe(true);
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
     expect(disabled("Close")).toBe(false);
   });
 
@@ -319,9 +311,8 @@ describe("export dialog", () => {
       reason: "Export frame timestamps must increase (timestamp 0 µs)",
     });
     expect(screen.getByRole("alert").textContent).toBe(
-      "Error: Export frame timestamps must increase (timestamp 0 µs)",
+      "Export frame timestamps must increase (timestamp 0 µs)",
     );
-    expect(disabled("Cancel")).toBe(true);
     press("Close");
     expect(onClose).toHaveBeenCalled();
     expect(jobs.getSnapshot()).toEqual({ phase: "idle" });

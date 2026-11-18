@@ -1,6 +1,7 @@
 import type { CatalogInfoWire } from "../generated/api";
 import { Button } from "../kit/Button";
-import { Checkbox, Select } from "../kit/Fields";
+import { Checkbox } from "../kit/Fields";
+import { Form, FormSelect } from "../kit/Form";
 import { FEATURES } from "../present";
 import { useSettings } from "../client/settings";
 import { effectiveDefault, judgedRevision, type LaneSettings, type LaneState } from "./lanes";
@@ -68,8 +69,8 @@ export function LaneMenuLook({
   const defaultId = effectiveDefault(catalogs, values[DEFAULT_CATALOG]);
   const entries = choices(catalogs, settings.catalog);
   return (
-    <>
-      <Select
+    <Form>
+      <FormSelect
         label="Catalog"
         help={SECTION_HELP.catalog}
         value={settings.catalog}
@@ -79,17 +80,19 @@ export function LaneMenuLook({
         ])}
         onChange={(catalog) => onChange({ catalog, theme: null })}
       />
-      <LaneCatalogActions
-        catalog={settings.catalog}
-        label={entries.find(({ id }) => id === settings.catalog)?.label ?? settings.catalog}
-        catalogs={catalogs}
-        defaultId={defaultId}
-        revision={judgedRevision(lane, catalogs)}
-        onChange={onChange}
-        onReload={onReload}
-      />
+      <div className="col-span-full flex flex-col gap-s">
+        <LaneCatalogActions
+          catalog={settings.catalog}
+          label={entries.find(({ id }) => id === settings.catalog)?.label ?? settings.catalog}
+          catalogs={catalogs}
+          defaultId={defaultId}
+          revision={judgedRevision(lane, catalogs)}
+          onChange={onChange}
+          onReload={onReload}
+        />
+      </div>
       {look && look.themes.length > 0 && (
-        <Select
+        <FormSelect
           label="Theme"
           value={settings.theme ?? ""}
           options={[
@@ -100,17 +103,19 @@ export function LaneMenuLook({
         />
       )}
       <Group label="Features">
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(18ch,1fr))] gap-x-xl gap-y-s">
+        <div className="col-span-full grid grid-cols-[repeat(auto-fit,minmax(18ch,1fr))] gap-x-xl gap-y-s">
           {FEATURES.map((feature, bit) => {
             const supported = look !== undefined && (look.features & (1 << bit)) !== 0;
             return (
               <Checkbox
                 key={feature}
+                leading
                 label={FEATURE_TEXT[feature].label}
                 help={SECTION_HELP.details}
                 title={supported ? FEATURE_TEXT[feature].description : UNSUPPORTED}
                 disabled={!supported}
                 checked={(settings.hidden & (1 << bit)) === 0}
+                className="min-h-row"
                 onChange={(shown) =>
                   onChange({
                     hidden: shown ? settings.hidden & ~(1 << bit) : settings.hidden | (1 << bit),
@@ -120,12 +125,12 @@ export function LaneMenuLook({
             );
           })}
         </div>
-        <div className="flex justify-end">
+        <div className="col-span-full flex justify-end">
           <Button disabled={settings.hidden === 0} onClick={() => onChange({ hidden: 0 })}>
             Reset
           </Button>
         </div>
       </Group>
-    </>
+    </Form>
   );
 }

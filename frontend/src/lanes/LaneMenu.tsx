@@ -51,7 +51,7 @@ export function LaneMenu({
   const changed = changedControls(lane);
   const names = TABS.map((name) => (name === "Filter" && changed > 0 ? `Filter ${changed}` : name));
   return (
-    <div className="flex min-w-[24ch] flex-col gap-m">
+    <div className="flex w-popover max-w-full flex-col gap-m">
       <Tabs
         label="Lane settings"
         tabs={names}
@@ -61,7 +61,7 @@ export function LaneMenu({
         onChange={(name) => setTab(TABS[names.indexOf(name)])}
         panelId={panel}
       />
-      <div id={panel} role="tabpanel" aria-label={tab} className="flex flex-col gap-m">
+      <div id={panel} role="tabpanel" aria-label={tab}>
         {tab === "Look" && (
           <LaneMenuLook lane={lane} catalogs={catalogs} onChange={onChange} onReload={onReload} />
         )}

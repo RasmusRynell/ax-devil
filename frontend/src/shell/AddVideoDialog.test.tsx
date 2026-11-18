@@ -7,6 +7,7 @@ import { SessionProvider } from "../session/session";
 import { AddVideoDialog } from "./AddVideoDialog";
 import { decodersFor } from "./OverlayRow";
 import type { WindowBridge } from "../client/windowBridge";
+import { waits } from "./dialogTesting";
 
 const decoder = (handler: string, ...extensions: string[]): DecoderInfo => ({
   handler,
@@ -77,7 +78,7 @@ const overlay = async (path: string, at = 0) =>
 const handlerAt = (at = 0) => screen.getAllByLabelText("Data handler")[at] as HTMLSelectElement;
 const add = () => screen.getByRole("button", { name: "Add" });
 /** Waits for the backend to answer about the files typed, which Add waits for too. */
-const answered = () => waitFor(() => expect(add()).toHaveProperty("disabled", false));
+const answered = () => waitFor(() => expect(waits(add())).toBe(false));
 const sentOverlays = () =>
   FakeSocket.latest.received.flatMap((message) =>
     message.type === "command" &&
@@ -112,19 +113,16 @@ it("offers every handler, chooses the sole one that reads the file, and waits fo
 
   await overlay("/data/v1.jsonl");
   expect(handlerAt().value).toBe("");
-  expect(screen.getByRole("alert").textContent).toBe(
-    "Choose the data handler that reads v1.jsonl.",
-  );
-  expect(add()).toHaveProperty("disabled", true);
+  expect(handlerAt().options[0]?.text).toBe("Required");
+  expect(waits(add())).toBe(true);
 
   fireEvent.change(handlerAt(), { target: { value: "V2" } });
-  expect(screen.queryByRole("alert")).toBeNull();
   await answered();
 
   // A pick that does not read the new file is dropped, and does not come back for a later one.
   await overlay("/data/c.mp3");
   expect(handlerAt().value).toBe("");
-  expect(add()).toHaveProperty("disabled", true);
+  expect(waits(add())).toBe(true);
   await overlay("/data/other.jsonl");
   expect(handlerAt().value).toBe("");
 });
@@ -148,8 +146,8 @@ it("adds overlays one by one, ignores a blank one and needs a video", async () =
   expect(handlerAt(1).value).toBe("MOT");
 
   fireEvent.change(screen.getByLabelText("Video path"), { target: { value: "" } });
-  expect(add()).toHaveProperty("disabled", true);
-  expect(screen.getByRole("alert").textContent).toBe("Choose a video file to continue.");
+  expect(waits(add())).toBe(true);
+  expect(screen.queryByRole("alert")).toBeNull();
   fireEvent.change(screen.getByLabelText("Video path"), { target: { value: "/a.mp4" } });
   await answered();
   fireEvent.click(add());
@@ -169,7 +167,7 @@ it("keeps a required option of the handler from being skipped: Add says it is re
   await answered();
 
   fireEvent.click(add());
-  expect((await screen.findByRole("alert")).textContent).toBe("Image width is required");
+  expect((await screen.findByRole("alert")).textContent).toBe("Required");
   expect(sentOverlays()).toEqual([]);
 
   fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "1920" } });
@@ -194,9 +192,9 @@ it("keeps Add off, with the reason, while the backend cannot read the video or a
   await open();
   await overlay("/gone.txt");
   // Add also waits for the answer.
-  expect(add()).toHaveProperty("disabled", true);
+  expect(waits(add())).toBe(true);
   await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("File not found"));
-  expect(add()).toHaveProperty("disabled", true);
+  expect(waits(add())).toBe(true);
 
   await overlay("/gt.txt");
   await answered();
@@ -204,7 +202,7 @@ it("keeps Add off, with the reason, while the backend cannot read the video or a
 
   fireEvent.change(screen.getByLabelText("Video path"), { target: { value: "/gone.mp4" } });
   await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("File not found"));
-  expect(add()).toHaveProperty("disabled", true);
+  expect(waits(add())).toBe(true);
 });
 
 it("asks again when a path comes back after an edit: the files may have changed, so Add waits for the new answer", async () => {
@@ -217,9 +215,9 @@ it("asks again when a path comes back after an edit: the files may have changed,
   const video = screen.getByLabelText("Video path");
   fireEvent.change(video, { target: { value: "/b.mp4" } });
   fireEvent.change(video, { target: { value: "/a.mp4" } });
-  expect(add()).toHaveProperty("disabled", true);
+  expect(waits(add())).toBe(true);
   await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("File not found"));
-  expect(add()).toHaveProperty("disabled", true);
+  expect(waits(add())).toBe(true);
 });
 
 it("fills the path from the file chooser, keeps it when the chooser is cancelled, and names the video as typed or by its file", async () => {
@@ -402,9 +400,7 @@ it("edits a video: the form starts from the item, and Save replaces that item wi
 
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Door" } });
   fireEvent.click(screen.getByRole("button", { name: "Add overlay" }));
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Save" })).toHaveProperty("disabled", false),
-  );
+  await waitFor(() => expect(waits(screen.getByRole("button", { name: "Save" }))).toBe(false));
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() =>
     expect(

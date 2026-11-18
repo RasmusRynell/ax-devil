@@ -1,7 +1,8 @@
 import { StrictMode } from "react";
-import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import { DialogFrame } from "./Dialog";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { Dialog, DialogFrame } from "./Dialog";
+import { FormInput, FormStack } from "./Form";
 
 // jsdom has no modal dialog implementation. Model its modal state and queued close event here;
 // desktop/smoke-native-input.cjs verifies the browser's actual modal focus behavior.
@@ -69,3 +70,41 @@ it.each(["focusSubmit changes", "StrictMode replay"])(
     expect(onClose).toHaveBeenCalledExactlyOnceWith(expect.anything());
   },
 );
+
+describe("an incomplete dialog", () => {
+  const dialog = (invalid: boolean) => (
+    <Dialog title="Add" onOk={() => {}} onCancel={() => {}} incomplete onIncomplete={() => {}}>
+      <FormInput label="Disabled" value="" onChange={() => {}} error="Required" disabled />
+      <FormStack
+        current="a"
+        pages={{
+          b: <FormInput label="Hidden" value="" onChange={() => {}} error="Required" />,
+          a: (
+            <FormInput
+              label="Shown"
+              value=""
+              onChange={() => {}}
+              error={invalid ? "Required" : undefined}
+            />
+          ),
+        }}
+      />
+    </Dialog>
+  );
+
+  it("focuses the first invalid control that can take it, not one disabled or in a page out of sight", async () => {
+    render(dialog(true));
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    await act(() => vi.runAllTimersAsync());
+    expect(document.activeElement).toBe(screen.getByLabelText("Shown"));
+  });
+
+  it("leaves the focus on OK when no invalid control can take it", async () => {
+    render(dialog(false));
+    const ok = screen.getByRole("button", { name: "OK" });
+    ok.focus();
+    fireEvent.click(ok);
+    await act(() => vi.runAllTimersAsync());
+    expect(document.activeElement).toBe(ok);
+  });
+});

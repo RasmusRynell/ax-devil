@@ -8,7 +8,7 @@ import { useServerKind } from "../client/windowBridge";
 const PROJECT_LINK = "https://github.com/rasmusrynell/ax-devil";
 
 /**
- * The About dialog: the app's name, its version, what it is for and where the project lives. In the desktop app the
+ * The About dialog: the app's name, its version and where the project lives. In the desktop app the
  * version is the app's own; a window on another machine's server also names that server and its version. In a browser
  * the app is the backend, so its version is the one shown. Whoever may see this machine's files can also copy what a
  * bug report needs, and in the desktop app open the folder of the log.
@@ -40,34 +40,41 @@ export function AboutDialog({ version, onClose }: { version: string; onClose: ()
     setProblem(null);
     navigator.clipboard.writeText(text).catch(failed);
   };
+  const diagnostics = file && (canCopy || (openLogs && log !== undefined));
   return (
-    <Dialog title="About ax-devil" onOk={onClose} focusOk>
-      {shown && <p className="m-0 text-accent">Version {shown}</p>}
-      {kind === "remote" && (
-        <p className="m-0 text-muted">
-          Connected to {window.location.host} (version {version})
-        </p>
-      )}
-      <p className="m-0 max-w-[40ch]">
-        Inspect Axis camera streams, offline video, and analytics overlays.
-      </p>
-      <a
-        href={PROJECT_LINK}
-        target="_blank"
-        rel="noreferrer noopener"
-        className="w-fit rounded-control text-accent underline focus-ring"
-      >
-        github.com/rasmusrynell/ax-devil
-      </a>
-      {file && (canCopy || (openLogs && log !== undefined)) && (
-        <div className="flex flex-wrap gap-s">
-          {openLogs && log !== undefined && (
-            <Button onClick={() => openLogs(log).catch(failed)}>Open logs folder</Button>
-          )}
-          {canCopy && <Button onClick={copy}>Copy diagnostics</Button>}
-        </div>
-      )}
-      {problem && <span role="alert">{problem}</span>}
+    <Dialog
+      title="About ax-devil"
+      okLabel="Close"
+      onOk={onClose}
+      focusOk
+      error={problem}
+      footerStart={
+        diagnostics && (
+          <div className="flex flex-wrap gap-m">
+            {openLogs && log !== undefined && (
+              <Button onClick={() => openLogs(log).catch(failed)}>Open logs folder</Button>
+            )}
+            {canCopy && <Button onClick={copy}>Copy diagnostics</Button>}
+          </div>
+        )
+      }
+    >
+      <div className="flex w-panel max-w-full min-w-0 flex-col gap-m">
+        {shown && <p className="m-0 text-muted">Version {shown}</p>}
+        {kind === "remote" && (
+          <p className="m-0 text-muted">
+            Connected to {window.location.host} (version {version})
+          </p>
+        )}
+        <a
+          href={PROJECT_LINK}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="w-fit rounded-control text-accent underline focus-ring"
+        >
+          github.com/rasmusrynell/ax-devil
+        </a>
+      </div>
     </Dialog>
   );
 }

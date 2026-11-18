@@ -277,7 +277,7 @@ module.exports.run = async ({ window }) => {
             "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent === 'About')",
           );
         },
-        close: "OK",
+        close: "Close",
       },
       {
         name: "error",

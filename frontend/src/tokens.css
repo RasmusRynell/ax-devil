@@ -26,6 +26,9 @@
   --color-accent-light: #23678d;
   --color-accent-dark: #3994bc;
   --color-accent: light-dark(var(--color-accent-light), var(--color-accent-dark));
+  /* The filled primary button under the pointer and pressed: deeper in light, lighter in dark, so its text keeps 4.5:1 or more. */
+  --color-accent-hover: light-dark(#1d5578, #5aa9cc);
+  --color-accent-press: light-dark(#194a6a, #6fb4d3);
   --color-hover: light-dark(#26344514, #cccccc14);
   --color-scrim: light-dark(#f6f8fb99, #12131499);
   --color-loading-cover: light-dark(
@@ -160,6 +163,7 @@
   --spacing-nav: 16ch; /* the vertical list of pages, wide enough for "Stream defaults" */
   --container-pages: 64ch; /* the room a list of pages needs beside its page; in less it runs along the top */
   --spacing-panel: 48ch;
+  --spacing-popover: 44ch; /* the content of the lane settings popover, inside the 48ch a popover may take */
   --spacing-setup: calc(var(--text-size-larger) * 26); /* room for all five text-size tiles */
   --spacing-preview: calc(var(--text-size-system) * 6.4); /* the miniature window on a theme tile */
   --spacing-sample: calc(
@@ -190,6 +194,12 @@
 @utility focus-ring {
   &:focus-visible {
     outline: var(--stroke-focus) solid var(--color-accent);
+  }
+}
+/* The ring of a control filled with the accent stands clear of it, so the fill does not swallow the ring. */
+@utility focus-ring-apart {
+  &:focus-visible {
+    outline-offset: var(--spacing-xs);
   }
 }
 @utility focus-ring-within {

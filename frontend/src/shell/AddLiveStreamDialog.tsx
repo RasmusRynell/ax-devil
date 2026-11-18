@@ -3,6 +3,7 @@ import { CommandFailed, reasonOf } from "../client/errors";
 import type { HandlersInfo, LiveConnection, NewLiveWire } from "../generated/api";
 import { useAccess } from "../client/access";
 import { Dialog, DialogBody } from "../kit/Dialog";
+import { Form } from "../kit/Form";
 import { seedOf, type AddSeed } from "../live/cameras";
 import { askResolutions, askSources, DEBOUNCE_MS, sizesOf, useDiscovery } from "../live/discovery";
 import { useExpansions } from "../live/expansions";
@@ -11,7 +12,6 @@ import { useCommand, useDoc } from "../session/session";
 import { useSettings } from "../client/settings";
 import {
   ConnectionRows,
-  modeName,
   OverlayGroup,
   type Listed,
   type Listing,
@@ -25,22 +25,24 @@ import {
   formValues,
   headOf,
   hiddenSecrets,
+  missingFields,
   savedChoices,
   isField,
   newLive,
-  unchosen,
   type FieldKey,
   type LiveForm,
   type OverlayMode,
 } from "./liveForm";
 import { textOf } from "./SettingField";
 
-/** A refusal of the last OK, about the form as it stood. */
+/** A refusal of the last Add, about the form as it stood. */
 interface Refused {
   reason: string;
   /** Whether the backend judged the form, so the same form is refused again; false for a failure to reach it. */
   judged: boolean;
   stamp: string;
+  /** The form field the backend named, when it did. */
+  location?: string;
 }
 
 /**
@@ -74,12 +76,12 @@ function useListing(
 }
 
 /**
- * Adds a live stream, in the layout of the Python app's dialog: one page of connection fields, an Overlay group
- * with the page of the chosen mode, one line saying what is wrong, and OK, which waits for the host, decoder, data source and topic to be chosen.
+ * Adds a live stream: one form of connection fields, an Overlay group with the page of the chosen mode, and Add, which
+ * waits for the host, decoder, data source and topic to be chosen without saying so before anything is wrong.
  * Blank fields take the configured defaults, so the form shows them as placeholders; the camera is asked for its stream
  * sizes, analytics sources and topics but never connected for the stream itself: the viewer does that. The backend's
- * intake judges every value, and its refusal is the line under the groups. With `editing`, the id of a stream, `initial`
- * is its recipe and OK replaces that stream, which keeps its id and place; the form takes no defaults, a blank
+ * intake judges every value, and its refusal is shown at the field it names, else over the buttons. With `editing`, the id of a stream, `initial`
+ * is its recipe and Save replaces that stream, which keeps its id and place; the form takes no defaults, a blank
  * password is the saved one, and a saved data source or topic stays chosen until the connection changes.
  */
 export function AddLiveStreamDialog({
@@ -87,7 +89,7 @@ export function AddLiveStreamDialog({
   initial,
   editing,
   title = editing ? "Edit Live Stream" : "Add Live Stream",
-  okLabel = editing ? "Save" : "OK",
+  okLabel = editing ? "Save" : "Add",
   onClose,
 }: {
   /** What the form starts from, read once when the dialog opens. */
@@ -109,6 +111,8 @@ export function AddLiveStreamDialog({
   const [handlers, setHandlers] = useState<HandlersInfo | null>(null);
   const [adding, setAdding] = useState(false);
   const [refused, setRefused] = useState<Refused | null>(null);
+  // Add was pressed with something missing: the empty required fields say so.
+  const [attempted, setAttempted] = useState(false);
   // The connection the camera was last asked about for each mode's list, which is read on choosing the mode and on Refresh.
   // A changed connection forgets both, so coming back to an earlier one lists nothing until a mode choice or Refresh.
   const [asked, setAsked] = useState<Record<Listed, string | null>>({ mqtt: null, datahub: null });
@@ -213,14 +217,23 @@ export function AddLiveStreamDialog({
   // The backend expands `$NAME` references: one that names nothing set is refused outside any field, so no host yet.
   const hostUsable = hostKnown && invalid.every((error) => isField(error.location));
 
-  // A host reference that names nothing is the first thing wrong, as a blank host is.
-  const unset = invalid.find((error) => !isField(error.location));
-  const wrong =
-    (unset && reasonOf(unset)) ??
-    unchosen(sent, hostKnown, modeName(mode)) ??
-    (invalid[0] && reasonOf(invalid[0])) ??
-    (refusal?.judged ? refusal.reason : undefined);
-  const message = wrong ?? refusal?.reason ?? "";
+  // What is refused, at the field it names or else over the buttons: the camera's judgments of what was typed, and the
+  // backend's refusal of the last Add. A host reference that names nothing is refused outside any field; when the
+  // form's host is blank, that is the configured default naming nothing, which the blank Host already says.
+  const judged = invalid.filter((error) => isField(error.location) || form.host.trim());
+  const problems = [
+    ...judged.map((error) => ({ location: error.location, reason: reasonOf(error) })),
+    ...(refusal ? [{ location: refusal.location, reason: refusal.reason }] : []),
+  ];
+  const errors: PanelProps["errors"] = {};
+  for (const { location, reason } of problems) {
+    if (isField(location)) errors[location as FieldKey] ??= reason;
+  }
+  const general = problems.find((problem) => !isField(problem.location))?.reason;
+  // What the form still needs, which Add names once pressed. A refused form waits for a change instead.
+  const missing = missingFields(sent, !form.host.trim() && !hostUsable);
+  for (const field of attempted ? missing : []) errors[field] ??= "Required";
+  const blocked = judged.length > 0 || !!refusal?.judged;
 
   // Only Full access may ask what a reference expands to.
   const expansions = useExpansions(form.host, form.broker_host, useAccess().fullAccess);
@@ -233,6 +246,13 @@ export function AddLiveStreamDialog({
     settings: values,
     expansions,
     hidden: editing ? hiddenSecrets(start) : null,
+    errors,
+    required: [
+      ...(!hostDefault.trim() || missing.includes("host") ? ["host" as const] : []),
+      ...(mode === "none" ? [] : ["handler" as const]),
+      ...(mode === "mqtt" ? ["source_key" as const] : []),
+      ...(mode === "datahub" ? ["topic" as const] : []),
+    ],
   };
 
   const add = async () => {
@@ -254,6 +274,7 @@ export function AddLiveStreamDialog({
       setRefused({
         reason: error instanceof Error ? error.message : String(error),
         judged: error instanceof CommandFailed,
+        location: error instanceof CommandFailed ? error.error.location : undefined,
         stamp,
       });
       setAdding(false);
@@ -266,31 +287,30 @@ export function AddLiveStreamDialog({
       okLabel={okLabel}
       onOk={() => void add()}
       onCancel={onClose}
-      busy={adding || !!wrong}
+      busy={adding || blocked}
+      incomplete={missing.length > 0}
+      onIncomplete={() => setAttempted(true)}
+      error={general}
     >
       <fieldset disabled={adding} className="contents">
         <DialogBody>
-          <div className="flex w-form max-w-full min-w-0 flex-col gap-l">
-            <ConnectionRows
-              {...props}
-              resolutions={resolutions}
-              sizes={sizes}
-              hostUsable={hostUsable}
-            />
-            <OverlayGroup
-              {...props}
-              handlers={handlers}
-              lists={lists}
-              hostUsable={hostUsable}
-              onMode={onMode}
-              onRefresh={onRefresh}
-            />
-            <p
-              role={message ? "alert" : undefined}
-              className="m-0 min-h-lh text-danger [overflow-wrap:anywhere]"
-            >
-              {message}
-            </p>
+          <div className="w-form max-w-full min-w-0">
+            <Form>
+              <ConnectionRows
+                {...props}
+                resolutions={resolutions}
+                sizes={sizes}
+                hostUsable={hostUsable}
+              />
+              <OverlayGroup
+                {...props}
+                handlers={handlers}
+                lists={lists}
+                hostUsable={hostUsable}
+                onMode={onMode}
+                onRefresh={onRefresh}
+              />
+            </Form>
           </div>
         </DialogBody>
       </fieldset>

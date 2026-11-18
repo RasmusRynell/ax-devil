@@ -17,7 +17,7 @@ module.exports.run = async ({ window }) => {
     field.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
   const add = "[...document.querySelectorAll('dialog button')].find(b => b.textContent === 'Add')";
-  await wait(`${add}?.disabled === false`);
+  await wait(`${add}?.matches(':enabled:not([aria-disabled=true])')`);
   await js(`${add}.click()`);
   await wait(`!document.querySelector('dialog') && ${ROW}`);
   const hover = () =>
