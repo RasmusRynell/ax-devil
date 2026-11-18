@@ -31,14 +31,15 @@ Port the token sets by purpose; take values from `chrome/tokens.py`.
 - The video canvas, letterbox and on-video controls stay near-black with white controls in both themes.
 - Anything using a fixed color re-applies on theme change.
 - Contrast target: D10 (taken: WCAG 2.x AA, 4.5:1 text, 3:1 large text and component boundaries).
+  In dark, control boundaries are a recessed fill plus a soft border (about 1.9:1), by owner decision; the keyboard focus ring stays fully visible.
 
 ## Component kit
 
 Rebuild the kit listed in the write-ui skill's building-blocks table (`.agents/skills/write-ui/SKILL.md`):
 window and dialog frames, segmented toggle, toggle chips, popover, ask/notify dialog, form layout, browse button,
 key chips, menu button, small button, sidebar view parts (panel, row list, caption, row, chip, banner), icons from
-one bundled set. Port its conventions (outlined buttons, accent only for checked/selected/focused, `…` only for work in
-progress, icons not glyphs) as the [write-ui skill](../../.agents/skills/write-ui/SKILL.md).
+one bundled set. Port its conventions (outlined buttons and one accent-filled primary action, accent otherwise only for
+checked/selected/focused, `…` only for work in progress, icons not glyphs) as the [write-ui skill](../../.agents/skills/write-ui/SKILL.md).
 
 ## Layout and sizing (MUST)
 

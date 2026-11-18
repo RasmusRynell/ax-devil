@@ -1,12 +1,15 @@
 import {
+  useEffect,
   useLayoutEffect,
   useId,
   useRef,
+  useState,
   type FormEvent,
   type ReactEventHandler,
   type ReactNode,
 } from "react";
 import { Button } from "./Button";
+import { Refusal } from "./Refusal";
 
 interface FrameProps {
   title: ReactNode;
@@ -63,12 +66,12 @@ export function DialogFrame({
       data-cursor-region="popup"
       onCancel={onCancel}
       onClose={onClose}
-      className="m-auto open:flex open:flex-col max-h-full min-h-[min(12.5rem,100%)] min-w-[min(20rem,100%)] max-w-full overflow-auto rounded-popup border border-line-strong bg-popup p-0 text-fg backdrop:bg-scrim"
+      className="m-auto open:flex open:flex-col max-h-[calc(100%-2*var(--spacing-xl))] [@media(max-height:20rem)]:max-h-[calc(100%-2*var(--spacing-xs))] min-h-[min(12.5rem,100%)] min-w-[min(20rem,100%)] max-w-full overflow-auto rounded-popup border border-line-strong bg-popup p-0 text-fg backdrop:bg-scrim"
     >
       {/* The footer (the form's last child) sits at the bottom of a dialog taller than its content, as in Python's base dialog. */}
       <form
         onSubmit={onSubmit}
-        className="[&>:last-child]:mt-auto flex min-h-0 max-h-[calc(100vh-var(--spacing-s))] flex-1 flex-col gap-l p-xl [@media(max-height:20rem)]:gap-s [@media(max-height:20rem)]:p-m"
+        className="[&>:last-child]:mt-auto flex min-h-0 flex-1 flex-col gap-l p-xl [@media(max-height:20rem)]:gap-s [@media(max-height:20rem)]:p-m"
       >
         <h2 id={titleId} className="m-0 text-heading font-semibold">
           {title}
@@ -80,11 +83,45 @@ export function DialogFrame({
   );
 }
 
+/**
+ * A dialog's refusal on the buttons' line, so a short error adds no height; where the dialog has a button of its own
+ * at the left (`alone`), on a line of its own. In a short window a long one scrolls in a line's height, the one thing
+ * that does, and only then is it a tab stop, so the keyboard can reach the rest of the text.
+ */
+function ErrorLine({ reason, alone }: { reason: string; alone: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [scrolls, setScrolls] = useState(false);
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    const measure = () => setScrolls(element.scrollHeight > element.clientHeight);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(measure);
+    watch.observe(element);
+    if (element.firstElementChild) watch.observe(element.firstElementChild);
+    return () => watch.disconnect();
+  }, [reason]);
+  return (
+    <div
+      ref={box}
+      data-scroll="variable"
+      tabIndex={scrolls ? 0 : undefined}
+      className={`min-w-0 ${alone ? "basis-full" : "flex-1"} [@media(max-height:20rem)]:max-h-row [@media(max-height:20rem)]:overflow-y-auto [@media(max-height:20rem)]:[&>p]:items-start`}
+    >
+      <Refusal reason={reason} />
+    </div>
+  );
+}
+
 interface Props {
   title: ReactNode;
   children: ReactNode;
-  /** Without it the dialog has no OK button: its body holds the submit button, and Enter clicks that. */
-  onOk?: () => void;
+  /**
+   * Without it the dialog has no OK button: its body holds the submit button, and Enter clicks that. Returns false
+   * when it found something missing that `incomplete` did not know, which is then treated like an incomplete OK.
+   */
+  onOk?: () => void | false;
   /** Without it the dialog has only OK, and Escape runs OK. */
   onCancel?: () => void;
   okLabel?: string;
@@ -96,6 +133,16 @@ interface Props {
   footerStart?: ReactNode;
   /** While true, OK is disabled, so the action cannot run twice. */
   busy?: boolean;
+  /**
+   * While true, a required field is still empty: OK looks disabled but can be pressed, and click, Enter and Space run
+   * `onIncomplete` instead of `onOk`, then move the focus to the first invalid control (`aria-invalid`) that can take
+   * it. With none, the focus stays on OK, and the refusals, which are alerts, are still announced.
+   */
+  incomplete?: boolean;
+  /** Shows what is missing, as a refusal at each empty required field; the dialog focuses the first one. */
+  onIncomplete?: () => void;
+  /** Why the dialog could not do what OK asked, over the buttons and outside the scrolling body. */
+  error?: string | null;
 }
 
 /** A modal dialog with OK, then Cancel. Enter runs OK and Escape cancels; the browser traps focus inside. */
@@ -109,14 +156,33 @@ export function Dialog({
   footerStart,
   focusOk = false,
   busy = false,
+  incomplete = false,
+  onIncomplete,
+  error,
 }: Props) {
+  const form = useRef<HTMLFormElement | null>(null);
+  // Counts the presses that found something missing; the focus follows once the fields show it.
+  const [missed, setMissed] = useState(0);
+  useEffect(() => {
+    // Out of reach are controls that are disabled or inside a page kept out of sight (`inert`, `hidden`, `aria-hidden`,
+    // as `FormStack` hides its other pages); layout is not asked, which jsdom does not do.
+    const reachable = (element: HTMLElement) =>
+      !element.matches(":disabled") && !element.closest("[inert],[hidden],[aria-hidden=true]");
+    if (missed)
+      [...(form.current?.querySelectorAll<HTMLElement>("[aria-invalid=true]") ?? [])]
+        .find(reachable)
+        ?.focus();
+  }, [missed]);
   return (
     <DialogFrame
       title={title}
       focusSubmit={focusOk}
       onSubmit={(event) => {
         event.preventDefault();
-        if (!busy) onOk?.();
+        form.current = event.currentTarget as HTMLFormElement;
+        if (busy) return;
+        if (incomplete) onIncomplete?.();
+        if (incomplete || onOk?.() === false) setMissed((count) => count + 1);
       }}
       onCancel={(event) => {
         event.preventDefault();
@@ -124,11 +190,12 @@ export function Dialog({
         else if (!busy) onOk?.();
       }}
       footer={
-        <div className="flex gap-m">
+        <div className="flex flex-wrap items-end gap-m">
+          {error && <ErrorLine reason={error} alone={Boolean(footerStart)} />}
           {footerStart}
           <div className="ml-auto flex gap-m">
             {onOk && (
-              <Button type="submit" disabled={busy}>
+              <Button type="submit" disabled={busy} aria-disabled={incomplete || undefined}>
                 {okLabel}
               </Button>
             )}

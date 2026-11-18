@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, type LabelHTMLAttributes, type ReactNode } from "react";
 import { Icon } from "./Icon";
 import { IconButton } from "./IconButton";
-import { FIELD, FIELD_IN } from "./look";
+import { CHECK, FIELD, FIELD_IN } from "./look";
 
 interface SearchProps {
   placeholder: string;
@@ -129,7 +129,7 @@ export function Checkbox({
       checked={checked}
       disabled={disabled}
       onChange={(event) => onChange(event.target.checked)}
-      className="size-icon shrink-0 accent-accent"
+      className={CHECK}
     />
   );
   return (

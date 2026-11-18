@@ -13,7 +13,7 @@ function connectWith(connect: NonNullable<WindowBridge["connect"]>) {
 }
 const type = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
-const submit = () => fireEvent.click(screen.getByRole("button", { name: "OK" }));
+const submit = () => fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
 describe("connect dialog", () => {
   it("asks for a password only with a plain server address, passes a link through, and shows the shell's refusal", async () => {
@@ -47,6 +47,16 @@ describe("connect dialog", () => {
     type(address, "nope");
     submit();
     expect((await screen.findByRole("alert")).textContent).toBe("nope is not a web address.");
+  });
+
+  it("says the address is missing instead of connecting without one", () => {
+    const connect = vi.fn<NonNullable<WindowBridge["connect"]>>().mockResolvedValue(undefined);
+    connectWith(connect);
+    render(<ConnectDialog onClose={() => {}} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    submit();
+    expect(screen.getByRole("alert").textContent).toBe("Required");
+    expect(connect).not.toHaveBeenCalled();
   });
 
   it("says before connecting that a password the server's header cannot carry is no use", () => {

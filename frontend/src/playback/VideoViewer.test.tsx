@@ -448,9 +448,9 @@ describe("video viewer", () => {
       if (play) fireEvent.click(play);
       expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
       act(() => exportOf(s.ids.a)?.());
-      expect(screen.getByRole("heading", { name: "Export video" })).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Export Video" })).toBeTruthy();
       expect(screen.getByText(/Render catalogs are still loading/)).toBeTruthy();
-      expect(screen.queryByRole("heading", { name: "Export Video with Overlays" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Export" })).toBeNull();
       expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
     });
 

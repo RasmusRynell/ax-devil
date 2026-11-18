@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { NewOverlayWire } from "../generated/api";
-import { BrowseButton, Button } from "../kit/Button";
+import { Button } from "../kit/Button";
 import { Dialog, DialogBody } from "../kit/Dialog";
-import { Form, FormInput } from "../kit/Form";
+import { Form, FormInput, FormPath } from "../kit/Form";
+import type { Settings } from "../resolvers/scan";
 import { HandlersFailure, useHandlers } from "../resolvers/useHandlers";
 import { useCommand } from "../session/session";
 import {
@@ -13,7 +14,6 @@ import {
   type OverlayEntry,
   type OverlayRead,
 } from "./OverlayRow";
-import { Refusal } from "../kit/Refusal";
 import { checkFiles, useFileProblems } from "./useFileProblems";
 import { chooseFile, usePickPath, VIDEO, type PickPath } from "../client/pickPath";
 
@@ -30,10 +30,10 @@ export interface VideoDraft {
  * Asks for a video on the machine that runs the backend, by its path, with a name that is the file's when left blank,
  * and any number of overlay files, each with the handler that reads it and the options that handler declares. The
  * desktop's own window can choose the video and each overlay in a file dialog; a remote server's window or a browser
- * types the path. A blank overlay is left out. OK waits for a video that the backend finds readable, as it does each
+ * types the path. A blank overlay is left out. Add waits for a video that the backend finds readable, as it does each
  * overlay, and a handler for every overlay; it asks the backend about the files once more before it sends, and a file
  * gone meanwhile stays here as the reason. The backend's intake judges the options, and its refusal stays here. `initial` fills the
- * form in, read once; with `editing`, the id of an item, OK replaces that item (it keeps its id and place) instead of
+ * form in, read once; with `editing`, the id of an item, Save replaces that item (it keeps its id and place) instead of
  * adding one.
  */
 export function AddVideoDialog({
@@ -65,7 +65,7 @@ export function AddVideoDialog({
   const [tried, setTried] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // The OK in flight: closing the dialog, however it happens, cancels it, so it delivers nothing.
+  // The Add in flight: closing the dialog, however it happens, cancels it, so it delivers nothing.
   const submission = useRef<AbortController | null>(null);
   useEffect(() => () => submission.current?.abort(), []);
   const nextKey = useRef(entries.length);
@@ -94,19 +94,23 @@ export function AddVideoDialog({
     setEntries(entries.map((one) => (one.key === entry.key ? entry : one)));
     setFailure(null);
   };
-  const ok = async () => {
+  // What is still missing is found out here when the options of a handler, which only their rows know, are incomplete.
+  const ok = () => {
     const overlays = entries.filter((entry) => entry.path.trim());
     const settings = overlays.map((entry) => readers.current.get(entry.key)?.().settings ?? null);
     if (settings.includes(null)) {
       setTried(true);
-      return;
+      return false;
     }
+    void send(overlays, settings as Settings[]);
+  };
+  const send = async (overlays: readonly OverlayEntry[], settings: readonly Settings[]) => {
     setBusy(true);
     submission.current?.abort();
     const mine = new AbortController();
     submission.current = mine;
     try {
-      // The files may have gone since the last check, which OK was waiting for. A dialog that closed meanwhile
+      // The files may have gone since the last check, which Add was waiting for. A dialog that closed meanwhile
       // sends nothing.
       const gone = await checkFiles(files, mine.signal);
       if (mine.signal.aborted) return;
@@ -123,7 +127,7 @@ export function AddVideoDialog({
           path: entry.path.trim(),
           handler: entry.picked,
           label: entry.label ?? null,
-          options: settings[at] ?? {},
+          options: settings[at],
         })),
       };
       await command({
@@ -142,81 +146,32 @@ export function AddVideoDialog({
     <Dialog
       title={editing ? "Edit Video" : "Add Video"}
       okLabel={editing ? "Save" : "Add"}
-      onOk={() => void ok()}
+      onOk={ok}
       onCancel={() => {
         submission.current?.abort();
         onClose();
       }}
-      busy={
-        busy ||
-        !path.trim() ||
-        entries.some(undecided) ||
-        checking ||
-        [path.trim(), ...named].some((one) => problems.has(one))
-      }
+      error={failure}
+      busy={busy || checking || [path.trim(), ...named].some((one) => problems.has(one))}
+      incomplete={!path.trim() || entries.some(undecided)}
+      onIncomplete={() => setTried(true)}
     >
       <DialogBody>
         <div className="flex w-form max-w-full min-w-0 flex-col gap-l">
           <Form>
-            <FormInput
+            <FormPath
               label="Video path"
+              what="video file"
               value={path}
+              placeholder="Required"
+              required
+              error={videoProblem ?? (tried && !path.trim() ? "Required" : undefined)}
+              browse={pick && (() => void choose(VIDEO, (chosen) => setPath(chosen)))}
               onChange={(text) => {
                 setPath(text);
                 setFailure(null);
               }}
-              placeholder="Required"
-              extra={
-                <>
-                  {pick && (
-                    <BrowseButton
-                      what="video file"
-                      onBrowse={() => void choose(VIDEO, (chosen) => setPath(chosen))}
-                    />
-                  )}
-                  {/* The room of an overlay row's Remove button, so every path box shares its edges. */}
-                  {handlers && entries.length > 0 && <span aria-hidden className="square-row" />}
-                </>
-              }
             />
-            {handlers && (
-              <>
-                {entries.map((entry, at) => (
-                  <OverlayRow
-                    number={at + 1}
-                    key={entry.key}
-                    entry={entry}
-                    decoders={decoders}
-                    focus={entry.key === added}
-                    problem={problems.get(entry.path.trim())}
-                    tried={tried}
-                    onBrowse={
-                      pick &&
-                      (() =>
-                        void choose(chooseFile(extensions), (chosen) =>
-                          edit(withPath(entry, chosen, decoders)),
-                        ))
-                    }
-                    onChange={edit}
-                    onRemove={() => setEntries(entries.filter((one) => one.key !== entry.key))}
-                    register={(key, read) =>
-                      read ? readers.current.set(key, read) : readers.current.delete(key)
-                    }
-                  />
-                ))}
-                <Button
-                  icon="plus"
-                  size="small"
-                  className="col-span-full justify-self-start"
-                  onClick={() => {
-                    setAdded(nextKey.current);
-                    setEntries([...entries, blankEntry(nextKey.current++)]);
-                  }}
-                >
-                  Add overlay
-                </Button>
-              </>
-            )}
             <FormInput
               label="Name"
               value={name}
@@ -224,14 +179,45 @@ export function AddVideoDialog({
               selectOnOpen={editing !== undefined}
               onChange={setName}
             />
+            {handlers &&
+              entries.map((entry, at) => (
+                <OverlayRow
+                  number={at + 1}
+                  key={entry.key}
+                  entry={entry}
+                  decoders={decoders}
+                  focus={entry.key === added}
+                  problem={problems.get(entry.path.trim())}
+                  tried={tried}
+                  onBrowse={
+                    pick &&
+                    (() =>
+                      void choose(chooseFile(extensions), (chosen) =>
+                        edit(withPath(entry, chosen, decoders)),
+                      ))
+                  }
+                  onChange={edit}
+                  onRemove={() => setEntries(entries.filter((one) => one.key !== entry.key))}
+                  register={(key, read) =>
+                    read ? readers.current.set(key, read) : readers.current.delete(key)
+                  }
+                />
+              ))}
+            {handlers && (
+              <Button
+                icon="plus"
+                size="small"
+                className="col-span-full mt-m justify-self-start"
+                onClick={() => {
+                  setAdded(nextKey.current);
+                  setEntries([...entries, blankEntry(nextKey.current++)]);
+                }}
+              >
+                Add overlay
+              </Button>
+            )}
           </Form>
-          {/* A line is kept for the reasons, so one appearing or going does not move the form. */}
-          <div className="flex min-h-lh flex-col gap-s">
-            {!path.trim() && <Refusal reason="Choose a video file to continue." />}
-            {videoProblem && <Refusal reason={videoProblem} />}
-            {unavailable && <HandlersFailure failure={unavailable} retry={retry} />}
-            {failure && <Refusal reason={failure} />}
-          </div>
+          {unavailable && <HandlersFailure failure={unavailable} retry={retry} />}
         </div>
       </DialogBody>
     </Dialog>

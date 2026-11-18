@@ -104,17 +104,17 @@ module.exports.run = async ({ window }) => {
     await fill("Password", "pass");
     // Embedded metadata has a source-bearing overlay lane.
     await js(`(() => {
-      const label = [...document.querySelectorAll('dialog[open] label')].find((l) => l.textContent === 'Overlay Mode');
+      const label = [...document.querySelectorAll('dialog[open] label')].find((l) => l.textContent === 'Overlay mode');
       const select = document.getElementById(label.htmlFor);
       Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'rtsp');
       select.dispatchEvent(new Event('change', { bubbles: true }));
     })()`);
     // The initial shared handler arrives even when its discovery finishes after the mode edit.
-    const handler = `document.getElementById([...document.querySelectorAll('dialog[open] label')].find(l => l.textContent === 'Handler Type').htmlFor)`;
+    const handler = `document.getElementById([...document.querySelectorAll('dialog[open] label')].find(l => l.textContent === 'Handler type').htmlFor)`;
     await wait(`${handler}?.value === 'ADF_V1_FRAME'`);
     const add =
-      "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'OK')";
-    await wait(`${add}?.disabled === false`);
+      "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Add')";
+    await wait(`${add}?.matches(':enabled:not([aria-disabled=true])')`);
     await js(`${add}.click()`);
     await wait("!document.querySelector('dialog')");
     const live = "document.querySelector('[data-section=live] [role=treeitem]')";

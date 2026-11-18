@@ -4,6 +4,7 @@ import { reasonOf } from "../client/errors";
 import type { SettingsState } from "../generated/api";
 import type { SettingKey } from "../generated/settings";
 import { Button } from "../kit/Button";
+import { FormRow } from "../kit/Form";
 import { FIELD } from "../kit/look";
 import { useSettings } from "../client/settings";
 
@@ -48,40 +49,47 @@ export function NumberField({
       typed === null ? null : Number(Math.min(max, Math.max(min, typed)).toFixed(decimals));
     if (next !== value) onCommit(next);
   };
-  return (
-    <div className={`flex items-center justify-between gap-s ${disabled ? "text-disabled" : ""}`}>
-      <label htmlFor={id} className={hideLabel ? "sr-only" : undefined}>
+  const field = (
+    <input
+      id={id}
+      type="number"
+      title={help}
+      aria-description={help}
+      min={min}
+      max={max}
+      step={step}
+      placeholder={placeholder}
+      disabled={disabled}
+      value={
+        draft ?? (value === null ? "" : decimals > 0 ? value.toFixed(decimals) : String(value))
+      }
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => event.key === "Enter" && commit()}
+      className={`${FIELD} min-w-0 flex-1 tabular-nums`}
+    />
+  );
+  return hideLabel ? (
+    <div className="flex min-w-0 items-center">
+      <label htmlFor={id} className="sr-only">
         {label}
       </label>
-      <input
-        id={id}
-        type="number"
-        title={help}
-        aria-description={help}
-        min={min}
-        max={max}
-        step={step}
-        placeholder={placeholder}
-        disabled={disabled}
-        value={
-          draft ?? (value === null ? "" : decimals > 0 ? value.toFixed(decimals) : String(value))
-        }
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        onKeyDown={(event) => event.key === "Enter" && commit()}
-        className={`${FIELD} w-[10ch] text-right tabular-nums`}
-      />
+      {field}
     </div>
+  ) : (
+    <FormRow label={label} id={id}>
+      {field}
+    </FormRow>
   );
 }
 
-/** A set of related controls under a name. */
+/** A set of related rows under a name, sharing the columns of the `Form` around it. */
 export function Group({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div
       role="group"
       aria-label={label}
-      className="flex flex-col gap-s border-t border-line pt-m first:border-t-0 first:pt-0"
+      className="col-span-full mt-s grid grid-cols-subgrid gap-y-s border-t border-line pt-m first:mt-0 first:border-t-0 first:pt-0"
     >
       {children}
     </div>
@@ -110,7 +118,7 @@ export function MakeDefault({
   // The defaults are the Owner's to change.
   if (!owner) return null;
   return (
-    <div className="flex flex-col items-start gap-s">
+    <div className="col-span-full flex flex-col items-start gap-s">
       {isDefault ? (
         <span className="text-muted">Default for new views</span>
       ) : (

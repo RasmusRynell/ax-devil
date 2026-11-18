@@ -1,7 +1,7 @@
 import { useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Icon } from "./Icon";
 import type { IconName } from "./icons";
-import { CONTROL, EDGE, SQUARE } from "./look";
+import { CONTROL, EDGE, PRIMARY, SQUARE } from "./look";
 import { Menu, type MenuCommand, type MenuEntry } from "./Menu";
 import { Popup } from "./Popup";
 
@@ -17,8 +17,8 @@ type Props = BaseProps &
   );
 
 /**
- * The outlined action button; `type="submit"` is the Enter action and looks like any other. With `label` and no
- * children it is icon-only: a square whose accessible name and tooltip are the label.
+ * The action button, outlined; `type="submit"` is the Enter action, the primary one, filled with the accent. With
+ * `label` and no children it is icon-only: a square whose accessible name and tooltip are the label.
  */
 export function Button({
   icon,
@@ -29,7 +29,7 @@ export function Button({
   type = "button",
   ...rest
 }: Props) {
-  const look = `${CONTROL} ${EDGE}`;
+  const look = type === "submit" ? PRIMARY : `${CONTROL} ${EDGE}`;
   return (
     <button
       type={type}

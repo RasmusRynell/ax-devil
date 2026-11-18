@@ -4,8 +4,7 @@ import { useAccess } from "./access";
 import { ask } from "./ask";
 import { reasonOf } from "./errors";
 import type { FolderListing } from "../generated/api";
-import { BrowseButton } from "../kit/Button";
-import { TextField } from "../kit/Fields";
+import { FormPath } from "../kit/Form";
 import { FolderProblem, PathPicker, type CheckExists } from "../kit/PathPicker";
 import { SUFFIX } from "./recents";
 import { type WindowBridge } from "./windowBridge";
@@ -145,35 +144,29 @@ export function usePickPath(): PickPath | undefined {
 }
 
 /**
- * A text box for a path on the backend's machine, with a button to choose it wherever {@link usePickPath} offers a
- * way. `onChange` says whether the path was picked rather than typed, so it is final.
+ * The action that chooses a path for a control and hands it to `onPicked`, or undefined where {@link usePickPath}
+ * offers no way, so the control shows no button.
+ */
+export function useBrowse(request: PathRequest, onPicked: (path: string) => void) {
+  const pick = usePickPath();
+  return pick && (() => void pick(request).then((path) => path !== null && onPicked(path)));
+}
+
+/**
+ * A form row of a text box for a path on the backend's machine, with a button to choose it wherever
+ * {@link usePickPath} offers a way. `onChange` says whether the path was picked rather than typed, so it is final.
  */
 export function PathField(props: {
-  label: ReactNode;
+  label: string;
   what: string;
   value: string;
   placeholder?: string;
   request: PathRequest;
+  required?: boolean;
+  error?: string;
   onChange: (path: string, picked: boolean) => void;
 }): ReactNode {
-  const { what, request, onChange, ...box } = props;
-  const pick = usePickPath();
-  return (
-    <TextField
-      {...box}
-      onChange={(path) => onChange(path, false)}
-      action={
-        pick && (
-          <BrowseButton
-            what={what}
-            onBrowse={() =>
-              void pick(request).then((path) => {
-                if (path !== null) onChange(path, true);
-              })
-            }
-          />
-        )
-      }
-    />
-  );
+  const { request, onChange, ...row } = props;
+  const browse = useBrowse(request, (path) => onChange(path, true));
+  return <FormPath {...row} browse={browse} onChange={(path) => onChange(path, false)} />;
 }

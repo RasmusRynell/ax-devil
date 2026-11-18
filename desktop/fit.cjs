@@ -383,4 +383,34 @@ function split() {
   return problems;
 }
 
-module.exports = { page, dialog, panel, split };
+/**
+ * The open dialog's fixed part: every field and button lies inside the dialog's box and nothing in it scrolls, except
+ * what the app marks `data-scroll="variable"` (a long error, a list that grows with the user's data).
+ */
+function fixed() {
+  const problems = [];
+  const box = document.querySelector("dialog[open]").getBoundingClientRect();
+  for (const element of document.querySelectorAll("dialog[open] *")) {
+    if (
+      element.closest("[data-scroll=variable]") ||
+      !/^(auto|scroll)$/.test(getComputedStyle(element).overflowY) ||
+      element.scrollHeight <= element.clientHeight + 1
+    )
+      continue;
+    problems.push(
+      `scrolls by ${element.scrollHeight - element.clientHeight}px: ${element.tagName.toLowerCase()}`,
+    );
+  }
+  for (const control of document.querySelectorAll(
+    "dialog[open] select, dialog[open] input, dialog[open] button",
+  )) {
+    const rect = control.getBoundingClientRect();
+    if (rect.top < box.top - 1 || rect.bottom > box.bottom + 1)
+      problems.push(
+        `outside the dialog: ${control.ariaLabel || control.textContent || control.tagName}`,
+      );
+  }
+  return problems;
+}
+
+module.exports = { page, dialog, fixed, panel, split };

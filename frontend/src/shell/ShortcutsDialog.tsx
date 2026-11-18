@@ -8,7 +8,7 @@ import { SearchField } from "../kit/Fields";
 import { IconButton } from "../kit/IconButton";
 import { KeyChips } from "../kit/KeyChips";
 import { QUIET } from "../kit/look";
-import { SectionCaption } from "../kit/SectionCaption";
+import { FormSection } from "../kit/Form";
 import { shortcutDisplay, shortcutOf } from "../kit/shortcut";
 import { shortcutsPatch, useSettings } from "../client/settings";
 import { useRepairIntent } from "./useRepairIntent";
@@ -145,7 +145,8 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
         if (!saving) onClose();
       }}
       busy={saving}
-      footerStart={<Button onClick={resetAll}>Reset to Defaults</Button>}
+      error={refusal && !serverNote ? reasonOf(refusal) : null}
+      footerStart={<Button onClick={resetAll}>Reset to defaults</Button>}
     >
       <div ref={body} className="flex min-h-0 flex-col gap-m">
         <SearchField
@@ -156,7 +157,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
           {sections.length === 0 && <li className="px-m text-muted">No shortcuts match</li>}
           {sections.map(({ category, commands }) => (
             <li key={category}>
-              <SectionCaption heading={category} plain />
+              <FormSection heading={category} />
               <ul className="m-0 flex list-none flex-col p-0">
                 {commands.map(({ id, label, key: standard }) => {
                   const shown = note?.id === id ? note : null;
@@ -234,11 +235,6 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
       <p role="status" className="sr-only">
         {announcement}
       </p>
-      {refusal && !serverNote && (
-        <p role="alert" className="m-0">
-          {reasonOf(refusal)}
-        </p>
-      )}
     </Dialog>
   );
 }

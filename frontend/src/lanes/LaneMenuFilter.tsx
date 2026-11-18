@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   compileFilter,
   MEASURES,
@@ -10,8 +10,9 @@ import {
 } from "../present";
 import type { FilterOptionInfo } from "../generated/api";
 import { Button } from "../kit/Button";
-import { Checkbox } from "../kit/Fields";
+import { Form, FormCheck, FormRow } from "../kit/Form";
 import { FIELD } from "../kit/look";
+import { Refusal } from "../kit/Refusal";
 import { useSettings } from "../client/settings";
 import {
   DEFAULT_OBJECT_FILTER,
@@ -70,7 +71,7 @@ function Classes({
     onChange({ filter: options.reduce((next, option) => withClass(next, option, on), filter) });
   return (
     <Group label="Classes">
-      <div className="flex items-center justify-between gap-xl">
+      <div className="col-span-full flex items-center justify-between gap-xl">
         <span>Classes</span>
         <div className="flex gap-s">
           <Button disabled={options.every(isOn)} onClick={() => setAll(true)}>
@@ -82,7 +83,7 @@ function Classes({
         </div>
       </div>
       {options.map((option) => (
-        <Checkbox
+        <FormCheck
           key={option.id}
           label={option.label}
           checked={isOn(option)}
@@ -104,13 +105,15 @@ function problems(expression: string, ranges: MeasureRanges): readonly Diagnosti
   return whole.ok ? [] : whole.diagnostics;
 }
 
-/** One message each, announced as an alert. */
+/** One refusal each, announced as an alert. */
 function Alerts({ found }: { found: readonly Diagnostic[] }) {
-  return found.map((diagnostic, at) => (
-    <span key={at} role="alert" className="text-small break-words">
-      {diagnostic.message}
-    </span>
-  ));
+  return found.length > 0 ? (
+    <div className="col-span-full flex flex-col gap-s">
+      {found.map((diagnostic, at) => (
+        <Refusal key={at} reason={diagnostic.message} />
+      ))}
+    </div>
+  ) : null;
 }
 
 /** The bound typed as text, `null` when empty, `undefined` when it is not a finite number. A comma is a decimal point. */
@@ -182,26 +185,23 @@ function Ranges({
   return (
     <Group label="Ranges">
       {fields.map(({ measure, ends }) => (
-        <div key={measure} className="flex items-center justify-between gap-xl">
-          <span>{NAMES[measure]}</span>
-          <div className="flex gap-s">
-            {ends.map(({ name, text, invalid, edit }, at) => (
-              <input
-                key={name}
-                type="text"
-                inputMode="decimal"
-                value={text}
-                placeholder={ENDS[at]}
-                aria-label={`${NAMES[measure]} ${ENDS[at]}`}
-                aria-invalid={invalid}
-                autoComplete="off"
-                spellCheck={false}
-                onChange={(event) => edit(event.target.value)}
-                className={`${FIELD} w-[6ch] min-w-0 text-right tabular-nums`}
-              />
-            ))}
-          </div>
-        </div>
+        <FormRow key={measure} label={NAMES[measure]}>
+          {ends.map(({ name, text, invalid, edit }, at) => (
+            <input
+              key={name}
+              type="text"
+              inputMode="decimal"
+              value={text}
+              placeholder={ENDS[at]}
+              aria-label={`${NAMES[measure]} ${ENDS[at]}`}
+              aria-invalid={invalid}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => edit(event.target.value)}
+              className={`${FIELD} min-w-0 flex-1 tabular-nums`}
+            />
+          ))}
+        </FormRow>
       ))}
       <Alerts found={fields.flatMap(({ ends }) => ends.flatMap(({ found }) => found))} />
     </Group>
@@ -230,11 +230,12 @@ function Expression({
     setDraft(null);
     if (draft !== expression) onChange({ expression: draft });
   };
+  const id = useId();
   return (
     <Group label="Filter expression">
-      <label className="flex flex-col gap-s">
-        Filter expression
+      <FormRow label="Filter expression" id={id}>
         <input
+          id={id}
           type="text"
           value={text}
           autoComplete="off"
@@ -243,9 +244,9 @@ function Expression({
           onChange={(event) => setDraft(event.target.value)}
           onBlur={apply}
           onKeyDown={(event) => event.key === "Enter" && apply()}
-          className={`${FIELD} min-w-0`}
+          className={`${FIELD} min-w-0 flex-1`}
         />
-      </label>
+      </FormRow>
       <Alerts found={found} />
     </Group>
   );
@@ -263,7 +264,7 @@ export function LaneMenuFilter({ lane, onChange }: { lane: LaneState; onChange: 
   const [round, setRound] = useState(0);
   const { values } = useSettings();
   return (
-    <>
+    <Form>
       <Classes options={classOptions(lane)} filter={filter} onChange={onChange} />
       <Ranges key={`ranges${round}`} expression={expression} ranges={ranges} onChange={onChange} />
       <Expression
@@ -272,7 +273,7 @@ export function LaneMenuFilter({ lane, onChange }: { lane: LaneState; onChange: 
         ranges={ranges}
         onChange={onChange}
       />
-      <div className="flex items-start justify-between gap-s">
+      <div className="col-span-full mt-s flex items-start justify-between gap-s">
         <MakeDefault
           setting={DEFAULT_OBJECT_FILTER}
           value={{ filter, ranges, expression }}
@@ -288,6 +289,6 @@ export function LaneMenuFilter({ lane, onChange }: { lane: LaneState; onChange: 
           Reset
         </Button>
       </div>
-    </>
+    </Form>
   );
 }

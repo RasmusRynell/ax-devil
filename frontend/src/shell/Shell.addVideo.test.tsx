@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react
 import { FakeSocket } from "../session/fakeSession";
 import { renderShell } from "./shellHarness";
 import type { WindowBridge } from "../client/windowBridge";
+import { waits } from "./dialogTesting";
 
 // The added video's viewer is not under test, and needs the playback worker.
 vi.mock("../playback/VideoViewer", () => ({ VideoViewer: () => null }));
@@ -20,9 +21,7 @@ afterEach(() => {
 
 /** Waits for Add, which waits for the backend's word on the files typed. */
 const enabled = () =>
-  waitFor(() =>
-    expect((screen.getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled).toBe(false),
-  );
+  waitFor(() => expect(waits(screen.getByRole("button", { name: "Add" }))).toBe(false));
 
 describe("add video", () => {
   const chooses = (video: string | null) => {
@@ -162,7 +161,7 @@ describe("add video with an overlay", () => {
     });
     await enabled();
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    expect(screen.getByRole("alert").textContent).toContain("Image width is required");
+    expect(screen.getByRole("alert").textContent).toBe("Required");
     const sent = () => FakeSocket.latest.received.filter((message) => message.type === "command");
     expect(sent()).toEqual([]);
 

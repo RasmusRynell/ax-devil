@@ -1,12 +1,11 @@
-import { useId, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { useAccess } from "../client/access";
 import { reasonOf } from "../client/errors";
 import { SETTINGS } from "../generated/settings";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
-import { LABELLED } from "../kit/Fields";
+import { Form, FormRow, FormSection, FormStack } from "../kit/Form";
 import { Icon } from "../kit/Icon";
-import { SectionCaption } from "../kit/SectionCaption";
 import { Tabs } from "../kit/Tabs";
 import { useHandlers } from "../resolvers/useHandlers";
 import { settingsPatch, useSettings } from "../client/settings";
@@ -55,6 +54,12 @@ export function SettingsDialog({
   const [editingShortcuts, setEditingShortcuts] = useState(false);
   const { saving, refusal, submit } = useSaveDialog(onClose);
   const panel = useId();
+  const shortcuts = useId();
+  // Every page shows from its top.
+  const scroller = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (scroller.current) scroller.current.scrollTop = 0;
+  }, [page]);
   // Only a decoder of streaming, timestamped records can decode a live stream.
   const decoders = (useHandlers().handlers?.decoders ?? [])
     .filter((decoder) => decoder.live)
@@ -85,6 +90,81 @@ export function SettingsDialog({
       onRestartNeeded();
   };
   const refusedRow = shown.some((row) => row.key === refusal?.location);
+  const rowsOf = (name: string) => {
+    const rows = shown.filter((row) => row.page === name);
+    return (
+      <>
+        {[...new Set(rows.map((row) => row.section))].map((section) => (
+          <Fragment key={section}>
+            {section && <FormSection heading={section} />}
+            {rows
+              .filter((row) => row.section === section)
+              .map((row) => {
+                const warning = literalSecret(row, draft[row.key]);
+                const note = `${panel}-${row.key}`;
+                return (
+                  <div key={row.key} title={row.description ?? row.key} className="contents">
+                    <fieldset disabled={row.full_access && !fullAccess} className="contents">
+                      <SettingField
+                        row={row}
+                        cacheDraft={
+                          row.key === "playback.video_cache"
+                            ? { manual: manualCache, onManualChange: setManualCache }
+                            : undefined
+                        }
+                        value={draft[row.key]}
+                        marker={
+                          !row.live && (
+                            <span title="Applies after a restart" className="flex text-muted">
+                              <Icon name="rotate-cw" />
+                            </span>
+                          )
+                        }
+                        note={
+                          <>
+                            {warning && <PlainTextNote id={note} reference={row.env} />}
+                            {refusal?.location === row.key && (
+                              <Refusal reason={reasonOf(refusal)} />
+                            )}
+                          </>
+                        }
+                        describedBy={warning ? note : undefined}
+                        decoders={decoders}
+                        onChange={(value) => {
+                          repair.edit(row.key);
+                          setDraft({ ...draft, [row.key]: value });
+                        }}
+                      />
+                    </fieldset>
+                  </div>
+                );
+              })}
+          </Fragment>
+        ))}
+        {name === "Advanced" &&
+          file &&
+          (
+            [
+              ["Configuration file", file.path],
+              ["Configuration version", String(file.version)],
+            ] as const
+          ).map(([label, value]) => (
+            <FormRow key={label} label={label}>
+              <span className="min-w-0 text-muted [overflow-wrap:anywhere] select-text">
+                {value}
+              </span>
+            </FormRow>
+          ))}
+        {name === "General" && owner && (
+          <FormRow label="Keyboard shortcuts" id={shortcuts}>
+            <Button id={shortcuts} disabled={saving} onClick={() => setEditingShortcuts(true)}>
+              Edit
+            </Button>
+          </FormRow>
+        )}
+      </>
+    );
+  };
   return (
     <>
       <Dialog
@@ -92,115 +172,31 @@ export function SettingsDialog({
         onOk={() => void ok()}
         onCancel={onClose}
         busy={saving}
+        error={refusal && !refusedRow ? reasonOf(refusal) : null}
       >
-        <Tabs
-          label="Settings pages"
-          tabs={pages}
-          value={page}
-          onChange={setPage}
-          panelId={panel}
-          scrollable
-        />
-        {/* Every page sits in one grid cell, so the dialog is as tall as its tallest page on every tab. */}
-        <div className="grid min-h-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]">
-          {pages.map((name) => {
-            const rows = shown.filter((row) => row.page === name);
-            const current = name === page;
-            return (
-              <div
-                key={name}
-                id={current ? panel : undefined}
-                role={current ? "tabpanel" : undefined}
-                aria-label={current ? name : undefined}
-                aria-hidden={current ? undefined : true}
-                inert={!current}
-                // Positioned, so the hidden radios of a toggle further down scroll with it instead of stretching the dialog.
-                className={`relative col-start-1 row-start-1 flex min-h-0 flex-col gap-l overflow-y-auto ${current ? "" : "invisible"}`}
-              >
-                {[...new Set(rows.map((row) => row.section))].map((section) => (
-                  <section key={section} className="flex flex-col gap-m">
-                    {section && <SectionCaption heading={section} plain />}
-                    {rows
-                      .filter((row) => row.section === section)
-                      .map((row) => {
-                        const warning = literalSecret(row, draft[row.key]);
-                        const note = `${panel}-${row.key}`;
-                        return (
-                          <div
-                            key={row.key}
-                            title={row.description ?? row.key}
-                            className="flex flex-col gap-xs"
-                          >
-                            <fieldset
-                              disabled={row.full_access && !fullAccess}
-                              className="contents"
-                            >
-                              <SettingField
-                                row={row}
-                                cacheDraft={
-                                  row.key === "playback.video_cache"
-                                    ? { manual: manualCache, onManualChange: setManualCache }
-                                    : undefined
-                                }
-                                value={draft[row.key]}
-                                describedBy={warning ? note : undefined}
-                                decoders={decoders}
-                                onChange={(value) => {
-                                  repair.edit(row.key);
-                                  setDraft({ ...draft, [row.key]: value });
-                                }}
-                                label={
-                                  <span className="flex items-center gap-s">
-                                    {row.label}
-                                    {!row.live && (
-                                      <span title="Applies after a restart" className="text-muted">
-                                        <Icon name="rotate-cw" />
-                                      </span>
-                                    )}
-                                  </span>
-                                }
-                              />
-                            </fieldset>
-                            {warning && <PlainTextNote id={note} reference={row.env} />}
-                            {refusal?.location === row.key && (
-                              <Refusal reason={reasonOf(refusal)} />
-                            )}
-                          </div>
-                        );
-                      })}
-                  </section>
-                ))}
-                {name === "Advanced" && file && (
-                  <>
-                    {(
-                      [
-                        ["Configuration file", file.path],
-                        ["Configuration version", String(file.version)],
-                      ] as const
-                    ).map(([name, shownValue]) => (
-                      <div key={name} className={LABELLED}>
-                        {name}
-                        <span className="min-w-0 text-muted [overflow-wrap:anywhere] select-text">
-                          {shownValue}
-                        </span>
-                      </div>
-                    ))}
-                  </>
-                )}
-                {name === "General" && owner && (
-                  <Button
-                    className="self-start"
-                    disabled={saving}
-                    onClick={() => setEditingShortcuts(true)}
-                  >
-                    Keyboard shortcuts
-                  </Button>
-                )}
-              </div>
-            );
-          })}
+        {/* A list of pages beside the page, or above it where there is no room for both. */}
+        <div className="@container flex min-h-0 w-form max-w-full min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col gap-m @pages:flex-row @pages:gap-xl">
+            <Tabs
+              label="Settings pages"
+              tabs={pages}
+              value={page}
+              onChange={setPage}
+              panelId={panel}
+              orientation="vertical"
+            />
+            {/* Positioned, so the hidden radios of a toggle further down scroll with it instead of stretching the dialog. */}
+            <div ref={scroller} className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">
+              <Form>
+                <FormStack
+                  current={page}
+                  panelId={panel}
+                  pages={Object.fromEntries(pages.map((name) => [name, rowsOf(name)]))}
+                />
+              </Form>
+            </div>
+          </div>
         </div>
-        {refusal && !refusedRow && <Refusal reason={reasonOf(refusal)} />}
       </Dialog>
       {/* A sibling, not a child: a dialog's form cannot hold another form. */}
       {editingShortcuts && <ShortcutsDialog onClose={() => setEditingShortcuts(false)} />}

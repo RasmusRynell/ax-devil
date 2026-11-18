@@ -9,10 +9,9 @@ import { SETTINGS, type SettingKey } from "../generated/settings";
 import type { Asked } from "../live/discovery";
 import { referenceIn, SET_PASSWORD, viaText } from "../live/expansions";
 import { Button } from "../kit/Button";
-import { Form, FormCombo, FormInput, FormNote, FormSelect, FormStack } from "../kit/Form";
+import { FormCombo, FormInput, FormSection, FormSelect, FormStack } from "../kit/Form";
 import {
   chosen,
-  OVERLAY_TEXT,
   typable,
   type FieldKey,
   type LiveForm,
@@ -45,7 +44,17 @@ export interface PanelProps {
   expansions: LiveExpansions | null;
   /** In an edit, the password fields whose saved literal is kept while they are blank; `null` when adding. */
   hidden: readonly FieldKey[] | null;
+  /** What the backend or the camera refused about a field, or that it is required, shown in its row. */
+  errors: Partial<Record<FieldKey, string>>;
+  /** The fields the form needs a value for in its current mode. */
+  required: readonly FieldKey[];
 }
+
+/** What a row says about `field`: whether it is required and why it is refused. */
+const rowState = (props: PanelProps, field: FieldKey) => ({
+  required: props.required.includes(field),
+  error: props.errors[field],
+});
 
 /** What the backend said a default reference expands to, per field: `null` when it did not say. */
 const EXPANDED: Partial<Record<FieldKey, (shown: LiveExpansions) => string | null>> = {
@@ -99,6 +108,7 @@ function input(
       masked={more.masked}
       selectOnOpen={more.selectOnOpen}
       title={more.title}
+      {...rowState(props, field)}
       onChange={(value) => props.set(field, value)}
     />
   );
@@ -119,6 +129,7 @@ function number(
       placeholder={more.placeholder ?? hint(props, field)}
       disabled={more.disabled}
       title={more.title}
+      {...rowState(props, field)}
       onChange={(value) => {
         if (typable(value, limit)) props.set(field, value);
       }}
@@ -133,9 +144,6 @@ const optionsOf = (key: SettingKey) =>
 /** The name of the option `value` in choice setting `key`. */
 const nameOf = (key: SettingKey, value: string) =>
   optionsOf(key).find(([option]) => option === value)?.[1] ?? value;
-
-/** The name of an overlay mode. */
-export const modeName = (mode: OverlayMode) => nameOf("camera.overlay", mode);
 
 /** What the resolution list says in place of sizes. */
 function resolutionStatus(
@@ -152,7 +160,7 @@ function resolutionStatus(
     : "Resolutions not read yet";
 }
 
-/** The camera and its stream, down to the stream address of its own. */
+/** The rows of the camera and its stream, down to the stream address of its own. */
 export function ConnectionRows({
   resolutions,
   sizes,
@@ -168,16 +176,19 @@ export function ConnectionRows({
   // The web API carries the stream, so the RTSP port is not used.
   const viaWebApi = (form.rtsp_route || textOf(settings["camera.rtsp_route"])) === "web_api";
   return (
-    <Form>
+    <>
       {input(props, "label", "Name", {
         placeholder: nameHint(props),
         selectOnOpen: props.hidden !== null,
       })}
-      {input(props, "host", "Host", { placeholder: hint(props, "host") ?? "e.g. 192.168.1.100" })}
+      {input(props, "host", "Host", {
+        placeholder: hint(props, "host") ?? (hostUsable ? undefined : "Required"),
+      })}
       {input(props, "username", "Username")}
       {input(props, "password", "Password", { masked: true })}
       <FormSelect
         label="Protocol"
+        {...rowState(props, "protocol")}
         value={form.protocol}
         options={[
           ["", `Default (${nameOf("camera.protocol", textOf(settings["camera.protocol"]))})`],
@@ -186,9 +197,10 @@ export function ConnectionRows({
         onChange={(value) => set("protocol", value)}
       />
       {number(props, "port", "Port", 65535, { placeholder: "Standard" })}
-      {number(props, "head", "Camera Head", 9999)}
+      {number(props, "head", "Camera head", 9999)}
       <FormSelect
-        label="RTSP Route"
+        label="RTSP route"
+        {...rowState(props, "rtsp_route")}
         value={form.rtsp_route}
         options={[
           ["", `Default (${nameOf("camera.rtsp_route", textOf(settings["camera.rtsp_route"]))})`],
@@ -199,9 +211,10 @@ export function ConnectionRows({
         ]}
         onChange={(value) => set("rtsp_route", value)}
       />
-      {number(props, "rtsp_port", "RTSP Port", 65535, { disabled: viaWebApi })}
+      {number(props, "rtsp_port", "RTSP port", 65535, { disabled: viaWebApi })}
       <FormCombo
         label="Resolution"
+        {...rowState(props, "resolution")}
         value={form.resolution}
         placeholder="Camera default"
         options={[
@@ -219,10 +232,8 @@ export function ConnectionRows({
           if (!kept && ["idle", "failed", "ready"].includes(state.phase)) resolutions.reload();
         }}
       />
-      {input(props, "url", "Custom Stream URL", {
-        placeholder: "Optional — overrides auto-built URL",
-      })}
-    </Form>
+      {input(props, "url", "Custom stream URL")}
+    </>
   );
 }
 
@@ -283,6 +294,7 @@ function Choice({
   return (
     <FormSelect
       label={label}
+      {...rowState(props, field)}
       value={value}
       disabled={state.phase === "loading"}
       failed={status.failed}
@@ -335,55 +347,48 @@ export function OverlayGroup({
     />
   );
   const pages: Record<OverlayMode, ReactNode> = {
-    none: (
-      <>
-        <FormNote>{OVERLAY_TEXT.none}</FormNote>
-        {modes
-          .filter(([other]) => other !== "none")
-          .map(([other, name]) => (
-            <FormNote key={other}>{`${name}: ${OVERLAY_TEXT[other]}`}</FormNote>
-          ))}
-      </>
-    ),
-    rtsp: <FormNote>{OVERLAY_TEXT.rtsp}</FormNote>,
+    none: null,
+    rtsp: null,
     mqtt: (
       <>
-        <FormNote>{OVERLAY_TEXT.mqtt}</FormNote>
-        {input(props, "broker_host", "MQTT Host")}
-        {input(props, "broker_user", "MQTT Username")}
-        {input(props, "broker_pass", "MQTT Password", { masked: true })}
-        {number(props, "broker_port", "MQTT Port", 65535)}
-        {choice("mqtt", "source_key", "Data Source", "data sources")}
+        {input(props, "broker_host", "MQTT host")}
+        {input(props, "broker_user", "MQTT username")}
+        {input(props, "broker_pass", "MQTT password", { masked: true })}
+        {number(props, "broker_port", "MQTT port", 65535)}
+        {choice("mqtt", "source_key", "Data source", "data sources")}
       </>
     ),
     datahub: (
       <>
-        <FormNote>{OVERLAY_TEXT.datahub}</FormNote>
-        {choice("datahub", "topic", "DataHub Topic", "DataHub topics")}
-        {number(props, "channel", "Topic Channel", 4294967295, {
+        {choice("datahub", "topic", "DataHub topic", "DataHub topics")}
+        {number(props, "channel", "Topic channel", 4294967295, {
           title: "Instance of the DataHub topic to subscribe to. Most devices use 1.",
         })}
       </>
     ),
   };
   return (
-    <fieldset className="m-0 min-w-0 rounded-control border border-line p-l pt-s">
-      <legend className="px-xs font-semibold">Overlay</legend>
-      <Form>
-        <FormSelect label="Overlay Mode" value={mode} options={modes} onChange={onMode} />
-        <FormSelect
-          label="Handler Type"
-          value={form.handler}
-          disabled={mode === "none"}
-          options={[
-            ["", "(None)"],
-            ...decoders.map((decoder) => [decoder.handler, decoder.display_name] as const),
-            ...(missing ? [[form.handler, `${form.handler} (unavailable)`] as const] : []),
-          ]}
-          onChange={(value) => set("handler", value)}
-        />
-        <FormStack current={mode} pages={pages} />
-      </Form>
-    </fieldset>
+    <FormSection heading="Overlay">
+      <FormSelect
+        label="Overlay mode"
+        {...rowState(props, "overlay")}
+        value={mode}
+        options={modes}
+        onChange={onMode}
+      />
+      <FormSelect
+        label="Handler type"
+        {...rowState(props, "handler")}
+        value={form.handler}
+        disabled={mode === "none"}
+        options={[
+          ["", mode === "none" ? "(None)" : "Required"],
+          ...decoders.map((decoder) => [decoder.handler, decoder.display_name] as const),
+          ...(missing ? [[form.handler, `${form.handler} (unavailable)`] as const] : []),
+        ]}
+        onChange={(value) => set("handler", value)}
+      />
+      <FormStack current={mode} pages={pages} />
+    </FormSection>
   );
 }

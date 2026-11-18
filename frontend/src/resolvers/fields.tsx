@@ -1,9 +1,9 @@
 import { chooseFile, chooseFolder, PathField, type PathRequest } from "../client/pickPath";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import type { DecoderInfo, Field, FieldKind, ScanCount } from "../generated/api";
 import { Button } from "../kit/Button";
 import { CheckList, type CheckItem } from "../kit/CheckList";
-import { Select, TextField } from "../kit/Fields";
+import { controlAria, FormInput, FormRow, FormSelect } from "../kit/Form";
 import { Refusal } from "../kit/Refusal";
 import { countStatus, listed, type ScanView, type Settings } from "./scan";
 
@@ -20,11 +20,18 @@ export interface FieldForm {
   scan: (key: string) => void;
   toggle: (key: string, value: string) => void;
   toggleAll: (key: string) => void;
-  /** The dialog's own action, drawn beside the Scan button of a count-only scan, else on a row of its own. */
-  action?: ReactNode;
+  /** Whether the form was asked to go on, so a required field still blank says so. */
+  tried?: boolean;
 }
 
-type Control = (field: Field, form: FieldForm) => ReactNode;
+/** What a row says about its field: whether it needs a value, and what is refused about it. */
+interface RowState {
+  required: boolean;
+  error?: string;
+}
+
+/** A control draws the row of a field. */
+type Control = (field: Field, form: FieldForm, row: RowState) => ReactNode;
 
 /** The text a field shows: what was typed, else its default. */
 export function shown(field: Field, values: Settings): string {
@@ -49,24 +56,30 @@ export const needsValue = (field: Field) => field.required && field.default == n
 
 const text = (form: FieldForm, field: Field) => shown(field, form.values);
 
+/** What an empty box says: the default the backend uses, else that the field is required. */
+const placeholder = (field: Field) =>
+  fallback(field) || (needsValue(field) ? "Required" : undefined);
+
 /** A text box for the field's text; typing sets it, and so does the folder or file picked beside it. */
-const pathBox = (field: Field, form: FieldForm, request: PathRequest) => (
+const pathBox = (field: Field, form: FieldForm, request: PathRequest, row: RowState) => (
   <PathField
     label={field.label}
     what={field.label}
     value={text(form, field)}
-    placeholder={fallback(field)}
+    placeholder={placeholder(field)}
     request={request}
+    {...row}
     onChange={(path, picked) => form.set(field.key, path, picked)}
   />
 );
 
 /** A text box; the form sends an `Integer` field's text as the number (see `settingsOf`). */
-const textBox: Control = (field, form) => (
-  <TextField
+const textBox: Control = (field, form, row) => (
+  <FormInput
     label={field.label}
     value={text(form, field)}
-    placeholder={fallback(field)}
+    placeholder={placeholder(field)}
+    {...row}
     onChange={(value) => form.set(field.key, value)}
   />
 );
@@ -85,8 +98,9 @@ export function decoderOptions(
   return decoders.find((decoder) => decoder.handler === chosen)?.options ?? [];
 }
 
-/** A `Scan` field whose found values are checked: Scan beside the label, the found values below. */
-function ScanListControl({ field, form }: { field: Field; form: FieldForm }) {
+/** A `Scan` field whose found values are checked: Scan in the row, the found values under it. */
+function ScanListControl({ field, form, row }: { field: Field; form: FieldForm; row: RowState }) {
+  const scanId = useId();
   const view = form.scans[field.key];
   const items: CheckItem[] = view
     ? [
@@ -99,83 +113,104 @@ function ScanListControl({ field, form }: { field: Field; form: FieldForm }) {
       ]
     : [];
   return (
-    <div className="flex flex-col gap-s">
-      <div className="flex items-center justify-between gap-xl">
-        {field.label}
-        <Button
-          icon="rotate-cw"
-          disabled={!form.canScan(field.key)}
-          onClick={() => form.scan(field.key)}
-        >
-          Scan
-        </Button>
-      </div>
-      {view?.phase === "scanning" && (
-        <p role="status" className="m-0 text-muted">
-          Scanning…
-        </p>
-      )}
-      {view?.phase === "done" &&
-        (listed(view).length === 0 ? (
-          <p role="status" className="m-0 text-muted">
-            Nothing found
-          </p>
-        ) : (
-          <CheckList
-            label={field.label}
-            items={items}
-            checked={view.selected}
-            onToggle={(value) => form.toggle(field.key, value)}
-            onToggleAll={() => form.toggleAll(field.key)}
-          />
-        ))}
-    </div>
+    <FormRow
+      label={field.label}
+      note={
+        <>
+          {view?.phase === "scanning" && (
+            <p role="status" className="m-0 text-muted">
+              Scanning…
+            </p>
+          )}
+          {view?.phase === "done" &&
+            (listed(view).length === 0 ? (
+              <p role="status" className="m-0 text-muted">
+                Nothing found
+              </p>
+            ) : (
+              <CheckList
+                label={field.label}
+                items={items}
+                checked={view.selected}
+                onToggle={(value) => form.toggle(field.key, value)}
+                onToggleAll={() => form.toggleAll(field.key)}
+              />
+            ))}
+        </>
+      }
+      error={row.error}
+      errorFor={scanId}
+    >
+      <Button
+        id={scanId}
+        {...controlAria(scanId, { error: row.error })}
+        icon="rotate-cw"
+        disabled={!form.canScan(field.key)}
+        onClick={() => form.scan(field.key)}
+      >
+        Scan
+      </Button>
+    </FormRow>
   );
 }
 
-/** A `Scan` field that only counts: Scan and the dialog's action in one row, what the scan found below. */
+/** A `Scan` field that only counts: Scan in the row, what the scan found under it. */
 function ScanCountControl({
   field,
   count,
   form,
+  row,
 }: {
   field: Field;
   count: ScanCount;
   form: FieldForm;
+  row: RowState;
 }) {
+  const scanId = useId();
   const view = form.scans[field.key];
   const status = countStatus(view, count, form.canScan(field.key));
   return (
-    <div className="flex flex-col gap-s">
-      <div className="flex justify-end gap-m">
-        <Button icon="rotate-cw" onClick={() => form.scan(field.key)}>
-          Scan
-        </Button>
-        {form.action}
-      </div>
-      {view?.phase === "failed" ? (
-        <Refusal reason={status} />
-      ) : (
-        status && (
-          <p role="status" className="m-0 text-muted">
-            {status}
-          </p>
-        )
-      )}
-    </div>
+    <FormRow
+      label={field.label}
+      note={
+        <>
+          {view?.phase === "failed" ? (
+            <Refusal reason={status} />
+          ) : (
+            status && (
+              <p role="status" className="m-0 text-muted">
+                {status}
+              </p>
+            )
+          )}
+        </>
+      }
+      error={row.error}
+      errorFor={scanId}
+    >
+      <Button
+        id={scanId}
+        {...controlAria(scanId, { error: row.error })}
+        icon="rotate-cw"
+        onClick={() => form.scan(field.key)}
+      >
+        Scan
+      </Button>
+    </FormRow>
   );
 }
 
 /** The control for each kind of field; a new kind is a new entry here, not a branch. */
 const CONTROLS: Record<FieldKind["kind"], Control> = {
-  Folder: (field, form) => pathBox(field, form, chooseFolder()),
-  File: (field, form) =>
-    pathBox(field, form, chooseFile(field.kind.kind === "File" ? field.kind.extensions : [])),
+  Folder: (field, form, row) => pathBox(field, form, chooseFolder(), row),
+  File: (field, form, row) =>
+    pathBox(field, form, chooseFile(field.kind.kind === "File" ? field.kind.extensions : []), row),
   Text: textBox,
   Integer: textBox,
-  Handler: (field, form) => (
-    <Select
+  Handler: (field, form, row) => (
+    <FormSelect
       label={field.label}
+      {...row}
       value={text(form, field)}
       options={[
         ["", "Select a decoder"],
@@ -187,8 +222,8 @@ const CONTROLS: Record<FieldKind["kind"], Control> = {
     />
   ),
   // The chosen decoder's own options, drawn by the controls of their kinds.
-  DecoderOptions: (field, form) => (
-    <div className="flex flex-col gap-l">
+  DecoderOptions: (field, form, row) => (
+    <>
       {decoderOptions(field, form.values, form.decoders).map((option) => (
         <FieldControl
           key={option.key}
@@ -196,23 +231,47 @@ const CONTROLS: Record<FieldKind["kind"], Control> = {
           form={form}
         />
       ))}
-    </div>
+      {row.error && (
+        <div className="col-span-full">
+          <Refusal reason={row.error} />
+        </div>
+      )}
+    </>
   ),
-  Scan: (field, form) =>
+  Scan: (field, form, row) =>
     field.kind.kind === "Scan" && field.kind.count ? (
-      <ScanCountControl field={field} count={field.kind.count} form={form} />
+      <ScanCountControl field={field} count={field.kind.count} form={form} row={row} />
     ) : (
-      <ScanListControl field={field} form={form} />
+      <ScanListControl field={field} form={form} row={row} />
     ),
 };
 
-/** The control that edits `field`, chosen by the kind of value it holds. */
-export function FieldControl({ field, form }: { field: Field; form: FieldForm }) {
-  const reason = misread(field, form.values);
-  return (
-    <div className="flex flex-col gap-s">
-      {CONTROLS[field.kind.kind](field, form)}
-      {reason && <Refusal reason={reason} />}
-    </div>
-  );
+/**
+ * The row that edits `field`, chosen by the kind of value it holds; `failures` are the refusals about it, shown with
+ * what is misread or, once the form was asked to go on, still missing.
+ */
+export function FieldControl({
+  field,
+  form,
+  failures = [],
+}: {
+  field: Field;
+  form: FieldForm;
+  failures?: readonly string[];
+}) {
+  const { kind } = field.kind;
+  // A list of found values must be scanned before the form can go on.
+  const unscanned =
+    field.kind.kind === "Scan" &&
+    !field.kind.count &&
+    (form.scans[field.key]?.phase ?? "idle") === "idle";
+  const own =
+    kind === "DecoderOptions"
+      ? undefined
+      : (misread(field, form.values) ??
+        (form.tried && (unscanned || (needsValue(field) && !text(form, field).trim()))
+          ? "Required"
+          : undefined));
+  const error = [...(own ? [own] : []), ...failures].join(" ") || undefined;
+  return CONTROLS[kind](field, form, { required: needsValue(field), error });
 }

@@ -245,7 +245,7 @@ module.exports.run = async ({ window }) => {
     await js("document.querySelector('dialog[open] [aria-label=\"Choose video file\"]').click()");
     const add =
       "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Add')";
-    await wait(`${add}.disabled === false`);
+    await wait(`${add}.matches(':enabled:not([aria-disabled=true])')`);
     await js(`${add}.click()`);
     // The picture is not there yet: the loading indicator covers the pane, in the smallest window and at 200% too.
     await wait("document.querySelector('[data-loading]')");

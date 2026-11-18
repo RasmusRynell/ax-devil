@@ -161,6 +161,13 @@ async function gallery(window) {
     await wait("!document.querySelector('dialog[open]')");
     assert.equal(await answer(), "later", `Enter must give the default choice (${theme})`);
 
+    // A dialog's error sits over its buttons; Escape cancels.
+    await clickButton("Open dialog with error");
+    await wait("document.querySelector('dialog[open] [role=alert]')");
+    await shoot(`kit-dialog-error-${theme}.png`);
+    key(window, "Escape");
+    await wait("!document.querySelector('dialog[open]')");
+
     // The path picker lists the server's folders; Escape cancels it.
     await openPicker();
     await shoot(`kit-path-picker-${theme}.png`);
@@ -175,6 +182,18 @@ async function gallery(window) {
   await frames({ js });
   assert.deepEqual(await js(`(${fit.dialog.toString()})()`), [], "the choice dialog at 200% zoom");
   key(window, "Return");
+  await wait("!document.querySelector('dialog[open]')");
+  await clickButton("Open dialog with error");
+  await wait("document.querySelector('dialog[open] [role=alert]')");
+  await frames({ js });
+  assert.deepEqual(await js(`(${fit.dialog.toString()})()`), [], "the error dialog at 200% zoom");
+  // Its three fields, one refused, and the buttons show whole; the long error scrolls in its own line.
+  assert.deepEqual(
+    await js(`(${fit.fixed.toString()})()`),
+    [],
+    "the error dialog's fields and buttons at 200% zoom",
+  );
+  key(window, "Escape");
   await wait("!document.querySelector('dialog[open]')");
   // The path picker's list scrolls and its buttons stay in view at the same size.
   await openPicker();
@@ -202,6 +221,40 @@ async function gallery(window) {
     await wait("!document.querySelector('dialog[open]')");
   }
   window.webContents.setZoomFactor(1);
+
+  // With forced colours (a high-contrast theme) a box that is unchecked, checked and mixed still looks different.
+  const emulation = window.webContents.debugger;
+  emulation.attach("1.3");
+  try {
+    await setView(window, [1280, 1000], 1);
+    for (const scheme of ["light", "dark"]) {
+      await emulation.sendCommand("Emulation.setEmulatedMedia", {
+        features: [
+          { name: "forced-colors", value: "active" },
+          { name: "prefers-color-scheme", value: scheme },
+        ],
+      });
+      await js(
+        "document.querySelector('[role=group][aria-label=Lanes]').scrollIntoView({ block: 'center' })",
+      );
+      await frames({ js });
+      const boxes = await js(
+        `[...document.querySelectorAll("[role=group][aria-label=Lanes] input")].map((box) => { const { x, y, width, height } = box.getBoundingClientRect(); return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) }; })`,
+      );
+      const looks = [];
+      for (const rect of boxes)
+        looks.push((await window.webContents.capturePage(rect)).toBitmap().toString("base64"));
+      assert.equal(boxes.length, 3);
+      assert.equal(
+        new Set(looks).size,
+        3,
+        `mixed, checked and unchecked boxes differ in forced colours, ${scheme}`,
+      );
+    }
+  } finally {
+    await emulation.sendCommand("Emulation.setEmulatedMedia", { features: [] });
+    emulation.detach();
+  }
 
   await js("history.replaceState(null, '', location.pathname + location.search)");
   await reload(window);

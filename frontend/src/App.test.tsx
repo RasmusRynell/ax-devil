@@ -213,7 +213,7 @@ describe("access", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
     fireEvent.change(await screen.findByLabelText("Theme"), { target: { value: "light" } });
     expect(screen.queryByLabelText("Show lane names")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Keyboard shortcuts" })).toBeNull();
+    expect(screen.queryByText("Keyboard shortcuts")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
     expect(screen.queryByRole("alert")).toBeNull();

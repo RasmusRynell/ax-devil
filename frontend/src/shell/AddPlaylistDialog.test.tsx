@@ -5,6 +5,7 @@ import { scenario } from "../session/fakeScenario";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { AddPlaylistDialog } from "./AddPlaylistDialog";
+import { waits } from "./dialogTesting";
 
 const HANDLERS: HandlersInfo = {
   decoders: [
@@ -136,7 +137,7 @@ function deferred() {
   const promise = new Promise<ReturnType<typeof reply>>((done) => (settle = done));
   return { promise, settle };
 }
-const add = () => screen.getByRole("button", { name: "Load Playlist" });
+const add = () => screen.getByRole("button", { name: "Add" });
 const clickAdd = () => fireEvent.click(add());
 const commands = () => FakeSocket.latest.received.filter((message) => message.type === "command");
 
@@ -192,7 +193,7 @@ describe("add playlist dialog", () => {
     expect(commands()).toHaveLength(0);
     expect(onClose).not.toHaveBeenCalled();
     expect(locked("Dataset folder")).toBe(false);
-    expect(add()).toHaveProperty("disabled", false);
+    expect(waits(add())).toBe(false);
 
     clickAdd();
     await waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -252,7 +253,7 @@ describe("add playlist dialog", () => {
     await scanMot();
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-01/ }));
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-02/ }));
-    expect(add()).toHaveProperty("disabled", false);
+    expect(waits(add())).toBe(false);
     clickAdd();
     expect((await screen.findByRole("alert")).textContent).toBe("No sequences selected.");
     expect(commands()).toEqual([]);
@@ -272,14 +273,14 @@ describe("add playlist dialog", () => {
     expect(decoder.value).toBe("");
     fireEvent.change(screen.getByLabelText("Videos"), { target: { value: "/videos" } });
     fireEvent.change(screen.getByLabelText("Overlays"), { target: { value: "/overlays" } });
-    expect(add()).toHaveProperty("disabled", true);
+    expect(waits(add())).toBe(true);
     fireEvent.change(decoder, { target: { value: "MOT_FILE" } });
     expect((decoder.selectedOptions[0] as HTMLOptionElement).text).toBe(
       "MOT Annotations (MOT_FILE)",
     );
-    expect(add()).toHaveProperty("disabled", true);
+    expect(waits(add())).toBe(true);
     fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "1920" } });
-    expect(add()).toHaveProperty("disabled", false);
+    expect(waits(add())).toBe(false);
     return { held, decoder };
   }
 
@@ -296,7 +297,7 @@ describe("add playlist dialog", () => {
     // Load scans first; a decoder picked meanwhile keeps it from going on.
     clickAdd();
     await screen.findByText("Scanning…");
-    expect(add()).toHaveProperty("disabled", true);
+    expect(waits(add())).toBe(true);
     fireEvent.change(decoder, { target: { value: "" } });
     held.settle(reply(200, [{ value: "a", label: "a", detail: "" }]));
     await screen.findByText("Found 1 pair(s).");
@@ -410,17 +411,7 @@ describe("add playlist dialog", () => {
     expect(await screen.findByLabelText("Playlist source")).toBeTruthy();
   });
 
-  it("explains the choice and lists the sources until one is chosen", async () => {
-    stubBackend();
-    await open();
-    expect(screen.getByText(/^Build a playlist from video and overlay files/)).toBeTruthy();
-    expect(screen.getByText("MOT Challenge: Reads MOT sequences.")).toBeTruthy();
-    choose("folder_pair");
-    // The page stays, drawn out of sight, so choosing a source does not resize the dialog.
-    expect(screen.getByText(/^Build a playlist/).closest("[inert]")).not.toBeNull();
-  });
-
-  it("opens on the source it is given, and on the list when there is no such source", async () => {
+  it("opens on the source it is given, and on none when there is no such source", async () => {
     stubBackend();
     await open(() => {}, "folder_pair");
     expect(screen.getByLabelText<HTMLSelectElement>("Playlist source").value).toBe("folder_pair");
@@ -428,7 +419,6 @@ describe("add playlist dialog", () => {
     cleanup();
     await open(() => {}, "gone");
     expect(screen.getByLabelText<HTMLSelectElement>("Playlist source").value).toBe("");
-    expect(screen.getByText(/^Build a playlist/)).toBeTruthy();
   });
 });
 

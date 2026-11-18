@@ -38,7 +38,7 @@ impl Fields<'_> {
                     ),
                 ));
             }
-            // The Load Playlist button sits beside a counted scan, so a second one would repeat it.
+            // Adding runs a counted scan first, so a second one would repeat it.
             let counted =
                 |field: &Field| matches!(field.kind, FieldKind::Scan { count: Some(_), .. });
             if counted(&field)

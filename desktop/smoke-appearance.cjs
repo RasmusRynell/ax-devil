@@ -72,6 +72,7 @@ module.exports.run = async ({ window }) => {
         await focusedSettingsPage(window, "Advanced");
         await setView(window, [640, 480], zoom);
         await focusedSettingsPage(window, "Advanced");
+        let pageLayout;
         for (const tab of await js(
           "[...document.querySelectorAll('[role=tab]')].map(b => b.textContent)",
         )) {
@@ -83,12 +84,23 @@ module.exports.run = async ({ window }) => {
             await wait("document.querySelector('[role=tabpanel] input[role=spinbutton]')");
             assert.equal(
               await js(
-                `(() => { const panel = document.querySelector('[role=tabpanel]'); return panel.scrollHeight <= panel.clientHeight + 1; })()`,
+                `(() => { const panel = document.querySelector('[role=tabpanel]'); let box = panel; while (getComputedStyle(box).overflowY !== 'auto') box = box.parentElement; const view = box.getBoundingClientRect(); return [...panel.querySelectorAll('input, select, button')].every((c) => { const r = c.getBoundingClientRect(); return r.top >= view.top - 1 && r.bottom <= view.bottom + 1; }); })()`,
               ),
               true,
-              `Playback controls fit without scrolling at ${zoom * 100}%`,
+              `Playback controls are in view without scrolling at ${zoom * 100}%`,
             );
           }
+          await frames({ js });
+          // Every page has the one height: the dialog, the page list and the buttons stay put between pages.
+          const layout = await js(
+            `(() => { const d = document.querySelector('dialog[open]'); const at = (e) => { const b = e.getBoundingClientRect(); return b.top + ' ' + b.height; }; return [d, d.querySelector('[role=tablist]'), d.querySelector('form').lastElementChild].map(at).join(' | '); })()`,
+          );
+          pageLayout ??= layout;
+          assert.equal(
+            layout,
+            pageLayout,
+            `Settings ${tab} keeps the dialog, page list and buttons in place, ${theme}, ${zoom * 100}%`,
+          );
           await frames({ js });
           await fs.writeFile(
             path.join(

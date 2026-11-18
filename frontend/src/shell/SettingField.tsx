@@ -3,10 +3,10 @@ import type { ReactNode } from "react";
 import type { SettingsState } from "../generated/api";
 import type { SettingKey } from "../generated/settings";
 import { SegmentedControl } from "../kit/Chips";
-import { Checkbox, LABELLED, Select, TextField } from "../kit/Fields";
+import { FormCheck, FormInput, FormPath, FormRow, FormSelect } from "../kit/Form";
 import { Icon } from "../kit/Icon";
 import { SET_PASSWORD } from "../live/expansions";
-import { chooseFolder, PathField } from "../client/pickPath";
+import { chooseFolder, useBrowse } from "../client/pickPath";
 import { isSecretState, secretStateOf, type Login } from "../client/secret";
 import { numericInput } from "./numericInput";
 import { LoginsEditor } from "./LoginsEditor";
@@ -73,112 +73,145 @@ export function literalSecret(row: Row, value: Value) {
 interface FieldProps {
   cacheDraft?: { manual: ManualCache; onManualChange: (value: ManualCache) => void };
   row: Row;
-  label: ReactNode;
   value: Value;
+  /** What sits after the row's label, such as the restart mark. */
+  marker?: ReactNode;
+  /** Lines under the row's control. */
+  note?: ReactNode;
   describedBy?: string;
   /** For a decoder: the installed live decoders to offer, as `[id, name]`. */
   decoders?: readonly (readonly [string, string])[];
   onChange: (value: Value) => void;
 }
 
-/** The control for each kind of setting; a new kind is a new entry here, not a branch. */
+/** The folder row: its button where this window can choose a folder. */
+function FolderField({ row, value, marker, note, onChange }: FieldProps) {
+  const browse = useBrowse(chooseFolder(row.label), onChange);
+  return (
+    <FormPath
+      label={row.label}
+      marker={marker}
+      note={note}
+      what={row.label}
+      value={textOf(value)}
+      browse={browse}
+      onChange={onChange}
+    />
+  );
+}
+
+/** The row for each kind of setting: a label and its control; a new kind is a new entry here, not a branch. */
 const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
-  bool: ({ label, value, onChange }) => (
-    <Checkbox label={label} checked={value === true} onChange={onChange} />
+  bool: ({ row, value, marker, note, onChange }) => (
+    <FormCheck
+      label={row.label}
+      marker={marker}
+      note={note}
+      checked={value === true}
+      onChange={onChange}
+    />
   ),
   // Set from a lane's menu, so no settings page lists them.
   sticky: () => null,
   sync: () => null,
   object_filter: () => null,
-  choice: ({ row, label, value, onChange }) =>
+  choice: ({ row, value, marker, note, onChange }) =>
     row.kind.toggle ? (
-      <div className={LABELLED}>
-        {label}
+      <FormRow label={row.label} marker={marker} note={note}>
         <SegmentedControl
           label={row.label}
           value={textOf(value)}
           options={row.kind.options ?? []}
           onChange={onChange}
         />
-      </div>
+      </FormRow>
     ) : row.env ? (
       // Any text stays allowed so the mode can be a `$NAME` reference; the options are offered to pick from.
-      <TextField
-        label={label}
+      <FormInput
+        label={row.label}
+        marker={marker}
+        note={note}
         value={textOf(value)}
         suggestions={row.kind.options ?? []}
         onChange={onChange}
       />
     ) : (
-      <Select
-        label={label}
+      <FormSelect
+        label={row.label}
+        marker={marker}
+        note={note}
         value={textOf(value)}
         options={row.kind.options ?? []}
         onChange={onChange}
       />
     ),
-  auto_or_whole: ({ label, value, onChange, cacheDraft }) =>
+  auto_or_whole: ({ row, value, marker, note, onChange, cacheDraft }) =>
     cacheDraft ? (
       <VideoCacheField
         {...cacheDraft}
-        label={label}
+        label={row.label}
+        marker={marker}
+        note={note}
         value={typeof value === "number" ? value : textOf(value)}
         onChange={onChange}
       />
     ) : (
-      <TextField
-        label={label}
+      <FormInput
+        label={row.label}
+        marker={marker}
+        note={note}
         value={textOf(value)}
         onChange={(text) => onChange(numericInput(text, "auto_or_whole", true))}
       />
     ),
-  whole: ({ label, value, onChange }) => (
-    <TextField
-      label={label}
+  whole: ({ row, value, marker, note, onChange }) => (
+    <FormInput
+      label={row.label}
+      marker={marker}
+      note={note}
       value={textOf(value)}
       onChange={(text) => onChange(numericInput(text, "whole", true))}
     />
   ),
   // The scan logins are the only list of records on a page (the confirmed references have none): edited in place,
   // saved with the rest on OK.
-  records: ({ value, onChange }) => (
-    <LoginsEditor logins={Array.isArray(value) ? value : []} onChange={onChange} />
+  records: ({ value, note, onChange }) => (
+    <div className="col-span-full flex min-w-0 flex-col gap-xs">
+      <LoginsEditor headed logins={Array.isArray(value) ? value : []} onChange={onChange} />
+      {note}
+    </div>
   ),
-  text: ({ row, label, value, describedBy, onChange }) => (
-    <TextField
-      label={label}
+  text: ({ row, value, marker, note, describedBy, onChange }) => (
+    <FormInput
+      label={row.label}
+      marker={marker}
+      note={note}
       value={textOf(value)}
       masked={literalSecret(row, value)}
       // A saved secret is not known here: the dots only say it is set, and typing replaces it.
       placeholder={isSecretState(value) && value.state === "literal" ? SET_PASSWORD : undefined}
       describedBy={describedBy}
-      wide={row.env}
       onChange={onChange}
     />
   ),
   // The id is what is saved; any text stays allowed, so a decoder that is not installed here can still be the default.
-  decoder: ({ label, value, decoders, onChange }) => (
-    <TextField label={label} value={textOf(value)} suggestions={decoders} onChange={onChange} />
-  ),
-  folder: ({ row, label, value, onChange }) => (
-    <PathField
-      label={label}
-      what={row.label}
+  decoder: ({ row, value, marker, note, decoders, onChange }) => (
+    <FormInput
+      label={row.label}
+      marker={marker}
+      note={note}
       value={textOf(value)}
-      request={chooseFolder(row.label)}
-      onChange={(path) => onChange(path)}
+      suggestions={decoders}
+      onChange={onChange}
     />
   ),
+  folder: (props) => <FolderField {...props} />,
 };
 
-/** The control for a setting row, chosen by its kind; `label` defaults to the row's own. */
-export function SettingField({
-  row,
-  label = row.label,
-  ...props
-}: Omit<FieldProps, "label"> & { label?: ReactNode }) {
+/** The row for a setting, chosen by its kind. */
+export function SettingField({ row, ...props }: FieldProps) {
   const Field = FIELDS[row.kind.type];
-  return <Field row={row} label={label} {...props} />;
+  return <Field row={row} {...props} />;
 }
 
 /** The warning under a secret field that holds the secret itself; `id` is what the field's `aria-describedby` names. */

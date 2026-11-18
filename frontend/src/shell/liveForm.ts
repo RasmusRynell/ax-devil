@@ -16,14 +16,6 @@ import { textOf } from "./SettingField";
 /** The overlay modes, in the order the `camera.overlay` setting lists them. */
 export type OverlayMode = "none" | "rtsp" | "mqtt" | "datahub";
 
-/** What each mode does, as its page of the dialog says it. */
-export const OVERLAY_TEXT: Record<OverlayMode, string> = {
-  none: "Show the video only. Choose a mode to draw the device's analytics on it.",
-  rtsp: "Decode analytics metadata sent inside the RTSP video stream.",
-  mqtt: "Receive analytics that the device publishes to an MQTT broker.",
-  datahub: "Subscribe to a DataHub analytics topic on the device.",
-};
-
 /**
  * What the user typed, one text per field and named like the backend names the field in a refusal. A blank text takes
  * the configured default; modes keep their fields while another is chosen.
@@ -253,19 +245,18 @@ export const chosen = (value: string, choices: readonly string[]) =>
   choices.includes(value) ? value : "";
 
 /**
- * What the user has yet to choose, or nothing: the host (`hostKnown`: typed or configured), the decoder of a mode, and the
- * data source or topic, which `form` holds as the camera's lists give them (see `chosen`). Every value rule is the
- * backend's, shown on its refusal.
+ * What is still to choose, in form order: the host (`hostMissing`: none typed and no usable configured one), the
+ * decoder of a mode, and the data source or topic, which `form` holds as the camera's lists give them (see `chosen`).
+ * Every value rule is the backend's, shown on its refusal.
  */
-export function unchosen(form: LiveForm, hostKnown: boolean, modeName: string) {
-  if (!hostKnown) return "Enter the device host.";
-  if (form.overlay !== "none" && !form.handler)
-    return `Select a handler type for ${modeName} overlays.`;
-  if (form.overlay === "mqtt" && !form.source_key.trim())
-    return "Data Source is required for MQTT overlay mode.";
-  if (form.overlay === "datahub" && !form.topic.trim())
-    return "Topic is required for WebSocket overlay mode.";
-  return undefined;
+export function missingFields(form: LiveForm, hostMissing: boolean): FieldKey[] {
+  const { overlay } = form;
+  return [
+    ...(hostMissing ? ["host" as const] : []),
+    ...(overlay !== "none" && !form.handler ? ["handler" as const] : []),
+    ...(overlay === "mqtt" && !form.source_key.trim() ? ["source_key" as const] : []),
+    ...(overlay === "datahub" && !form.topic.trim() ? ["topic" as const] : []),
+  ];
 }
 
 /**

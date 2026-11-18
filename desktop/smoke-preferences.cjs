@@ -37,7 +37,7 @@ module.exports.run = async () => {
         await wait("document.querySelector('dialog[open] h2')?.textContent === 'Settings'");
         if (recovered) {
           await js(
-            "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Keyboard shortcuts').click()",
+            "[...document.querySelectorAll('dialog button')].find((b) => b.labels[0]?.textContent === 'Keyboard shortcuts').click()",
           );
           await wait("document.querySelector('button[aria-label=\"Reset Exit\"]:not(:disabled)')");
           const themeBefore = nativeTheme.themeSource;
