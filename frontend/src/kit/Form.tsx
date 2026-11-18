@@ -144,7 +144,7 @@ export function FormRow({ label, marker, id, children, note, error, errorFor }: 
     <>
       <label
         htmlFor={id}
-        className="flex min-h-row min-w-0 items-center gap-s self-start [overflow-wrap:anywhere]"
+        className="flex min-h-row min-w-0 items-center gap-s self-start [overflow-wrap:anywhere] @max-sm:mt-m @max-sm:first:mt-0"
       >
         {label}
         {marker}
@@ -296,6 +296,7 @@ export function FormSelect<T extends string>({
   options,
   onChange,
   failed = false,
+  help,
   extra,
   note,
   required,
@@ -308,6 +309,8 @@ export function FormSelect<T extends string>({
   options: readonly (readonly [T, string])[];
   onChange: (value: T) => void;
   failed?: boolean;
+  /** Help announced when the drop-down receives focus, and its tooltip. */
+  help?: string;
 }) {
   const id = useId();
   return (
@@ -320,7 +323,8 @@ export function FormSelect<T extends string>({
           id={id}
           value={value}
           disabled={disabled}
-          title={title}
+          title={help ?? title}
+          aria-description={help}
           {...controlAria(id, { required, error })}
           onChange={(event) => onChange(event.target.value as T)}
           className={`${FIELD} min-w-0 flex-1 ${failed ? "pl-row text-danger" : ""}`}

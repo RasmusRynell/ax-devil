@@ -11,7 +11,7 @@ export function Refusal({ reason, title, id }: { reason: string; title?: string;
       className={`m-0 flex items-center gap-s ${TONE.danger.text}`}
     >
       <Icon name="triangle-alert" />
-      <span className="min-w-0 [overflow-wrap:anywhere]">{reason}</span>
+      <span className="min-w-0 [overflow-wrap:anywhere] whitespace-pre-line">{reason}</span>
     </p>
   );
 }

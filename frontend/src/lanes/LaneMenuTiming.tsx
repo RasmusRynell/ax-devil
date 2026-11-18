@@ -1,4 +1,5 @@
-import { Checkbox, Select } from "../kit/Fields";
+import { Checkbox } from "../kit/Fields";
+import { Form, FormSelect } from "../kit/Form";
 import type { AlignmentWire, MatchBasis } from "../generated/api";
 import { Switch } from "../kit/Switch";
 import type { CadenceWire } from "../stream/protocol";
@@ -60,8 +61,7 @@ function Alignment({
   const toned = tone ? TONE_TEXT[tone] : "";
   return (
     <Group label="Alignment">
-      {/* Long lines wrap at the width the controls give the menu instead of widening it. */}
-      <div className="flex w-0 min-w-full flex-col gap-s break-words">
+      <div className="col-span-full flex min-w-0 flex-col gap-s break-words">
         <p className="m-0">
           {cadence === null
             ? "Video: unknown"
@@ -116,12 +116,12 @@ export function LaneMenuTiming({
   const timeout = sticky.timeout_ms ?? settings.kept_timeout_ms;
   const limited = sticky.timeout_ms !== null;
   return (
-    <>
+    <Form>
       {ready && !live && <Alignment cadence={cadence} alignment={ready.alignment} />}
       {(bases.length > 1 || basis === "Time") && (
         <Group label="Sync">
           {bases.length > 1 && (
-            <Select<MatchBasis>
+            <FormSelect<MatchBasis>
               label="Match by"
               help={SECTION_HELP.sync}
               value={basis ?? "Frame"}
@@ -130,7 +130,7 @@ export function LaneMenuTiming({
             />
           )}
           {basis === "Time" && (
-            <Select<Sync>
+            <FormSelect<Sync>
               label="Sync"
               help={SECTION_HELP.sync}
               value={sync}
@@ -166,13 +166,15 @@ export function LaneMenuTiming({
         </Group>
       )}
       <Group label="Sticky">
-        <Switch
-          label="Sticky"
-          help={SECTION_HELP.sticky}
-          checked={sticky.enabled}
-          onChange={(enabled) => onChange({ sticky: { ...sticky, enabled } })}
-        />
-        <div className="flex items-center justify-between gap-s">
+        <div className="col-span-full">
+          <Switch
+            label="Sticky"
+            help={SECTION_HELP.sticky}
+            checked={sticky.enabled}
+            onChange={(enabled) => onChange({ sticky: { ...sticky, enabled } })}
+          />
+        </div>
+        <div className="flex min-h-row min-w-0 items-center @max-sm:mt-m">
           <Checkbox
             leading
             label="Expire after (ms)"
@@ -186,21 +188,21 @@ export function LaneMenuTiming({
               });
             }}
           />
-          <NumberField
-            hideLabel
-            label="Timeout (ms)"
-            help={SECTION_HELP.sticky}
-            value={timeout}
-            min={0}
-            max={MAX_MS}
-            step={1}
-            disabled={!sticky.enabled || !limited}
-            onCommit={(timeout_ms) =>
-              timeout_ms !== null &&
-              onChange({ sticky: { ...sticky, timeout_ms }, kept_timeout_ms: timeout_ms })
-            }
-          />
         </div>
+        <NumberField
+          hideLabel
+          label="Timeout (ms)"
+          help={SECTION_HELP.sticky}
+          value={timeout}
+          min={0}
+          max={MAX_MS}
+          step={1}
+          disabled={!sticky.enabled || !limited}
+          onCommit={(timeout_ms) =>
+            timeout_ms !== null &&
+            onChange({ sticky: { ...sticky, timeout_ms }, kept_timeout_ms: timeout_ms })
+          }
+        />
         <NumberField
           label="Reused overlay opacity"
           help={SECTION_HELP.sticky}
@@ -217,6 +219,6 @@ export function LaneMenuTiming({
           isDefault={sameSticky(sticky, saved.sticky)}
         />
       </Group>
-    </>
+    </Form>
   );
 }

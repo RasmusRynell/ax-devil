@@ -18,12 +18,10 @@ module.exports.run = async ({ window }) => {
   await wait("document.hasFocus()");
   await frames({ js });
   pressShortcut(window, "Ctrl+E");
-  await wait(
-    "document.querySelector('dialog[open] h2')?.textContent === 'Export Video with Overlays'",
-  );
+  await wait("document.querySelector('dialog[open] h2')?.textContent === 'Export Video'");
   // The video's one lane has no box to check; once its catalog and data are in, the dialog can start.
   const submit = "document.querySelector('dialog[open] button[type=submit]')";
-  assert.equal(await js("document.querySelector('dialog[open] fieldset')"), null);
+  assert.equal(await js("document.querySelector('dialog[open] [role=group]')"), null);
   await wait(`!${submit}.disabled`);
   assert.equal(
     await js(`${submit}.disabled`),
@@ -74,14 +72,9 @@ module.exports.run = async ({ window }) => {
   }
   nativeTheme.themeSource = theme;
   await setView(window, [1100, 720], 1);
-  // Before an export starts there is nothing to cancel, so Cancel is disabled; Escape still closes the dialog.
-  assert.equal(
-    await js(
-      "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Cancel').disabled",
-    ),
-    true,
-    "Cancel must be disabled before an export starts",
+  // Before an export starts Cancel is there, and closes the dialog like Escape.
+  await js(
+    "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Cancel').click()",
   );
-  pressShortcut(window, "Escape");
   await wait("!document.querySelector('dialog')");
 };

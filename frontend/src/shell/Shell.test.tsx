@@ -141,7 +141,7 @@ describe("about", () => {
     expect(screen.getByRole("link").getAttribute("href")).toBe(
       "https://github.com/rasmusrynell/ax-devil",
     );
-    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

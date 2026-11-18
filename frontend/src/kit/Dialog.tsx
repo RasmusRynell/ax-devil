@@ -161,7 +161,7 @@ export function Dialog({
       footer={
         <div className="flex flex-col gap-m">
           {error && <Refusal reason={error} />}
-          <div className="flex gap-m">
+          <div className="flex flex-wrap gap-m">
             {footerStart}
             <div className="ml-auto flex gap-m">
               {onOk && (
