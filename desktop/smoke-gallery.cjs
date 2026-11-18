@@ -235,8 +235,9 @@ async function gallery(window) {
       const boxes = await js(
         `[...document.querySelectorAll("[role=group][aria-label=Lanes] input")].map((box) => { const { x, y, width, height } = box.getBoundingClientRect(); return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) }; })`,
       );
-      const picture = await window.webContents.capturePage();
-      const looks = boxes.map((rect) => picture.crop(rect).toBitmap().toString("base64"));
+      const looks = [];
+      for (const rect of boxes)
+        looks.push((await window.webContents.capturePage(rect)).toBitmap().toString("base64"));
       assert.equal(boxes.length, 3);
       assert.equal(
         new Set(looks).size,
