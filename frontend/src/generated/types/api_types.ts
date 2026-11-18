@@ -44,6 +44,19 @@ fullAccess: boolean,
 configIdentity?: string, };
 
 /**
+ * What Clear Cache removed, as the sentence to show and the files it could not remove.
+ */
+export type CacheCleared = { 
+/**
+ * How much was removed, such as `Removed 3 files (1.2 MiB).`.
+ */
+summary: string, 
+/**
+ * One line for each file or folder that could not be cleared: its path and the reason.
+ */
+failures: Array<string>, };
+
+/**
  * A login of the `scan.logins` setting as a client sends it, in the list that is saved whole and in order. With an
  * `id` it is that saved login, and a missing `password` keeps its saved one; without an `id` it is a new login, which
  * has a `password`. An unknown `id` is refused, and a saved login left out is removed.

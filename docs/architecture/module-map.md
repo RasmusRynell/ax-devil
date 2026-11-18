@@ -12,7 +12,7 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `src/exports.rs`, `src/render_host.rs`, `src/desktop.rs`, `src/routes/playback/export.rs` | The backend's one export job, the Render Page's host and its private socket, the desktop folder and its Electron, and the playback socket's export messages |
 | `src/video_sources.rs`, `src/video_cache.rs` | Where `media` meets `playback` (the decoder adapter, opening viewers on files) and how the `playback.video_cache` setting sizes the cache |
 | `src/prepare.rs`, `src/routes/playback/prepare.rs` | Readying the next playlist entry's frame indexes and overlay artifacts in the cache folder while a viewer plays the entry before it: one background preparation for the backend, started from the entry a playback socket names (looked up in its own lease's Content) while `playback.prepare_next_video` is on, replaced by the next and ended with its socket |
-| `src/disk_cache.rs` | Which files under the cache folder are ax-devil's own, found and removed for `clear-cache` |
+| `src/disk_cache.rs` | Which files under the cache folder are ax-devil's own, found and removed for `clear-cache` and the Clear Cache command |
 | `src/thumbnails.rs` | The first-picture JPEGs of videos kept in the cache folder, keyed by the file's identity so a changed video is a new picture; the thumbnail route serves them |
 | `src/access.rs` | Principals, route gates, the Local guard, security headers, socket admission limits |
 | `src/share.rs` | Where other machines reach the backend: join-link base, the desktop's listener for them while a session is shared, the development-build refusal |

@@ -850,6 +850,15 @@ export const COMMANDS = [
     "description": null
   },
   {
+    "id": "clear-cache",
+    "label": "Clear Cache",
+    "category": "Application",
+    "scope": "app",
+    "key": null,
+    "repeats": false,
+    "description": null
+  },
+  {
     "id": "exit",
     "label": "Exit",
     "category": "Application",

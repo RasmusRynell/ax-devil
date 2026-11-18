@@ -68,6 +68,8 @@ pub struct AppState {
     pub videos: Arc<video_sources::VideoSources>,
     /// The cached first pictures of videos.
     pub(crate) thumbnails: Arc<thumbnails::Thumbnails>,
+    /// The cache folder this backend runs with, which Clear Cache empties.
+    pub(crate) cache_dir: Arc<Path>,
     /// Opens the overlays of viewers.
     pub overlays: Arc<OverlayService>,
     /// Readies the next playlist entry's caches while a viewer plays the one before it.
@@ -153,6 +155,7 @@ impl AppState {
             thumbnails: Arc::new(thumbnails::Thumbnails::new(
                 cache_dir.join(thumbnails::FOLDER),
             )),
+            cache_dir: cache_dir.into(),
             plugins,
             videos,
             stopping,

@@ -160,6 +160,14 @@ pub const COMMANDS: &[Command] = &[
         false,
     ),
     command(
+        "clear-cache",
+        "Clear Cache",
+        Category::Application,
+        CommandScope::App,
+        None,
+        false,
+    ),
+    command(
         "exit",
         "Exit",
         Category::Application,

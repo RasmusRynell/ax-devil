@@ -5,6 +5,7 @@
 //! for a path is answered with 405 whoever asks. `scripts/check-architecture.cjs` rejects `.route(` anywhere else.
 //! What an Owner without Full access still may not see is decided by the handler from its [`Principal`](crate::access).
 
+mod cache;
 pub(crate) mod catalogs;
 mod client_errors;
 mod folder;
@@ -180,6 +181,13 @@ pub(crate) const ROUTES: &[Route] = &[
         listeners: MEMBERS,
         who: Who::Owner,
         handler: |method| on(method, catalogs::delete),
+    },
+    Route {
+        method: filter(endpoints::ClearCache::METHOD),
+        path: endpoints::ClearCache::PATH,
+        listeners: MEMBERS,
+        who: Who::Owner,
+        handler: |method| on(method, cache::clear),
     },
     Route {
         method: filter(endpoints::ScanResolver::METHOD),
