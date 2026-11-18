@@ -138,23 +138,40 @@ export function controlAria(
   };
 }
 
-/** A label and any control: the row the other `Form` rows are made of. `id` is the control's, when it can be named. */
+/**
+ * The vertical rhythm of a row whose label stacks over its control: a gap above it, tighter in a short window, none
+ * for the first. A row that is not a `FormRow` but sits among them follows it.
+ */
+export const STACKED_GAP =
+  "@max-sm:mt-m [@media(max-height:20rem)]:@max-sm:mt-s @max-sm:first:mt-0";
+
+/**
+ * A label and any control: the row the other `Form` rows are made of. `id` is the control's, when it can be named. The
+ * refusal sits under the control beside its label, and on the label's own line when the label stacks over the control,
+ * so an error adds no height there.
+ */
 export function FormRow({ label, marker, id, children, note, error, errorFor }: RowProps) {
   return (
-    <>
+    <div
+      className={`col-span-full grid grid-cols-subgrid gap-y-xs @max-sm:grid-cols-[auto_minmax(0,1fr)] @max-sm:gap-y-s ${STACKED_GAP}`}
+    >
       <label
         htmlFor={id}
-        className="flex min-h-row min-w-0 items-center gap-s self-start [overflow-wrap:anywhere] @max-sm:mt-m [@media(max-height:20rem)]:@max-sm:mt-s @max-sm:first:mt-0"
+        className="col-start-1 row-start-1 flex min-h-row min-w-0 items-center gap-s self-start [overflow-wrap:anywhere]"
       >
         {label}
         {marker}
       </label>
-      <div className="flex min-w-0 flex-col gap-xs">
+      <div className="col-start-2 row-start-1 flex min-w-0 flex-col gap-xs @max-sm:col-span-2 @max-sm:col-start-1 @max-sm:row-start-2">
         <div className="flex min-w-0 items-center gap-s">{children}</div>
         {note}
-        {error && <Refusal id={(errorFor ?? id) && errorId((errorFor ?? id)!)} reason={error} />}
       </div>
-    </>
+      {error && (
+        <div className="col-start-2 row-start-2 min-w-0 @max-sm:row-start-1 @max-sm:justify-self-end">
+          <Refusal id={(errorFor ?? id) && errorId((errorFor ?? id)!)} reason={error} />
+        </div>
+      )}
+    </div>
   );
 }
 

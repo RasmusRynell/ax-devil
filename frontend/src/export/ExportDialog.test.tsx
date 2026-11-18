@@ -272,11 +272,17 @@ describe("export dialog", () => {
     }
   });
 
-  it("refuses a range outside the video, and says which end", () => {
+  it("refuses a bad range with the first problem, at the box that owns it", () => {
     open();
-    type("To frame", "100");
+    const invalid = (label: string) => screen.getByLabelText(label).getAttribute("aria-invalid");
+    type("From frame", "101");
+    type("To frame", "abc");
     expect(disabled("Export")).toBe(true);
     expect(screen.getByRole("alert").textContent).toBe("Past the last frame");
+    expect([invalid("From frame"), invalid("To frame")]).toEqual(["true", null]);
+    type("From frame", "0");
+    expect(screen.getByRole("alert").textContent).toBe("Not a whole number");
+    expect([invalid("From frame"), invalid("To frame")]).toEqual([null, "true"]);
   });
 
   it("shows progress, cancels on request and says when the export was cancelled", async () => {

@@ -1,5 +1,5 @@
 import { Checkbox } from "../kit/Fields";
-import { Form, FormSelect } from "../kit/Form";
+import { Form, FormSelect, STACKED_GAP } from "../kit/Form";
 import type { AlignmentWire, MatchBasis } from "../generated/api";
 import { Switch } from "../kit/Switch";
 import type { CadenceWire } from "../stream/protocol";
@@ -174,35 +174,37 @@ export function LaneMenuTiming({
             onChange={(enabled) => onChange({ sticky: { ...sticky, enabled } })}
           />
         </div>
-        <div className="flex min-h-row min-w-0 items-center @max-sm:mt-m">
-          <Checkbox
-            leading
-            label="Expire after (ms)"
+        <div className={`col-span-full grid grid-cols-subgrid gap-y-s ${STACKED_GAP}`}>
+          <div className="flex min-h-row min-w-0 items-center">
+            <Checkbox
+              leading
+              label="Expire after (ms)"
+              help={SECTION_HELP.sticky}
+              disabled={!sticky.enabled}
+              checked={limited}
+              onChange={(expires) => {
+                onChange({
+                  sticky: { ...sticky, timeout_ms: expires ? timeout : null },
+                  kept_timeout_ms: timeout,
+                });
+              }}
+            />
+          </div>
+          <NumberField
+            hideLabel
+            label="Timeout (ms)"
             help={SECTION_HELP.sticky}
-            disabled={!sticky.enabled}
-            checked={limited}
-            onChange={(expires) => {
-              onChange({
-                sticky: { ...sticky, timeout_ms: expires ? timeout : null },
-                kept_timeout_ms: timeout,
-              });
-            }}
+            value={timeout}
+            min={0}
+            max={MAX_MS}
+            step={1}
+            disabled={!sticky.enabled || !limited}
+            onCommit={(timeout_ms) =>
+              timeout_ms !== null &&
+              onChange({ sticky: { ...sticky, timeout_ms }, kept_timeout_ms: timeout_ms })
+            }
           />
         </div>
-        <NumberField
-          hideLabel
-          label="Timeout (ms)"
-          help={SECTION_HELP.sticky}
-          value={timeout}
-          min={0}
-          max={MAX_MS}
-          step={1}
-          disabled={!sticky.enabled || !limited}
-          onCommit={(timeout_ms) =>
-            timeout_ms !== null &&
-            onChange({ sticky: { ...sticky, timeout_ms }, kept_timeout_ms: timeout_ms })
-          }
-        />
         <NumberField
           label="Reused overlay opacity"
           help={SECTION_HELP.sticky}

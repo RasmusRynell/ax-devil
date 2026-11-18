@@ -266,7 +266,10 @@ describe("resolver form", () => {
     );
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("No such folder");
-    expect(alert.parentElement?.contains(screen.getByLabelText("Dataset folder"))).toBe(true);
+    // The refusal sits in the row of the field it names.
+    expect(
+      alert.parentElement?.parentElement?.contains(screen.getByLabelText("Dataset folder")),
+    ).toBe(true);
     expect(settings()).toBeNull();
 
     scan();

@@ -159,19 +159,27 @@ export function Dialog({
         else if (!busy) onOk?.();
       }}
       footer={
-        <div className="flex flex-col gap-m">
-          {error && <Refusal reason={error} />}
-          <div className="flex flex-wrap gap-m">
-            {footerStart}
-            <div className="ml-auto flex gap-m">
-              {onOk && (
-                <Button type="submit" disabled={busy} aria-disabled={incomplete || undefined}>
-                  {okLabel}
-                </Button>
-              )}
-              {footer}
-              {onCancel && <Button onClick={onCancel}>Cancel</Button>}
+        <div className="flex flex-wrap items-end gap-m">
+          {error && (
+            // On the buttons' line, so a short error adds no height; where the dialog has a button of its own at the
+            // left, on a line of its own. In a short window a long one scrolls in a line's height, the one thing that does.
+            <div
+              data-scroll="variable"
+              tabIndex={0}
+              className={`min-w-0 ${footerStart ? "basis-full" : "flex-1"} [@media(max-height:20rem)]:max-h-row [@media(max-height:20rem)]:overflow-y-auto [@media(max-height:20rem)]:[&>p]:items-start`}
+            >
+              <Refusal reason={error} />
             </div>
+          )}
+          {footerStart}
+          <div className="ml-auto flex gap-m">
+            {onOk && (
+              <Button type="submit" disabled={busy} aria-disabled={incomplete || undefined}>
+                {okLabel}
+              </Button>
+            )}
+            {footer}
+            {onCancel && <Button onClick={onCancel}>Cancel</Button>}
           </div>
         </div>
       }

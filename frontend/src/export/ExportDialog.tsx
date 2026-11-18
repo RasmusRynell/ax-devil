@@ -99,7 +99,7 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
   );
 }
 
-/** The first and last frame of an mp4 side by side in one row, so the fixed fields stay short; a problem shows under the row. */
+/** The first and last frame of an mp4 side by side in one row, so the fixed fields stay short; the row shows the first problem in reading order, and only the box that owns it is invalid. */
 function Frames({
   from,
   to,
@@ -116,29 +116,31 @@ function Frames({
   onTo: (text: string) => void;
 }) {
   const id = useId();
+  const shown = fromError ?? toError;
+  const owner = fromError ? "from" : toError ? "to" : null;
   const box = (
+    which: "from" | "to",
     label: string,
     value: string,
-    error: string | undefined,
     onChange: (text: string) => void,
   ) => (
     <input
-      id={label === "From frame" ? id : undefined}
+      id={which === "from" ? id : undefined}
       type="text"
       aria-label={label}
       value={value}
       autoComplete="off"
       spellCheck={false}
-      {...controlAria(id, { error })}
+      {...controlAria(id, { error: owner === which ? shown : undefined })}
       onChange={(event) => onChange(event.target.value)}
       className={`${FIELD} min-w-0 flex-1`}
     />
   );
   return (
-    <FormRow label="Frames" id={id} error={fromError ?? toError}>
-      {box("From frame", from, fromError, onFrom)}
+    <FormRow label="Frames" id={id} error={shown}>
+      {box("from", "From frame", from, onFrom)}
       <span className="text-muted">to</span>
-      {box("To frame", to, toError, onTo)}
+      {box("to", "To frame", to, onTo)}
     </FormRow>
   );
 }

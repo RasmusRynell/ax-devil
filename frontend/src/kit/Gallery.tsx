@@ -547,12 +547,14 @@ export function Gallery() {
       {failing && (
         <Dialog
           title="Save"
-          error={LONG}
+          error={`${LONG}\n${LONG}`}
           onOk={() => setFailing(false)}
           onCancel={() => setFailing(false)}
         >
           <Form>
             <FormInput label="Name" value={text} onChange={setText} />
+            <FormInput label="Host" value="" error="Required" onChange={() => {}} />
+            <FormInput label="Port" value="" onChange={() => {}} />
           </Form>
         </Dialog>
       )}

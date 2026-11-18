@@ -5,6 +5,7 @@ const { pressShortcut } = require("./shortcut-input.cjs");
 const { dialog, nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
+const os = require("node:os");
 const path = require("node:path");
 const fit = require("./fit.cjs");
 const { SCREENSHOTS, frames, page, setView, until } = require("./smoke-kit.cjs");
@@ -49,65 +50,60 @@ module.exports.run = async ({ window }) => {
   assert.equal(await js("document.querySelector('[role=progressbar]')"), null);
 
   await fs.mkdir(SCREENSHOTS, { recursive: true });
-  // The fixed part of the dialog (every field and both buttons) shows whole without scrolling anything; only a lane
-  // list, which grows with the video's lanes and which this video has none of, may scroll.
-  const unscrolled = () => {
-    const problems = [];
-    const box = document.querySelector("dialog[open]").getBoundingClientRect();
-    for (const element of document.querySelectorAll("dialog[open] *")) {
-      if (
-        /^(auto|scroll)$/.test(getComputedStyle(element).overflowY) &&
-        element.scrollHeight > element.clientHeight + 1
-      )
-        problems.push(
-          `scrolls by ${element.scrollHeight - element.clientHeight}px: ${element.tagName.toLowerCase()}`,
-        );
+  // The fixed part of the dialog (every field and both buttons) shows whole without scrolling anything, with and
+  // without a refusal; only a lane list, which this video has none of, may scroll.
+  const everywhere = async (state, suffix) => {
+    for (const [shown, zoom, size] of [
+      ["light", 1, "system"],
+      ["dark", 1, "system"],
+      ["light", 1, "larger"],
+      ["dark", 1, "larger"],
+      ["light", 2, "system"],
+      ["dark", 2, "system"],
+    ]) {
+      await setView(window, [640, 480], zoom);
+      nativeTheme.themeSource = shown;
+      await js(`document.documentElement.dataset.textSize = ${JSON.stringify(size)}`);
+      await wait(`matchMedia('(prefers-color-scheme: ${shown})').matches`);
+      await wait("document.querySelector('dialog[open]').getBoundingClientRect().height > 0");
+      await frames({ js });
+      const where = `640x480 at ${zoom * 100}% zoom, ${size} text, ${shown}, ${state}`;
+      assert.deepEqual(
+        await js(`(${fit.dialog.toString()})()`),
+        [],
+        `The export dialog must fit the ${where}`,
+      );
+      assert.deepEqual(
+        await js(`(${fit.fixed.toString()})()`),
+        [],
+        `The export dialog's fields and buttons must show without scrolling at ${where}`,
+      );
+      await fs.writeFile(
+        path.join(
+          SCREENSHOTS,
+          `export${suffix}-${shown}${zoom === 1 ? "" : "-200"}${size === "larger" ? "-larger" : ""}.png`,
+        ),
+        (await window.webContents.capturePage()).toPNG(),
+      );
     }
-    for (const control of document.querySelectorAll(
-      "dialog[open] select, dialog[open] input, dialog[open] button",
-    )) {
-      const rect = control.getBoundingClientRect();
-      if (rect.top < box.top - 1 || rect.bottom > box.bottom + 1)
-        problems.push(
-          `outside the dialog: ${control.ariaLabel || control.textContent || control.tagName}`,
-        );
-    }
-    return problems;
+    await js('document.documentElement.dataset.textSize = "system"');
   };
-  for (const [shown, zoom, size] of [
-    ["light", 1, "system"],
-    ["dark", 1, "system"],
-    ["light", 1, "larger"],
-    ["dark", 1, "larger"],
-    ["light", 2, "system"],
-    ["dark", 2, "system"],
-  ]) {
-    await setView(window, [640, 480], zoom);
-    nativeTheme.themeSource = shown;
-    await js(`document.documentElement.dataset.textSize = ${JSON.stringify(size)}`);
-    await wait(`matchMedia('(prefers-color-scheme: ${shown})').matches`);
-    await wait("document.querySelector('dialog[open]').getBoundingClientRect().height > 0");
-    await frames({ js });
-    const where = `640x480 at ${zoom * 100}% zoom, ${size} text, ${shown}`;
-    assert.deepEqual(
-      await js(`(${fit.dialog.toString()})()`),
-      [],
-      `The export dialog must fit the ${where}`,
-    );
-    assert.deepEqual(
-      await js(`(${unscrolled.toString()})()`),
-      [],
-      `The export dialog's fields and buttons must show without scrolling at ${where}`,
-    );
-    await fs.writeFile(
-      path.join(
-        SCREENSHOTS,
-        `export-${shown}${zoom === 1 ? "" : "-200"}${size === "larger" ? "-larger" : ""}.png`,
-      ),
-      (await window.webContents.capturePage()).toPNG(),
-    );
-  }
-  await js('document.documentElement.dataset.textSize = "system"');
+  await everywhere("idle", "");
+  // A frame that is no number: the row says so on the label's line.
+  const fromBox = "document.querySelector('dialog[open] input[aria-label=\"From frame\"]')";
+  await js(`(() => {
+    const input = ${fromBox};
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'abc');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await wait(`${fromBox}.getAttribute('aria-invalid') === 'true'`);
+  await everywhere("frame error", "-error");
+  await js(`(() => {
+    const input = ${fromBox};
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '0');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await wait(`!${submit}.disabled`);
   nativeTheme.themeSource = theme;
   await setView(window, [1100, 720], 1);
   // Before an export starts Cancel is there, and closes the dialog like Escape.
@@ -115,4 +111,23 @@ module.exports.run = async ({ window }) => {
     "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Cancel').click()",
   );
   await wait("!document.querySelector('dialog')");
+
+  // A finished export: the bar and where the file went, with one Close button, fit the same way.
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), "ax-export-"));
+  const saving = dialog.showSaveDialog.bind(dialog);
+  dialog.showSaveDialog = async () => ({ canceled: false, filePath: path.join(folder, "out.mp4") });
+  try {
+    pressShortcut(window, "Ctrl+E");
+    await wait(`${submit} && !${submit}.disabled`);
+    await js(`${submit}.click()`);
+    await wait(`${submit}?.textContent === 'Close'`);
+    await everywhere("finished", "-done");
+    await js(`${submit}.click()`);
+    await wait("!document.querySelector('dialog')");
+    nativeTheme.themeSource = theme;
+    await setView(window, [1100, 720], 1);
+  } finally {
+    dialog.showSaveDialog = saving;
+    await fs.rm(folder, { recursive: true, force: true });
+  }
 };
