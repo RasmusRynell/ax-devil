@@ -86,7 +86,7 @@ function Outcome({ status }: { status: Exclude<ExportStatus, { phase: "idle" | "
   if (status.phase === "failed")
     return (
       <div role="alert" className="flex flex-col gap-s">
-        <p className="m-0 break-words text-danger">{`Error: ${status.reason}`}</p>
+        <p className="m-0 break-words whitespace-pre-line text-danger">{`Error: ${status.reason}`}</p>
         {status.location && (
           <p className="m-0 text-small break-all text-muted">{status.location}</p>
         )}

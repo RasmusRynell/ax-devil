@@ -18,6 +18,7 @@ import { describeRow, LaneLayouts, type FoundRow } from "./laneLayouts";
 import { NAME_TAG_SIZE, NameTags } from "./nameTags";
 import type { Matrix, VideoFrame } from "../stream/protocol";
 import { FRAGMENT, VERTEX } from "./shaders";
+import { webgl2Missing } from "./webgl2Missing";
 import { reaches, strokeWidth, type Outline } from "./outlines";
 import { FIT, intersection, panBy, pictureRect, toImage, zoomAt } from "./viewport";
 
@@ -38,7 +39,7 @@ export type Geometry = Pick<
   "pick" | "pictures" | "boxes" | "zoomAt" | "panBy" | "reference"
 >;
 
-/** WebGL2 cannot be had: the browser has no support, or has disabled it. */
+/** WebGL2 cannot be had here. */
 export class RendererUnavailable extends Error {
   constructor(reason: string) {
     super(reason);
@@ -115,7 +116,7 @@ export class VideoRenderer {
       stencil: true,
       powerPreference: "high-performance",
     });
-    if (!gl) throw new RendererUnavailable("WebGL2 is not available");
+    if (!gl) throw new RendererUnavailable(webgl2Missing());
     this.#canvas = canvas;
     this.#gl = gl;
     const program = gl.createProgram();
