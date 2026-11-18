@@ -57,6 +57,36 @@ pub struct Cleared {
     pub failures: Vec<String>,
 }
 
+impl Cleared {
+    /// The sentence that says how much was removed, such as `Removed 3 files (1.2 MiB).`.
+    pub fn summary(&self) -> String {
+        format!("Removed {} ({}).", files(self.files), size(self.bytes))
+    }
+}
+
+/// A file count with its noun: `1 file`, `3 files`.
+pub fn files(count: usize) -> String {
+    format!("{count} {}", if count == 1 { "file" } else { "files" })
+}
+
+/// A size in binary units: `512 B`, `1.5 KiB`, `3.0 MiB`.
+pub fn size(bytes: u64) -> String {
+    let mut value = bytes as f64;
+    let mut unit = "B";
+    for next in ["KiB", "MiB", "GiB", "TiB"] {
+        if value < 1024.0 {
+            break;
+        }
+        value /= 1024.0;
+        unit = next;
+    }
+    if unit == "B" {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.1} {unit}")
+    }
+}
+
 /// What [`scan`] found.
 #[derive(Debug, Default)]
 pub struct Scan {

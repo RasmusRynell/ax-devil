@@ -1,6 +1,6 @@
 //! `clear-cache`: lists the cache files, asks, removes them and says how much it removed.
 
-use ax_devil::disk_cache;
+use ax_devil::disk_cache::{self, files, size};
 use clap::ValueEnum;
 use std::{
     io::{self, BufRead, Write},
@@ -85,14 +85,7 @@ fn clear(
         }
     }
     let cleared = disk_cache::clear(&found.locations);
-    say(
-        out,
-        format!(
-            "Removed {} ({}).",
-            files(cleared.files),
-            size(cleared.bytes)
-        ),
-    )?;
+    say(out, cleared.summary())?;
     if cleared.failures.is_empty() {
         Ok(())
     } else {
@@ -115,28 +108,6 @@ fn say(out: &mut impl Write, line: String) -> Result<(), String> {
     write!(out, "{line}{end}")
         .and_then(|()| out.flush())
         .map_err(|error| error.to_string())
-}
-
-fn files(count: usize) -> String {
-    format!("{count} {}", if count == 1 { "file" } else { "files" })
-}
-
-/// A size in binary units: `512 B`, `1.5 KiB`, `3.0 MiB`.
-fn size(bytes: u64) -> String {
-    let mut value = bytes as f64;
-    let mut unit = "B";
-    for next in ["KiB", "MiB", "GiB", "TiB"] {
-        if value < 1024.0 {
-            break;
-        }
-        value /= 1024.0;
-        unit = next;
-    }
-    if unit == "B" {
-        format!("{bytes} B")
-    } else {
-        format!("{value:.1} {unit}")
-    }
 }
 
 #[cfg(test)]

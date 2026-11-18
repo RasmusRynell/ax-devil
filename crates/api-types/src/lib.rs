@@ -62,6 +62,16 @@ pub struct AppInfo {
     pub config_identity: Option<String>,
 }
 
+/// What Clear Cache removed, as the sentence to show and the files it could not remove.
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheCleared {
+    /// How much was removed, such as `Removed 3 files (1.2 MiB).`.
+    pub summary: String,
+    /// One line for each file or folder that could not be cleared: its path and the reason.
+    pub failures: Vec<String>,
+}
+
 /// What a client learns of a secret: whether it is set and, for a `$NAME` reference, its name. Never the literal, its
 /// length or a mask. A client changes a secret by naming it in a [`SettingsPatch`].
 #[derive(Serialize, TS)]

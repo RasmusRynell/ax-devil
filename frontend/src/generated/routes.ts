@@ -1,6 +1,6 @@
 // Generated from crates/api-types by make; do not edit.
 
-import type { AppInfo, CheckFilesRequest, Choice, CopiedCatalog, CopyCatalogRequest, DeleteCatalogRequest, ExpansionsRequest, FileCheck, FolderListing, FreshCatalog, HandlersInfo, InstallRequest, LiveCheckRequest, LiveExpansions, LiveResolutions, NetworkRow, PageError, PathExists, PathQuery, PluginsInfo, RecentWorkspace, ReloadCatalogRequest, RemoveRequest, ResolutionsRequest, ResolveRequest, ResolvedInfo, ScanRequest, ScanRequestWire, ScanStarted, SessionSummary, SettingsPatch, SettingsState, SourcesAnswer, SourcesRequest, UpdateRequest } from "./api";
+import type { AppInfo, CacheCleared, CheckFilesRequest, Choice, CopiedCatalog, CopyCatalogRequest, DeleteCatalogRequest, ExpansionsRequest, FileCheck, FolderListing, FreshCatalog, HandlersInfo, InstallRequest, LiveCheckRequest, LiveExpansions, LiveResolutions, NetworkRow, PageError, PathExists, PathQuery, PluginsInfo, RecentWorkspace, ReloadCatalogRequest, RemoveRequest, ResolutionsRequest, ResolveRequest, ResolvedInfo, ScanRequest, ScanRequestWire, ScanStarted, SessionSummary, SettingsPatch, SettingsState, SourcesAnswer, SourcesRequest, UpdateRequest } from "./api";
 
 /** Every JSON route by `"METHOD /path"`: what it takes (a GET's request is its query), what it answers (`null` for a 204) and its path parameters. */
 export interface Routes {
@@ -16,6 +16,7 @@ export interface Routes {
   "POST /api/catalogs/copy": { request: CopyCatalogRequest; response: CopiedCatalog; params: null };
   "POST /api/catalogs/reload": { request: ReloadCatalogRequest; response: FreshCatalog; params: null };
   "POST /api/catalogs/delete": { request: DeleteCatalogRequest; response: null; params: null };
+  "POST /api/cache/clear": { request: null; response: CacheCleared; params: null };
   "POST /api/resolvers/{id}/scan": { request: ScanRequest; response: Array<Choice>; params: { id: string } };
   "POST /api/resolvers/{id}/resolve": { request: ResolveRequest; response: ResolvedInfo; params: { id: string } };
   "POST /api/live/resolutions": { request: ResolutionsRequest; response: LiveResolutions; params: null };

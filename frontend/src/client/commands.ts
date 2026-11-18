@@ -52,6 +52,7 @@ export const MENUS: readonly { label: string; items: readonly Layout[] }[] = [
       SEPARATOR,
       action("keyboard-shortcuts"),
       action("settings"),
+      action("clear-cache"),
       SEPARATOR,
       action("exit"),
     ],

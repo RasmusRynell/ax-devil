@@ -23,6 +23,7 @@ import type { AddSeed } from "../live/cameras";
 import { AddLiveStreamDialog } from "./AddLiveStreamDialog";
 import { AddPlaylistDialog } from "./AddPlaylistDialog";
 import { AddVideoDialog } from "./AddVideoDialog";
+import { ClearCacheDialog } from "./ClearCacheDialog";
 import { Banner } from "../kit/Banner";
 import { TitleBar } from "./TitleBar";
 import { QuickSetupDialog } from "./QuickSetupDialog";
@@ -59,6 +60,7 @@ type Dialog =
   | "settings"
   | "restart"
   | "shortcuts"
+  | "clear-cache"
   | "quick-setup"
   | "about"
   | "add-video"
@@ -79,6 +81,8 @@ export function Shell({ version }: { version: string }) {
   const workspace = useDoc()?.workspace;
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [notice, setNotice] = useState<string | null>(null);
+  // What Clear Cache removed: news, not a failure, so it is not the alert above.
+  const [cleared, setCleared] = useState<string | null>(null);
   useFrontViewer(() => setNotice(`Cap at ${MAX_PANES} panes`));
   // A failed save of a setting: a notice the user acknowledges, as the app's own dialogs do.
   const [refused, setRefused] = useState<{ title: string; message: string } | null>(null);
@@ -130,6 +134,7 @@ export function Shell({ version }: { version: string }) {
     plugins: () => setSidebar({ view: "plugins", open: true }),
     ...(owner && { "keyboard-shortcuts": () => setDialog("shortcuts") }),
     ...(owner && { "quick-setup": () => setDialog("quick-setup") }),
+    ...(owner && { "clear-cache": () => setDialog("clear-cache") }),
     about: () => setDialog("about"),
     "add-video": () => setDialog("add-video"),
     "new-workspace": () => void ask({ type: "new" }),
@@ -266,6 +271,11 @@ export function Shell({ version }: { version: string }) {
               {notice}
             </Banner>
           )}
+          {cleared && (
+            <Banner role="status" onDismiss={() => setCleared(null)}>
+              {cleared}
+            </Banner>
+          )}
           {workspace?.recovered && (
             <Banner
               role="status"
@@ -345,6 +355,13 @@ export function Shell({ version }: { version: string }) {
           )}
           {dialog === "add-playlist" && <AddPlaylistDialog onClose={closer("add-playlist")} />}
           {dialog === "shortcuts" && <ShortcutsDialog onClose={closer("shortcuts")} />}
+          {dialog === "clear-cache" && (
+            <ClearCacheDialog
+              onClose={closer("clear-cache")}
+              onCleared={setCleared}
+              onFailed={(message) => setRefused({ title: "Clear Cache", message })}
+            />
+          )}
           {refused && (
             <ChoiceDialog
               title={refused.title}

@@ -4,7 +4,7 @@
 //! A GET's request is its query string; `()` and `Option<T>` answer a 204 as `null`.
 
 use crate::{
-    AppInfo, SessionSummary, SettingsPatch, SettingsState,
+    AppInfo, CacheCleared, SessionSummary, SettingsPatch, SettingsState,
     catalogs::{
         CopiedCatalog, CopyCatalogRequest, DeleteCatalogRequest, FreshCatalog, ReloadCatalogRequest,
     },
@@ -131,6 +131,7 @@ endpoints! {
     CopyCatalog: POST "/api/catalogs/copy", CopyCatalogRequest => CopiedCatalog;
     ReloadCatalog: POST "/api/catalogs/reload", ReloadCatalogRequest => FreshCatalog;
     DeleteCatalog: POST "/api/catalogs/delete", DeleteCatalogRequest => ();
+    ClearCache: POST "/api/cache/clear", () => CacheCleared;
     ScanResolver: POST "/api/resolvers/{id}/scan", ScanRequest => Vec<Choice>;
     ResolveResolver: POST "/api/resolvers/{id}/resolve", ResolveRequest => ResolvedInfo;
     ListResolutions: POST "/api/live/resolutions", ResolutionsRequest => LiveResolutions;
