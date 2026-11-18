@@ -50,6 +50,10 @@ pub struct Decoder {
     feed: Feed,
     /// A frame already taken from the codec that is not the next one due.
     held: Option<Decoded>,
+    /// The sequence id of the last frame taken from the codec since the last seek.
+    last_matched: Option<u64>,
+    /// The timestamp a seek asked for, until the first packet after it shows where the container landed.
+    landing: Option<i64>,
     /// Why the codec last failed, to explain the frames it then did not deliver.
     last_error: Option<String>,
     /// FFmpeg polls this while it reads; once cancelled the decoder is at the end of the stream for good.
@@ -109,6 +113,8 @@ impl Decoder {
             position: Some(0),
             feed: Feed::Reading,
             held: None,
+            last_matched: None,
+            landing: None,
             last_error: None,
             cancel,
         })
@@ -157,6 +163,8 @@ impl Decoder {
         self.codec.flush();
         self.feed = Feed::Reading;
         self.held = None;
+        self.last_matched = None;
+        self.landing = Some(pts);
         self.last_error = None;
         self.position = Some(keyframe);
         Ok(())
@@ -205,14 +213,20 @@ impl Decoder {
             let mut frame = Video::empty();
             match self.codec.receive_frame(&mut frame) {
                 Ok(()) => {
-                    if let Some(sequence_id) = frame
-                        .pts()
-                        .and_then(|pts| self.index.sequence_id(pts, self.position.unwrap_or(0)))
+                    // Some containers (ASF) drop the timestamp of the packet after a seek. The codec's output is in
+                    // presentation order, so such a frame is the one after the frame before it.
+                    let sequence_id = match frame.timestamp() {
+                        Some(pts) => self.index.sequence_id(pts, self.position.unwrap_or(0)),
+                        None => self.last_matched.map(|id| id + 1),
+                    };
+                    if let Some(sequence_id) =
+                        sequence_id.filter(|id| *id < self.index.timeline().len())
                     {
+                        self.last_matched = Some(sequence_id);
                         return Some((sequence_id, frame));
                     }
                     // Decode-only frames and anything the index does not list have no place to go.
-                    debug!(path = %self.path.display(), pts = ?frame.pts(), "dropping a frame that is not in the index");
+                    debug!(path = %self.path.display(), pts = ?frame.timestamp(), "dropping a frame that is not in the index");
                 }
                 Err(ffmpeg_next::Error::Eof) => {
                     self.feed = Feed::Drained;
@@ -244,6 +258,17 @@ impl Decoder {
     fn read_packet(&mut self) {
         match self.reader.read(&self.cancel) {
             Ok(Some(packet)) => {
+                if let Some(target) = self.landing.take()
+                    && packet.dts().or(packet.pts()).is_some_and(|at| at > target)
+                    && let Some(start) = self.index.pts(0)
+                {
+                    // Some containers (ASF) seek past the keyframe asked for; reading from the start reaches it.
+                    match self.reader.seek(0, start) {
+                        Ok(()) => self.codec.flush(),
+                        Err(error) => self.last_error = Some(error.to_string()),
+                    }
+                    return;
+                }
                 if let Err(error) = self.codec.send_packet(&packet) {
                     debug!(path = %self.path.display(), %error, "the codec rejected a packet");
                     self.last_error = Some(error.to_string());

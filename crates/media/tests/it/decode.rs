@@ -399,6 +399,31 @@ fn raw_rgb24_converts_to_rgba_exactly() {
 }
 
 #[test]
+fn a_video_with_only_decode_timestamps_is_indexed_and_seeked_by_them() {
+    let path = fixture("dts_only_h264.asf");
+    let index = index_of(&path);
+    assert_eq!(index.scan(), Some(ScanKind::Decode));
+    assert_eq!(index.timeline().len(), 12);
+    let mut decoder = open(&path, &index, 1);
+    for target in [0, 11, 7, 5, 2] {
+        decoder
+            .seek_to_keyframe(index.keyframes().at_or_before(target))
+            .unwrap();
+        loop {
+            let frame = decoder.next_frame().unwrap().unwrap();
+            assert_eq!(flat_luma(&frame), expected_luma(frame.id().sequence_id));
+            assert_eq!(
+                frame.id().timestamp.as_us(),
+                frame.id().sequence_id as i64 * 40_000
+            );
+            if frame.id().sequence_id == target {
+                break;
+            }
+        }
+    }
+}
+
+#[test]
 fn duplicate_pts_preserve_every_image_when_reading_and_seeking() {
     let path = fixture("duplicate_pts.mkv");
     let index = index_of(&path);

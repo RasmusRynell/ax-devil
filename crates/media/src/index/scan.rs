@@ -152,7 +152,7 @@ pub(super) fn decode_scan(
     let mut collect = |decoder: &mut ffmpeg_next::decoder::Video, frames: &mut Vec<(i64, bool)>| {
         let mut frame = Video::empty();
         while decoder.receive_frame(&mut frame).is_ok() {
-            match frame.pts() {
+            match frame.timestamp() {
                 Some(pts) => frames.push((pts, frame.is_key())),
                 None => missing_pts = true,
             }

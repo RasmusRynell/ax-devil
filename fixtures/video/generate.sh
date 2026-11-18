@@ -43,6 +43,10 @@ ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(luma 64x48 30)" "${PLAIN[@]}" -frames:v 90 
 ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(luma 64x48 30)" "${PLAIN[@]}" -frames:v 60 "${H264[@]}" \
   -x264-params keyint=10:min-keyint=10:scenecut=0:bframes=2:b-adapt=0 -output_ts_offset 10 -movflags +faststart pts_offset.mp4
 
+# ASF stores a decode timestamp per packet and no presentation timestamp, so a decoder gets pts from dts.
+ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(luma 64x48 25)" "${PLAIN[@]}" -frames:v 12 "${H264[@]}" \
+  -x264-params keyint=5:min-keyint=5:scenecut=0:bframes=0 -f asf dts_only_h264.asf
+
 # The 90-frame video cut inside its last packet: the container lists every frame, the last cannot be decoded.
 cut=$(( $(stat -c %s cfr_h264_gop10_bf2.mp4) - 30 ))
 head -c "$cut" cfr_h264_gop10_bf2.mp4 > truncated.mp4
