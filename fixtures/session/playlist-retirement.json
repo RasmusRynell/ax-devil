@@ -1,0 +1,1196 @@
+{
+  "docs": {
+    "duplicates": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/B",
+                      "label": "B",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "B"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "recipe": {
+                "label": "list",
+                "resolver": "list",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/B",
+                      "label": "B",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "B"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/list/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/list/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "duplicates-resolved": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": false,
+              "recipe": {
+                "label": "list",
+                "resolver": "list",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/list/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "single": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/B",
+                      "label": "B",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "B"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "recipe": {
+                "label": "list",
+                "resolver": "list",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/B",
+                      "label": "B",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "B"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/list/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/list/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "single-resolved": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": false,
+              "recipe": {
+                "label": "list",
+                "resolver": "list",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/list/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "survivor": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/B",
+                      "label": "B",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "B"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B",
+              "kind": "entry",
+              "label": "B",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "recipe": {
+                "label": "list",
+                "resolver": "list",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    },
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/B",
+                      "label": "B",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "B"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 2,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/list/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/B",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/B",
+              "kind": "entry",
+              "label": "B",
+              "location": "/data/list/B",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "survivor-resolved": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "playlist",
+              "label": "list",
+              "open": true,
+              "recipe": {
+                "label": "list",
+                "resolver": "list",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "list",
+                  "entries": [
+                    {
+                      "handlers": [],
+                      "id": "00000000-0000-4000-8000-000000000001/list/A",
+                      "label": "A",
+                      "lane_metadata": [],
+                      "lanes": [
+                        "A"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000001/list",
+                      "label": "list",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list",
+              "kind": "playlist",
+              "label": "list",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001/list/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001/list/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/list/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    }
+  },
+  "ids": {
+    "list": "00000000-0000-4000-8000-000000000001",
+    "list/A": "00000000-0000-4000-8000-000000000001/list/A",
+    "list/B": "00000000-0000-4000-8000-000000000001/list/B",
+    "list/list": "00000000-0000-4000-8000-000000000001/list"
+  },
+  "steps": [],
+  "views": {
+    "duplicates": {
+      "active": 1,
+      "layout": {
+        "axis": "row",
+        "first": {
+          "type": "pane",
+          "viewer": 1
+        },
+        "second": {
+          "type": "pane",
+          "viewer": 2
+        },
+        "share": 4000,
+        "type": "split"
+      },
+      "overlays": {
+        "laneNames": false,
+        "objectDetails": true
+      },
+      "sidebar": {
+        "open": true,
+        "view": "workspace"
+      },
+      "viewers": {
+        "1": {
+          "clock": {
+            "atUs": 0,
+            "frame": 7,
+            "playing": false,
+            "speedCenti": 125
+          },
+          "entry": "00000000-0000-4000-8000-000000000001/list/B",
+          "item": "00000000-0000-4000-8000-000000000001",
+          "pinned": true
+        },
+        "2": {
+          "clock": {
+            "atUs": 0,
+            "frame": 7,
+            "playing": false,
+            "speedCenti": 125
+          },
+          "entry": "00000000-0000-4000-8000-000000000001/list/B",
+          "item": "00000000-0000-4000-8000-000000000001",
+          "pinned": true,
+          "viewport": {
+            "h": 0.5,
+            "w": 0.5,
+            "x": 0.2,
+            "y": 0.1
+          }
+        }
+      }
+    },
+    "duplicates-resolved": {
+      "overlays": {
+        "laneNames": false,
+        "objectDetails": true
+      },
+      "sidebar": {
+        "open": true,
+        "view": "workspace"
+      },
+      "viewers": {}
+    },
+    "single": {
+      "active": 1,
+      "layout": {
+        "type": "pane",
+        "viewer": 1
+      },
+      "overlays": {
+        "laneNames": false,
+        "objectDetails": true
+      },
+      "sidebar": {
+        "open": true,
+        "view": "workspace"
+      },
+      "viewers": {
+        "1": {
+          "clock": {
+            "atUs": 0,
+            "frame": 7,
+            "playing": false,
+            "speedCenti": 125
+          },
+          "entry": "00000000-0000-4000-8000-000000000001/list/B",
+          "item": "00000000-0000-4000-8000-000000000001",
+          "pinned": true,
+          "viewport": {
+            "h": 0.5,
+            "w": 0.5,
+            "x": 0.2,
+            "y": 0.1
+          }
+        }
+      }
+    },
+    "single-resolved": {
+      "overlays": {
+        "laneNames": false,
+        "objectDetails": true
+      },
+      "sidebar": {
+        "open": true,
+        "view": "workspace"
+      },
+      "viewers": {}
+    },
+    "survivor": {
+      "active": 1,
+      "layout": {
+        "axis": "row",
+        "first": {
+          "type": "pane",
+          "viewer": 1
+        },
+        "second": {
+          "type": "pane",
+          "viewer": 2
+        },
+        "share": 4000,
+        "type": "split"
+      },
+      "overlays": {
+        "laneNames": false,
+        "objectDetails": true
+      },
+      "sidebar": {
+        "open": true,
+        "view": "workspace"
+      },
+      "viewers": {
+        "1": {
+          "clock": {
+            "atUs": 0,
+            "frame": 7,
+            "playing": false,
+            "speedCenti": 125
+          },
+          "entry": "00000000-0000-4000-8000-000000000001/list/B",
+          "item": "00000000-0000-4000-8000-000000000001",
+          "pinned": true
+        },
+        "2": {
+          "clock": {
+            "atUs": 0,
+            "frame": 7,
+            "playing": false,
+            "speedCenti": 125
+          },
+          "entry": "00000000-0000-4000-8000-000000000001/list/A",
+          "item": "00000000-0000-4000-8000-000000000001",
+          "pinned": true,
+          "viewport": {
+            "h": 0.5,
+            "w": 0.5,
+            "x": 0.2,
+            "y": 0.1
+          }
+        }
+      }
+    },
+    "survivor-resolved": {
+      "layout": {
+        "type": "pane",
+        "viewer": 2
+      },
+      "overlays": {
+        "laneNames": false,
+        "objectDetails": true
+      },
+      "sidebar": {
+        "open": true,
+        "view": "workspace"
+      },
+      "viewers": {
+        "2": {
+          "clock": {
+            "atUs": 0,
+            "frame": 7,
+            "playing": false,
+            "speedCenti": 125
+          },
+          "entry": "00000000-0000-4000-8000-000000000001/list/A",
+          "item": "00000000-0000-4000-8000-000000000001",
+          "pinned": true,
+          "viewport": {
+            "h": 0.5,
+            "w": 0.5,
+            "x": 0.2,
+            "y": 0.1
+          }
+        }
+      }
+    }
+  }
+}

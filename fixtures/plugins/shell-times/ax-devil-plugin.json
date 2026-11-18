@@ -1,0 +1,21 @@
+{
+  "manifest": 2,
+  "id": "shell-times",
+  "name": "Shell times",
+  "version": "1.0.0",
+  "protocol": 3,
+  "command": ["sh", "convert.sh"],
+  "code": ["convert.sh"],
+  "idle_timeout_s": 30,
+  "handlers": [
+    {
+      "kind": "decoder",
+      "id": "shell-times",
+      "name": "Shell times (text)",
+      "input": "path",
+      "scene_version": "4.0",
+      "extensions": [".times.txt"],
+      "bases": ["time", "frame"]
+    }
+  ]
+}

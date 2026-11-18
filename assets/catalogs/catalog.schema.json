@@ -1,0 +1,691 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ax-devil render catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "name",
+    "description",
+    "layers"
+  ],
+  "properties": {
+    "schema": {
+      "const": 4
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "origin": {
+      "type": "string"
+    },
+    "vars": {
+      "type": "object",
+      "description": "Per-row variables and their defaults.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/expression"
+      }
+    },
+    "themes": {
+      "type": "object",
+      "description": "Named sets of variable defaults, literals only.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/$defs/expression"
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/layer"
+      }
+    }
+  },
+  "$defs": {
+    "expression": {
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ],
+      "description": "A literal, or a string holding an expression."
+    },
+    "anchor": {
+      "enum": [
+        "top-left",
+        "top-center",
+        "top-right",
+        "center-left",
+        "center",
+        "center-right",
+        "bottom-left",
+        "bottom-center",
+        "bottom-right"
+      ]
+    },
+    "place_anchor": {
+      "enum": [
+        "top-left",
+        "top-center",
+        "top-right",
+        "center-left",
+        "center",
+        "center-right",
+        "bottom-left",
+        "bottom-center",
+        "bottom-right",
+        "baseline"
+      ]
+    },
+    "place": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "anchor"
+      ],
+      "properties": {
+        "when": {
+          "$ref": "#/$defs/bool"
+        },
+        "at": {
+          "$ref": "#/$defs/anchor"
+        },
+        "anchor": {
+          "$ref": "#/$defs/place_anchor"
+        },
+        "dx": {
+          "$ref": "#/$defs/length"
+        },
+        "dy": {
+          "$ref": "#/$defs/length"
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "color"
+      ],
+      "properties": {
+        "text": {
+          "$ref": "#/$defs/text"
+        },
+        "bar": {
+          "$ref": "#/$defs/number"
+        },
+        "color": {
+          "$ref": "#/$defs/color"
+        },
+        "weight": {
+          "enum": [
+            "regular",
+            "medium",
+            "semibold",
+            "bold"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "text"
+          ]
+        },
+        {
+          "required": [
+            "bar"
+          ]
+        }
+      ]
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "when",
+        "set"
+      ],
+      "properties": {
+        "when": {
+          "$ref": "#/$defs/bool"
+        },
+        "set": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/expression"
+          }
+        }
+      }
+    },
+    "layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "marks"
+      ],
+      "properties": {
+        "feature": {
+          "enum": [
+            "outlines",
+            "ids",
+            "class_names",
+            "score",
+            "confidence",
+            "speed",
+            "movement",
+            "attributes",
+            "relations"
+          ]
+        },
+        "for": {
+          "enum": [
+            "entities",
+            "relations"
+          ],
+          "default": "entities"
+        },
+        "when": {
+          "$ref": "#/$defs/bool"
+        },
+        "marks": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/mark_box"
+              },
+              {
+                "$ref": "#/$defs/mark_circle"
+              },
+              {
+                "$ref": "#/$defs/mark_line"
+              },
+              {
+                "$ref": "#/$defs/mark_arrow"
+              },
+              {
+                "$ref": "#/$defs/mark_polygon"
+              },
+              {
+                "$ref": "#/$defs/mark_bar"
+              },
+              {
+                "$ref": "#/$defs/mark_text"
+              },
+              {
+                "$ref": "#/$defs/mark_label"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "number": {
+      "$ref": "#/$defs/expression",
+      "description": "A number: 0.5, or an expression."
+    },
+    "bool": {
+      "$ref": "#/$defs/expression",
+      "description": "A condition: true, or an expression."
+    },
+    "string": {
+      "$ref": "#/$defs/expression",
+      "description": "A string expression."
+    },
+    "text": {
+      "$ref": "#/$defs/expression",
+      "description": "Text: an expression such as \"trim(id, 10, 'middle')\"."
+    },
+    "color": {
+      "$ref": "#/$defs/expression",
+      "description": "A color: '#rrggbb', '#rrggbbaa', or an expression."
+    },
+    "colors": {
+      "$ref": "#/$defs/expression",
+      "description": "A list of colors from an attribute."
+    },
+    "length": {
+      "$ref": "#/$defs/expression",
+      "description": "A length in screen pixels: '1.5px', or an expression with box.w, box.h, box.min, image.*."
+    },
+    "box": {
+      "$ref": "#/$defs/expression",
+      "description": "A box in the image: 'box', 'source.box', 'target.box', or inset(box, 0.2)."
+    },
+    "point": {
+      "$ref": "#/$defs/expression",
+      "description": "A point in the image: anchor(box, 'center')."
+    },
+    "mark_box": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mark"
+      ],
+      "properties": {
+        "mark": {
+          "const": "box"
+        },
+        "when": {
+          "$ref": "#/$defs/bool"
+        },
+        "on": {
+          "$ref": "#/$defs/box"
+        },
+        "w": {
+          "$ref": "#/$defs/length"
+        },
+        "h": {
+          "$ref": "#/$defs/length"
+        },
+        "dx": {
+          "$ref": "#/$defs/length"
+        },
+        "dy": {
+          "$ref": "#/$defs/length"
+        },
+        "outset": {
+          "$ref": "#/$defs/length"
+        },
+        "min_size": {
+          "$ref": "#/$defs/length"
+        },
+        "stroke": {
+          "$ref": "#/$defs/color"
+        },
+        "fill": {
+          "$ref": "#/$defs/color"
+        },
+        "width": {
+          "$ref": "#/$defs/length"
+        },
+        "dash": {
+          "$ref": "#/$defs/bool"
+        },
+        "radius": {
+          "$ref": "#/$defs/length"
+        },
+        "pin": {
+          "$ref": "#/$defs/anchor",
+          "description": "Place a w x h rect inside the reference box at this anchor."
+        },
+        "margin": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/length"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/length"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          ]
+        }
+      }
+    },
+    "mark_circle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mark",
+        "r"
+      ],
+      "properties": {
+        "mark": {
+          "const": "circle"
+        },
+        "when": {
+          "$ref": "#/$defs/bool"
+        },
+        "on": {
+          "$ref": "#/$defs/box"
+        },
+        "dx": {
+          "$ref": "#/$defs/length"
+        },
+        "dy": {
+          "$ref": "#/$defs/length"
+        },
+        "min_size": {
+          "$ref": "#/$defs/length"
+        },
+        "stroke": {
+          "$ref": "#/$defs/color"
+        },
+        "fill": {
+          "$ref": "#/$defs/color"
+        },
+        "width": {
+          "$ref": "#/$defs/length"
+        },
+        "dash": {
+          "$ref": "#/$defs/bool"
+        },
+        "r": {
+          "$ref": "#/$defs/length"
+        },
+        "pin": {
+          "$ref": "#/$defs/anchor",
+          "description": "Place a w x h rect inside the reference box at this anchor."
+        },
+        "margin": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/length"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/length"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          ]
+        }
+      }
+    },
+    "mark_line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mark",
+        "from",
+        "to"
+      ],
+      "properties": {
+        "mark": {
+          "const": "line"
+        },
+        "when": {
+          "$ref": "#/$defs/bool"
+        },
+        "min_size": {
+          "$ref": "#/$defs/length"
+        },
+        "from": {
+          "$ref": "#/$defs/point"
+        },
+        "to": {
+          "$ref": "#/$defs/point"
+        },
+        "stroke": {
+          "$ref": "#/$defs/color"
+        },
+        "width": {
+          "$ref": "#/$defs/length"
+        },
+        "dash": {
+          "$ref": "#/$defs/bool"
+        }
+      }
+    },
+    "mark_arrow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mark"
+      ],
+      "properties": {
+        "mark": {
+          "const": "arrow"
+        },
+        "when": {
+          "$ref": "#/$defs/bool"
+        },
+        "on": {
+          "$ref": "#/$defs/box"
+        },
+        "min_size": {
+          "$ref": "#/$defs/length"
+        },
+        "gain": {
+          "$ref": "#/$defs/number"
+        },
+        "max": {
+          "$ref": "#/$defs/length"
+        },
+        "head": {
+          "$ref": "#/$defs/length"
+        },
+        "head_width": {
+          "$ref": "#/$defs/length"
+        },
+        "min_speed": {
+          "$ref": "#/$defs/number"
+        },
+        "vx": {
+          "$ref": "#/$defs/number"
+        },
+        "vy": {
+          "$ref": "#/$defs/number"
+        },
+        "stroke": {
+          "$ref": "#/$defs/color"
+        },
+        "width": {
+          "$ref": "#/$defs/length"
+        }
+      }
+    },
+    "mark_polygon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mark"
+      ],
+      "properties": {
+        "mark": {
+          "const": "polygon"
+        },
+        "when": {
+          "$ref": "#/$defs/bool"
+        },
+        "min_size": {
+          "$ref": "#/$defs/length"
+        },
+        "stroke": {
+          "$ref": "#/$defs/color"
+        },
+        "fill": {
+          "$ref": "#/$defs/color"
+        },
+        "width": {
+          "$ref": "#/$defs/length"
+        },
+        "dash": {
+          "$ref": "#/$defs/bool"
+        }
+      }
+    },
+    "mark_bar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mark",
+        "value"
+      ],
+      "properties": {
+        "mark": {
+          "const": "bar"
+        },
+        "when": {
+          "$ref": "#/$defs/bool"
+        },
+        "on": {
+          "$ref": "#/$defs/box"
+        },
+        "w": {
+          "$ref": "#/$defs/length"
+        },
+        "h": {
+          "$ref": "#/$defs/length"
+        },
+        "dx": {
+          "$ref": "#/$defs/length"
+        },
+        "dy": {
+          "$ref": "#/$defs/length"
+        },
+        "min_size": {
+          "$ref": "#/$defs/length"
+        },
+        "value": {
+          "$ref": "#/$defs/number"
+        },
+        "fill": {
+          "$ref": "#/$defs/color"
+        },
+        "pin": {
+          "$ref": "#/$defs/anchor",
+          "description": "Place a w x h rect inside the reference box at this anchor."
+        },
+        "margin": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/length"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/length"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          ]
+        }
+      }
+    },
+    "mark_text": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mark",
+        "text",
+        "color",
+        "size",
+        "place"
+      ],
+      "properties": {
+        "mark": {
+          "const": "text"
+        },
+        "when": {
+          "$ref": "#/$defs/bool"
+        },
+        "on": {
+          "$ref": "#/$defs/box"
+        },
+        "min_size": {
+          "$ref": "#/$defs/length"
+        },
+        "text": {
+          "$ref": "#/$defs/text"
+        },
+        "color": {
+          "$ref": "#/$defs/color"
+        },
+        "size": {
+          "$ref": "#/$defs/length"
+        },
+        "font": {
+          "type": "string",
+          "description": "A font family."
+        },
+        "place": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/place"
+          },
+          "minItems": 1,
+          "maxItems": 8
+        }
+      }
+    },
+    "mark_label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mark",
+        "runs",
+        "size",
+        "place"
+      ],
+      "properties": {
+        "mark": {
+          "const": "label"
+        },
+        "when": {
+          "$ref": "#/$defs/bool"
+        },
+        "on": {
+          "$ref": "#/$defs/box"
+        },
+        "min_size": {
+          "$ref": "#/$defs/length"
+        },
+        "size": {
+          "$ref": "#/$defs/length"
+        },
+        "background": {
+          "$ref": "#/$defs/color"
+        },
+        "radius": {
+          "$ref": "#/$defs/length"
+        },
+        "gap": {
+          "$ref": "#/$defs/length"
+        },
+        "font": {
+          "type": "string",
+          "description": "A font family."
+        },
+        "place": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/place"
+          },
+          "minItems": 1,
+          "maxItems": 8
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/run"
+          },
+          "minItems": 1
+        },
+        "pad": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/length"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Horizontal and vertical."
+        }
+      }
+    }
+  }
+}

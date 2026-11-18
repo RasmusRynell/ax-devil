@@ -1,0 +1,25 @@
+{
+  "manifest": 2,
+  "id": "python-tracks",
+  "name": "Python tracks",
+  "version": "1.0.0",
+  "protocol": 3,
+  "command": ["python3", "convert.py"],
+  "code": ["convert.py"],
+  "idle_timeout_s": 30,
+  "handlers": [
+    {
+      "kind": "decoder",
+      "id": "python-tracks",
+      "name": "Python tracks (CSV)",
+      "input": "path",
+      "scene_version": "4.2",
+      "extensions": [".tracks.csv"],
+      "options": [
+        { "key": "camera", "label": "Camera name", "kind": "text", "required": false, "default": "front" },
+        { "key": "width", "label": "Image width in pixels", "kind": "text", "required": false, "default": "1920" },
+        { "key": "height", "label": "Image height in pixels", "kind": "text", "required": false, "default": "1080" }
+      ]
+    }
+  ]
+}

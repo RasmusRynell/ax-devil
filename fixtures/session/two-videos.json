@@ -1,0 +1,773 @@
+{
+  "docs": {
+    "a-closed": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "a.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/a/a.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "a.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "a.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "a.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "b.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/b/b.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "b.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "b.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "b.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "a.mp4",
+              "location": "/data/a/a.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "b.mp4",
+              "location": "/data/b/b.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "a-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "a.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "a.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "a.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "a.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "a.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "a.mp4",
+              "open": true,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/a/a.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "a.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "a.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "a.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "b.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/b/b.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "b.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "b.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "b.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "a.mp4",
+              "location": "/data/a/a.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "b.mp4",
+              "location": "/data/b/b.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "b-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "b.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "b.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "b.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "b.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "b.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "a.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/a/a.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "a.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "a.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "a.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "b.mp4",
+              "open": true,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/b/b.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "b.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "b.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "b.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "a.mp4",
+              "location": "/data/a/a.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "b.mp4",
+              "location": "/data/b/b.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "both-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "a.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "a.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "a.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "a.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "b.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "b.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "b.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "b.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "a.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "b.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "a.mp4",
+              "open": true,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/a/a.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "a.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "a.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "a.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "b.mp4",
+              "open": true,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/b/b.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "b.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "b.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "b.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "a.mp4",
+              "location": "/data/a/a.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "b.mp4",
+              "location": "/data/b/b.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "initial": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "a.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/a/a.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "a.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "a.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "a.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "video",
+              "label": "b.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/b/b.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "b.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "label": "b.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "b.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "a.mp4",
+              "location": "/data/a/a.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "b.mp4",
+              "location": "/data/b/b.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    }
+  },
+  "ids": {
+    "a": "00000000-0000-4000-8000-000000000001",
+    "b": "00000000-0000-4000-8000-000000000002"
+  },
+  "steps": [
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000001",
+          "type": "closeViewer"
+        },
+        "type": "content"
+      },
+      "from": "a-open",
+      "to": "a-closed"
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+name: Set up Linux
+description: Toolchain, caches, display, clang and FFmpeg for the Linux check and desktop jobs.
+
+outputs:
+  cargo-cache-hit:
+    description: "true when the Cargo cache restored an exact key"
+    value: ${{ steps.cargo-cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version-file: .node-version
+        cache: pnpm
+
+    # Restore only: the check job saves it, and only on pushes, because a copy per pull request ref would pass the
+    # repository's 10 GB cap and evict the one every run restores.
+    - id: cargo-cache
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          .tools
+          target
+        # target holds outputs linked against one FFmpeg, so the restore prefix names it.
+        key: cargo-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg-fetch.sh') }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'Makefile') }}
+        restore-keys: cargo-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg-fetch.sh') }}-
+
+    # The media crate generates its FFmpeg bindings with clang.
+    - name: Install the private display and clang
+      shell: bash
+      # The script installs from whichever Ubuntu mirror answers, with apt retries and timeouts.
+      run: scripts/apt-install.sh xauth xvfb openbox libxtst6 clang libclang-dev
+
+    # The pinned FFmpeg the Linux package ships; the loader path is for the test binaries and the app.
+    - name: Choose the FFmpeg folder
+      shell: bash
+      run: |
+        echo "FFMPEG_DIR=$RUNNER_TEMP/ffmpeg" >> "$GITHUB_ENV"
+        echo "LD_LIBRARY_PATH=$RUNNER_TEMP/ffmpeg/lib" >> "$GITHUB_ENV"
+
+    # The same key as the Linux package job, so the two share one entry.
+    - name: Restore FFmpeg
+      id: ffmpeg
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ${{ env.FFMPEG_DIR }}
+        key: ffmpeg-linux--${{ hashFiles('scripts/ffmpeg-fetch.sh') }}
+
+    - name: Get FFmpeg
+      if: steps.ffmpeg.outputs.cache-hit != 'true'
+      shell: bash
+      run: scripts/ffmpeg-fetch.sh linux "$FFMPEG_DIR"
+
+    # Ubuntu 24.04 blocks the unprivileged user namespaces Electron's sandbox needs.
+    - name: Allow Electron's sandbox
+      shell: bash
+      run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0

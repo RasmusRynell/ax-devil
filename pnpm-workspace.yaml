@@ -1,0 +1,21 @@
+packages:
+  - frontend
+  - desktop
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@1.4.0
+  vite-plus: 1.4.0
+overrides:
+  vite@*: "catalog:"
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: "*"
+# electron-builder pulls in electron-winstaller for Squirrel installers, which the Windows zip target does not use.
+allowBuilds:
+  electron-winstaller: false
+# minimatch denial of service: reached only through electron-builder's packaging tooling, which never globs untrusted
+# input, and electron-builder has no release that resolves minimatch >=11.0.1 yet. Drop this once it does.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-g3hv-75wg-m249

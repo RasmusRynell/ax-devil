@@ -1,0 +1,3960 @@
+{
+  "docs": {
+    "blur-question": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "question",
+                  "note": "Blur",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "v.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "blur-removed": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "v.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "blur-unnamed": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "v.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "both-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Blur",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "v.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Blur",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "v.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": true,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "initial": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Blur",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "v.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "mot-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Blur",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "v.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": true,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "recovered": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 2,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": true,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Sharp",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "w.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 2,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "w.mp4",
+              "open": false,
+              "recipe": {
+                "label": "w.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "w.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "w.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 7,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 8,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": true,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "w.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "renamed": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Blur",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "w.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "w.mp4",
+              "open": false,
+              "recipe": {
+                "label": "w.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "w.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "w.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "w.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "replaced": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 1,
+          "file": null,
+          "items": [],
+          "modified": false,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Sharp",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "w.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 1,
+          "file": "/data/saved.ax-devil.workspace",
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "w.mp4",
+              "open": false,
+              "recipe": {
+                "label": "w.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "w.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "w.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 6,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": false,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "w.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "reviewed": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": true,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "w.mp4",
+              "open": false,
+              "recipe": {
+                "label": "w.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "w.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "w.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "w.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "saved": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Blur",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "v.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": "/workspaces/review.ax-devil.workspace",
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "sharp": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Sharp",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "w.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "w.mp4",
+              "open": false,
+              "recipe": {
+                "label": "w.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "w.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "w.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "w.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "sharp-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Sharp",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "w.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "w.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "w.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "w.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "w.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Sharp",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "w.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "w.mp4",
+              "open": true,
+              "recipe": {
+                "label": "w.mp4",
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "w.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "w.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 5,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "w.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "v-open": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Blur",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "v.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Blur",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "v.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": true,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 4,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "v-reviewed": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [
+            {
+              "bookmarks": [
+                {
+                  "frame": 75,
+                  "id": "00000000-0000-4000-9000-000000000001",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 3000000
+                },
+                {
+                  "frame": 90,
+                  "id": "00000000-0000-4000-9000-000000000002",
+                  "kind": "issue",
+                  "note": "Blur",
+                  "time_us": 3600000
+                }
+              ],
+              "entry": "",
+              "item": "00000000-0000-4000-8000-000000000001",
+              "item_name": "v.mp4",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "reviewed": true,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000001",
+                "status": "Open"
+              },
+              "target": null
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 6,
+                  "id": "00000000-0000-4000-9000-000000000003",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 240000
+                }
+              ],
+              "entry": "A",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "reviewed": false,
+              "standing": {
+                "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+                "status": "Open"
+              },
+              "target": "MOT/A"
+            },
+            {
+              "bookmarks": [
+                {
+                  "frame": 4,
+                  "id": "00000000-0000-4000-9000-000000000004",
+                  "kind": "note",
+                  "note": "",
+                  "time_us": 160000
+                }
+              ],
+              "entry": "MOT/Z",
+              "item": "00000000-0000-4000-8000-000000000002",
+              "item_name": "mot",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/Z",
+              "reviewed": false,
+              "standing": {
+                "status": "Missing"
+              },
+              "target": "MOT/Z"
+            }
+          ],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "video",
+              "label": "v.mp4",
+              "open": false,
+              "recipe": {
+                "label": null,
+                "overlays": [],
+                "path": "/data/v/v.mp4",
+                "type": "Video"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "v.mp4",
+                  "entry": {
+                    "handlers": [],
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "label": "v.mp4",
+                    "lane_metadata": [],
+                    "lanes": [
+                      "v.mp4"
+                    ],
+                    "metadata": []
+                  },
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "SeekableVideo"
+                },
+                "status": "Resolved"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "playlist",
+              "label": "mot",
+              "open": false,
+              "recipe": {
+                "label": "mot",
+                "resolver": "mot",
+                "settings": {},
+                "type": "Playlist"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "mot",
+                  "entries": [
+                    {
+                      "handlers": [
+                        "MOT_FILE"
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000002/MOT/A",
+                      "label": "A",
+                      "lane_metadata": [
+                        []
+                      ],
+                      "lanes": [
+                        "GT"
+                      ],
+                      "metadata": []
+                    }
+                  ],
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "Playlist",
+                  "playlists": [
+                    {
+                      "entries": 1,
+                      "id": "00000000-0000-4000-8000-000000000002/MOT",
+                      "label": "mot",
+                      "metadata": []
+                    }
+                  ]
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "v.mp4",
+              "location": "/data/v/v.mp4",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT",
+              "kind": "playlist",
+              "label": "mot",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "kind": "entry",
+              "label": "A",
+              "location": "/data/mot/A",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002/MOT/A",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002/MOT/A\u001fGT",
+              "kind": "lane",
+              "label": "GT",
+              "location": "/data/mot/GT.txt",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    }
+  },
+  "ids": {
+    "mot": "00000000-0000-4000-8000-000000000002",
+    "mot/A": "00000000-0000-4000-8000-000000000002/MOT/A",
+    "mot/MOT": "00000000-0000-4000-8000-000000000002/MOT",
+    "mot/Z": "00000000-0000-4000-8000-000000000002/MOT/Z",
+    "v": "00000000-0000-4000-8000-000000000001"
+  },
+  "steps": [
+    {
+      "command": {
+        "command": {
+          "command": {
+            "id": "00000000-0000-4000-9000-000000000002",
+            "type": "remove"
+          },
+          "type": "bookmark"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "blur-removed"
+    },
+    {
+      "command": {
+        "command": {
+          "command": {
+            "id": "00000000-0000-4000-9000-000000000002",
+            "kind": "question",
+            "type": "edit"
+          },
+          "type": "bookmark"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "blur-question"
+    },
+    {
+      "command": {
+        "command": {
+          "command": {
+            "id": "00000000-0000-4000-9000-000000000002",
+            "note": "",
+            "type": "edit"
+          },
+          "type": "bookmark"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "blur-unnamed"
+    },
+    {
+      "command": {
+        "command": {
+          "command": {
+            "item": "00000000-0000-4000-8000-000000000001",
+            "reviewed": true,
+            "type": "setReviewed"
+          },
+          "type": "bookmark"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "v-reviewed"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000001",
+          "type": "openViewer"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "v-open"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000002",
+          "type": "openViewer"
+        },
+        "type": "content"
+      },
+      "from": "v-open",
+      "to": "both-open"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000001",
+          "type": "closeViewer"
+        },
+        "type": "content"
+      },
+      "from": "both-open",
+      "to": "mot-open"
+    },
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000001",
+          "type": "openViewer"
+        },
+        "type": "content"
+      },
+      "from": "sharp",
+      "to": "sharp-open"
+    }
+  ]
+}

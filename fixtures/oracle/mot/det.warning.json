@@ -1,0 +1,1 @@
+{"problem":"Skipped 2 of 9 rows","reasons":["line 6: expected 7, 9 or 10 columns, got 5","line 10: negative box width or height"],"consequence":"Objects on skipped rows are not shown.","more_reasons":false}

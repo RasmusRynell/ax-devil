@@ -1,0 +1,326 @@
+//! Admission and delivery after a following seat loses object-detail permission.
+use super::worker::{HeldRead, deliver};
+use super::*;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+#[tokio::test]
+async fn withdrawn_details_deny_every_inspection_request_even_with_a_valid_capability() {
+    bounded("whole denied-inspection lifecycle", async {
+    let folder = tempfile::tempdir().unwrap();
+    let path = folder.path().join("fields.xml");
+    let extra = (0..5000)
+        .map(|i| format!("<field{i}>{i}</field{i}>"))
+        .collect::<String>();
+    let boxes = (0..90).map(|frame| format!("<box frame=\"{frame}\" outside=\"0\" xtl=\"10\" ytl=\"10\" xbr=\"30\" ybr=\"30\">{}</box>", if frame == 10 { format!("<extra><value>{}é😀</value>{extra}</extra>", "x".repeat(128 * 1024)) } else { String::new() })).collect::<String>();
+    std::fs::write(&path, format!("<annotations><meta><task><size>90</size><mode>interpolation</mode><original_size><width>64</width><height>48</height></original_size></task></meta><track id=\"7\" label=\"Car\">{boxes}</track></annotations>")).unwrap();
+    let overlay = OverlayRef {
+        label: "Fields".into(),
+        slot: "Fields".into(),
+        path,
+        handler: "CVAT".into(),
+        options: handler_api::Settings::new(),
+        metadata: Default::default(),
+    };
+    let (mut viewer, revision) = open_overlay(overlay).await;
+    hold(&mut viewer, 10).await;
+    let allowed = Arc::new(AtomicBool::new(true));
+    let mut inspections = Inspections::new({
+        let allowed = allowed.clone();
+        Arc::new(move || allowed.load(Ordering::SeqCst))
+    });
+    inspections.ask(&viewer, 0, 0, revision, 10, "cvat_track_7".into());
+    let InspectionWire::Found {
+        continuation: Some(cursor),
+        fields,
+        ..
+    } = verdict(answer(&mut inspections).await.0)
+    else {
+        panic!("capability");
+    };
+    let ordinal = fields
+        .iter()
+        .find_map(|field| field.cut)
+        .expect("a copyable oversized value")[0] as u32;
+    let next_page = cursor.next.expect("more than one field page");
+    inspections.continue_target(
+        InspectionRead {
+            pins: None,
+            request: 0,
+            token: cursor.token.clone(),
+            field: Some(ordinal),
+            raw: None,
+            path: false,
+            offset: 0,
+        },
+        viewer.inspect_target(0, revision, 10),
+    );
+    let ServerMessage::InspectContinued {
+        result:
+            InspectionReadResult::Chunk {
+                next: Some(next_chunk),
+                ..
+            },
+        ..
+    } = answer(&mut inspections).await.0
+    else {
+        panic!("first value chunk");
+    };
+    let wanted = vec![
+        api_types::inspect::InspectionPin {
+            group: scene::inspection::FieldGroup::Debug,
+            identity: None,
+            path: ["cvat", "shape", "extra", "field4999"]
+                .map(String::from)
+                .into(),
+        },
+        api_types::inspect::InspectionPin {
+            group: scene::inspection::FieldGroup::Debug,
+            identity: None,
+            path: ["cvat", "shape", "extra", "value"].map(String::from).into(),
+        },
+    ];
+    let mut offset = 0;
+    let mut pinned = Vec::new();
+    let mut scan = ScanBudget::new(5_100);
+    loop {
+        scan.step();
+        inspections.continue_target(
+            InspectionRead {
+                pins: Some(wanted.clone()),
+                request: 2,
+                token: cursor.token.clone(),
+                field: None,
+                raw: None,
+                path: false,
+                offset,
+            },
+            viewer.inspect_target(0, revision, 10),
+        );
+        let ServerMessage::InspectContinued {
+            result: InspectionReadResult::Pins { fields, next },
+            ..
+        } = answer(&mut inspections).await.0
+        else {
+            panic!("pins");
+        };
+        pinned.extend(fields);
+        if let Some(next) = next {
+            offset = next;
+        } else {
+            break;
+        }
+    }
+    assert_eq!(
+        pinned
+            .iter()
+            .find(|(index, _)| *index == 0)
+            .unwrap()
+            .1
+            .value,
+        scene::inspection::Leaf::Text("4999".into())
+    );
+    assert_eq!(
+        pinned
+            .iter()
+            .find(|(index, _)| *index == 1)
+            .unwrap()
+            .1
+            .cut
+            .unwrap()[0],
+        u64::from(ordinal)
+    );
+    inspections.continue_target(
+        InspectionRead {
+            pins: None,
+            request: 3,
+            token: cursor.token.clone(),
+            field: None,
+            raw: None,
+            path: false,
+            offset: next_page,
+        },
+        viewer.inspect_target(0, revision, 10),
+    );
+    assert!(matches!(
+        answer(&mut inspections).await.0,
+        ServerMessage::InspectContinued {
+            result: InspectionReadResult::Page { .. },
+            ..
+        }
+    ));
+    inspections.continue_target(
+        InspectionRead {
+            pins: None,
+            request: 4,
+            token: cursor.token.clone(),
+            field: Some(ordinal),
+            raw: None,
+            path: false,
+            offset: next_chunk,
+        },
+        viewer.inspect_target(0, revision, 10),
+    );
+    assert!(
+        matches!(
+            answer(&mut inspections).await.0,
+            ServerMessage::InspectContinued {
+                result: InspectionReadResult::Chunk { .. },
+                ..
+            }
+        ),
+        "a pinned value remains copyable outside the visible page"
+    );
+    let retained = inspections.cursor.as_ref().unwrap().5.clone();
+    allowed.store(false, Ordering::SeqCst);
+    let (_authority, receiver) = watch::channel(Authority::default());
+    let gate = Gate::new(receiver, || 0).with_inspection({
+        let allowed = allowed.clone();
+        Arc::new(move || allowed.load(Ordering::SeqCst))
+    });
+    gate.open(timeline());
+    for (field, raw, pins, offset) in [
+        (None, None, None, next_page),
+        (Some(ordinal), None, None, next_chunk),
+        (None, Some(true), None, 0),
+        (None, None, Some(wanted.clone()), 0),
+    ] {
+        inspections.continue_target(
+            InspectionRead {
+                pins,
+                request: 1,
+                token: cursor.token.clone(),
+                field,
+                raw,
+                path: false,
+                offset,
+            },
+            viewer.inspect_target(0, revision, 10),
+        );
+        assert!(
+            inspections.objects.running.is_none(),
+            "denied pages, value chunks and Raw chunks start no work"
+        );
+        assert!(matches!(denied(&mut inspections, gate.clone()).await,
+            ServerMessage::InspectContinued { result: InspectionReadResult::Refused { .. }, .. }));
+    }
+    inspections.ask(&viewer, 0, 0, revision, 10, "cvat_track_7".into());
+    assert!(
+        inspections.objects.running.is_none(),
+        "denied initial inspection starts no work"
+    );
+    assert!(matches!(denied(&mut inspections, gate.clone()).await,
+        ServerMessage::Inspected { inspection: InspectionWire::Unavailable, .. }));
+    inspections.ask_fields(&viewer, 0, 0, revision, 10, vec!["raw.frame_number".into()]);
+    assert!(
+        inspections.searches.running.is_none(),
+        "denied query starts no work"
+    );
+    assert!(matches!(denied(&mut inspections, gate).await,
+        ServerMessage::InspectedFields { objects: None, .. }));
+
+    allowed.store(true, Ordering::SeqCst);
+    inspections.continue_target(
+        InspectionRead {
+            pins: Some(wanted),
+            request: 5,
+            token: cursor.token,
+            field: None,
+            raw: None,
+            path: false,
+            offset: 0,
+        },
+        viewer.inspect_target(0, revision, 10),
+    );
+    let (message, frames) = answer(&mut inspections).await;
+    assert!(
+        matches!(message, ServerMessage::InspectContinued {
+        result: InspectionReadResult::Refused { ref reason }, ..
+    } if reason == "Inspection expired; select the object again"),
+        "permission refusal must permanently expire the old token"
+    );
+    assert_eq!(frames, None);
+    {
+        let state = retained.lock().unwrap();
+        assert!(
+            state.validity.is_cancelled()
+                && state.scene.is_none()
+                && state.traversal.is_none()
+                && state.pins.fields.is_empty(),
+            "permission refusal releases the cached Scene, preparation and pin addresses"
+        );
+    }
+    inspections.ask_fields(&viewer, 6, 0, revision, 10, vec!["raw.frame_number".into()]);
+    assert!(matches!(answer(&mut inspections).await.0, ServerMessage::InspectedFields { objects: Some(_), .. }),
+        "permission restoration permits a fresh field search");
+    inspections.ask(&viewer, 0, 0, revision, 10, "cvat_track_7".into());
+    assert!(
+        matches!(
+            verdict(answer(&mut inspections).await.0),
+            InspectionWire::Found { .. }
+        ),
+        "restored permission permits a fresh inspection"
+    );
+    }).await;
+}
+
+#[tokio::test]
+async fn a_blocking_inspection_finishing_after_permission_withdrawal_is_refused_not_delivered() {
+    let folder = tempfile::tempdir().unwrap();
+    let (mut viewer, revision) = viewer(folder.path()).await;
+    hold(&mut viewer, 10).await;
+    let (track, snapshot, frame) = viewer.inspect_target(0, revision, 10).unwrap();
+    let (release, held) = std::sync::mpsc::channel();
+    let release = ReleaseOnDrop(release);
+    let track = Arc::new(HeldRead::new(track, Some(held)));
+    let allowed = Arc::new(AtomicBool::new(true));
+    let (_holder, authority) = watch::channel(Authority::Follow {
+        intent: ClockIntent {
+            frame: 10,
+            playing: false,
+            speed_centi: 100,
+            at_us: 0,
+        },
+    });
+    let gate = Gate::new(authority, || 0).with_inspection({
+        let allowed = allowed.clone();
+        Arc::new(move || allowed.load(Ordering::SeqCst))
+    });
+    gate.open(timeline());
+    assert!(gate.admits(&(frame..=frame)));
+    let mut inspections = Inspections::new(gate.inspection_permission());
+    inspections.ask_target(
+        0,
+        0,
+        revision,
+        10,
+        "2".into(),
+        Some((track.clone(), snapshot, frame)),
+    );
+    bounded("held Scene read started", track.started.notified()).await;
+    allowed.store(false, Ordering::SeqCst);
+    drop(release);
+    let outgoing = bounded("withdrawn inspection answer", inspections.next()).await;
+    let replies = deliver(gate, vec![outgoing]).await;
+    assert!(
+        matches!(
+            replies.as_slice(),
+            [ServerMessage::Inspected {
+                inspection: InspectionWire::Unavailable,
+                ..
+            }]
+        ),
+        "the viewer is told the sample is unavailable, not given its fields"
+    );
+}
+
+async fn denied(inspections: &mut Inspections, gate: Gate) -> ServerMessage {
+    let outgoing = bounded("permission refusal returned", inspections.next()).await;
+    assert!(outgoing.frames.is_none() && outgoing.data.is_none());
+    let mut replies = deliver(gate, vec![outgoing]).await;
+    assert_eq!(
+        replies.len(),
+        1,
+        "non-data refusal reaches even a denied principal"
+    );
+    replies.pop().unwrap()
+}

@@ -1,0 +1,17 @@
+{"scene_version":"4.2","scenes":[
+{"time":{"start":{"frame":0},"end":{"frame":0}},"entities":[
+{"id":"1","observations":[{"time":{"frame":0},"geometry":{"box":[0.15625,0.20833333333333334,0.234375,0.4166666666666667]},"classifications":[{"type":"person","score":null,"confidence":null,"attributes":{"class_id":1,"source":"gt","visibility_ratio":1.0,"gt_mark":1}}]}],"end_reason":null,"motion_state":null},
+{"id":"2","observations":[{"time":{"frame":0},"geometry":{"box":[0.3125,0.3125,0.40625,0.5625]},"classifications":[{"type":"static_person","score":null,"confidence":null,"attributes":{"class_id":7,"source":"gt","visibility_ratio":0.5,"gt_mark":1}}]}],"end_reason":null,"motion_state":null},
+{"id":"3","observations":[{"time":{"frame":0},"geometry":{"box":[0.46875,0.625,0.53125,0.7916666666666666]},"classifications":[{"type":"?99","score":null,"confidence":null,"attributes":{"class_id":99,"source":"gt","visibility_ratio":0.2,"gt_mark":0}}]}],"end_reason":null,"motion_state":null}
+],"events":[],"relations":[],"debug":{}},
+{"time":{"start":{"frame":1},"end":{"frame":1}},"entities":[
+{"id":"1","observations":[{"time":{"frame":1},"geometry":{"box":[0.159375,0.21041666666666667,0.2375,0.41875]},"classifications":[{"type":"person","score":null,"confidence":null,"attributes":{"class_id":1,"source":"gt","visibility_ratio":0.9,"gt_mark":1}}]}],"end_reason":null,"motion_state":null},
+{"id":"2","observations":[{"time":{"frame":1},"geometry":{"box":[0.315625,0.3145833333333333,0.409375,0.5645833333333333]},"classifications":[{"type":"static_person","score":null,"confidence":null,"attributes":{"class_id":7,"source":"gt","visibility_ratio":0.5,"gt_mark":1}}]}],"end_reason":null,"motion_state":null},
+{"id":"3","observations":[{"time":{"frame":1},"geometry":{"box":[0.4703125,0.6270833333333333,0.5328125,0.79375]},"classifications":[{"type":"?99","score":null,"confidence":null,"attributes":{"class_id":99,"source":"gt","visibility_ratio":0.25,"gt_mark":0}}]}],"end_reason":null,"motion_state":null}
+],"events":[],"relations":[],"debug":{}},
+{"time":{"start":{"frame":3},"end":{"frame":3}},"entities":[
+{"id":"1","observations":[{"time":{"frame":3},"geometry":{"box":[0.165625,0.21458333333333332,0.24375,0.42291666666666666]},"classifications":[{"type":"person","score":null,"confidence":null,"attributes":{"class_id":1,"source":"gt","visibility_ratio":1.0,"gt_mark":1}}]}],"end_reason":null,"motion_state":null},
+{"id":"untracked:3:1","observations":[{"time":{"frame":3},"geometry":{"box":[0.015625,0.020833333333333332,0.046875,0.0625]},"classifications":[{"type":"crowd","score":null,"confidence":null,"attributes":{"class_id":13,"source":"gt","visibility_ratio":1.0,"gt_mark":1}}]}],"end_reason":null,"motion_state":null},
+{"id":"4","observations":[{"time":{"frame":3},"geometry":{"box":[0.9375,0.9375,1.09375,1.1458333333333333]},"classifications":[{"type":"car","score":null,"confidence":null,"attributes":{"class_id":3,"source":"gt","visibility_ratio":1.0,"gt_mark":1}}]}],"end_reason":null,"motion_state":null}
+],"events":[],"relations":[],"debug":{}}
+]}

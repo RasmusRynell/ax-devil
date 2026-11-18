@@ -1,0 +1,23 @@
+[package]
+name = "logging"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.ax-devil]
+layer = "foundation"
+
+[lints]
+workspace = true
+
+[dependencies]
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+tracing-core = "0.1"
+# `dispatch_record` sends a `log` record to the current subscriber as the bridge does, without a global logger.
+tracing-log = "0.2"

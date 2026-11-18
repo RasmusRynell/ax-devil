@@ -1,0 +1,377 @@
+{
+  "docs": {
+    "edited": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "live",
+              "label": "Gate",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "Gate",
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "DataHub WebSocket"
+                  ],
+                  "overlay": "datahub",
+                  "recipe": null,
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "Gate",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001\u001flive",
+              "kind": "lane",
+              "label": "DataHub WebSocket",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "live",
+              "label": "Gate",
+              "open": true,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.7",
+                "kept_datahub": null,
+                "kept_mqtt": {
+                  "broker_host": "",
+                  "broker_pass": "",
+                  "broker_port": 1883,
+                  "broker_user": "",
+                  "source_key": "custom"
+                },
+                "label": "Gate",
+                "like": null,
+                "overlay": {
+                  "channel": 3,
+                  "handler": "ADF_V1_FRAME",
+                  "mode": "datahub",
+                  "topic": "saved.topic"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": "root"
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Gate",
+                  "generation": 3,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "DataHub WebSocket"
+                  ],
+                  "overlay": "datahub",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.7",
+                    "kept_datahub": null,
+                    "kept_mqtt": {
+                      "broker_host": "",
+                      "broker_pass": "",
+                      "broker_port": 1883,
+                      "broker_user": "",
+                      "source_key": "custom"
+                    },
+                    "label": "Gate",
+                    "like": null,
+                    "overlay": {
+                      "channel": 3,
+                      "handler": "ADF_V1_FRAME",
+                      "mode": "datahub",
+                      "topic": "saved.topic"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": "root"
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.7"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "10.0.0.7",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "Gate",
+              "location": "10.0.0.7",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001\u001flive",
+              "kind": "lane",
+              "label": "DataHub WebSocket",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    "initial": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "live",
+              "label": "Camera",
+              "open": true,
+              "resolution": {
+                "content": {
+                  "display_name": "Camera",
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Camera"
+                  ],
+                  "overlay": "none",
+                  "recipe": null,
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "Camera",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "live",
+              "label": "Camera",
+              "open": true,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "camera.local",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": "Camera",
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "Camera",
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "Camera"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "camera.local",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": "Camera",
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "camera.local"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "camera.local",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "Camera",
+              "location": "camera.local",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    }
+  },
+  "ids": {
+    "a": "00000000-0000-4000-8000-000000000001"
+  },
+  "steps": [
+    {
+      "command": {
+        "command": {
+          "item": "00000000-0000-4000-8000-000000000001",
+          "new": {
+            "head": 1,
+            "host": "10.0.0.7",
+            "kept_mqtt": {
+              "broker_host": "",
+              "broker_pass": "",
+              "broker_port": 1883,
+              "broker_user": "",
+              "source_key": "custom"
+            },
+            "label": "Gate",
+            "overlay": {
+              "channel": 3,
+              "handler": "ADF_V1_FRAME",
+              "mode": "datahub",
+              "topic": "saved.topic"
+            },
+            "password": "",
+            "resolution": "",
+            "type": "Live",
+            "url": "",
+            "username": "root"
+          },
+          "type": "editItem"
+        },
+        "type": "content"
+      },
+      "from": "initial",
+      "to": "edited"
+    }
+  ]
+}

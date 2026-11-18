@@ -1,0 +1,833 @@
+{
+  "about": "Search texts with the groups the reference parser (scene/query.py) makes of them and the records they match. Rust evaluates groups against records (crates/scene-store query tests); the TypeScript parser must produce groups for text. Field values are text, as in File scope.",
+  "records": {
+    "car": {
+      "fields": {
+        "id": [
+          "17"
+        ],
+        "class": [
+          "Car"
+        ],
+        "event": []
+      },
+      "text": [
+        "17",
+        "Car"
+      ]
+    },
+    "person": {
+      "fields": {
+        "id": [
+          "4"
+        ],
+        "class": [
+          "Person",
+          "Pedestrian"
+        ],
+        "event": [
+          "Rename",
+          "Merge"
+        ]
+      },
+      "text": [
+        "4",
+        "Person",
+        "Pedestrian"
+      ]
+    },
+    "bare": {
+      "fields": {
+        "id": [
+          "x-1"
+        ],
+        "class": [],
+        "event": [
+          "Delete"
+        ]
+      },
+      "text": [
+        "x-1"
+      ]
+    },
+    "nested": {
+      "fields": {
+        "classification.type": [
+          "Car"
+        ],
+        "debug.track-id": [
+          "9"
+        ],
+        "debug.trk/id": [
+          "3"
+        ],
+        "debug.note": [
+          ""
+        ]
+      },
+      "text": [
+        "Blank"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "text": "",
+      "groups": [],
+      "matches": [
+        "car",
+        "person",
+        "bare",
+        "nested"
+      ]
+    },
+    {
+      "text": "   ",
+      "groups": [],
+      "matches": [
+        "car",
+        "person",
+        "bare",
+        "nested"
+      ]
+    },
+    {
+      "text": "car",
+      "groups": [
+        [
+          {
+            "path": null,
+            "op": "Eq",
+            "value": "car",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "car"
+      ]
+    },
+    {
+      "text": "PEDESTRIAN",
+      "groups": [
+        [
+          {
+            "path": null,
+            "op": "Eq",
+            "value": "PEDESTRIAN",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "person"
+      ]
+    },
+    {
+      "text": "17",
+      "groups": [
+        [
+          {
+            "path": null,
+            "op": "Eq",
+            "value": "17",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "car"
+      ]
+    },
+    {
+      "text": "x-",
+      "groups": [
+        [
+          {
+            "path": null,
+            "op": "Eq",
+            "value": "x-",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "bare"
+      ]
+    },
+    {
+      "text": "blank",
+      "groups": [
+        [
+          {
+            "path": null,
+            "op": "Eq",
+            "value": "blank",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "nested"
+      ]
+    },
+    {
+      "text": "class:car",
+      "groups": [
+        [
+          {
+            "path": "class",
+            "op": "Eq",
+            "value": "car",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "car"
+      ]
+    },
+    {
+      "text": "class:PERSON",
+      "groups": [
+        [
+          {
+            "path": "class",
+            "op": "Eq",
+            "value": "PERSON",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "person"
+      ]
+    },
+    {
+      "text": "class:pedestrian",
+      "groups": [
+        [
+          {
+            "path": "class",
+            "op": "Eq",
+            "value": "pedestrian",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "person"
+      ]
+    },
+    {
+      "text": "class:ped",
+      "groups": [
+        [
+          {
+            "path": "class",
+            "op": "Eq",
+            "value": "ped",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": []
+    },
+    {
+      "text": "class:\"Car\"",
+      "groups": [
+        [
+          {
+            "path": "class",
+            "op": "Eq",
+            "value": "Car",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "car"
+      ]
+    },
+    {
+      "text": "id=17",
+      "groups": [
+        [
+          {
+            "path": "id",
+            "op": "Eq",
+            "value": "17",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "car"
+      ]
+    },
+    {
+      "text": "id:17",
+      "groups": [
+        [
+          {
+            "path": "id",
+            "op": "Eq",
+            "value": "17",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "car"
+      ]
+    },
+    {
+      "text": "id:017",
+      "groups": [
+        [
+          {
+            "path": "id",
+            "op": "Eq",
+            "value": "017",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": []
+    },
+    {
+      "text": "id>3",
+      "groups": [
+        [
+          {
+            "path": "id",
+            "op": "Gt",
+            "value": "3",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": []
+    },
+    {
+      "text": "id<20",
+      "groups": [
+        [
+          {
+            "path": "id",
+            "op": "Lt",
+            "value": "20",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": []
+    },
+    {
+      "text": "id>=17",
+      "groups": [
+        [
+          {
+            "path": "id",
+            "op": "Ge",
+            "value": "17",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": []
+    },
+    {
+      "text": "id<=4",
+      "groups": [
+        [
+          {
+            "path": "id",
+            "op": "Le",
+            "value": "4",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": []
+    },
+    {
+      "text": "-car",
+      "groups": [
+        [
+          {
+            "path": null,
+            "op": "Eq",
+            "value": "car",
+            "negated": true
+          }
+        ]
+      ],
+      "matches": [
+        "person",
+        "bare",
+        "nested"
+      ]
+    },
+    {
+      "text": "-class:car",
+      "groups": [
+        [
+          {
+            "path": "class",
+            "op": "Eq",
+            "value": "car",
+            "negated": true
+          }
+        ]
+      ],
+      "matches": [
+        "person",
+        "bare",
+        "nested"
+      ]
+    },
+    {
+      "text": "-nothing:here",
+      "groups": [
+        [
+          {
+            "path": "nothing",
+            "op": "Eq",
+            "value": "here",
+            "negated": true
+          }
+        ]
+      ],
+      "matches": [
+        "car",
+        "person",
+        "bare",
+        "nested"
+      ]
+    },
+    {
+      "text": "-id>3",
+      "groups": [
+        [
+          {
+            "path": "id",
+            "op": "Gt",
+            "value": "3",
+            "negated": true
+          }
+        ]
+      ],
+      "matches": [
+        "car",
+        "person",
+        "bare",
+        "nested"
+      ]
+    },
+    {
+      "text": "event:rename",
+      "groups": [
+        [
+          {
+            "path": "event",
+            "op": "Eq",
+            "value": "rename",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "person"
+      ]
+    },
+    {
+      "text": "event:delete",
+      "groups": [
+        [
+          {
+            "path": "event",
+            "op": "Eq",
+            "value": "delete",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "bare"
+      ]
+    },
+    {
+      "text": "event:rename OR event:delete",
+      "groups": [
+        [
+          {
+            "path": "event",
+            "op": "Eq",
+            "value": "rename",
+            "negated": false
+          },
+          {
+            "path": "event",
+            "op": "Eq",
+            "value": "delete",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "person",
+        "bare"
+      ]
+    },
+    {
+      "text": "-event:rename",
+      "groups": [
+        [
+          {
+            "path": "event",
+            "op": "Eq",
+            "value": "rename",
+            "negated": true
+          }
+        ]
+      ],
+      "matches": [
+        "car",
+        "bare",
+        "nested"
+      ]
+    },
+    {
+      "text": "car OR person",
+      "groups": [
+        [
+          {
+            "path": null,
+            "op": "Eq",
+            "value": "car",
+            "negated": false
+          },
+          {
+            "path": null,
+            "op": "Eq",
+            "value": "person",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "car",
+        "person"
+      ]
+    },
+    {
+      "text": "class:car OR id:4 event:rename",
+      "groups": [
+        [
+          {
+            "path": "class",
+            "op": "Eq",
+            "value": "car",
+            "negated": false
+          },
+          {
+            "path": "id",
+            "op": "Eq",
+            "value": "4",
+            "negated": false
+          }
+        ],
+        [
+          {
+            "path": "event",
+            "op": "Eq",
+            "value": "rename",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "person"
+      ]
+    },
+    {
+      "text": "car person",
+      "groups": [
+        [
+          {
+            "path": null,
+            "op": "Eq",
+            "value": "car",
+            "negated": false
+          }
+        ],
+        [
+          {
+            "path": null,
+            "op": "Eq",
+            "value": "person",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": []
+    },
+    {
+      "text": "car OR",
+      "groups": [
+        [
+          {
+            "path": null,
+            "op": "Eq",
+            "value": "car",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "car"
+      ]
+    },
+    {
+      "text": "OR car",
+      "groups": [
+        [
+          {
+            "path": null,
+            "op": "Eq",
+            "value": "car",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "car"
+      ]
+    },
+    {
+      "text": "classification.type:car",
+      "groups": [
+        [
+          {
+            "path": "classification.type",
+            "op": "Eq",
+            "value": "car",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "nested"
+      ]
+    },
+    {
+      "text": "type:CAR",
+      "groups": [
+        [
+          {
+            "path": "type",
+            "op": "Eq",
+            "value": "CAR",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "nested"
+      ]
+    },
+    {
+      "text": "core:car",
+      "groups": [
+        [
+          {
+            "path": "core",
+            "op": "Eq",
+            "value": "car",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": []
+    },
+    {
+      "text": "ification.type:car",
+      "groups": [
+        [
+          {
+            "path": "ification.type",
+            "op": "Eq",
+            "value": "car",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": []
+    },
+    {
+      "text": "track-id:9",
+      "groups": [
+        [
+          {
+            "path": "track-id",
+            "op": "Eq",
+            "value": "9",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "nested"
+      ]
+    },
+    {
+      "text": "debug.track-id:9",
+      "groups": [
+        [
+          {
+            "path": "debug.track-id",
+            "op": "Eq",
+            "value": "9",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "nested"
+      ]
+    },
+    {
+      "text": "trk/id=3",
+      "groups": [
+        [
+          {
+            "path": "trk/id",
+            "op": "Eq",
+            "value": "3",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "nested"
+      ]
+    },
+    {
+      "text": "note:\"\"",
+      "groups": [
+        [
+          {
+            "path": "note",
+            "op": "Eq",
+            "value": "",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": [
+        "nested"
+      ]
+    },
+    {
+      "text": "-note:\"\"",
+      "groups": [
+        [
+          {
+            "path": "note",
+            "op": "Eq",
+            "value": "",
+            "negated": true
+          }
+        ]
+      ],
+      "matches": [
+        "car",
+        "person",
+        "bare"
+      ]
+    },
+    {
+      "text": "note:\"",
+      "groups": [],
+      "matches": [
+        "car",
+        "person",
+        "bare",
+        "nested"
+      ]
+    },
+    {
+      "text": "id:",
+      "groups": [],
+      "matches": [
+        "car",
+        "person",
+        "bare",
+        "nested"
+      ]
+    },
+    {
+      "text": "score>abc",
+      "groups": [
+        [
+          {
+            "path": null,
+            "op": "Eq",
+            "value": "score>abc",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": []
+    },
+    {
+      "text": "-",
+      "groups": [],
+      "matches": [
+        "car",
+        "person",
+        "bare",
+        "nested"
+      ]
+    },
+    {
+      "text": "OR",
+      "groups": [],
+      "matches": [
+        "car",
+        "person",
+        "bare",
+        "nested"
+      ]
+    },
+    {
+      "text": "a:b:c",
+      "groups": [
+        [
+          {
+            "path": "a",
+            "op": "Eq",
+            "value": "b:c",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": []
+    },
+    {
+      "text": "class:\"traffic light\"",
+      "groups": [
+        [
+          {
+            "path": "class",
+            "op": "Eq",
+            "value": "traffic light",
+            "negated": false
+          }
+        ]
+      ],
+      "matches": []
+    }
+  ]
+}

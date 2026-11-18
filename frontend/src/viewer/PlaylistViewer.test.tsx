@@ -1,0 +1,238 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { entriesOf, scenario } from "../session/fakeScenario";
+import { FakeSocket, type Room } from "../session/fakeSession";
+import { viewing } from "../session/fakeViews";
+import { SessionProvider, useDoc, useView } from "../session/session";
+import type { VideoViewerProps } from "../playback/VideoViewer";
+import { NO_ACTIONS, ViewerActionsContext, useViewerActions, type ViewerActions } from "./actions";
+import { hiddenOf, NOTHING_HIDDEN } from "./hidden";
+import { adjacentEntry, PlaylistViewer } from "./PlaylistViewer";
+
+const ownActions: ViewerActions = { "play-pause": () => undefined };
+
+// An entry's video viewer that says which entry it was given.
+vi.mock("../playback/VideoViewer", () => ({
+  VideoViewer: ({ entry: shown, next }: VideoViewerProps) => {
+    useViewerActions(ownActions);
+    return (
+      <>
+        <p>playing {shown.label}</p>
+        <output aria-label="Next">
+          {next ? `${next.entry}: ${next.lanes.join(",")}` : "none"}
+        </output>
+      </>
+    );
+  },
+}));
+
+const list = scenario("playlist");
+const groups = scenario("playlist-groups");
+const { ids } = list;
+
+beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  window.sessionStorage.clear();
+  FakeSocket.reset();
+});
+
+describe("adjacent entry", () => {
+  it("skips hidden entries and stops at the ends", () => {
+    const entries = entriesOf(list.doc());
+    const hidden = hiddenOf(list.doc("bc-hidden").workspace.rows);
+    expect(adjacentEntry(entries, hidden, 0, 1)?.label).toBe("D");
+    expect(adjacentEntry(entries, hidden, 3, -1)?.label).toBe("A");
+    expect(adjacentEntry(entries, hidden, 0, -1)).toBeUndefined();
+    expect(adjacentEntry(entries, NOTHING_HIDDEN, 3, 1)).toBeUndefined();
+  });
+});
+
+/** The playlist's viewer, once the Doc has the item, with the commands it offers kept in `registry`. */
+function Host() {
+  const item = useDoc()?.workspace.items[0];
+  const resolution = item?.resolution;
+  const [viewers] = useView("viewers");
+  return (
+    <>
+      {item && resolution?.status === "Resolved" && resolution.content.kind === "Playlist" && (
+        <PlaylistViewer item={item.id} viewer={1} content={resolution.content} />
+      )}
+      <div data-testid="view">{JSON.stringify(viewers[1] ?? null)}</div>
+    </>
+  );
+}
+
+const registry = { current: NO_ACTIONS };
+const offer = (next: ViewerActions | ((now: ViewerActions) => ViewerActions)) => {
+  registry.current = typeof next === "function" ? next(registry.current) : next;
+};
+
+/** Shows the playlist in an owner's window, in the state of its scenario, on the entry named or the first one shown. */
+async function mount(state = "initial", shown?: string, scene = list) {
+  registry.current = NO_ACTIONS;
+  render(
+    <SessionProvider>
+      <ViewerActionsContext.Provider value={offer}>
+        <Host />
+      </ViewerActionsContext.Provider>
+    </SessionProvider>,
+  );
+  await act(async () => {});
+  const room = FakeSocket.rooms.get("room-1") as Room;
+  act(() => {
+    room.show(scene, state);
+    room.publish({
+      sidebar: room.presenter.sidebar,
+      ...viewing([ids.list, shown ? { entry: shown } : {}]),
+    });
+  });
+  const run = (id: string) => act(() => registry.current[id]?.());
+  const view = () => JSON.parse(screen.getByTestId("view").textContent ?? "null");
+  return { room, run, view };
+}
+
+describe("playlist viewer", () => {
+  it("opens the entry the view names, else the first that is not hidden", async () => {
+    await mount("a-hidden");
+    expect(screen.getByText("playing B")).toBeTruthy();
+    cleanup();
+    await mount("initial", ids["list/C"]);
+    expect(screen.getByText("playing C")).toBeTruthy();
+  });
+
+  it("shows an entry the view names even when it is hidden, as when the tree opened it", async () => {
+    await mount("c-hidden", ids["list/C"]);
+    expect(screen.getByText("playing C")).toBeTruthy();
+    expect(screen.getByLabelText("Entry").textContent).toBe("3 / 4");
+  });
+
+  it("moves between entries with its buttons and the commands, skipping hidden ones, and starts each from its own beginning", async () => {
+    const { run, view } = await mount("b-hidden");
+    expect(screen.getByText("playing A")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Previous entry" })).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: "Next entry" }));
+    expect(screen.getByText("playing C")).toBeTruthy();
+    expect(screen.getByLabelText("Entry").textContent).toBe("3 / 4");
+    // The view names the entry and no clock: the one that was playing is not the new entry's.
+    expect(view()).toEqual({ item: ids.list, pinned: false, entry: ids["list/C"] });
+    run("next-entry");
+    expect(screen.getByText("playing D")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next entry" })).toHaveProperty("disabled", true);
+    run("previous-entry");
+    run("previous-entry");
+    expect(screen.getByText("playing A")).toBeTruthy();
+  });
+
+  it("steps only within the playlist holding the entry on screen, and names it", async () => {
+    await mount("two", groups.ids["list/C"], groups);
+    expect(screen.getByText("list / Q")).toBeTruthy();
+    expect(screen.getByLabelText("Entry").textContent).toBe("1 / 2");
+    expect(screen.getByRole("button", { name: "Previous entry" })).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: "Next entry" }));
+    expect(screen.getByText("playing D")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next entry" })).toHaveProperty("disabled", true);
+  });
+
+  it("offers no command where there is no entry to go to, and keeps the entry viewer's own", async () => {
+    await mount();
+    expect(registry.current["previous-entry"]).toBeUndefined();
+    expect(registry.current["next-entry"]).toBeTypeOf("function");
+    expect(registry.current["play-pause"]).toBe(ownActions["play-pause"]);
+  });
+
+  it("names the entry it steps to, with its lanes that are not hidden, for the backend to prepare", async () => {
+    const { room, run } = await mount("b-hidden");
+    expect(screen.getByLabelText("Next").textContent).toBe(`${ids["list/C"]}: C`);
+    // Hiding the only lane leaves nothing to prepare.
+    act(() => room.show(list, "b-hidden-lane-c-hidden"));
+    expect(screen.getByLabelText("Next").textContent).toBe("none");
+    run("next-entry");
+    // An entry with no overlays has its one plain lane, named like it.
+    expect(screen.getByLabelText("Next").textContent).toBe(`${ids["list/D"]}: D`);
+    run("next-entry");
+    expect(screen.getByLabelText("Next").textContent).toBe("none");
+  });
+
+  it("names a next entry that has no overlays by its one plain lane, and a lane whose label is empty", async () => {
+    const lanes = scenario("playlist-lanes");
+    const { run } = await mount("initial", undefined, lanes);
+    expect(screen.getByLabelText("Next").textContent).toBe(`${lanes.ids["list/B"]}: B`);
+    run("next-entry");
+    expect(screen.getByLabelText("Next").textContent).toBe(`${lanes.ids["list/C"]}: `);
+  });
+
+  it("picks an entry from its menu, which lists the entries that are not hidden", async () => {
+    await mount("c-hidden");
+    fireEvent.click(screen.getByRole("button", { name: "Entry: A" }));
+    expect(screen.getAllByRole("menuitemcheckbox").map((item) => item.textContent)).toEqual([
+      "A",
+      "B",
+      "D",
+    ]);
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "D" }));
+    expect(screen.getByText("playing D")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("leaves the entry on screen for the next one that is not hidden when it is hidden, else the previous", async () => {
+    const { room, run } = await mount("initial", ids["list/B"]);
+    const show = (state: string) => act(() => room.show(list, state));
+    show("c-hidden");
+    expect(screen.getByText("playing B")).toBeTruthy();
+    show("bc-hidden");
+    expect(screen.getByText("playing D")).toBeTruthy();
+    show("bcd-hidden");
+    expect(screen.getByText("playing A")).toBeTruthy();
+    // Nowhere to go: the entry stays, and so do the buttons, with nothing to step to.
+    show("abcd-hidden");
+    expect(screen.getByText("playing A")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next entry" })).toHaveProperty("disabled", true);
+    run("next-entry");
+    expect(screen.getByText("playing A")).toBeTruthy();
+  });
+
+  it("shows the entry the presenter moves to", async () => {
+    const room = FakeSocket.host("watch");
+    room.show(list);
+    room.publish({
+      sidebar: room.presenter.sidebar,
+      ...viewing([ids.list, { entry: ids["list/A"] }]),
+    });
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+    );
+    render(
+      <SessionProvider>
+        <Host />
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    expect(screen.getByText("playing A")).toBeTruthy();
+    act(() =>
+      room.publish({
+        sidebar: room.presenter.sidebar,
+        ...viewing([ids.list, { entry: ids["list/C"] }]),
+      }),
+    );
+    expect(screen.getByText("playing C")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("offers no way to move between entries when there is one, and shows the first when all are hidden", async () => {
+    await mount("one-entry", undefined, groups);
+    expect(screen.getByText("playing A")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Next entry" })).toBeNull();
+    expect(screen.queryByLabelText("Entry")).toBeNull();
+    cleanup();
+    // Of several playlists, the one with a single entry still says which it is.
+    await mount("p-single", undefined, groups);
+    expect(screen.getByText("list / P")).toBeTruthy();
+    expect(screen.queryByLabelText("Entry")).toBeNull();
+    cleanup();
+    await mount("abcd-hidden");
+    expect(screen.getByText("playing A")).toBeTruthy();
+  });
+});

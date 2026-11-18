@@ -1,0 +1,59 @@
+{
+  "schema": 4,
+  "name": "Glass",
+  "description": "Made to impress: rounded boxes in the class color, the id on a dark pill above, the score as a meter on a pill below, and clothing or vehicle colors and tags inside the box.",
+  "vars": { "color": "#9aa3ae", "line": "1.5px", "radius": "6px", "tint": 14, "id_inside": false,
+            "first": null, "second": null, "tag": null, "tag_value": null, "tag_low": false },
+  "rules": [
+    { "when": "class != null", "set": { "color": "#2fd08a" } },
+    { "when": "class in ['vehicle', 'vehicle_other', 'car', 'bus', 'truck', 'bike', 'bicycle']", "set": { "color": "#3d9bff", "first": "top(attr.vehicle_colors)" } },
+    { "when": "class == 'human'", "set": { "color": "#ffb020", "first": "top(attr.upper_clothing_colors)", "second": "top(attr.lower_clothing_colors)", "tag": "if(attr.carries_bag, 'Bag', null)" } },
+    { "when": "class == 'head'", "set": { "color": "#b57bff", "id_inside": true, "tag": "if(attr.face_visible != null, 'Face', null)", "tag_value": "fixed(attr.face_visible, 2)", "tag_low": true } }
+  ],
+  "layers": [
+    { "feature": "outlines", "marks": [
+      { "mark": "box", "outset": "line", "radius": "radius + line", "stroke": "#000000", "width": "1px" },
+      { "mark": "box", "radius": "radius", "stroke": "color", "width": "line", "dash": "attr.occluded", "fill": "alpha(color, tint)" },
+      { "mark": "polygon", "stroke": "color", "width": "1px" }
+    ] },
+    { "feature": "attributes", "marks": [
+      { "mark": "box", "when": "first != null", "min_size": "44px", "pin": "top-right", "w": "9px", "h": "9px", "margin": "6px", "radius": "2.5px", "stroke": "#ffffff", "width": "1px", "fill": "first" },
+      { "mark": "box", "when": "second != null", "min_size": "44px", "pin": "top-right", "w": "9px", "h": "9px", "margin": "6px", "dy": "12px", "radius": "2.5px", "stroke": "#ffffff", "width": "1px", "fill": "second" }
+    ] },
+    { "feature": "relations", "for": "relations", "when": "relation == 'has_part'", "marks": [
+      { "mark": "line", "from": "anchor(source.box, 'center')", "to": "anchor(target.box, 'center')", "stroke": "#eceff4", "width": "1.5px" },
+      { "mark": "circle", "on": "source.box", "r": "3.5px", "stroke": "#0e1014", "width": "1px", "fill": "#eceff4" },
+      { "mark": "circle", "on": "target.box", "r": "3.5px", "stroke": "#0e1014", "width": "1px", "fill": "#eceff4" }
+    ] },
+    { "feature": "speed", "marks": [
+      { "mark": "arrow", "gain": 0.5, "max": "100px", "head": "6px", "head_width": "3.5px", "stroke": "color", "width": "1.5px" }
+    ] },
+    { "feature": "attributes", "marks": [
+      { "mark": "label", "min_size": "44px", "size": "10px", "background": "#0e1014aa", "pad": ["6px", "1.5px"], "radius": "8px", "gap": "4px",
+        "runs": [ { "text": "tag", "color": "#e6e9ed", "weight": "medium" }, { "text": "tag_value", "color": "#b9c0c8" } ],
+        "place": [ { "when": "!tag_low", "at": "top-left", "anchor": "top-left", "dx": "6px", "dy": "6px" },
+                   { "at": "bottom-left", "anchor": "bottom-left", "dx": "6px", "dy": "-6px" } ] }
+    ] },
+    { "feature": "movement", "when": "motion_state != null", "marks": [
+      { "mark": "label", "size": "10px", "background": "#0e1014aa", "pad": ["5px", "1.5px"], "radius": "8px",
+        "runs": [ { "text": "case(motion_state, 'moving', '▶', 'stationary', 'Ⅱ', '?')", "color": "#e6e9ed", "weight": "medium" } ],
+        "place": [ { "at": "top-right", "anchor": "top-left", "dx": "3px" } ] }
+    ] },
+    { "feature": "ids", "marks": [
+      { "mark": "label", "size": "12px", "background": "#0e1014cd", "pad": ["8px", "3px"], "radius": "10px", "gap": "6px",
+        "runs": [ { "text": "trim(id, 10, 'middle')", "color": "#ffffff", "weight": "medium" } ],
+        "place": [ { "when": "!id_inside", "at": "top-left", "anchor": "bottom-left", "dy": "-4px" },
+                   { "at": "top-left", "anchor": "top-left", "dy": "4px" } ] }
+    ] },
+    { "feature": "score", "when": "score != null", "marks": [
+      { "mark": "label", "size": "11px", "background": "#0e1014cd", "pad": ["8px", "2px"], "radius": "9px", "gap": "6px",
+        "runs": [ { "bar": "score", "color": "if(score < 0.5, #ff6b6b, color)" }, { "text": "fixed(score, 2)", "color": "#b9c0c8", "weight": "medium" } ],
+        "place": [ { "at": "bottom-left", "anchor": "top-left", "dy": "4px" }, { "at": "bottom-left", "anchor": "bottom-left", "dy": "-4px" } ] }
+    ] },
+    { "feature": "confidence", "when": "confidence != null", "marks": [
+      { "mark": "label", "size": "11px", "background": "#0e1014cd", "pad": ["8px", "2px"], "radius": "9px", "gap": "6px",
+        "runs": [ { "bar": "confidence", "color": "if(confidence < 0.5, #ff6b6b, color)" }, { "text": "fixed(confidence, 2)", "color": "#b9c0c8", "weight": "medium" } ],
+        "place": [ { "at": "bottom-right", "anchor": "top-right", "dy": "4px" }, { "at": "bottom-right", "anchor": "bottom-right", "dy": "-4px" } ] }
+    ] }
+  ]
+}

@@ -1,0 +1,30 @@
+# License gate (make check). scripts/check-js-licenses.cjs applies this allow list to JavaScript packages too.
+# WTFPL is for ffmpeg-next, the FFmpeg binding of the media crate: it permits any use and redistribution, with no
+# conditions to meet in the packaged app. FFmpeg's own license is a separate question (docs/rebuild/13).
+# 0BSD (tslib) and Python-2.0 (argparse) come with electron-builder, packaging tools that are not part of the app.
+# CDLA-Permissive-2.0 (webpki-root-certs, the Mozilla CA bundle) is a permissive data licence.
+# The crate is only a wasm32 dependency of reqwest's rustls-platform-verifier, so no build of the app ships it.
+# Before adding a license, check its distribution terms for the packaged app (docs/rebuild/13-security-packaging-ops.md).
+[licenses]
+allow = [
+  "0BSD",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BlueOak-1.0.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "MIT-0",
+  "MPL-2.0",
+  "Python-2.0",
+  "Unicode-3.0",
+  "WTFPL",
+  "Zlib",
+]
+confidence-threshold = 0.9
+# The allow list is shared with JavaScript packages, so some entries match no crate.
+unused-allowed-license = "allow"

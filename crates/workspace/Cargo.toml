@@ -1,0 +1,26 @@
+[package]
+name = "workspace"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.ax-devil]
+layer = "domain"
+
+[lints]
+workspace = true
+
+[dependencies]
+foundation.workspace = true
+handler-api.workspace = true
+handlers.workspace = true
+scene.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+ts-rs.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

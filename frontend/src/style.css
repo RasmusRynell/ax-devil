@@ -1,0 +1,8 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@layer base {
+  body {
+    @apply m-0 bg-surface font-sans text-body text-fg;
+  }
+}
