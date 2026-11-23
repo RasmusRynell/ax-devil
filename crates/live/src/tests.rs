@@ -290,6 +290,22 @@ async fn a_video_whose_units_carry_no_capture_time_fails_with_no_capture_time() 
             live = status.video == LiveFeedStatus::Live;
         }
     }
+
+    // Subsequent untimed units on the same connection report NoCaptureTime again.
+    let again = tokio::time::Instant::now();
+    video.units.send(unit(1, None, 11)).await.unwrap();
+    loop {
+        if let Update::Status(status) = update(&mut viewer).await {
+            assert_eq!(
+                status.video,
+                LiveFeedStatus::Failed {
+                    reason: LiveReason::NoCaptureTime
+                }
+            );
+            break;
+        }
+    }
+    assert_eq!(again.elapsed(), Duration::ZERO);
 }
 
 #[tokio::test]

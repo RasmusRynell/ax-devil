@@ -150,8 +150,8 @@ impl VideoTask {
                 tracing::warn!(
                     "The live video has no capture time, so its frames cannot be synchronized and are dropped"
                 );
-                self.shared.board.video_no_capture(now);
             }
+            self.shared.board.video_no_capture(now);
             return;
         };
         let time_us = capture.0.div_euclid(1000);
