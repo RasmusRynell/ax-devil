@@ -262,18 +262,34 @@ async fn the_status_follows_the_connection_and_a_video_that_goes_silent_stalls_a
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_video_whose_units_carry_no_capture_time_stalls_instead_of_staying_live() {
+async fn a_video_whose_units_carry_no_capture_time_fails_with_no_capture_time() {
     let rig = rig();
     let mut viewer = rig.open(&content("cam", LiveOverlay::None)).await;
     let video = rig.fake.videos()[0].clone();
     video.status.send(Status::Live { epoch: 1 }).unwrap();
     update(&mut viewer).await;
+    let from = tokio::time::Instant::now();
     video.units.send(unit(1, None, 9)).await.unwrap();
 
-    let Update::Status(stalled) = update(&mut viewer).await else {
+    let Update::Status(failed) = update(&mut viewer).await else {
         panic!("a status");
     };
-    assert_eq!(stalled.video, LiveFeedStatus::Stalled { seconds: 5 });
+    assert_eq!(
+        failed.video,
+        LiveFeedStatus::Failed {
+            reason: LiveReason::NoCaptureTime
+        }
+    );
+    assert_eq!(from.elapsed(), Duration::ZERO);
+
+    // If a timed unit arrives later, the feed recovers to Live.
+    video.units.send(unit(1, Some(1_000), 10)).await.unwrap();
+    let mut live = false;
+    while !live {
+        if let Update::Status(status) = update(&mut viewer).await {
+            live = status.video == LiveFeedStatus::Live;
+        }
+    }
 }
 
 #[tokio::test]

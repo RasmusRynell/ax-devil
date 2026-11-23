@@ -26,6 +26,9 @@ it("words a feed as Python's viewer does and a capture time as the UTC time of d
   expect(problemLine("Video", { status: "Stalled", seconds: 5 })).toBe(
     "Video: Stalled — No frames for 5 s",
   );
+  expect(problemLine("Video", { status: "Failed", reason: "NoCaptureTime" })).toBe(
+    "Video: ✕ Failed — No capture timestamps. Include onvifreplayext=1 in custom Axis stream URLs.",
+  );
   expect(problemLine("Video", { status: "Connecting" })).toBeNull();
   // The empty pane says the same of the video, whether or not it is a problem.
   expect(placeholderLines({ status: "Connecting" })).toEqual([

@@ -142,6 +142,7 @@ impl VideoTask {
             self.gate.reset();
             self.decoder = None;
             self.epoch = Some(unit.epoch);
+            self.warned_capture = false;
         }
         let Some(capture) = unit.capture else {
             if !self.warned_capture {
@@ -149,6 +150,7 @@ impl VideoTask {
                 tracing::warn!(
                     "The live video has no capture time, so its frames cannot be synchronized and are dropped"
                 );
+                self.shared.board.video_no_capture(now);
             }
             return;
         };

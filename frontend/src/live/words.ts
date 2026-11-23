@@ -23,6 +23,7 @@ const REASONS: Record<LiveReason, string> = {
   TimedOut: "Timed out",
   Lost: "Connection lost",
   Silent: "No data",
+  NoCaptureTime: "No capture timestamps",
   Malformed: "Unreadable data",
   Throttled: "Camera is limiting requests",
   DeviceFault: "Camera error",
@@ -88,9 +89,11 @@ function because(status: LiveFeedStatus, alternatives?: string): string {
   if (!("reason" in status)) return STATES[status.status].description;
   if (status.reason === "SourceUnavailable" && alternatives !== undefined)
     return `${reasonText(status.reason)}. Available sources: ${alternatives}. Choose another in Edit.`;
-  return status.reason === "SourceUnavailable"
-    ? `${reasonText(status.reason)}. Choose another in Edit.`
-    : reasonText(status.reason);
+  if (status.reason === "SourceUnavailable")
+    return `${reasonText(status.reason)}. Choose another in Edit.`;
+  if (status.reason === "NoCaptureTime")
+    return `${reasonText(status.reason)}. Include onvifreplayext=1 in custom Axis stream URLs.`;
+  return reasonText(status.reason);
 }
 
 /** The line a problem gets under the bar, `Video: Failed — Login rejected`; `null` for a feed that is not in trouble. */
