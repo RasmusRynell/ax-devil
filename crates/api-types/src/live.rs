@@ -96,6 +96,8 @@ pub enum LiveReason {
     Lost,
     /// The stream stopped delivering.
     Silent,
+    /// Video frames arrived without capture timestamps, so they cannot be synchronized.
+    NoCaptureTime,
     /// The device sent something that does not parse.
     Malformed,
     /// The device is turning requests away for now.

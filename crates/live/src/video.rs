@@ -142,6 +142,7 @@ impl VideoTask {
             self.gate.reset();
             self.decoder = None;
             self.epoch = Some(unit.epoch);
+            self.warned_capture = false;
         }
         let Some(capture) = unit.capture else {
             if !self.warned_capture {
@@ -150,6 +151,7 @@ impl VideoTask {
                     "The live video has no capture time, so its frames cannot be synchronized and are dropped"
                 );
             }
+            self.shared.board.video_no_capture(now);
             return;
         };
         let time_us = capture.0.div_euclid(1000);

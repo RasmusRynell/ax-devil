@@ -29,6 +29,8 @@ struct FeedState {
     delivered: Option<u32>,
     /// Whether silence on a live connection is a stall. Video only: a quiet MQTT or DataHub topic is normal.
     stalls: bool,
+    /// Video frames arrived on the current live connection with no capture timestamps.
+    no_capture: bool,
 }
 
 impl FeedState {
@@ -40,6 +42,7 @@ impl FeedState {
             last_data: None,
             delivered: None,
             stalls,
+            no_capture: false,
         }
     }
 
@@ -50,12 +53,14 @@ impl FeedState {
                 self.attempt = 0;
                 self.since = now;
                 self.last_data = None;
+                self.no_capture = false;
             }
             (_, Status::Reconnecting { .. }) => self.attempt += 1,
             // A restart's connections count their epochs anew.
             (_, Status::Connecting) => {
                 self.attempt = 0;
                 self.delivered = None;
+                self.no_capture = false;
             }
             _ => {}
         }
@@ -76,15 +81,21 @@ impl FeedState {
         match &self.link {
             Status::Connecting => LiveFeedStatus::Connecting,
             Status::Live { .. } => {
-                let quiet_since = self
-                    .last_data
-                    .map_or(self.since, |data| data.max(self.since));
-                if self.stalls && now.0.saturating_sub(quiet_since.0) >= STALL_AFTER {
-                    LiveFeedStatus::Stalled {
-                        seconds: u32::try_from(STALL_AFTER.as_secs()).unwrap_or(u32::MAX),
+                if self.no_capture {
+                    LiveFeedStatus::Failed {
+                        reason: LiveReason::NoCaptureTime,
                     }
                 } else {
-                    LiveFeedStatus::Live
+                    let quiet_since = self
+                        .last_data
+                        .map_or(self.since, |data| data.max(self.since));
+                    if self.stalls && now.0.saturating_sub(quiet_since.0) >= STALL_AFTER {
+                        LiveFeedStatus::Stalled {
+                            seconds: u32::try_from(STALL_AFTER.as_secs()).unwrap_or(u32::MAX),
+                        }
+                    } else {
+                        LiveFeedStatus::Live
+                    }
                 }
             }
             Status::Reconnecting { error, .. } => LiveFeedStatus::Reconnecting {
@@ -233,7 +244,15 @@ impl Board {
 
     /// A video unit arrived.
     pub fn video_data(&self, now: Mono) {
-        self.update(now, |inner| inner.video.last_data = Some(now));
+        self.update(now, |inner| {
+            inner.video.last_data = Some(now);
+            inner.video.no_capture = false;
+        });
+    }
+
+    /// Video units arrived without capture timestamps and were dropped.
+    pub fn video_no_capture(&self, now: Mono) {
+        self.update(now, |inner| inner.video.no_capture = true);
     }
 
     /// An overlay document of connection `epoch` arrived.
