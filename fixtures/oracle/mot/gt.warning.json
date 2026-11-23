@@ -1,0 +1,1 @@
+{"problem":"Skipped 1 of 10 rows","reasons":["line 7: expected 7, 9 or 10 columns, got 8"],"consequence":"Objects on skipped rows are not shown.","more_reasons":false}

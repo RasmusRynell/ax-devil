@@ -11,6 +11,7 @@ name: PR Agent
 # - The action is pinned by image digest (docker://pragent/pr-agent, tag 0.49.0-github_action). The
 #   Dockerfile of the `The-PR-Agent/pr-agent@<sha>` wrapper pulls a rolling tag, so a commit SHA pins nothing.
 #   Digest for a newer release: docker buildx imagetools inspect pragent/pr-agent:<version>-github_action
+# - The review is advisory: if the PR Agent step fails (for example the Anthropic credit balance is exhausted) the job stays green and emits a warning.
 
 on:
   pull_request:
@@ -49,7 +50,9 @@ jobs:
           fi
 
       - name: PR Agent review
+        id: review
         if: steps.gate.outputs.enabled == 'true'
+        continue-on-error: true
         # 0.49.0-github_action
         uses: docker://pragent/pr-agent@sha256:b1ed6e8de56eb4d6e4169ee0d5c209bb5ed1ef071a01c0c042c64b80192a785c
         env:
@@ -62,3 +65,7 @@ jobs:
           github_action_config.auto_describe: "false"
           github_action_config.auto_improve: "false"
           github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "synchronize"]'
+
+      - name: Report skipped review
+        if: steps.review.outcome == 'failure'
+        run: echo "::warning::PR Agent review failed (often an exhausted Anthropic credit balance); see the PR Agent review step log. The check is advisory and stays green."

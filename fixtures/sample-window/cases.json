@@ -1,0 +1,116 @@
+{
+  "cases": [
+    {
+      "name": "one lane, exact frames, nearest first then behind",
+      "playhead": 10,
+      "direction": "forward",
+      "first": 8,
+      "maps": [[1, 2, 3, 4, 5]],
+      "expected": [
+        [3, 10],
+        [4, 11],
+        [5, 12],
+        [2, 9],
+        [1, 8]
+      ]
+    },
+    {
+      "name": "two lanes on one source select different samples at one frame: the lower index goes first",
+      "playhead": 10,
+      "direction": "forward",
+      "first": 10,
+      "maps": [
+        [7, 4294967295],
+        [3, 4294967295]
+      ],
+      "expected": [
+        [3, 10],
+        [7, 10]
+      ]
+    },
+    {
+      "name": "a sample mapped on both sides of the playhead ranks by its better frame",
+      "playhead": 10,
+      "direction": "forward",
+      "first": 8,
+      "maps": [[5, 5, 4294967295, 5, 6]],
+      "expected": [
+        [5, 11],
+        [6, 12]
+      ]
+    },
+    {
+      "name": "backward travel prefers the frames behind",
+      "playhead": 10,
+      "direction": "backward",
+      "first": 8,
+      "maps": [[1, 2, 3, 4, 5]],
+      "expected": [
+        [3, 10],
+        [2, 9],
+        [1, 8],
+        [4, 11],
+        [5, 12]
+      ]
+    },
+    {
+      "name": "none and empty cells select nothing",
+      "playhead": 1,
+      "direction": "forward",
+      "first": 0,
+      "maps": [[4294967295, 4294967294, 2, 4294967294, 4294967295, 3]],
+      "expected": [
+        [2, 2],
+        [3, 5]
+      ]
+    },
+    {
+      "name": "window at the start of the video",
+      "playhead": 0,
+      "direction": "forward",
+      "first": 0,
+      "maps": [[0, 0, 1, 2]],
+      "expected": [
+        [0, 0],
+        [1, 2],
+        [2, 3]
+      ]
+    },
+    {
+      "name": "window at the end of the video",
+      "playhead": 9,
+      "direction": "forward",
+      "first": 6,
+      "maps": [[4, 4, 5, 6]],
+      "expected": [
+        [6, 9],
+        [5, 8],
+        [4, 7]
+      ]
+    },
+    {
+      "name": "all cells none",
+      "playhead": 3,
+      "direction": "forward",
+      "first": 2,
+      "maps": [[4294967295, 4294967295, 4294967295]],
+      "expected": []
+    },
+    {
+      "name": "a sticky run is one sample",
+      "playhead": 22,
+      "direction": "forward",
+      "first": 20,
+      "maps": [[9, 9, 9, 9, 9]],
+      "expected": [[9, 22]]
+    },
+    {
+      "name": "no lanes",
+      "playhead": 5,
+      "direction": "forward",
+      "first": 0,
+      "maps": [],
+      "expected": []
+    }
+  ]
+}

@@ -1,71 +1,79 @@
 # MOT Challenge sequences and overlays
 
-Use the [MOT Challenge](https://motchallenge.net/) pedestrian-tracking benchmarks from the Computer Vision Group,
-Technical University of Munich. The built-in `mot_challenge` playlist resolver reads the dataset's folder layout
-directly, and the `MOT_FILE` decoder reads its `det.txt` and `gt.txt` files. No video conversion is needed: each
-sequence plays from its JPEG frames.
+The [MOT Challenge](https://motchallenge.net/) pedestrian-tracking benchmarks play as they are: the `mot_challenge`
+playlist resolver reads the dataset's folders and the `MOT_FILE` decoder reads `det.txt` and `gt.txt`. No video
+conversion is needed.
 
-## Prepare a playlist
+To try it without downloading anything, use the small generated dataset in `fixtures/datasets/mot`.
 
-From the repository directory, download and unpack a benchmark.
-`curl` and `unzip` are only needed for this step:
+## Download
 
-```bash
-mkdir -p downloads/mot
-curl --fail --location https://motchallenge.net/data/MOT17.zip --output downloads/mot/MOT17.zip
-unzip -q downloads/mot/MOT17.zip -d downloads/mot
-```
-
-For MOT20, replace `MOT17` with `MOT20`. `MOT17Labels.zip` contains annotations without frames and is not enough
-on its own.
-
-Open the playlist:
+Keep the dataset outside the repository:
 
 ```bash
-uv run ax-devil playlist mot_challenge downloads/mot/MOT17
+mkdir -p ~/datasets/mot
+curl --fail --location https://motchallenge.net/data/MOT17.zip --output ~/datasets/mot/MOT17.zip
+unzip -q ~/datasets/mot/MOT17.zip -d ~/datasets/mot
 ```
 
-Alternatively, use **File → Add Playlist**, choose **MOT Challenge**, and select the dataset folder.
+For MOT20, replace `MOT17` with `MOT20`. `MOT17Labels.zip` holds the annotations without frames and is not enough.
 
-The resolver accepts the dataset root, its `train` or `test` folder, or any folder of sequence folders that each hold a
-`seqinfo.ini`. To open one sequence, point it at a folder containing only that sequence's variants.
-`seqinfo.ini` supplies the frame rate, frame size, length, image folder and extension.
+## Open it
 
-## Comparison lanes
+In the app, choose **File > Add Playlist** (Ctrl+Shift+N), pick **MOT Challenge** and the dataset folder, **Scan** to
+list its sequences (all start selected), untick any you do not want and **Add**. The playlist resolves in the
+background; a folder that cannot be read leaves the item listed as failed, with the reason.
 
-MOT17 ships every sequence three times, once per public detector: `MOT17-04-DPM`, `MOT17-04-FRCNN`,
-`MOT17-04-SDP`. The resolver groups these into one playlist entry with one lane per overlay on the shared frames:
-the detections of each variant, labeled **DPM**, **FRCNN** and **SDP**, plus one **GT** lane. Ground truth is
-identical across the variants, so it is shown once. A training sequence opens as four synchronized lanes; a test
-sequence has no ground truth and opens as three.
+From the command line, either command builds the release app and starts it with the playlist added to the first local
+window's workspace:
 
-Sequences without a detector suffix, such as MOT20's, form one entry each, with a **DET** lane and, in the
-training split, a **GT** lane. A sequence with neither file opens as plain video.
+```bash
+make app ARGS="playlist mot_challenge ~/datasets/mot/MOT17 [--sequences MOT17-04-DPM,MOT17-04-FRCNN]"
+make cli ARGS="playlist mot_challenge ~/datasets/mot/MOT17"    # serves http://127.0.0.1:7330; the first browser tab gets it
+```
 
-## Decoder behavior
+`make desktop` and `make web` take no arguments; add the playlist from the dialog there.
 
-- Source frame 1 maps to video frame 0. Frames are matched by number; no timestamps are invented.
-- Boxes are placed using the frame size from `seqinfo.ini`. Boxes extending past the image are kept.
-- Public detections carry no track IDs, so detection lanes have no object history.
-- A detection's score (the seventh column) is kept as the score at any range; the files carry no confidence.
-  Ground truth has neither.
-- Ground-truth classes use the benchmark's 1–13 list (person, person on vehicle, car, … crowd). Every row is
-  shown, including static people, distractors, occluders and rows with `mark` 0, which the benchmark ignores when
-  scoring; use the class filter to hide them. `mark` and visibility are kept as the `gt_mark` and `visibility_ratio`
-  attributes.
+The folder may be the dataset root, its `train` or `test` folder, or any folder of sequence folders that each hold a
+`seqinfo.ini`. A single sequence folder is not accepted; point at a folder that contains it. `--sequences` takes
+sequence folder names, so a detector variant left out loses its lane.
 
-## Attribution and license
+## Lanes
+
+MOT17 ships every sequence once per public detector (`MOT17-04-DPM`, `-FRCNN`, `-SDP`). The variants form one entry
+with one lane per overlay on the shared frames: **DPM**, **FRCNN** and **SDP** detections and one **GT** lane (ground
+truth is identical across variants). A sequence without a detector suffix, such as MOT20's, is one entry with a
+**DET** lane and, in `train`, a **GT** lane. The `test` split has no ground truth. Each lane's settings (the tag's
+sliders button) pick the catalog and the classes to show; the **Tracking** catalog colours each box by track id.
+
+## What is read
+
+- Frames are matched by number: file frame 1 is video frame 0. Boxes are scaled by the lane's `width` and `height`
+  options, never the video's. A playlist sets them from each sequence's `seqinfo.ini`; a `det.txt` or `gt.txt` added on
+  its own as an overlay has no `seqinfo.ini` to read and needs both options, in pixels, or it fails to load.
+- Public detections have no track ids, so the Tracking catalog is meaningful on ground truth only. A detection's score is kept as it
+  is; ground truth has none.
+- Ground-truth classes are the benchmark's 1 to 13; every row is shown, including static people, distractors and
+  rows with `mark` 0 that the benchmark ignores when scoring. Hide them with the class toggles. `mark` and
+  visibility are kept as the `gt_mark` and `visibility_ratio` attributes. A row that does not parse is skipped and
+  the lane warns.
+
+## Limits
+
+- Frames are numbered from `000001` in the folder `imDir` names, `img1` and `.jpg` by default. Both must be plain
+  names; a sequence whose `imDir` or `imExt` is not fails to load.
+- Only the built-in catalogs exist for now, hidden entries and lanes are not saved, and a lane's choices last while its
+  entry is open. What the old app did that this one does not yet is in [parity](../parity.md) (rows IN-\*, RC-02 and
+  OF-\*).
+
+## License and citations
 
 MOT Challenge sequences and annotations are licensed under
-[CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/): non-commercial use only, with
-attribution, and derived material shared under the same license. The application's Python code remains MIT
-licensed. `downloads/` is ignored by Git; keep the dataset's license terms with local copies and credit the
-dataset next to any published video or GIF.
+[CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/): non-commercial use, with attribution, and
+derived material shared under the same license. Keep the dataset's license with local copies and credit it next to
+any published video or GIF. The authors request these citations:
 
-The authors request these citations:
-
-A. Milan, L. Leal-Taixé, I. Reid, S. Roth, and K. Schindler,
-“MOT16: A Benchmark for Multi-Object Tracking,” arXiv:1603.00831, 2016. (MOT16 and MOT17)
-
-P. Dendorfer, H. Rezatofighi, A. Milan, J. Shi, D. Cremers, I. Reid, S. Roth, K. Schindler, and
-L. Leal-Taixé, “MOT20: A benchmark for multi object tracking in crowded scenes,” arXiv:2003.09003, 2020. (MOT20)
+- A. Milan, L. Leal-Taixé, I. Reid, S. Roth, and K. Schindler, "MOT16: A Benchmark for Multi-Object Tracking,"
+  arXiv:1603.00831, 2016. (MOT16 and MOT17)
+- P. Dendorfer, H. Rezatofighi, A. Milan, J. Shi, D. Cremers, I. Reid, S. Roth, K. Schindler, and L. Leal-Taixé,
+  "MOT20: A benchmark for multi object tracking in crowded scenes," arXiv:2003.09003, 2020. (MOT20)

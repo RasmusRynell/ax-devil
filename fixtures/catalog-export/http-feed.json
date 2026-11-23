@@ -1,0 +1,24 @@
+{
+  "broken": {
+    "document": "{\"schema\":4,\"name\":\"Broken\",\"layers\":null}",
+    "id": "user:export.json",
+    "problem": null,
+    "revision": 3,
+    "type": "Catalog"
+  },
+  "exportable": [
+    1,
+    3
+  ],
+  "http": {
+    "document": "{\"description\":\"For crowds: thin boxes in the class color and nothing else. Hover an object for its details.\",\"layers\":[{\"feature\":\"outlines\",\"marks\":[{\"dash\":\"attr.occluded\",\"fill\":\"alpha(color, 0)\",\"mark\":\"box\",\"stroke\":\"color\",\"width\":\"1px\"},{\"mark\":\"polygon\",\"stroke\":\"color\",\"width\":\"1px\"}]},{\"feature\":\"relations\",\"for\":\"relations\",\"marks\":[{\"from\":\"anchor(source.box, 'center')\",\"mark\":\"line\",\"stroke\":\"#eceff4\",\"to\":\"anchor(target.box, 'center')\",\"width\":\"1px\"},{\"fill\":\"#eceff4\",\"mark\":\"circle\",\"on\":\"source.box\",\"r\":\"2.5px\",\"stroke\":\"#0e1014\",\"width\":\"1px\"},{\"fill\":\"#eceff4\",\"mark\":\"circle\",\"on\":\"target.box\",\"r\":\"2.5px\",\"stroke\":\"#0e1014\",\"width\":\"1px\"}],\"when\":\"relation == 'has_part'\"},{\"feature\":\"speed\",\"marks\":[{\"gain\":0.5,\"head\":\"6px\",\"head_width\":\"3.5px\",\"mark\":\"arrow\",\"max\":\"100px\",\"stroke\":\"color\",\"width\":\"1.5px\"}]},{\"feature\":\"movement\",\"marks\":[{\"background\":\"color\",\"mark\":\"label\",\"pad\":[\"2px\",\"1px\"],\"place\":[{\"anchor\":\"top-left\",\"at\":\"top-right\",\"dx\":\"0.5px\",\"dy\":\"-0.5px\"}],\"runs\":[{\"color\":\"ink\",\"text\":\"case(motion_state, 'moving', '▶', 'stationary', 'Ⅱ', '?')\",\"weight\":\"medium\"}],\"size\":\"10px\"}],\"when\":\"motion_state != null\"}],\"name\":\"HTTP only\",\"rules\":[{\"set\":{\"color\":\"#27ae60\"},\"when\":\"class != null\"},{\"set\":{\"color\":\"#2f80ed\"},\"when\":\"class in ['vehicle', 'vehicle_other', 'car', 'bus', 'truck', 'bike', 'bicycle']\"},{\"set\":{\"color\":\"#f2a100\",\"ink\":\"#111111\"},\"when\":\"class == 'human'\"},{\"set\":{\"color\":\"#9b51e0\"},\"when\":\"class == 'head'\"}],\"schema\":4,\"vars\":{\"color\":\"#828b96\",\"ink\":\"#ffffff\"}}",
+    "revision": 2
+  },
+  "initial": {
+    "document": "{\n  \"schema\": 4,\n  \"name\": \"Minimal\",\n  \"description\": \"For crowds: thin boxes in the class color and nothing else. Hover an object for its details.\",\n  \"vars\": {\n    \"color\": \"#828b96\",\n    \"ink\": \"#ffffff\"\n  },\n  \"rules\": [\n    { \"when\": \"class != null\", \"set\": { \"color\": \"#27ae60\" } },\n    { \"when\": \"class in ['vehicle', 'vehicle_other', 'car', 'bus', 'truck', 'bike', 'bicycle']\", \"set\": { \"color\": \"#2f80ed\" } },\n    { \"when\": \"class == 'human'\", \"set\": { \"color\": \"#f2a100\", \"ink\": \"#111111\" } },\n    { \"when\": \"class == 'head'\", \"set\": { \"color\": \"#9b51e0\" } }\n  ],\n  \"layers\": [\n    { \"feature\": \"outlines\", \"marks\": [\n      { \"mark\": \"box\", \"stroke\": \"color\", \"width\": \"1px\", \"dash\": \"attr.occluded\", \"fill\": \"alpha(color, 0)\" },\n      { \"mark\": \"polygon\", \"stroke\": \"color\", \"width\": \"1px\" }\n    ] },\n    { \"feature\": \"relations\", \"for\": \"relations\", \"when\": \"relation == 'has_part'\", \"marks\": [\n      { \"mark\": \"line\", \"from\": \"anchor(source.box, 'center')\", \"to\": \"anchor(target.box, 'center')\", \"stroke\": \"#eceff4\", \"width\": \"1px\" },\n      { \"mark\": \"circle\", \"on\": \"source.box\", \"r\": \"2.5px\", \"stroke\": \"#0e1014\", \"width\": \"1px\", \"fill\": \"#eceff4\" },\n      { \"mark\": \"circle\", \"on\": \"target.box\", \"r\": \"2.5px\", \"stroke\": \"#0e1014\", \"width\": \"1px\", \"fill\": \"#eceff4\" }\n    ] },\n    { \"feature\": \"speed\", \"marks\": [\n      { \"mark\": \"arrow\", \"gain\": 0.5, \"max\": \"100px\", \"head\": \"6px\", \"head_width\": \"3.5px\", \"stroke\": \"color\", \"width\": \"1.5px\" }\n    ] },\n    { \"feature\": \"movement\", \"when\": \"motion_state != null\", \"marks\": [\n      { \"mark\": \"label\", \"size\": \"10px\", \"background\": \"color\", \"pad\": [\"2px\", \"1px\"],\n        \"runs\": [ { \"text\": \"case(motion_state, 'moving', '▶', 'stationary', 'Ⅱ', '?')\", \"color\": \"ink\", \"weight\": \"medium\" } ],\n        \"place\": [ { \"at\": \"top-right\", \"anchor\": \"top-left\", \"dx\": \"0.5px\", \"dy\": \"-0.5px\" } ] }\n    ] }\n  ]\n}\n",
+    "id": "user:export.json",
+    "problem": null,
+    "revision": 1,
+    "type": "Catalog"
+  }
+}

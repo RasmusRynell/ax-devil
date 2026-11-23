@@ -1,0 +1,244 @@
+{
+  "docs": {
+    "initial": {
+      "guest": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": []
+        }
+      },
+      "owner": {
+        "workspace": {
+          "bookmarks": [],
+          "epoch": 0,
+          "file": null,
+          "items": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "live",
+              "label": "10.0.0.6",
+              "open": false,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "$CAM_HOST",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": null,
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "10.0.0.6",
+                  "generation": 1,
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "10.0.0.6"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "$CAM_HOST",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": null,
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.6"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "kind": "live",
+              "label": "10.0.0.5",
+              "open": false,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.5",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": null,
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "content": {
+                  "display_name": "10.0.0.5",
+                  "generation": 2,
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "kind": "LiveVideo",
+                  "lanes": [
+                    "10.0.0.5"
+                  ],
+                  "overlay": "none",
+                  "recipe": {
+                    "found": null,
+                    "head": 1,
+                    "host": "10.0.0.5",
+                    "kept_datahub": null,
+                    "kept_mqtt": null,
+                    "label": null,
+                    "like": null,
+                    "overlay": {
+                      "mode": "none"
+                    },
+                    "password": "",
+                    "port": 0,
+                    "protocol": "https",
+                    "resolution": null,
+                    "rtsp_port": 554,
+                    "rtsp_route": "direct",
+                    "url": null,
+                    "username": ""
+                  },
+                  "slot": "live"
+                },
+                "status": "Resolved"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.5"
+              }
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "kind": "live",
+              "label": "10.0.0.8",
+              "open": false,
+              "recipe": {
+                "found": null,
+                "head": 1,
+                "host": "10.0.0.8",
+                "kept_datahub": null,
+                "kept_mqtt": null,
+                "label": null,
+                "like": null,
+                "overlay": {
+                  "mode": "none"
+                },
+                "password": "",
+                "port": 0,
+                "protocol": "https",
+                "resolution": null,
+                "rtsp_port": 554,
+                "rtsp_route": "direct",
+                "type": "Live",
+                "url": null,
+                "username": ""
+              },
+              "resolution": {
+                "status": "Pending"
+              },
+              "shown": {
+                "broker_host": null,
+                "host": "10.0.0.8"
+              }
+            }
+          ],
+          "modified": true,
+          "name": null,
+          "recovered": false,
+          "rows": [
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000001",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000001",
+              "key": "00000000-0000-4000-8000-000000000001",
+              "kind": "item",
+              "label": "10.0.0.6",
+              "location": null,
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": "00000000-0000-4000-8000-000000000002",
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000002",
+              "key": "00000000-0000-4000-8000-000000000002",
+              "kind": "item",
+              "label": "10.0.0.5",
+              "location": "10.0.0.5",
+              "status": {
+                "status": "Ready"
+              },
+              "warnings": []
+            },
+            {
+              "detail": "",
+              "entry": null,
+              "hidden": false,
+              "item": "00000000-0000-4000-8000-000000000003",
+              "key": "00000000-0000-4000-8000-000000000003",
+              "kind": "item",
+              "label": "10.0.0.8",
+              "location": null,
+              "status": {
+                "status": "Pending"
+              },
+              "warnings": []
+            }
+          ]
+        }
+      }
+    }
+  },
+  "ids": {
+    "e": "00000000-0000-4000-8000-000000000002",
+    "p": "00000000-0000-4000-8000-000000000003",
+    "r": "00000000-0000-4000-8000-000000000001"
+  },
+  "steps": []
+}

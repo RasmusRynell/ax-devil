@@ -1,0 +1,40 @@
+[package]
+name = "live"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.ax-devil]
+layer = "adapters"
+
+[lints]
+workspace = true
+
+[features]
+# The doubles of `fake.rs` (a connector that serves what a test pushes into it), for the app's tests.
+fake = ["camera/fake"]
+
+[dependencies]
+api-types.workspace = true
+bytes.workspace = true
+camera.workspace = true
+foundation.workspace = true
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+handler-api.workspace = true
+handlers.workspace = true
+media.workspace = true
+overlays.workspace = true
+playback.workspace = true
+scene.workspace = true
+scene-store.workspace = true
+settings.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }
+tracing.workspace = true
+workspace.workspace = true
+
+[dev-dependencies]
+camera = { workspace = true, features = ["fake"] }
+tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }

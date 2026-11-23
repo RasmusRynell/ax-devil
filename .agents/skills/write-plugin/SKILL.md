@@ -1,64 +1,59 @@
 ---
 name: write-plugin
-description: Write an ax-devil plugin for the user's own data — a decoder that reads their annotation files, model output (JSON, CSV, XML, protobuf...) or live messages into overlays, or a playlist resolver that pairs their folders, manifests or experiment runs with videos. Use whenever the user wants ax-devil to open a format it does not support yet, or to load their datasets in one step, including new built-in plugins.
+description: Make ax-devil read overlay data in a format it does not read, by writing, checking and installing a plugin (a program in any language whose decoder handler prints Scenes, or whose playlist resolver handler prints a playlist, as JSON Lines). Use when the user wants their own annotation, tracking or detection files drawn on a video, or a change to such a plugin.
 ---
 
-# Writing a plugin for the user's data
+# Write a plugin
 
-The user has data ax-devil cannot open yet. Your job: understand their data, write a small plugin package outside
-this repository, install it, prove it decodes their real files, and tell them the one command that opens it.
+A plugin is a program in the user's own folder, outside this repository, with a manifest listing the handlers it
+provides. For an overlay format that is a decoder handler: ax-devil runs the program on an overlay file, reads Scenes
+from its stdout and draws them like any built-in format. For a dataset layout it does not know that is a playlist
+resolver handler: the program turns settings (a folder, choices it scans for) into videos with their overlay files.
+A handler shipped with ax-devil is a built-in in `crates/handlers` (`decoders` or `resolvers`) and is
+development work. The contract is in
+[reference.md](reference.md); `docs/plugins.md` says what installing one means for the user's safety.
 
-## Pick the plugin type
+## Steps
 
-| The user wants to... | Plugin | Built-in model to imitate |
-|---|---|---|
-| Open an overlay file next to a video | Decoder with a **file** handler | `src/ax_devil/plugins/decoders/mot/` (CSV), `uvg_vcm/` (JSON), `cvat/` (XML) |
-| Decode live messages (RTSP metadata, MQTT, DataHub) | Decoder with a **payload** handler | `src/ax_devil/plugins/decoders/adf_v1/`, `onvif_xml/` |
-| Open many recordings with their overlays at once, or compare runs | **Playlist resolver** | `src/ax_devil/plugins/playlist_resolvers/folder_pair/`, `mot_challenge/` |
+1. Run `ax-devil list-handlers`. MOT, UVG-VCM, ONVIF XML and CVAT need no plugin.
+2. Read a real file. Decide what keys a sample (a frame number or a time in microseconds, one kind per file), whether
+   every frame has a sample (`dense`) or only some (`sparse`), what the object ids and classes are, and what is in the
+   file besides geometry.
+3. Create a folder with `ax-devil-plugin.json` and the program. Start from `fixtures/plugins/python-tracks`
+   (Python, every Scene part) or `fixtures/plugins/shell-times` (sh and awk, time keys, `replace`); a resolver from
+   `fixtures/plugins/python-runs`. A resolver prints absolute paths and names a decoder id for each overlay.
+4. Install it and prove it on the user's real file, not only a toy one:
 
-First check that no built-in handler already reads the data: `uv run ax-devil list-handlers`. A dataset of a
-supported format only needs a resolver; a new format with a folder layout may need both, in one package.
+   ```bash
+   ax-devil plugins install FOLDER
+   ax-devil plugins check HANDLER FILE [--option KEY=VALUE]
+   ```
 
-## The loop
+   `check` prints the sample count, the key kind and range, the warnings and why a run stopped early. It exits 1
+   when the run is incomplete or empty. The plugin never sees the video: a file in pixels needs its image size as options (`width`, `height`).
+5. Open the video with the file (`ax-devil local --video V --overlay FILE`; the extension picks the decoder, or
+   `--handler-type HANDLER`). Compare the boxes, labels and the inspector's fields with what the file says. To see it without the
+   user's desktop, follow [verify-headless](../verify-headless/SKILL.md).
 
-1. **Look at real data.** Ask for a sample file or folder if the user has not given one, and read it. Find: how
-   frames are identified (frame number, timestamp), how geometry is expressed (pixels or normalized, xywh or corners,
-   polygons), object ids, classes, scores or confidences, and any extra fields worth keeping as attributes. Ask about anything you
-   cannot infer, such as the frame size for pixel coordinates.
-2. **Read the contract.** [reference.md](reference.md) has a minimal package and the packaging rules. Read the
-   built-in model from the table above end to end, and `src/ax_devil/modules/scene/model.py` (and `model_values.py`,
-   which it re-exports) for the Scene types (`Entity`, `Observation`, `BoundingBox`, `Classification`, `Attribute`).
-3. **Create the package outside this repository**, in a directory the user picks (default
-   `~/ax-devil-plugins/<name>/`): `pyproject.toml` with the entry point plus one module. Keep the user's data
-   untouched and out of the package. A plugin meant to ship with ax-devil is development instead: it goes in
-   `src/ax_devil/plugins/` next to its model, with tests, following `AGENTS.md`, and needs no install step.
-4. **Map their data to Scenes.** Normalize geometry to 0–1 of the frame. Keep stable object ids so tracking,
-   history and ID-colored catalogs work. Put extra fields in `Attribute`s on the classification so the inspector
-   shows them and render catalogs can use them. For numeric class ids, build the classification with
-   `classification_for_id` from `ax_devil.modules.scene.decoding`; an id missing from the name table shows as
-   `?<id>`, and the raw id stays in the `class_id` attribute. Pass the source's number as `score` (any finite range) and
-   what it reports as a confidence as `confidence`, each only when the source has it: leave the other `None`, and never invent a value or
-   drop the object because one is missing. Set `file_extensions` on file handlers.
-5. **Prove it on their data before installing.** Run a short script with `uv run python` from this repository, with
-   the package directory on `PYTHONPATH`, that decodes the user's sample and prints the frame count, objects on a
-   few frames and one decoded object with its attributes. Compare against the raw file. A resolver calls
-   `resolve(settings, token)` on the user's folders and prints the resolved recordings and overlay pairings instead.
-6. **Install it with the command the user launches ax-devil with:** `ax-devil` for an installed app,
-   `uv run ax-devil` for this checkout. Each keeps its own plugins, so ask if unclear. Run
-   `<launch command> plugins install /absolute/path/to/package`; installation validates the entry point. Confirm with
-   `plugins list`, and for file handlers `list-handlers`.
-7. **Hand over.** Give the user the exact command that opens their data with their launch command, for example
-   `ax-devil local --video <video> --overlay <file> --handler-type <HANDLER>` or
-   `ax-devil playlist <resolver_id> ...`. Launching the app is theirs to do. Report what each field of their
-   data became (geometry, id, class, attributes), and anything you skipped and why.
+A decoder for a live source (a camera's metadata documents) declares `"input": "records"` and `time` in `bases`: it
+answers one record at a time, which `fixtures/plugins/shell-records` shows. `check` reads such a decoder's file line by line.
 
-The package is installed editable: source edits appear on the next app start. After changing dependencies or entry
-points, run `plugins update` with the same launch command. Upgrades, removal and recovery are in `docs/plugins.md`.
+A resolver has no `check`: `ax-devil playlist ID --help` shows its settings, and `ax-devil playlist ID ARGS` opens the
+playlist; a wrong path or name fails with the line it came from.
 
-## Writing it well
+After an edit, run `check` again: it starts a new process and sees the manifest as well as the code. A running app
+rereads code on the next open and the manifest within a second or two.
 
-- Match the built-in model's structure; keep the plugin to the few files the model uses.
-- Fail loudly on a file that is not the expected format. For a malformed record, raise `ValueError` naming the
-  problem: ax-devil skips the record and warns on the lane. Return `None` only for a record with no overlay.
-  A provider that parses the whole file puts a `LoadWarning` in `SceneBuildResult.warnings`.
-- To change how the decoded objects look, follow the `render-catalog` skill; the plugin only supplies the data.
+## Rules
+
+- stdout is the protocol and nothing else: print diagnostics to stderr, flush after every line.
+- Normalize geometry to `[0,1]` with the image size the file states or an option gives; the plugin never sees the video. Do not derive or invent values: a score, a
+  confidence or a class the file lacks stays `null`. Keep the file's raw fields in `source_data`, what you computed in
+  `debug`.
+- A record you cannot convert is `{"skipped": "why"}`, not a crash and not a made-up Scene. A problem that affects
+  the whole file is a `warning`.
+- Print the `header` first (coverage, class filters) and keys in ascending order, so the lane fills while the
+  plugin runs. Out-of-order keys are accepted but the lane waits for the end.
+- Read only the overlay path you were given. Write nothing outside the working folder, make no network calls, and
+  take nothing from the environment beyond the names the manifest lists in `env`.
+- Ids are stable text per object across samples; the same id in two samples of one key is one object.

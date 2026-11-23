@@ -1,0 +1,150 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import type { PlaybackStream } from "../playback/stream";
+import type { PlaybackView } from "../playback/view";
+import {
+  useCan,
+  useCommand,
+  useDoc,
+  useFollowing,
+  useSession,
+  useSettled,
+  useSetView,
+  useView,
+} from "../session/session";
+import { PaneActiveContext } from "../viewer/actions";
+
+/** A frame to show, paused, once the viewer of an entry is ready. */
+interface Request {
+  /** The entry's id, as its viewer is given it. */
+  entry: string;
+  frame: number;
+}
+
+interface Seeking {
+  request: Request | null;
+  ask: (request: Request) => void;
+  done: () => void;
+}
+
+const SeekContext = createContext<Seeking | null>(null);
+
+/** Holds the frame the Bookmarks view asked a viewer to show until that viewer is ready for it. */
+export function SeekProvider({ children }: { children: ReactNode }) {
+  const [request, setRequest] = useState<Request | null>(null);
+  const value = useMemo(
+    () => ({ request, ask: setRequest, done: () => setRequest(null) }),
+    [request],
+  );
+  return <SeekContext.Provider value={value}>{children}</SeekContext.Provider>;
+}
+
+/** Asks the viewer of an entry to show a frame, paused, once it is open and ready. */
+export function useAskSeek(): Seeking["ask"] {
+  return useContext(SeekContext)?.ask ?? NOTHING;
+}
+
+const NOTHING = () => undefined;
+
+/**
+ * Takes the frame asked for this entry: when the stream is ready it jumps there and pauses, and a window that follows
+ * the presenter's clock or may not change its view drops the request instead.
+ */
+export function useSeekRequest(
+  stream: PlaybackStream,
+  status: PlaybackView["status"],
+  entry: string,
+) {
+  const seeking = useContext(SeekContext);
+  const canChange = useCan("view");
+  const following = useFollowing();
+  // The pane the bookmark opened or brought forward is the active one; another showing the same entry leaves it be.
+  const front = useContext(PaneActiveContext);
+  const asked = seeking?.request?.entry === entry ? seeking.request : null;
+  const done = seeking?.done;
+  useEffect(() => {
+    if (!asked || !done || status !== "ready" || !front) return;
+    done();
+    if (!canChange || following) return;
+    const last = stream.getSnapshot().frameCount - 1;
+    // Pausing first: pausing a playing clock returns it to the frame on screen, which would undo the seek.
+    stream.pause();
+    stream.seek(Math.min(asked.frame, last));
+  }, [asked, done, status, stream, canChange, following, front]);
+}
+
+/**
+ * The command that bookmarks the frame on screen of the entry `entry` of `item`, then shows the Bookmarks view while
+ * the viewer stays in front. Does nothing before the viewer is ready.
+ */
+export function useAddBookmark(stream: PlaybackStream, item: string, entry: string) {
+  const command = useCommand();
+  const setView = useSetView();
+  return useCallback(() => {
+    const view = stream.getSnapshot();
+    if (view.status !== "ready") return;
+    const frame = view.shown?.sequenceId ?? view.playhead;
+    const time = view.shown?.timestampUs ?? stream.frameTime(frame) ?? 0;
+    command({
+      type: "content",
+      command: {
+        type: "bookmark",
+        command: { type: "add", item, entry, frame, timeUs: Math.max(0, Math.round(time)) },
+      },
+    }).then(
+      () => setView((shown) => ({ ...shown, sidebar: { view: "bookmarks", open: true } })),
+      // A refused bookmark leaves the sidebar as it was, which says so.
+      () => undefined,
+    );
+  }, [stream, item, entry, command, setView]);
+}
+
+const SEEN = "ax-devil.sidebarEpoch";
+
+/** The last workspace epoch this window chose a sidebar view for, in `session`; a session it has not seen starts at 0. */
+function seenEpoch(session: string): number {
+  try {
+    const seen = JSON.parse(window.sessionStorage.getItem(SEEN) ?? "null") as {
+      session?: string;
+      epoch?: number;
+    } | null;
+    return seen?.session === session ? (seen.epoch ?? 0) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Chooses the sidebar view when a workspace replaces the one this window last saw in the same session: Workspace
+ * after a recovery, else Bookmarks when it has bookmarks. Epochs count per session, so a window that connects to
+ * another session (a backend restart, Watch, a join link) sees its workspace as new at epoch 0. The workspace the
+ * app opens at launch counts as a replacement; reloading the page does not, so it keeps the view the user chose.
+ * It decides once the seat that goes with the new workspace has arrived, and a window that follows the presenter
+ * keeps the presenter's view.
+ */
+export function useSidebarOnReplace() {
+  const workspace = useDoc()?.workspace;
+  const session = useSession().session;
+  const settled = useSettled();
+  const sessionId = session?.id;
+  const [, setSidebar] = useView("sidebar");
+  const following = useFollowing();
+  const epoch = workspace?.epoch;
+  const recovered = workspace?.recovered ?? false;
+  const marked = (workspace?.bookmarks.length ?? 0) > 0;
+  useEffect(() => {
+    // A new Doc arrives before the seat that says whether the window follows it: wait for that seat.
+    if (epoch === undefined || sessionId === undefined || !settled) return;
+    const before = seenEpoch(sessionId);
+    try {
+      window.sessionStorage.setItem(SEEN, JSON.stringify({ session: sessionId, epoch }));
+    } catch {
+      // Without storage a reload shows the view again, which is harmless.
+    }
+    // A window that follows the presenter shows the presenter's sidebar; choosing one would make it explore.
+    if (epoch === before || following) return;
+    const view = recovered ? "workspace" : marked ? "bookmarks" : null;
+    if (view)
+      setSidebar((shown) => (shown.view === view && shown.open ? shown : { view, open: true }));
+  }, [sessionId, settled, epoch, recovered, marked, following, setSidebar]);
+}

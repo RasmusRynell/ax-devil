@@ -1,0 +1,182 @@
+[
+  {
+    "name": "both clocks",
+    "scene": {
+      "time": {
+        "start": {
+          "us": 1250000
+        },
+        "end": {
+          "us": 1250000
+        }
+      },
+      "entities": [
+        {
+          "id": "7",
+          "observations": [
+            {
+              "time": {
+                "frame": 17,
+                "us": 1250000
+              },
+              "geometry": {
+                "box": [
+                  0.0,
+                  0.0,
+                  1.0,
+                  1.0
+                ]
+              },
+              "debug": {}
+            }
+          ],
+          "end_reason": "\u00e9\ud83d\ude00\n\""
+        }
+      ]
+    },
+    "raw": "{\n  \"end_reason\": \"\\u00e9\\ud83d\\ude00\\n\\\"\",\n  \"timestamp\": \"1970-01-01T00:00:01.250000+00:00\",\n  \"frame_number\": 17\n}"
+  },
+  {
+    "name": "large integer",
+    "scene": {
+      "time": {
+        "start": {
+          "frame": 9007199254740993
+        },
+        "end": {
+          "frame": 9007199254740993
+        }
+      },
+      "entities": [
+        {
+          "id": "7",
+          "observations": [
+            {
+              "time": {
+                "frame": 9007199254740993
+              },
+              "geometry": {
+                "box": [
+                  0.0,
+                  0.0,
+                  1.0,
+                  1.0
+                ]
+              },
+              "debug": {}
+            }
+          ],
+          "end_reason": null
+        }
+      ]
+    },
+    "raw": "{\n  \"frame_number\": 9007199254740993\n}"
+  },
+  {
+    "name": "nested diagnostics",
+    "scene": {
+      "time": {
+        "start": {
+          "frame": 2
+        },
+        "end": {
+          "frame": 2
+        }
+      },
+      "entities": [
+        {
+          "id": "7",
+          "observations": [
+            {
+              "time": {
+                "frame": 2
+              },
+              "geometry": {
+                "box": [
+                  0.0,
+                  0.0,
+                  1.0,
+                  1.0
+                ]
+              },
+              "debug": {
+                "nested": {
+                  "nonascii": "\u00e9\ud83d\ude00",
+                  "big": 9007199254740993,
+                  "float": 1.2345,
+                  "list": [
+                    {},
+                    [],
+                    null,
+                    false
+                  ]
+                }
+              }
+            }
+          ],
+          "end_reason": "done"
+        }
+      ]
+    },
+    "raw": "{\n  \"end_reason\": \"done\",\n  \"frame_number\": 2\n}"
+  },
+  {
+    "name": "timestamp only",
+    "scene": {
+      "time": {
+        "start": {
+          "us": 1700000000123456
+        },
+        "end": {
+          "us": 1700000000123456
+        }
+      },
+      "entities": [
+        {
+          "id": "7",
+          "observations": [
+            {
+              "time": {
+                "us": 1700000000123456
+              },
+              "geometry": {
+                "box": [
+                  0.0,
+                  0.0,
+                  1.0,
+                  1.0
+                ]
+              },
+              "debug": {
+                "float": -0.0
+              }
+            }
+          ],
+          "end_reason": null
+        }
+      ]
+    },
+    "raw": "{\n  \"timestamp\": \"2023-11-14T22:13:20.123456+00:00\"\n}"
+  },
+  {
+    "name": "empty groups",
+    "scene": {
+      "time": {
+        "start": {
+          "frame": 0
+        },
+        "end": {
+          "frame": 0
+        }
+      },
+      "entities": [
+        {
+          "id": "7",
+          "observations": [],
+          "end_reason": null
+        }
+      ]
+    },
+    "raw": "{}"
+  }
+]

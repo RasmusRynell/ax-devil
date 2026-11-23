@@ -1,0 +1,379 @@
+//! A change to the files of an item: an open viewer keeps its stream and is told, and every session that holds the item
+//! finds out.
+
+use crate::{GRACE, Rig, authority, stream};
+use foundation::CancelToken;
+use handler_api::Settings;
+use handlers::{HandlerSet, Handlers};
+use playback::Authority;
+use sessions::{
+    CursorOptions,
+    session::{Command, Handle, OnRuntime, Service, Work},
+};
+use std::{fs, path::Path, sync::Arc, time::Duration};
+use workspace::store::{DocCommand, Resolution};
+use workspace::{
+    Content, ItemId, LiveOverlay, LiveRecipe, Protocol, Recipe, Secret, Source, Watch,
+    WorkspaceItem,
+    intake::{NewOverlay, video},
+};
+
+/// A video with one overlay file in `dir`, and that file.
+fn with_overlay(dir: &Path) -> (WorkspaceItem, std::path::PathBuf) {
+    let (video_file, overlay_file) = (dir.join("a.mp4"), dir.join("gt.txt"));
+    fs::write(&video_file, "x").unwrap();
+    fs::write(&overlay_file, "").unwrap();
+    let overlay = NewOverlay {
+        path: overlay_file.clone(),
+        handler: None,
+        label: None,
+        options: Settings::from_iter([("width".into(), 64.into()), ("height".into(), 48.into())]),
+    };
+    (
+        video(&video_file, &[overlay], &Handlers::built_in()).unwrap(),
+        overlay_file,
+    )
+}
+
+fn changed(owner: &Handle, item: ItemId) -> Option<u32> {
+    owner
+        .state()
+        .doc
+        .workspace
+        .changed
+        .get(&item)
+        .map(|changes| changes.revision)
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_open_viewer_keeps_its_stream_when_its_files_change_until_the_item_resolves_again() {
+    let rig = Rig::new();
+    let owner = rig
+        .service
+        .create(true, CursorOptions::default(), Default::default())
+        .unwrap();
+    let (item, overlay) = with_overlay(rig.dir.path());
+    let id = item.id;
+    let handlers = Handlers::built_in();
+    let (_, watch) = Watch::read(&item.recipe, &handlers, &CancelToken::new(), || {
+        Err::<Content, ()>(())
+    });
+    let (_, key) = rig.open(&owner, item);
+    rig.service
+        .record_sources(owner.session(), id, watch.unwrap());
+    let lease = stream(&rig.service, &owner, &key).unwrap();
+
+    fs::write(&overlay, "1,1,1,1,1,1\n").unwrap();
+    rig.service.check_sources();
+    assert_eq!(
+        changed(&owner, id),
+        None,
+        "held back until it looks the same twice"
+    );
+    rig.service.check_sources();
+    assert_eq!(changed(&owner, id), Some(1));
+    assert!(
+        owner.state().doc.workspace.changed[&id].entries.is_empty(),
+        "single-file changes stay item-level"
+    );
+    assert!(
+        rig.jobs.take().is_empty(),
+        "nothing resolves again by itself"
+    );
+    assert!(matches!(authority(&lease), Authority::Own { .. }));
+
+    owner
+        .command(Command::Content(DocCommand::Resolve(id)))
+        .unwrap();
+    assert!(
+        matches!(authority(&lease), Authority::Own { .. }),
+        "the stream plays on while the files are read again"
+    );
+    rig.jobs.finish_all();
+    assert_eq!(authority(&lease), Authority::Revoked);
+    assert_eq!(changed(&owner, id), None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn what_a_superseded_job_read_is_never_recorded_for_the_item() {
+    let rig = Rig::new();
+    let owner = rig
+        .service
+        .create(true, CursorOptions::default(), Default::default())
+        .unwrap();
+    let (item, overlay) = with_overlay(rig.dir.path());
+    let id = item.id;
+    let add = |item: &WorkspaceItem| {
+        owner
+            .command(Command::Content(DocCommand::AddItems {
+                items: vec![item.clone()],
+                open: true,
+            }))
+            .unwrap();
+    };
+    add(&item);
+    let mut stale = rig.jobs.take();
+    // The item is added again, which starts a new attempt and supersedes the first job; the new job finishes first.
+    add(&item);
+    rig.jobs.finish_all();
+
+    // The superseded job read the files and completes late: its result is dropped, and so is what it read.
+    let (spawn, done) = stale.remove(0);
+    let (_, watch) = Watch::read(
+        &item.recipe,
+        &Handlers::built_in(),
+        &CancelToken::new(),
+        || Err::<Content, ()>(()),
+    );
+    done.watcher().record(id, watch.unwrap());
+    let Work::Resolve(job) = &spawn.work;
+    assert!(done.complete(crate::completion(job)).is_ok());
+
+    fs::write(&overlay, "1,1,1,1,1,1\n").unwrap();
+    rig.service.check_sources();
+    rig.service.check_sources();
+    assert_eq!(changed(&owner, id), None, "nothing is watched for the item");
+}
+
+#[tokio::test]
+async fn resolving_records_the_files_and_each_window_with_the_item_is_told() {
+    let dir = tempfile::tempdir().unwrap();
+    let (item, overlay_file) = with_overlay(dir.path());
+    let id = item.id;
+    let service = Service::new(
+        GRACE,
+        Arc::new(OnRuntime {
+            runtime: tokio::runtime::Handle::current(),
+            handlers: HandlerSet::new(Handlers::built_in()),
+            environment: Arc::new(workspace::Environment::of_process),
+            opens: Arc::new(|_, _| panic!("first resolution must not open media")),
+        }),
+    );
+    // The same saved workspace open in two windows: one item id in two sessions.
+    let owners: Vec<Handle> = (0..2)
+        .map(|_| {
+            let owner = service
+                .create(true, CursorOptions::default(), Default::default())
+                .unwrap();
+            owner
+                .command(Command::Content(DocCommand::AddItems {
+                    items: vec![item.clone()],
+                    open: true,
+                }))
+                .unwrap();
+            owner
+        })
+        .collect();
+    for owner in &owners {
+        let mut states = service.subscribe(owner.session()).unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            states.wait_for(|state| {
+                matches!(
+                    state.doc.workspace.resolutions.get(&id),
+                    Some(Resolution::Resolved { .. })
+                )
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    }
+
+    service.check_sources();
+    fs::write(&overlay_file, "1,1,1,1,1,1\n").unwrap();
+    service.check_sources();
+    service.check_sources();
+    for owner in &owners {
+        assert_eq!(changed(owner, id), Some(1));
+    }
+}
+
+/// A completed read replaces what the item was recorded from, by the runner's completion and by a staged edit's
+/// `record_sources` alike: the old files stop offering reloads, also when the new read names no file.
+#[tokio::test(start_paused = true)]
+async fn a_read_replaces_the_files_an_item_was_recorded_from_even_with_none() {
+    let rig = Rig::new();
+    let owner = rig
+        .service
+        .create(true, CursorOptions::default(), Default::default())
+        .unwrap();
+    let (dir_a, dir_b) = (rig.dir.path().join("a"), rig.dir.path().join("b"));
+    fs::create_dir_all(&dir_a).unwrap();
+    fs::create_dir_all(&dir_b).unwrap();
+    let ((item, file_a), (other, file_b)) = (with_overlay(&dir_a), with_overlay(&dir_b));
+    let id = item.id;
+    let handlers = Handlers::built_in();
+    let bare = video(&dir_a.join("a.mp4"), &[], &handlers).unwrap();
+    let read = |recipe: &Recipe| {
+        let read = Watch::read(recipe, &handlers, &CancelToken::new(), || {
+            Err::<Content, ()>(())
+        });
+        read.1.unwrap()
+    };
+    let by_runner = |watch: Watch| {
+        owner
+            .command(Command::Content(DocCommand::Resolve(id)))
+            .unwrap();
+        for (spawn, done) in rig.jobs.take() {
+            let Work::Resolve(job) = &spawn.work;
+            done.watcher().record(id, watch.clone());
+            assert!(done.complete(crate::completion(job)).is_ok());
+        }
+    };
+    let by_edit = |watch: Watch| rig.service.record_sources(owner.session(), id, watch);
+    let writes = std::cell::Cell::new(0);
+    // Writes `file`, and says whether the item was told of a change.
+    let offered = |file: &Path| {
+        let before = changed(&owner, id);
+        writes.set(writes.get() + 1);
+        fs::write(file, "x".repeat(writes.get())).unwrap(); // a new length each time: no mtime tie can hide it
+        rig.service.check_sources();
+        rig.service.check_sources();
+        changed(&owner, id) != before
+    };
+    rig.open(&owner, item.clone());
+
+    by_runner(read(&item.recipe));
+    assert!(offered(&file_a));
+    by_runner(read(&bare.recipe));
+    assert!(!offered(&file_a), "the runner's empty read dropped it");
+    by_edit(read(&other.recipe));
+    assert!(offered(&file_b));
+    by_edit(read(&bare.recipe));
+    assert!(!offered(&file_b), "the edit's empty read dropped it");
+}
+
+/// `PATH` stands for any variable: an item resolves it in the session of the person at this machine, and keeps it as
+/// typed in the session of a remote holder of the server password.
+#[tokio::test]
+async fn a_reference_is_read_for_a_local_owner_and_kept_literal_for_a_remote_one() {
+    let service = Service::new(
+        GRACE,
+        Arc::new(OnRuntime {
+            runtime: tokio::runtime::Handle::current(),
+            handlers: HandlerSet::new(Handlers::built_in()),
+            environment: Arc::new(workspace::Environment::of_process),
+            opens: Arc::new(|_, _| Ok(())),
+        }),
+    );
+    let host_of = |expands: bool| {
+        let item = WorkspaceItem {
+            id: ItemId::generate(),
+            label: String::new(),
+            recipe: Recipe {
+                source: Source::Live(LiveRecipe {
+                    host: "$PATH".into(),
+                    username: String::new(),
+                    password: Secret::default(),
+                    protocol: Protocol::Https,
+                    port: 0,
+                    head: 1,
+                    rtsp_port: 554,
+                    rtsp_route: workspace::RtspRoute::Direct,
+                    resolution: None,
+                    url: None,
+                    overlay: LiveOverlay::None,
+                    kept: Default::default(),
+                }),
+                lane_matching: Default::default(),
+            },
+        };
+        let id = item.id;
+        let owner = service
+            .create(expands, CursorOptions::default(), Default::default())
+            .unwrap();
+        owner
+            .command(Command::Content(DocCommand::AddItems {
+                items: vec![item],
+                open: false,
+            }))
+            .unwrap();
+        async move {
+            loop {
+                if let Some(Resolution::Resolved { content, .. }) =
+                    owner.state().doc.workspace.resolutions.get(&id)
+                    && let Content::LiveVideo(video) = content
+                {
+                    return video.camera.host.clone();
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        }
+    };
+    assert_eq!(host_of(true).await, std::env::var("PATH").unwrap());
+    assert_eq!(host_of(false).await, "$PATH");
+}
+
+#[tokio::test(start_paused = true)]
+async fn playlist_changes_name_only_the_entries_whose_considered_overlays_changed() {
+    let rig = Rig::new();
+    let owner = rig
+        .service
+        .create(true, CursorOptions::default(), Default::default())
+        .unwrap();
+    let item = crate::playlist_in(rig.dir.path(), &["a", "b"]);
+    let handlers = Handlers::built_in();
+    let (resolved, watch) = Watch::read(&item.recipe, &handlers, &CancelToken::new(), || {
+        item.resolve(
+            &handlers,
+            &workspace::Environment::literal(),
+            &CancelToken::new(),
+        )
+    });
+    let content = resolved.unwrap();
+    let a = content.entries()[0].id.clone();
+    let b = content.entries()[1].id.clone();
+    let id = item.id;
+    rig.open(&owner, item);
+    rig.service
+        .record_sources(owner.session(), id, watch.unwrap());
+    let change = |file: &str, data: &str| {
+        fs::write(rig.dir.path().join(file), data).unwrap();
+        rig.service.check_sources();
+        rig.service.check_sources();
+    };
+    change("overlays/a.txt", "first");
+    let pending = owner.state().doc.workspace.changed[&id].clone();
+    assert_eq!(
+        pending.entries,
+        std::collections::HashMap::from([(a.clone(), 1)])
+    );
+    assert_eq!(pending.item, None);
+    change("overlays/b.txt", "second");
+    let pending = owner.state().doc.workspace.changed[&id].clone();
+    assert_eq!(
+        pending.entries[&a], 1,
+        "another entry does not resurrect a dismissed offer"
+    );
+    assert_eq!(pending.entries[&b], 2);
+    change("overlays/a.txt", "third change");
+    assert_eq!(owner.state().doc.workspace.changed[&id].entries[&a], 3);
+    owner
+        .command(Command::Content(DocCommand::SetHidden {
+            target: workspace::store::HiddenRef::Lane(
+                b.clone(),
+                content.entries()[1].overlays[0].label.clone(),
+            ),
+            hidden: true,
+        }))
+        .unwrap();
+    change("overlays/b.txt", "hidden lane changed");
+    assert_eq!(
+        owner.state().doc.workspace.changed[&id].entries[&b],
+        2,
+        "a hidden lane does not advance the entry offer"
+    );
+    // A resolver folder change changes the item, without saying the shown overlay changed.
+    fs::create_dir(rig.dir.path().join("videos/new-folder")).unwrap();
+    rig.service.check_sources();
+    rig.service.check_sources();
+    let pending = owner.state().doc.workspace.changed[&id].clone();
+    assert_eq!(pending.item, Some(5));
+    assert_eq!(pending.entries[&a], 3);
+    owner
+        .command(Command::Content(DocCommand::Resolve(id)))
+        .unwrap();
+    rig.jobs.finish_all();
+    assert!(!owner.state().doc.workspace.changed.contains_key(&id));
+}
